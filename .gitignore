@@ -52,11 +52,17 @@
 /.web-server-pid
 
 ###> phpunit/phpunit ###
-/phpunit.xml
 /.phpunit.cache/
 ###< phpunit/phpunit ###
 
 ###> symfony/asset-mapper ###
 /public/assets/
+/public_html/assets/
 /assets/vendor/
 ###< symfony/asset-mapper ###
+
+/public_html/bundles
+/.idea
+.env
+.env.dev
+.env.local
