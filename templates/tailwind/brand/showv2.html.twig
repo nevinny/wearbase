@@ -1,0 +1,266 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}{{ brand.title }} - российский бренд одежды | WEARBASE{% endblock %}
+
+{% block meta_description %}{{ brand.anons ? brand.anons|slice(0, 155) : (brand.description ? brand.description|striptags|slice(0, 155) : "Купить одежду бренда " ~ brand.title ~ " в каталоге российских брендов одежды. Цены, отзывы, официальные сайты.") }}{% endblock %}
+
+{% block meta_keywords %}{{ brand.title }}, российский бренд одежды, уличная мода, одежда, купить {{ brand.title }}{% if brand.address %}, {{ brand.address|split(',')[0] }}{% endif %}{% endblock %}
+
+{% block og_title %}{{ brand.title }} - российский бренд одежды | WEARBASE{% endblock %}
+
+{% block og_description %}{{ brand.anons ? brand.anons|slice(0, 155) : (brand.description ? brand.description|striptags|slice(0, 155) : "Одежда и аксессуары бренда " ~ brand.title ~ " в каталоге WEARBASE") }}{% endblock %}
+
+{% block og_image %}{% if brand.logo %}https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=1200&q=75{% else %}{{ parent() }}{% endif %}{% endblock %}
+
+{% block canonical_url %}{{ url('brand_show', {slug: brand.slug}) }}{% endblock %}
+
+{% block body %}
+    {# Structured Data для бренда #}
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "Brand",
+            "name": "{{ brand.title }}",
+        "description": "{{ (brand.anons ?: brand.description ?: 'Российский бренд одежды')|escape('js') }}",
+        "url": "{{ url('brand_show', {slug: brand.slug}) }}",
+        {% if brand.logo %}
+        "logo": "https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=400&q=75",
+        {% endif %}
+        {% if brand.email %}
+        "email": "{{ brand.email }}",
+        {% endif %}
+        {% if brand.phone %}
+        "telephone": "{{ brand.phone }}",
+        {% endif %}
+        {% if brand.address %}
+        "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "{{ brand.address }}"
+        },
+        {% endif %}
+        "sameAs": [
+        {% if brand.websiteUrl %}"{{ brand.websiteUrl }}",{% endif %}
+            {% if brand.instagramUrl %}"https://instagram.com/{{ brand.instagramUrl }}",{% endif %}
+            {% if brand.telegramUrl %}"https://t.me/{{ brand.telegramUrl }}",{% endif %}
+            {% if brand.vkontakteUrl %}"https://vk.com/{{ brand.vkontakteUrl }}",{% endif %}
+            {% if brand.youtubeUrl %}"https://youtube.com/{{ brand.youtubeUrl }}"{% endif %}
+        ]
+    }
+    </script>
+
+    <div class="container mx-auto px-4 py-10">
+        {# Хлебные крошки для SEO #}
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('brand_index') }}" class="text-gray-500 hover:text-gray-900">Все бренды</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">{{ brand.title }}</span>
+        </nav>
+
+        {# --- Header бренда --- #}
+        <section class="w-full bg-gray-50 py-12 mb-16 border-b">
+            <div class="max-w-6xl mx-auto px-4">
+                <div class="flex flex-col lg:flex-row items-center gap-10 lg:gap-12">
+                    {% if brand.logo %}
+                        <div class="flex-shrink-0">
+                            <img src="https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=640&q=75"
+                                 alt="Логотип бренда {{ brand.title }} - российский бренд одежды"
+                                 width="320"
+                                 height="200"
+                                 class="w-80 h-50 object-contain rounded-2xl bg-white p-8 shadow-2xl border border-gray-100">
+                        </div>
+                    {% endif %}
+
+                    <div class="flex-1 text-center lg:text-left">
+                        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-gray-900">{{ brand.title }}</h1>
+
+                        {% if brand.anons %}
+                            <p class="text-gray-700 text-xl lg:text-2xl leading-relaxed max-w-3xl mx-auto lg:mx-0 font-light">
+                                {{ brand.anons }}
+                            </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {# --- Основная информация о бренде --- #}
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+            {# Контент бренда #}
+            <div class="lg:col-span-2">
+                {% if brand.description %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">О бренде {{ brand.title }}</h2>
+                        <div class="prose max-w-none text-gray-700">
+                            {{ brand.description|raw }}
+                        </div>
+                    </section>
+                {% endif %}
+
+                {# --- Товары бренда --- #}
+                {% if products is defined and products|length > 0 %}
+                    <section class="bg-white rounded-xl shadow-sm p-6">
+                        <h2 class="text-2xl font-semibold mb-6">Товары бренда {{ brand.title }}</h2>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {% for product in products %}
+                                <a
+{#                                    href="{{ path('product_show', { slug: product.slug }) }}"#}
+                                   class="bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition transform hover:-translate-y-1 border">
+                                    {% if product.image %}
+                                        <img src="{{ asset('uploads/products/' ~ product.image) }}"
+                                             alt="{{ product.title }} - {{ brand.title }}"
+                                             width="300"
+                                             height="300"
+                                             loading="lazy"
+                                             class="w-full h-48 object-cover">
+                                    {% else %}
+                                        <div class="w-full h-48 bg-gray-200 flex items-center justify-center">
+                                            <span class="text-gray-400">Нет изображения</span>
+                                        </div>
+                                    {% endif %}
+                                    <div class="p-3">
+                                        <div class="font-medium truncate text-sm">{{ product.title }}</div>
+                                        {% if product.price %}
+                                            <div class="text-indigo-600 font-semibold mt-1">{{ product.price }} ₽</div>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </section>
+                {% endif %}
+            </div>
+
+            {# --- Сайдбар с контактами и ссылками --- #}
+            <div class="space-y-6">
+                {# Контактная информация #}
+                {% if brand.email or brand.phone or brand.address %}
+                    <section class="bg-white rounded-xl shadow-sm p-6">
+                        <h3 class="text-xl font-semibold mb-4">Контакты</h3>
+                        <div class="space-y-3">
+                            {% if brand.email %}
+                                <div class="flex items-center gap-3">
+                                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
+                                        <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/>
+                                    </svg>
+                                    <a href="mailto:{{ brand.email }}" class="text-gray-700 hover:text-indigo-600">
+                                        {{ brand.email }}
+                                    </a>
+                                </div>
+                            {% endif %}
+
+                            {% if brand.phone %}
+                                <div class="flex items-center gap-3">
+                                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
+                                    </svg>
+                                    <a href="tel:{{ brand.phone|replace({' ': '', '-': '', '(': '', ')': ''}) }}"
+                                       class="text-gray-700 hover:text-indigo-600">
+                                        {{ brand.phone }}
+                                    </a>
+                                </div>
+                            {% endif %}
+
+                            {% if brand.address %}
+                                <div class="flex items-start gap-3">
+                                    <svg class="w-5 h-5 text-gray-400 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
+                                    </svg>
+                                    <span class="text-gray-700">{{ brand.address }}</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </section>
+                {% endif %}
+
+                {# Социальные сети и ссылки #}
+                <section class="bg-white rounded-xl shadow-sm p-6">
+                    <h3 class="text-xl font-semibold mb-4">Ссылки</h3>
+                    <div class="space-y-3">
+                        {% if brand.websiteUrl %}
+                            <a href="{{ brand.websiteUrl }}" target="_blank" rel="nofollow noopener"
+                               class="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-100 hover:bg-gray-900 hover:text-white transition group">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/>
+                                </svg>
+                                <span>Официальный сайт</span>
+                            </a>
+                        {% endif %}
+
+                        {% if brand.instagramUrl %}
+                            <a href="{{ brand.instagramUrl }}" target="_blank" rel="nofollow noopener"
+                               class="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-100 hover:bg-pink-600 hover:text-white transition group">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                                </svg>
+                                <span>Instagram</span>
+                            </a>
+                        {% endif %}
+
+                        {% if brand.telegramUrl %}
+                            <a href="{{ brand.telegramUrl }}" target="_blank" rel="nofollow noopener"
+                               class="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-100 hover:bg-blue-500 hover:text-white transition group">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                                </svg>
+                                <span>Telegram</span>
+                            </a>
+                        {% endif %}
+
+                        {% if brand.vkontakteUrl %}
+                            <a href="{{ brand.vkontakteUrl }}" target="_blank" rel="nofollow noopener"
+                               class="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-100 hover:bg-blue-600 hover:text-white transition group">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M15.073 2H8.938C3.332 2 2 3.333 2 8.927v6.136C2 20.667 3.323 22 8.927 22h6.136C20.667 22 22 20.677 22 15.073V8.938C22 3.332 20.677 2 15.073 2zm3.073 14.27h-1.459c-.552 0-.718-.447-1.708-1.437-.864-.833-1.229-.937-1.448-.937-.302 0-.385.083-.385.5v1.312c0 .354-.115.563-1.042.563-1.52 0-3.188-.931-4.375-2.667-1.813-2.76-2.375-4.854-2.375-4.854s-.083-.385.083-.531c.198-.146.615-.115.615-.115h1.459c.437 0 .625.198.76.656.823 2.667 2.219 4.438 2.385 4.604.229.229.323.198.323-.115V9.854c-.021-.718-.219-.854-.719-.854h-2.313c-.375 0-.542.198-.542.531 0 .552.719.677.792.906.833 1.729 1.708 3.563 1.708 3.563s.177.354.271.354h.51c.104 0 .271-.104.417-.354.5-.792 1.5-2.625 1.5-2.625.26-.385.364-.437.645-.437h2.292c1.281 0 .937 1.312.937 1.312v3.938s-.219.812.438.812h1.396c.375 0 .625-.188.521-.667-.24-1.115-2.583-3.479-2.583-3.479-.24-.26-.167-.375 0-.604.01-.01 2.49-3.42 2.74-4.577.125-.469-.115-.667-.615-.667z"/>
+                                </svg>
+                                <span>ВКонтакте</span>
+                            </a>
+                        {% endif %}
+
+                        {% if brand.youtubeUrl %}
+                            <a href="{{ brand.youtubeUrl }}" target="_blank" rel="nofollow noopener"
+                               class="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-100 hover:bg-red-600 hover:text-white transition group">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+                                </svg>
+                                <span>YouTube</span>
+                            </a>
+                        {% endif %}
+                    </div>
+                </section>
+
+                {# Мета-информация #}
+                <section class="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
+                    <div class="space-y-2">
+                        {% if brand.createdAt %}
+                            <div>Добавлен: {{ brand.createdAt|date('d.m.Y') }}</div>
+                        {% endif %}
+                        {% if brand.updatedAt %}
+                            <div>Обновлен: {{ brand.updatedAt|date('d.m.Y') }}</div>
+                        {% endif %}
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        {# Резервный SEO-текст если нет товаров и описания #}
+        {% if not brand.description and (brand.products is not defined or brand.products|length == 0) %}
+            <section class="bg-white rounded-xl shadow-sm p-8 text-center">
+                <h2 class="text-2xl font-semibold mb-4">Бренд {{ brand.title }}</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto mb-6">
+                    Российский бренд одежды {{ brand.title }} предлагает актуальную уличную одежду и аксессуары.
+                    Следите за обновлениями коллекции на официальных страницах бренда.
+                </p>
+                {% if brand.websiteUrl %}
+                    <a href="{{ brand.websiteUrl }}" target="_blank" rel="nofollow noopener"
+                       class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                        Перейти на сайт бренда
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                        </svg>
+                    </a>
+                {% endif %}
+            </section>
+        {% endif %}
+    </div>
+{% endblock %}

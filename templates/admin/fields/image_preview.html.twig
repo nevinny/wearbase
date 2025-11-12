@@ -1,0 +1,11 @@
+{# templates/admin/fields/image_preview.html.twig #}
+{% if field.value %}
+    <div class="form-widget">
+        <label class="form-label d-block">{{ field.label }}</label>
+        <img src="{{ asset('/uploads/news/' ~ field.value) }}"
+             alt="preview"
+             style="max-width: 200px; max-height: 200px; border: 1px solid #ccc;">
+    </div>
+{% else %}
+    <div class="form-widget text-muted">Нет изображения</div>
+{% endif %}

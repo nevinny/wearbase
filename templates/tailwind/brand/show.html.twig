@@ -1,0 +1,142 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}{{ brand.title }} - российский бренд одежды | WEARBASE{% endblock %}
+
+{% block meta_description %}{{ brand.anons ? brand.anons|slice(0, 155) : "Купить одежду бренда " ~ brand.title ~ " в каталоге российских брендов одежды. Цены, отзывы, официальные сайты." }}{% endblock %}
+
+{% block meta_keywords %}{{ brand.title }}, российский бренд одежды, уличная мода, одежда, купить {{ brand.title }}{% endblock %}
+
+{% block og_title %}{{ brand.title }} - российский бренд одежды | WEARBASE{% endblock %}
+
+{% block og_description %}{{ brand.anons ? brand.anons|slice(0, 155) : "Одежда и аксессуары бренда " ~ brand.title ~ " в каталоге WEARBASE" }}{% endblock %}
+
+{% block og_image %}{% if brand.logo %}https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=1200&q=75{% else %}{{ parent() }}{% endif %}{% endblock %}
+
+{% block canonical_url %}{{ url('brand_show', {slug: brand.slug}) }}{% endblock %}
+
+
+{% block body %}
+    <div class="container mx-auto px-4 py-10">
+        {# Хлебные крошки для SEO #}
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('brand_index') }}" class="text-gray-500 hover:text-gray-900">Все бренды</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">{{ brand.title }}</span>
+        </nav>
+
+        {# ← Ссылка назад #}
+{#        <a href="{{ path('brand_index', {_locale: app.request.locale} ) }}" class="inline-block mb-6 text-gray-500 hover:text-gray-900">#}
+{#            ← Все бренды#}
+{#        </a>#}
+
+        {# --- Header бренда --- #}
+        <section class="flex flex-col items-center text-center gap-4 mb-12">
+            {% if brand.logo %}
+                <img src="https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=640&q=75"
+{#                     alt="{{ brand.title }}" #}
+{#                     loading="lazy"#}
+{#                <img src="{{ vich_uploader_asset(brand, 'logoFile') }}"#}
+                     alt="{{ brand.title }} - российский бренд одежды"
+                     class="w-44 h-28 object-contain rounded-xl bg-white p-4 shadow-sm">
+            {% endif %}
+
+            <h1 class="text-3xl md:text-4xl font-bold">{{ brand.title }}</h1>
+            {% if brand. %}
+
+            {% if brand.anons %}
+                <p class="text-gray-600 max-w-xl">{{ brand.anons }}</p>
+            {% endif %}
+
+            <div class="flex flex-wrap justify-center gap-3 mt-4">
+                {% if brand.websiteUrl %}
+                    <a href="{{ brand.websiteUrl }}"  target="_blank" rel="nofollow noopener"
+                       class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-900 hover:text-white transition">
+                        Официальный сайт
+                    </a>
+                {% endif %}
+                {% if brand.instagramUrl %}
+                    <a href="{{ brand.instagramUrl }}" target="_blank" rel="nofollow noopener"
+                       class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-900 hover:text-white transition">
+                        Instagram
+                    </a>
+                {% endif %}
+                {% if brand.telegramUrl %}
+                    <a href="{{ brand.telegramUrl }}" target="_blank" rel="nofollow noopener"
+                       class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-900 hover:text-white transition">
+                        Telegram
+                    </a>
+                {% endif %}
+                {% if brand.vkontakteUrl %}
+                    <a href="{{ brand.vkontakteUrl }}" target="_blank" rel="nofollow noopener"
+                       class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-900 hover:text-white transition">
+                        VK
+                    </a>
+                {% endif %}
+                {% if brand.youtubeUrl %}
+                    <a href="{{ brand.youtubeUrl }}" target="_blank" rel="nofollow noopener"
+                       class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-900 hover:text-white transition">
+                        YouTube
+                    </a>
+                {% endif %}
+
+
+                {# --- Товары бренда --- #}
+                {% if brand.products is defined and brand.products|length > 0 %}
+                    <section>
+                        <h2 class="text-2xl font-semibold mb-6">Товары бренда {{ brand.title }}</h2>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                            {% for product in brand.products %}
+                                <a href="{{ path('product_show', { slug: product.slug }) }}"
+                                   class="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition transform hover:-translate-y-1">
+                                    {% if product.image %}
+                                        <img src="{{ asset('uploads/products/' ~ product.image) }}"
+                                             alt="{{ product.name }} - {{ brand.title }}"
+                                             width="300"
+                                             height="300"
+                                             loading="lazy"
+                                             class="w-full h-48 object-cover">
+                                    {% endif %}
+                                    <div class="p-3">
+                                        <div class="font-medium truncate">{{ product.name }}</div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </section>
+                {% else %}
+                    {# SEO-текст если нет товаров #}
+                    <section class="text-center py-8">
+                        <h2 class="text-2xl font-semibold mb-4">Бренд {{ brand.title }}</h2>
+                        <p class="text-gray-600 max-w-2xl mx-auto">
+                            Российский бренд одежды {{ brand.title }} предлагает актуальную  одежду и аксессуары.
+                            Следите за обновлениями коллекции на официальных страницах бренда.
+                        </p>
+                    </section>
+                {% endif %}
+            </div>
+        </section>
+
+        {# --- Товары бренда --- #}
+        {% if brand.products is defined and brand.products|length > 0 %}
+            <section>
+                <h2 class="text-2xl font-semibold mb-6">Товары бренда</h2>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                    {% for product in brand.products %}
+                        <a href="{{ path('product_show', { slug: product.slug }) }}"
+                           class="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition transform hover:-translate-y-1">
+                            {% if product.image %}
+                                <img src="{{ asset('uploads/products/' ~ product.image) }}"
+                                     alt="{{ product.name }}"
+                                     class="w-full h-48 object-cover">
+                            {% endif %}
+                            <div class="p-3">
+                                <div class="font-medium truncate">{{ product.name }}</div>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endif %}
+
+    </div>
+{% endblock %}

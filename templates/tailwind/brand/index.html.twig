@@ -1,0 +1,103 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}Бренды одежды — WEARBASE{% endblock %}
+
+{% block body %}
+    <div class="container mx-auto px-4 py-10">
+
+        {# --- Hero Section --- #}
+        <section class="text-center mb-10">
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight mb-3">Бренды одежды</h1>
+            <p class="text-gray-600 text-base md:text-lg">
+                Каталог локальных и международных fashion-брендов на WEARBASE.
+            </p>
+        </section>
+
+        {# --- Алфавитный указатель --- #}
+        <section class="mb-10">
+            <div class="flex flex-col items-center gap-4">
+                <div class="flex flex-wrap justify-center gap-2">
+                {% for letter,cnt in foundLetters %}
+                    {% set active = app.request.get('letter') == letter %}
+                    <a href="{{ path('brand_index', {letter: letter}) }}"#}
+                       class="px-3 py-1 rounded-md border text-sm font-medium transition
+                  {{ active ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-200' }}">
+                            {{ letter }}
+                    </a>
+                {% endfor %}
+                </div>
+
+{#                {% for lang, letters in alphabets %}#}
+{#                    <div class="flex flex-wrap justify-center gap-2">#}
+{#                        {% for letter in letters %}#}
+{#                            {% set active = app.request.get('letter') == letter %}#}
+{#                            <a href="{{ path('brand_index', {letter: letter}) }}"#}
+{#                               class="px-3 py-1 rounded-md border text-sm font-medium transition#}
+{#                      {{ active ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-200' }}">#}
+{#                                {{ letter }}#}
+{#                            </a>#}
+{#                        {% endfor %}#}
+{#                    </div>#}
+{#                {% endfor %}#}
+                <div class="flex justify-center">
+                    <a href="{{ path('brand_index') }}"
+                       class="px-3 py-1 rounded-md border text-sm font-medium bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-200">
+                        Все
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        {# --- Сетка брендов --- #}
+        {% if brands|length > 0 %}
+            <section>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                    {% for brand in brands %}
+                        <article class="group bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                            <a href="{{ path('brand_show', { _locale: app.request.locale, slug: brand.slug }) }}" class="flex flex-col items-center p-4 text-center">
+                                <div class="w-24 h-24 flex items-center justify-center mb-3">
+                                    {% if brand.logo %}
+                                        <img src="https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=256&q=75" alt="{{ brand.title }}" loading="lazy"
+{#                                        <img src="https://russianstreetwear.club{{ vich_uploader_asset(brand, 'logoFile') }}" alt="{{ brand.title }}" loading="lazy"#}
+                                             class="object-contain w-full h-full transition-transform group-hover:scale-105 duration-300">
+                                    {% else %}
+                                        <div class="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
+                                            {{ brand.title|slice(0,1) }}
+                                        </div>
+                                    {% endif %}
+                                </div>
+
+                                <h3 class="text-sm font-semibold mb-1 truncate">{{ brand.title }}</h3>
+
+{#                                {% if brand.country %}#}
+{#                                    <p class="text-xs text-gray-500">{{ brand.country }}</p>#}
+{#                                {% endif %}#}
+                            </a>
+                        </article>
+                    {% endfor %}
+                </div>
+
+                <div class="mt-8">
+{#                    {{ pagerfanta(brands) }}#}
+                </div>
+            </section>
+
+        {% else %}
+            <section class="text-center py-20 text-gray-500">
+                {% if app.request.get('letter') %}
+                    Нет брендов на букву «{{ app.request.get('letter') }}».
+                {% else %}
+                    <p class="text-lg mb-2 font-medium">Популярные бренды:</p>
+                    <div class="flex flex-wrap justify-center gap-4 text-gray-700 text-sm">
+                        {% for b in featuredBrands %}
+                            <a href="{{ path('brand_show', { slug: b.slug }) }}" class="hover:text-black font-semibold">
+                                {{ b.name }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </section>
+        {% endif %}
+
+    </div>
+{% endblock %}

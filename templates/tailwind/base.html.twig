@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+
+    {# Важно: Добавляем канонические URL #}
+    <link rel="canonical" href="{% block canonical_url %}{{ app.request.uri }}{% endblock %}">
+
+    <title>{% block title %}Российские  бренды | WEARBASE{% endblock %}</title>
+
+    {# SEO meta - улучшенные описания #}
+    <meta name="description" content="{% block meta_description %}Каталог российских брендов одежды. Актуальные коллекции, цены, отзывы и где купить{% endblock %}">
+    <meta name="keywords" content="{% block meta_keywords %}российские бренды, , уличная мода, одежда, кроссовки, аксессуары{% endblock %}">
+
+    {# Open Graph - улучшенные метатеги #}
+    <meta property="og:title" content="{% block og_title %}Российские бренды одежды | WEARBASE{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Каталог лучших российских брендов одежды. Найдите свой стиль{% endblock %}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ app.request.uri }}">
+    <meta property="og:image" content="{% block og_image %}{{ asset('images/og-image.webp') }}{% endblock %}">
+    <meta property="og:site_name" content="WEARBASE">
+    <meta property="og:locale" content="ru_RU">
+
+    {# Twitter Card #}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{% block twitter_title %}Российские бренды одежды | WEARBASE{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}Каталог лучших российских брендов одежды{% endblock %}">
+    <meta name="twitter:image" content="{% block twitter_image %}{{ asset('images/og-image.webp') }}{% endblock %}">
+
+    {# Structured Data / JSON-LD #}
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "WEARBASE",
+            "description": "Каталог российских брендов одежды",
+            "url": "https://wearbase.ru/",
+            "potentialAction": {
+                "@type": "SearchAction",
+                "target": "https://wearbase.ru/?letter={search_term_string}",
+                "query-input": "required name=search_term_string"
+            }
+        }
+    </script>
+    {# Tailwind CSS (через Vite или CDN) #}
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    {% block stylesheets %}{% endblock %}
+    <!-- Yandex.Metrika counter -->
+    <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=105219484', 'ym');
+
+        ym(105219484, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+    </script>
+    <noscript><div><img src="https://mc.yandex.ru/watch/105219484" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+    <!-- /Yandex.Metrika counter -->
+</head>
+
+<body class="min-h-screen flex flex-col bg-gray-50 text-gray-900 antialiased">
+
+{# --- Header --- #}
+<header class="bg-white shadow-sm sticky top-0 z-40">
+
+    <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+        <a href="{{ path('brand_index') }}" class="text-lg font-bold tracking-tight">
+            <span class="text-gray-900">WEARBASE</span><span class="text-indigo-600">.ru</span>
+        </a>
+
+        <nav class="hidden md:flex items-center gap-6 text-sm font-medium">
+{#            <a href="{{ path('listing_index') }}" class="text-gray-700 hover:text-indigo-600 transition">Главная</a>#}
+            <a href="#" class="text-gray-700 hover:text-indigo-600 transition">Бренды</a>
+            <a href="#" class="text-gray-700 hover:text-indigo-600 transition">Категории</a>
+            <a href="#" class="text-gray-700 hover:text-indigo-600 transition">О проекте</a>
+        </nav>
+
+        <div class="flex items-center gap-3">
+{#            {% if app.user %}#}
+{#                <a href="{{ path('app_dashboard') }}" class="text-sm text-gray-700 hover:text-indigo-600">Личный кабинет</a>#}
+{#            {% else %}#}
+{#                <a href="##}
+{#{{ path('app_login') }}#}
+{#" class="text-sm text-gray-700 hover:text-indigo-600">Войти</a>#}
+{#            {% endif %}#}
+        </div>
+    </div>
+</header>
+
+{# --- Main content --- #}
+<main class="flex-grow">
+    {% block body %}{% endblock %}
+</main>
+
+{# --- Footer --- #}
+<footer class="bg-white border-t mt-10">
+    <div class="container mx-auto px-4 py-6 text-center text-sm text-gray-500">
+        © {{ "now"|date("Y") }} WEARBASE.ru — список российских брендов.
+        <br>
+        <a href="#" class="hover:text-indigo-600">Политика конфиденциальности</a>
+    </div>
+</footer>
+
+{% block javascripts %}{% endblock %}
+</body>
+</html>

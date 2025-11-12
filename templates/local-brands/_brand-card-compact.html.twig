@@ -1,0 +1,52 @@
+<div class="card brand-card-compact h-100">
+    <div class="card-body text-center p-3">
+        <!-- Бейджи -->
+        <div class="position-absolute top-0 start-0 m-1">
+            {% if brand.isLocal is defined and brand.isLocal %}
+                <span class="badge bg-danger small">
+                    <i class="fas fa-map-marker-alt"></i>
+                </span>
+            {% endif %}
+        </div>
+
+        <div class="position-absolute top-0 end-0 m-1">
+            {% if brand.isSustainable is defined and brand.isSustainable %}
+                <span class="badge bg-success small">
+                    <i class="fas fa-leaf"></i>
+                </span>
+            {% endif %}
+        </div>
+
+        <!-- Логотип -->
+        <div class="mb-3">
+            <img src="{{ brand.logo|default('/images/brand-placeholder.png') }}"
+                 alt="{{ brand.title|default('Бренд') }}"
+                 class="brand-logo-compact img-fluid rounded"
+                 onerror="this.src='/images/brand-placeholder.png'">
+        </div>
+
+        <!-- Название -->
+        <h6 class="card-title mb-2 small fw-bold text-truncate" title="{{ brand.title|default('Бренд') }}">
+            {{ brand.title|default('Бренд') }}
+        </h6>
+
+        <!-- Количество товаров -->
+        {% if brand.productCount is defined %}
+            <p class="card-text small text-muted mb-2">
+                {{ brand.productCount }} товаров
+            </p>
+        {% endif %}
+
+        <!-- Кнопка -->
+        {% if brand.slug is defined %}
+{#            <a href="{{ path('brand_detail', {'slug': brand.slug}) }}"#}
+{#               class="btn btn-outline-dark btn-sm w-100 small">#}
+                Смотреть
+{#            </a>#}
+        {% else %}
+            <button class="btn btn-outline-dark btn-sm w-100 small" disabled>
+                Смотреть
+            </button>
+        {% endif %}
+    </div>
+</div>

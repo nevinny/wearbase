@@ -1,0 +1,93 @@
+<header class="sticky-top bg-white shadow-sm">
+    <!-- Верхняя панель -->
+    <div class="bg-dark text-white py-2">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <small>Бесплатная доставка по всему миру | Возврат в течение 30 дней</small>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <small>
+                        <a href="#" class="text-white text-decoration-none me-3">
+                            <i class="fas fa-globe me-1"></i> Россия
+                        </a>
+                        <a href="#" class="text-white text-decoration-none me-3">
+                            <i class="fas fa-user me-1"></i> Мой аккаунт
+                        </a>
+                        <a href="#" class="text-white text-decoration-none">
+                            <i class="fas fa-heart me-1"></i> Избранное
+                        </a>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Основной хедер -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white py-3">
+        <div class="container-fluid">
+            <!-- Лого -->
+            <a class="navbar-brand fw-bold fs-3" href="/">
+                WEARBASE
+            </a>
+
+            <!-- Поиск -->
+            <div class="mx-4 flex-grow-1">
+                <form class="d-flex">
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Поиск брендов, товаров..." aria-label="Search">
+                        <button class="btn btn-dark" type="submit">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Иконки действий -->
+            <div class="d-flex align-items-center">
+                <a href="#" class="text-dark me-3 position-relative">
+                    <i class="fas fa-user fa-lg"></i>
+                </a>
+                <a href="#" class="text-dark me-3 position-relative">
+                    <i class="fas fa-heart fa-lg"></i>
+                </a>
+                <a href="#" class="text-dark position-relative">
+                    <i class="fas fa-shopping-bag fa-lg"></i>
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                        0
+                    </span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Навигация -->
+    <div class="border-top">
+        <div class="container-fluid">
+            <ul class="nav justify-content-center">
+                <li class="nav-item">
+                    <a class="nav-link text-dark fw-medium" href="/women">Женщины</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark fw-medium" href="/men">Мужчины</a>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link text-dark fw-medium dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                        Бренды
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/brands/all">Все бренды</a></li>
+                        <li><a class="dropdown-item" href="/brands/local">Локальные бренды</a></li>
+                        <li><a class="dropdown-item" href="/brands/sustainable">Устойчивые бренды</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark fw-medium" href="/new-in">Новинки</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark fw-medium" href="/sale">Скидки</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</header>

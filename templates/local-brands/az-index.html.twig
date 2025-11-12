@@ -1,0 +1,287 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Алфавитный указатель брендов | ASOS{% endblock %}
+
+{% block content %}
+    <div class="container-fluid py-4">
+        <!-- Хлебные крошки -->
+        <nav aria-label="breadcrumb" class="mb-4">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Главная</a></li>
+                <li class="breadcrumb-item"><a href="/brands">Бренды</a></li>
+                <li class="breadcrumb-item active">Алфавитный указатель</li>
+            </ol>
+        </nav>
+
+        <!-- Заголовок -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h1 class="h2 mb-0">Алфавитный указатель брендов</h1>
+                    <span class="text-muted">{{ totalBrands }} брендов</span>
+                </div>
+                <p class="lead text-muted mb-0">
+                    Найдите любимые бренды по алфавиту или воспользуйтесь поиском
+                </p>
+            </div>
+        </div>
+
+        <!-- Поиск -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <form method="get" class="row g-3 align-items-center">
+                            <div class="col-md-8">
+                                <div class="input-group">
+                                <span class="input-group-text bg-light border-end-0">
+                                    <i class="fas fa-search text-muted"></i>
+                                </span>
+                                    <input type="text"
+                                           name="search"
+                                           class="form-control border-start-0"
+                                           placeholder="Поиск брендов..."
+                                           value="{{ searchQuery }}"
+                                           aria-label="Поиск брендов">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-dark w-100">
+                                    Найти
+                                </button>
+                            </div>
+                            <div class="col-md-2">
+                                <a href="{{ path('brands_az') }}" class="btn btn-outline-secondary w-100">
+                                    Сбросить
+                                </a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if searchQuery %}
+            <!-- Результаты поиска -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="h4 mb-0">Результаты поиска "{{ searchQuery }}"</h2>
+                        <span class="text-muted">Найдено {{ brands|length }} брендов</span>
+                    </div>
+
+                    {% if brands is empty %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <h3 class="h5">Бренды не найдены</h3>
+                            <p class="text-muted">Попробуйте изменить поисковый запрос или посмотрите все бренды по алфавиту</p>
+                            <a href="{{ path('brands_az') }}" class="btn btn-dark">Показать все бренды</a>
+                        </div>
+                    {% else %}
+                        <div class="row g-3">
+                            {% for brand in brands %}
+                                <div class="col-6 col-md-4 col-lg-3 col-xl-2">
+                                    {% include 'local-brands/_brand-card-compact.html.twig' with {brand: brand} %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% else %}
+            <!-- Алфавитный указатель -->
+            <div class="row">
+                <!-- Навигация по буквам -->
+                <div class="col-12 mb-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h3 class="h6 mb-3">Быстрая навигация</h3>
+                            <div class="alphabet-nav">
+                                {% for letter in alphabet %}
+                                    <a href="{{ path('brands_az', {'letter': letter}) }}"
+                                       class="btn btn-sm {% if currentLetter == letter %}btn-dark{% else %}btn-outline-dark{% endif %} m-1 alphabet-letter">
+                                        {{ letter }}
+                                    </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Список брендов по буквам -->
+                <div class="col-12">
+                    {% if currentLetter %}
+                        <!-- Текущая выбранная буква -->
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h2 class="h4 mb-0">Бренды на букву "{{ currentLetter }}"</h2>
+                                <span class="text-muted">{% if brandsByLetter is defined and currentLetter is defined and brandsByLetter[currentLetter] is defined %}
+                                        {{ brandsByLetter[currentLetter]|length }}
+                                    {% endif %} брендов</span>
+                            </div>
+
+                            {% if brandsByLetter[currentLetter] is defined and brandsByLetter[currentLetter] is not empty %}
+                                <div class="row g-3">
+                                    {% for brand in brandsByLetter[currentLetter] %}
+                                        <div class="col-6 col-md-4 col-lg-3 col-xl-2">
+                                            {% include 'local-brands/_brand-card-compact.html.twig' with {brand: brand} %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="text-center py-5 bg-light rounded">
+                                    <i class="fas fa-font fa-3x text-muted mb-3"></i>
+                                    <h3 class="h5">Нет брендов на букву "{{ currentLetter }}"</h3>
+                                    <p class="text-muted">Выберите другую букву для просмотра брендов</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <!-- Полный алфавитный список -->
+                        <div class="az-index-full">
+                            {% for letter, letterBrands in brandsByLetter %}
+                                <div class="az-letter-section mb-5" id="letter-{{ letter }}">
+                                    <div class="d-flex align-items-center mb-3">
+                                        <h2 class="h3 me-3 mb-0">{{ letter }}</h2>
+                                        <span class="badge bg-secondary">{{ letterBrands|length }}</span>
+                                    </div>
+
+                                    <div class="row g-3">
+                                        {% for brand in letterBrands %}
+                                            <div class="col-6 col-md-4 col-lg-3 col-xl-2">
+                                                {% include 'local-brands/_brand-card-compact.html.twig' with {brand: brand} %}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+
+                                    {% if loop.last == false %}
+                                        <hr class="my-4">
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <div class="text-center py-5">
+                                    <i class="fas fa-store fa-3x text-muted mb-3"></i>
+                                    <h3 class="h5">Бренды не найдены</h3>
+                                    <p class="text-muted">В каталоге пока нет брендов</p>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Дополнительная информация -->
+        <div class="row mt-5">
+            <div class="col-12">
+                <div class="bg-light p-4 rounded">
+                    <div class="row">
+                        <div class="col-md-4 text-center mb-3 mb-md-0">
+                            <i class="fas fa-globe fa-2x text-primary mb-2"></i>
+                            <h5 class="h6">Международные бренды</h5>
+                            <p class="small text-muted mb-0">Более 800 брендов со всего мира</p>
+                        </div>
+                        <div class="col-md-4 text-center mb-3 mb-md-0">
+                            <i class="fas fa-map-marker-alt fa-2x text-success mb-2"></i>
+                            <h5 class="h6">Локальные бренды</h5>
+                            <p class="small text-muted mb-0">Поддержите местных дизайнеров</p>
+                        </div>
+                        <div class="col-md-4 text-center">
+                            <i class="fas fa-leaf fa-2x text-info mb-2"></i>
+                            <h5 class="h6">Устойчивая мода</h5>
+                            <p class="small text-muted mb-0">Эко-дружественные бренды</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .alphabet-nav {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.25rem;
+        }
+
+        .alphabet-letter {
+            min-width: 45px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .az-letter-section {
+            scroll-margin-top: 20px;
+        }
+
+        .brand-card-compact {
+            transition: all 0.3s ease;
+            border: none;
+            height: 100%;
+        }
+
+        .brand-card-compact:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .brand-logo-compact {
+            height: 80px;
+            object-fit: contain;
+            padding: 0.75rem;
+        }
+
+        @media (max-width: 768px) {
+            .alphabet-nav .btn-sm {
+                min-width: 40px;
+                padding: 0.25rem 0.5rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+
+    <script>
+        // Плавная прокрутка к буквам
+        document.addEventListener('DOMContentLoaded', function() {
+            const alphabetLinks = document.querySelectorAll('a[href^="#letter-"]');
+
+            alphabetLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    const targetElement = document.querySelector(targetId);
+
+                    if (targetElement) {
+                        targetElement.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+
+            // Подсветка текущей буквы в полном списке
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentLetter = urlParams.get('letter');
+
+            if (currentLetter) {
+                const targetSection = document.getElementById('letter-' + currentLetter);
+                if (targetSection) {
+                    targetSection.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+
+                    // Временная подсветка
+                    targetSection.style.backgroundColor = 'rgba(0,0,0,0.02)';
+                    targetSection.style.transition = 'background-color 0.3s ease';
+
+                    setTimeout(() => {
+                        targetSection.style.backgroundColor = '';
+                    }, 2000);
+                }
+            }
+        });
+    </script>
+{% endblock %}
