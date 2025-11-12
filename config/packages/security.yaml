@@ -5,10 +5,31 @@ security:
     # https://symfony.com/doc/current/security.html#loading-the-user-the-user-provider
     providers:
         users_in_memory: { memory: null }
+
+        admin_user_provider:
+            entity:
+                class: Nevinny\AdminCoreBundle\Entity\User
+                property: email
     firewalls:
         dev:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
+        admin:
+            pattern: ^/admin
+            lazy: true
+            provider: admin_user_provider
+            form_login:
+                login_path: admincore_login
+                check_path: admincore_login
+                default_target_path: admin
+                enable_csrf: true
+            logout:
+                path: admincore_logout
+                target: admincore_login
+            remember_me:
+                secret: '%kernel.secret%'
+                lifetime: 604800 # 1 week
+                path: /admin
         main:
             lazy: true
             provider: users_in_memory
@@ -22,8 +43,9 @@ security:
     # Easy way to control access for large sections of your site
     # Note: Only the *first* access control that matches will be used
     access_control:
-        # - { path: ^/admin, roles: ROLE_ADMIN }
-        # - { path: ^/profile, roles: ROLE_USER }
+#         - { path: ^/admin/login, roles: PUBLIC_ACCESS }
+#         - { path: ^/admin, roles: ROLE_ADMIN }
+#         - { path: ^/profile, roles: ROLE_USER }
 
 when@test:
     security:
