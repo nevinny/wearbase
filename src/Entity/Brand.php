@@ -76,9 +76,37 @@ class Brand
     #[ORM\Column(length: 50, nullable: true)]
     private ?string $city = null;
 
+    /**
+     * @var Collection<int, BrandSize>
+     */
+    #[ORM\ManyToMany(targetEntity: BrandSize::class, mappedBy: 'brands')]
+    private Collection $sizes;
+
+    /**
+     * @var Collection<int, BrandStyle>
+     */
+    #[ORM\ManyToMany(targetEntity: BrandStyle::class, mappedBy: 'brands')]
+    private Collection $styles;
+
+    /**
+     * @var Collection<int, BrandAudience>
+     */
+    #[ORM\ManyToMany(targetEntity: BrandAudience::class, mappedBy: 'brands')]
+    private Collection $audiences;
+
+    /**
+     * @var Collection<int, BrandTier>
+     */
+    #[ORM\ManyToMany(targetEntity: BrandTier::class, mappedBy: 'brands')]
+    private Collection $tiers;
+
     public function __construct()
     {
         $this->products = new ArrayCollection();
+        $this->sizes = new ArrayCollection();
+        $this->styles = new ArrayCollection();
+        $this->audiences = new ArrayCollection();
+        $this->tiers = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -270,6 +298,114 @@ class Brand
     public function setCity(?string $city): static
     {
         $this->city = $city;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, BrandSize>
+     */
+    public function getSizes(): Collection
+    {
+        return $this->sizes;
+    }
+
+    public function addBrandSize(BrandSize $brandSize): static
+    {
+        if (!$this->sizes->contains($brandSize)) {
+            $this->sizes->add($brandSize);
+            $brandSize->addBrand($this);
+        }
+
+        return $this;
+    }
+
+    public function removeBrandSize(BrandSize $brandSize): static
+    {
+        if ($this->sizes->removeElement($brandSize)) {
+            $brandSize->removeBrand($this);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, BrandStyle>
+     */
+    public function getStyles(): Collection
+    {
+        return $this->styles;
+    }
+
+    public function addStyle(BrandStyle $style): static
+    {
+        if (!$this->styles->contains($style)) {
+            $this->styles->add($style);
+            $style->addBrand($this);
+        }
+
+        return $this;
+    }
+
+    public function removeStyle(BrandStyle $style): static
+    {
+        if ($this->styles->removeElement($style)) {
+            $style->removeBrand($this);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, BrandAudience>
+     */
+    public function getAudiences(): Collection
+    {
+        return $this->audiences;
+    }
+
+    public function addAudience(BrandAudience $audience): static
+    {
+        if (!$this->audiences->contains($audience)) {
+            $this->audiences->add($audience);
+            $audience->addBrand($this);
+        }
+
+        return $this;
+    }
+
+    public function removeAudience(BrandAudience $audience): static
+    {
+        if ($this->audiences->removeElement($audience)) {
+            $audience->removeBrand($this);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, BrandTier>
+     */
+    public function getTiers(): Collection
+    {
+        return $this->tiers;
+    }
+
+    public function addTier(BrandTier $tier): static
+    {
+        if (!$this->tiers->contains($tier)) {
+            $this->tiers->add($tier);
+            $tier->addBrand($this);
+        }
+
+        return $this;
+    }
+
+    public function removeTier(BrandTier $tier): static
+    {
+        if ($this->tiers->removeElement($tier)) {
+            $tier->removeBrand($this);
+        }
 
         return $this;
     }

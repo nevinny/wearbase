@@ -17,28 +17,28 @@
         <section class="mb-10">
             <div class="flex flex-col items-center gap-4">
                 <div class="flex flex-wrap justify-center gap-2">
-                {% for letter,cnt in foundLetters %}
-                    {% set active = app.request.get('letter') == letter %}
-                    <a href="{{ path('brand_index', {letter: letter}) }}"#}
-                       class="px-3 py-1 rounded-md border text-sm font-medium transition
-                  {{ active ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-200' }}">
-                            {{ letter }}
-                    </a>
-                {% endfor %}
-                </div>
-
-{#                {% for lang, letters in alphabets %}#}
-{#                    <div class="flex flex-wrap justify-center gap-2">#}
-{#                        {% for letter in letters %}#}
-{#                            {% set active = app.request.get('letter') == letter %}#}
-{#                            <a href="{{ path('brand_index', {letter: letter}) }}"#}
-{#                               class="px-3 py-1 rounded-md border text-sm font-medium transition#}
-{#                      {{ active ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-200' }}">#}
-{#                                {{ letter }}#}
-{#                            </a>#}
-{#                        {% endfor %}#}
-{#                    </div>#}
+{#                {% for letter,cnt in foundLetters %}#}
+{#                    {% set active = app.request.get('letter') == letter %}#}
+{#                    <a href="{{ path('brand_index', {letter: letter}) }}"#}
+{#                       class="px-3 py-1 rounded-md border text-sm font-medium transition#}
+{#                  {{ active ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-200' }}">#}
+{#                            {{ letter }}#}
+{#                    </a>#}
 {#                {% endfor %}#}
+{#                </div>#}
+
+                {% for lang, letters in alphabets %}
+                    <div class="flex flex-wrap justify-center gap-2">
+                        {% for letter in letters %}
+                            {% set active = app.request.get('letter') == letter %}
+                            <a href="{{ path('brand_index', {letter: letter}) }}"
+                               class="px-3 py-1 rounded-md border text-sm font-medium transition
+                      {{ active ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-200' }}">
+                                {{ letter }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
                 <div class="flex justify-center">
                     <a href="{{ path('brand_index') }}"
                        class="px-3 py-1 rounded-md border text-sm font-medium bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-200">
@@ -67,7 +67,7 @@
                                     {% endif %}
                                 </div>
 
-                                <h3 class="text-sm font-semibold mb-1 truncate">{{ brand.title }}</h3>
+                                <h3 class="text-sm font-semibold mb-1 truncate">{{ brand.title }} <br><small>{{ brand.city }}</small> </h3>
 
 {#                                {% if brand.country %}#}
 {#                                    <p class="text-xs text-gray-500">{{ brand.country }}</p>#}
@@ -78,7 +78,6 @@
                 </div>
 
                 <div class="mt-8">
-{#                    {{ pagerfanta(brands) }}#}
                 </div>
             </section>
 
