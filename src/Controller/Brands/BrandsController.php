@@ -13,15 +13,6 @@ use Symfony\Component\Routing\Annotation\Route;
 
 class BrandsController extends AbstractController
 {
-    #[Route('/tailwind', name: 'home_tailwind')]
-    public function tailwind(Request $request): Response
-    {
-        return $this->render('tailwind/index.html.twig', [
-            'listings' => []
-        ]);
-    }
-
-//    #[Route('/tailwind/brands', name: 'brand_index')]
     #[Route('/{_locale}/brands', name: 'brand_index', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
     public function brand_index(Request $request, BrandRepository $repo): Response
     {
@@ -83,15 +74,13 @@ class BrandsController extends AbstractController
                 }
             }
         }
-//        dd($displayAlphabets,$foundLetters);
-
 
         // Подставляем популярные бренды, если буква не выбрана
         $featured = [];
         if (!$letter) {
             $featured = $repo->findBy([
 //                'isFeatured' => true
-            ], ['title' => 'ASC'], 12);
+            ], ['created_at' => 'DESC'], 12);
         }
 
         return $this->render('tailwind/brand/index.html.twig', [

@@ -3,6 +3,10 @@
 namespace App\Controller\Admin;
 
 use App\Entity\Brand;
+use App\Entity\BrandAudience;
+use App\Entity\BrandSize;
+use App\Entity\BrandStyle;
+use App\Entity\BrandTier;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
@@ -52,6 +56,11 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToDashboard('Dashboard', 'fa fa-home');
          yield MenuItem::linkToCrud('Brands', 'fas fa-list', Brand::class);
 
+        yield MenuItem::section('Dictionaries');
+        yield MenuItem::linkToCrud('BrandSizes', 'fas fa-list', BrandSize::class);
+        yield MenuItem::linkToCrud('BrandStyles', 'fas fa-list', BrandStyle::class);
+        yield MenuItem::linkToCrud('BrandAudiences', 'fas fa-list', BrandAudience::class);
+        yield MenuItem::linkToCrud('BrandATiers', 'fas fa-list', BrandTier::class);
         yield MenuItem::section('Administration');
         yield MenuItem::linkToCrud('SectionType', 'fas fa-list', SectionType::class);
         yield MenuItem::linkToCrud('SectionLink', 'fas fa-list', SectionLink::class);
