@@ -25,7 +25,7 @@ use Symfony\Component\HttpFoundation\File\File;
 #[UniqueEntity(fields: ["slug"], message: "Этот slug уже используется")]
 class Brand
 {
-    use DefaultFields, Created, Owner, Status;
+    use Created, Owner, Status;
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -67,6 +67,18 @@ class Brand
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
 
+    #[ORM\Column(length: 255)]
+    private ?string $slug = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $title = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?int $parent = null;
+
+    #[ORM\Column(options: ['default' => '0'])]
+    private ?int $ord = 0;
+
     /**
      * @var Collection<int, Product>
      */
@@ -100,6 +112,9 @@ class Brand
     #[ORM\ManyToMany(targetEntity: BrandTier::class, mappedBy: 'brands')]
     private Collection $tiers;
 
+    #[ORM\Column(length: 5, nullable: true)]
+    private ?string $firstLetter = null;
+
     public function __construct()
     {
         $this->products = new ArrayCollection();
@@ -113,6 +128,88 @@ class Brand
     {
         return $this->id;
     }
+
+    public function __toString(): string
+    {
+        return $this->title ?? 'Без названия';
+    }
+
+    public function getTitle(): ?string
+    {
+        return $this->title;
+    }
+
+    public function setTitle(?string $title): static
+    {
+        $this->title = $title;
+        $this->updateFirstLetter();
+
+        return $this;
+    }
+
+    public function getParent(): ?int
+    {
+        return $this->parent;
+    }
+
+    public function setParent(int $parent): static
+    {
+        $this->parent = $parent;
+
+        return $this;
+    }
+
+    public function getSlug(): ?string
+    {
+        return $this->slug;
+    }
+
+    public function setSlug(string $slug): static
+    {
+        $this->slug = $slug;
+
+        return $this;
+    }
+
+    public function getOrd(): ?int
+    {
+        return $this->ord;
+    }
+
+    public function setOrd(int $ord): static
+    {
+        $this->ord = $ord;
+
+        return $this;
+    }
+
+    private function updateFirstLetter(): void
+    {
+        if (!$this->getTitle()) {
+            $this->firstLetter = null;
+            return;
+        }
+
+        $firstChar = mb_substr($this->getTitle(), 0, 1);
+        $this->firstLetter = $this->normalizeFirstLetter($firstChar);
+    }
+
+    private function normalizeFirstLetter(string $letter): string
+    {
+        $upperLetter = mb_strtoupper($letter, 'UTF-8');
+
+//        // Обработка специальных символов
+//        if (is_numeric($letter)) {
+//            return '0-9';
+//        }
+//
+//        if (!preg_match('/[\p{L}\p{N}]/u', $letter)) {
+//            return '#';
+//        }
+
+        return $upperLetter;
+    }
+
 
     public function getLogo(): ?string
     {
@@ -406,6 +503,22 @@ class Brand
         if ($this->tiers->removeElement($tier)) {
             $tier->removeBrand($this);
         }
+
+        return $this;
+    }
+
+    public function getFirstLetter(): ?string
+    {
+        if(empty($this->firstLetter))
+        {
+            $this->updateFirstLetter();
+        }
+        return $this->firstLetter;
+    }
+
+    public function setFirstLetter(?string $firstLetter): static
+    {
+        $this->firstLetter = $firstLetter;
 
         return $this;
     }
