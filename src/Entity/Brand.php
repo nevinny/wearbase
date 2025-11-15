@@ -121,6 +121,12 @@ class Brand
     #[ORM\OneToMany(targetEntity: BrandLink::class, mappedBy: 'brand', orphanRemoval: true)]
     private Collection $links;
 
+    /**
+     * @var Collection<int, BrandImage>
+     */
+    #[ORM\OneToMany(targetEntity: BrandImage::class, mappedBy: 'brand', orphanRemoval: true)]
+    private Collection $images;
+
     public function __construct()
     {
         $this->products = new ArrayCollection();
@@ -129,6 +135,7 @@ class Brand
         $this->audiences = new ArrayCollection();
         $this->tiers = new ArrayCollection();
         $this->links = new ArrayCollection();
+        $this->images = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -554,6 +561,36 @@ class Brand
             // set the owning side to null (unless already changed)
             if ($link->getBrand() === $this) {
                 $link->setBrand(null);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, BrandImage>
+     */
+    public function getImages(): Collection
+    {
+        return $this->images;
+    }
+
+    public function addImage(BrandImage $image): static
+    {
+        if (!$this->images->contains($image)) {
+            $this->images->add($image);
+            $image->setBrand($this);
+        }
+
+        return $this;
+    }
+
+    public function removeImage(BrandImage $image): static
+    {
+        if ($this->images->removeElement($image)) {
+            // set the owning side to null (unless already changed)
+            if ($image->getBrand() === $this) {
+                $image->setBrand(null);
             }
         }
 
