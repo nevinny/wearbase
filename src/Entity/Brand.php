@@ -115,6 +115,12 @@ class Brand
     #[ORM\Column(length: 5, nullable: true)]
     private ?string $firstLetter = null;
 
+    /**
+     * @var Collection<int, BrandLink>
+     */
+    #[ORM\OneToMany(targetEntity: BrandLink::class, mappedBy: 'brand', orphanRemoval: true)]
+    private Collection $links;
+
     public function __construct()
     {
         $this->products = new ArrayCollection();
@@ -122,6 +128,7 @@ class Brand
         $this->styles = new ArrayCollection();
         $this->audiences = new ArrayCollection();
         $this->tiers = new ArrayCollection();
+        $this->links = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -519,6 +526,36 @@ class Brand
     public function setFirstLetter(?string $firstLetter): static
     {
         $this->firstLetter = $firstLetter;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, BrandLink>
+     */
+    public function getLinks(): Collection
+    {
+        return $this->links;
+    }
+
+    public function addLink(BrandLink $link): static
+    {
+        if (!$this->links->contains($link)) {
+            $this->links->add($link);
+            $link->setBrand($this);
+        }
+
+        return $this;
+    }
+
+    public function removeLink(BrandLink $link): static
+    {
+        if ($this->links->removeElement($link)) {
+            // set the owning side to null (unless already changed)
+            if ($link->getBrand() === $this) {
+                $link->setBrand(null);
+            }
+        }
 
         return $this;
     }
