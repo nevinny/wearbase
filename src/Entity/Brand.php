@@ -40,21 +40,6 @@ class Brand
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $anons = null;
 
-    #[ORM\Column(length: 255, nullable: true)]
-    private ?string $websiteUrl = null;
-
-    #[ORM\Column(length: 50, nullable: true)]
-    private ?string $instagramUrl = null;
-
-    #[ORM\Column(length: 50, nullable: true)]
-    private ?string $telegramUrl = null;
-
-    #[ORM\Column(length: 100, nullable: true)]
-    private ?string $vkontakteUrl = null;
-
-    #[ORM\Column(length: 100, nullable: true)]
-    private ?string $youtubeUrl = null;
-
     #[ORM\Column(length: 100, nullable: true)]
     private ?string $email = null;
 
@@ -259,66 +244,6 @@ class Brand
     public function setAnons(?string $anons): static
     {
         $this->anons = $anons;
-
-        return $this;
-    }
-
-    public function getWebsiteUrl(): ?string
-    {
-        return $this->websiteUrl;
-    }
-
-    public function setWebsiteUrl(?string $websiteUrl): static
-    {
-        $this->websiteUrl = $websiteUrl;
-
-        return $this;
-    }
-
-    public function getInstagramUrl(): ?string
-    {
-        return $this->instagramUrl;
-    }
-
-    public function setInstagramUrl(?string $instagramUrl): static
-    {
-        $this->instagramUrl = $instagramUrl;
-
-        return $this;
-    }
-
-    public function getTelegramUrl(): ?string
-    {
-        return $this->telegramUrl;
-    }
-
-    public function setTelegramUrl(?string $telegramUrl): static
-    {
-        $this->telegramUrl = $telegramUrl;
-
-        return $this;
-    }
-
-    public function getVkontakteUrl(): ?string
-    {
-        return $this->vkontakteUrl;
-    }
-
-    public function setVkontakteUrl(?string $vkontakteUrl): static
-    {
-        $this->vkontakteUrl = $vkontakteUrl;
-
-        return $this;
-    }
-
-    public function getYoutubeUrl(): ?string
-    {
-        return $this->youtubeUrl;
-    }
-
-    public function setYoutubeUrl(?string $youtubeUrl): static
-    {
-        $this->youtubeUrl = $youtubeUrl;
 
         return $this;
     }
