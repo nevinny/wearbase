@@ -118,7 +118,7 @@ class Brand
     /**
      * @var Collection<int, BrandLink>
      */
-    #[ORM\OneToMany(targetEntity: BrandLink::class, mappedBy: 'brand', orphanRemoval: true)]
+    #[ORM\OneToMany(targetEntity: BrandLink::class, mappedBy: 'brand', cascade: ['persist'], orphanRemoval: true)]
     private Collection $links;
 
     /**

@@ -46,7 +46,9 @@ class BrandsController extends AbstractController
         $qb = $repo->createQueryBuilder('b')
             ->andWhere('b.status = :active')
             ->setParameter('active', 'active')
-            ->orderBy('b.title', 'ASC');
+
+
+        ;
 
         if ($letter) {
             $qb->andWhere('UPPER(SUBSTRING(b.title, 1, 1)) = :letter')
@@ -54,12 +56,19 @@ class BrandsController extends AbstractController
         }
 
         $brands = $qb
+            ->orderBy('b.created_at', 'DESC')
+            ->setMaxResults(24)
+            ->getQuery()
+            ->getResult()
+        ;
+        $brandsLetters = $qb
+            ->orderBy('b.title', 'ASC')
 //            ->setMaxResults(60)
             ->getQuery()
             ->getResult()
         ;
         $foundLetters = [];
-        foreach ($brands as $brand) {
+        foreach ($brandsLetters as $brand) {
             $firstChar = mb_strtoupper(mb_substr($brand->getTitle(), 0, 1));
             if (!array_key_exists($firstChar, $foundLetters)) {
                 $foundLetters[$firstChar] = 0;

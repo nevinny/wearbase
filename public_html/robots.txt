@@ -1,0 +1,8 @@
+User-agent: *
+Disallow:
+
+# Указание на карту сайта (замените на ваш домен)
+Sitemap: https://wearbase.ru/sitemap.xml
+
+# Опционально: задержка между запросами (в секундах)
+Crawl-delay: 1

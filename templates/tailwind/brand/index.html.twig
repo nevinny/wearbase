@@ -57,8 +57,7 @@
                             <a href="{{ path('brand_show', { _locale: app.request.locale, slug: brand.slug }) }}" class="flex flex-col items-center p-4 text-center">
                                 <div class="w-24 h-24 flex items-center justify-center mb-3">
                                     {% if brand.logo %}
-                                        <img src="https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=256&q=75" alt="{{ brand.title }}" loading="lazy"
-{#                                        <img src="https://russianstreetwear.club{{ vich_uploader_asset(brand, 'logoFile') }}" alt="{{ brand.title }}" loading="lazy"#}
+                                        <img src="{{ asset('images/logos/' ~ brand.logo) }}" alt="{{ brand.title }}" loading="lazy"
                                              class="object-contain w-full h-full transition-transform group-hover:scale-105 duration-300">
                                     {% else %}
                                         <div class="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
