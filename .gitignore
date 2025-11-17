@@ -75,4 +75,5 @@
 /public_html/bundles/
 /var/
 /public_html/images/brands
+/public_html/images/logos
 ###< symfony/framework-bundle ###
