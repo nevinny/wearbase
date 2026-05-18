@@ -40,9 +40,11 @@ class AlphabetManagerService
         $this->entityManager->persist($alphabet);
     }
 
-    public function handleBrandCreation(Brand $brand, string $locale): void
+    public function handleBrandCreation(Brand $brand): void
     {
-        $this->updateAlphabetFromBrand($brand, $locale, true);
+        $currentFirstLetter = $brand->getFirstLetter();
+        $currentLocale = $currentFirstLetter ? $this->detectLocaleByLetter($currentFirstLetter) : null;
+        $this->updateAlphabetFromBrand($brand, $currentLocale, true);
         $this->entityManager->flush();
     }
 

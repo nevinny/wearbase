@@ -27,7 +27,7 @@ class BrandSize
     /**
      * @var Collection<int, Brand>
      */
-    #[ORM\ManyToMany(targetEntity: Brand::class, inversedBy: 'sizes')]
+    #[ORM\ManyToMany(targetEntity: Brand::class, mappedBy: 'sizes')]
     private Collection $brands;
 
     public function __construct()

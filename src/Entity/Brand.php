@@ -26,6 +26,7 @@ use Symfony\Component\HttpFoundation\File\File;
 class Brand
 {
     use Created, Owner, Status;
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -76,7 +77,8 @@ class Brand
     /**
      * @var Collection<int, BrandSize>
      */
-    #[ORM\ManyToMany(targetEntity: BrandSize::class, mappedBy: 'brands')]
+    #[ORM\JoinTable(name: 'brand_size_brand')]
+    #[ORM\ManyToMany(targetEntity: BrandSize::class, inversedBy: 'brands')]
     private Collection $sizes;
 
     /**
@@ -99,6 +101,18 @@ class Brand
 
     #[ORM\Column(length: 5, nullable: true)]
     private ?string $firstLetter = null;
+
+    #[ORM\Column(length: 5, options: ['default' => 'ru'])]
+    private string $locale = 'ru';
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $metaTitle = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $metaDescription = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $metaKeywords = null;
 
     /**
      * @var Collection<int, BrandLink>
@@ -345,6 +359,12 @@ class Brand
     {
         return $this->sizes;
     }
+    public function setSizes(Collection $sizes): static
+    {
+        $this->sizes = $sizes;
+
+        return $this;
+    }
 
     public function addBrandSize(BrandSize $brandSize): static
     {
@@ -518,6 +538,54 @@ class Brand
                 $image->setBrand(null);
             }
         }
+
+        return $this;
+    }
+
+    public function getMetaTitle(): ?string
+    {
+        return $this->metaTitle;
+    }
+
+    public function setMetaTitle(?string $metaTitle): static
+    {
+        $this->metaTitle = $metaTitle;
+
+        return $this;
+    }
+
+    public function getMetaDescription(): ?string
+    {
+        return $this->metaDescription;
+    }
+
+    public function setMetaDescription(?string $metaDescription): static
+    {
+        $this->metaDescription = $metaDescription;
+
+        return $this;
+    }
+
+    public function getMetaKeywords(): ?string
+    {
+        return $this->metaKeywords;
+    }
+
+    public function setMetaKeywords(?string $metaKeywords): static
+    {
+        $this->metaKeywords = $metaKeywords;
+
+        return $this;
+    }
+
+    public function getLocale(): string
+    {
+        return $this->locale;
+    }
+
+    public function setLocale(string $locale): static
+    {
+        $this->locale = $locale;
 
         return $this;
     }

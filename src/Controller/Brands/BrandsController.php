@@ -5,6 +5,7 @@ namespace App\Controller\Brands;
 use App\Entity\Brand;
 use App\Entity\Product;
 use App\Repository\BrandRepository;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -106,58 +107,107 @@ class BrandsController extends AbstractController
         name: 'brand_show',
         requirements: ['_locale' => 'en|ru'],
         defaults: ['_locale' => 'ru'])]
-    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand): Response
+    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo): Response
     {
-        // Демо-товары для отображения
         $demoProducts = $this->createDemoProducts($brand);
+        $similarBrands = $brandRepo->findSimilarBrands($brand, 8);
+
+        $brandStyles = $brand->getStyles()->toArray();
+        $brandCity = $brand->getCity();
+
+        $firstStyle = $brand->getStyles()->first();
+        $styleId = $firstStyle ? $firstStyle->getId() : null;
+
+        $styles = [];
+        if ($styleId) {
+            $styles = $brandRepo->createQueryBuilder('b')
+                ->select('DISTINCT s.slug, s.title')
+                ->leftJoin('b.styles', 's')
+                ->join('b.styles', 'bs')
+                ->where('s.slug IS NOT NULL')
+                ->andWhere('bs.id = :styleId')
+                ->setParameter('styleId', $styleId)
+                ->andWhere('b.id != :brandId')
+                ->setParameter('brandId', $brand->getId())
+                ->setMaxResults(8)
+                ->getQuery()
+                ->getResult();
+        }
+
+        $cities = $brandRepo->createQueryBuilder('b')
+            ->select('DISTINCT b.city')
+            ->where('b.city IS NOT NULL')
+            ->andWhere('b.city != \'\'')
+            ->andWhere('b.city != :city')
+            ->setParameter('city', $brandCity)
+            ->setMaxResults(8)
+            ->getQuery()
+            ->getResult();
+        $cities = array_column($cities, 'city');
 
         return $this->render('tailwind/brand/showv2.html.twig', [
             'brand' => $brand,
             'products' => $demoProducts,
+            'similarBrands' => $similarBrands,
+            'styles' => $styles,
+            'cities' => $cities,
         ]);
     }
 
-    #[Route('/', name: 'home')]
-    public function home(Request $request, BrandRepository $repo): Response
+    #[Route('/', name: 'home', priority: 10)]
+    public function home(): Response
     {
-//        dd($request->getLocale());
-        // Временное перенаправление на страницу брендов
-        return $this->redirectToRoute('brand_index', [
+        return $this->redirectToRoute('home_hub', [
             '_locale' => 'ru'
-        ], 302); // 302 - Temporary Redirect
+        ], 302);
+    }
+
+    #[Route('/{_locale}/', name: 'home_hub', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
+    public function homeHub(BrandRepository $repo): Response
+    {
+        $locale = 'ru';
+
+        $featuredBrands = $repo->findFeaturedBrands(12);
+        $recentBrands = $repo->findBy(['status' => Statuses::Active], ['created_at' => 'DESC'], 12);
+
         $qb = $repo->createQueryBuilder('b')
-            ->andWhere('b.status = :active')
-            ->setParameter('active', 'active')
-            ->orderBy('b.title', 'ASC');
+            ->select('b.city, COUNT(b.id) as cnt')
+            ->where('b.status = :status')
+            ->andWhere('b.city IS NOT NULL')
+            ->andWhere('b.city != \'\'')
+            ->setParameter('status', Statuses::Active)
+            ->groupBy('b.city')
+            ->orderBy('cnt', 'DESC')
+            ->setMaxResults(10);
 
-        $brands = $qb
-//            ->setMaxResults(60)
+        $topCities = $qb->getQuery()->getResult();
+
+        $styles = $repo->createQueryBuilder('b')
+            ->select('s.id, s.title, COUNT(DISTINCT b.id) as cnt')
+            ->leftJoin('b.styles', 's')
+            ->where('b.status = :status')
+            ->andWhere('s.id IS NOT NULL')
+            ->setParameter('status', Statuses::Active)
+            ->groupBy('s.id')
+            ->orderBy('cnt', 'DESC')
+            ->setMaxResults(10)
             ->getQuery()
-            ->getResult()
-        ;
-        $currentPage = (int) $request->query->get('page', 1);
-        $itemsPerPage = 24; // Количество брендов на странице
+            ->getResult();
 
-        // Получаем общее количество локальных брендов
-//        $totalItems = $brandRepository->countLocalBrands();
-        $totalItems = 2;
+        $totalBrands = $repo->createQueryBuilder('b')
+            ->select('COUNT(b.id)')
+            ->where('b.status = :status')
+            ->setParameter('status', Statuses::Active)
+            ->getQuery()
+            ->getSingleScalarResult();
 
-        // Рассчитываем общее количество страниц
-        $totalPages = max(1, ceil($totalItems / $itemsPerPage));
-
-        // Корректируем текущую страницу, если она выходит за пределы
-        $currentPage = max(1, min($currentPage, $totalPages));
-
-        // Рассчитываем смещение для запроса
-        $offset = ($currentPage - 1) * $itemsPerPage;
-        // Пример данных, которые можно передать в шаблон
-
-        return $this->render('local-brands/index.html.twig', [
-            'brands' => $brands,
-            'currentPage' => $currentPage,
-            'totalPages' => $totalPages,
-            'totalItems' => $totalItems,
-            'itemsPerPage' => $itemsPerPage,
+        return $this->render('tailwind/hub.html.twig', [
+            'featuredBrands' => $featuredBrands,
+            'recentBrands' => $recentBrands,
+            'topCities' => $topCities,
+            'topStyles' => $styles,
+            'totalBrands' => $totalBrands,
+            'locale' => $locale,
         ]);
     }
     #[Route('/brands/a-z', name: 'brands_az')]

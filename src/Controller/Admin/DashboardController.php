@@ -4,6 +4,8 @@ namespace App\Controller\Admin;
 
 use App\Entity\Brand;
 use App\Entity\BrandAudience;
+use App\Entity\BrandImage;
+use App\Entity\BrandLink;
 use App\Entity\BrandSize;
 use App\Entity\BrandStyle;
 use App\Entity\BrandTier;
@@ -57,10 +59,12 @@ class DashboardController extends AbstractDashboardController
          yield MenuItem::linkToCrud('Brands', 'fas fa-list', Brand::class);
 
         yield MenuItem::section('Dictionaries');
-        yield MenuItem::linkToCrud('BrandSizes', 'fas fa-list', BrandSize::class);
-        yield MenuItem::linkToCrud('BrandStyles', 'fas fa-list', BrandStyle::class);
-        yield MenuItem::linkToCrud('BrandAudiences', 'fas fa-list', BrandAudience::class);
-        yield MenuItem::linkToCrud('BrandATiers', 'fas fa-list', BrandTier::class);
+        yield MenuItem::linkToCrud('Размеры', 'fas fa-list', BrandSize::class);
+        yield MenuItem::linkToCrud('Стили', 'fas fa-list', BrandStyle::class);
+        yield MenuItem::linkToCrud('Аудитория', 'fas fa-list', BrandAudience::class);
+        yield MenuItem::linkToCrud('Ценовой сегмент', 'fas fa-list', BrandTier::class);
+        yield MenuItem::linkToCrud('Ссылки', 'fas fa-list', BrandLink::class);
+        yield MenuItem::linkToCrud('Изображения', 'fas fa-list', BrandImage::class);
         yield MenuItem::section('Administration');
         yield MenuItem::linkToCrud('SectionType', 'fas fa-list', SectionType::class);
         yield MenuItem::linkToCrud('SectionLink', 'fas fa-list', SectionLink::class);

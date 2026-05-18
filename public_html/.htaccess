@@ -2,6 +2,11 @@ DirectoryIndex index.php index.html
 <IfModule mod_rewrite.c>
     Options -MultiViews
     RewriteEngine On
+
+    # Редирект с HTTP на HTTPS
+#    RewriteCond %{HTTPS} off
+#    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^(.*)$ index.php [QSA,L]
 </IfModule>

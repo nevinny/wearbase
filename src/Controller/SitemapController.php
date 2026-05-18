@@ -2,52 +2,72 @@
 
 namespace App\Controller;
 
-use App\Repository\AsicModelRepository;
 use App\Repository\BrandRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 class SitemapController extends AbstractController
 {
-    public function __construct(
-        private BrandRepository $repository,
-    )
-    {}
-
-    #[Route('/sitemap.{_format}', name: 'app_sitemap', requirements: ['_format' => 'html|xml'], format: 'xml')]
-    public function sitemap(Request $request): Response
+    #[Route('/sitemap.xml', name: 'sitemap_xml', defaults: ['_format' => 'xml'])]
+    public function sitemap(Request $request, BrandRepository $repo): Response
     {
-        $hostname = $request->getSchemeAndHttpHost();
+        $urls = [];
 
-        $urls = []; // Массив для хранения URL-адресов карты сайта
+        $baseUrl = $request->getSchemeAndHttpHost();
 
-        // Добавляйте URL-адреса вашей карты сайта динамически (например, из базы данных или маршрутов).
+        $urls[] = [
+            'loc' => $this->generateUrl('home_hub', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'daily',
+            'priority' => '1.0',
+            'alternates' => [
+                ['locale' => 'ru', 'loc' => $this->generateUrl('home_hub', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL)],
+                ['locale' => 'en', 'loc' => $this->generateUrl('home_hub', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
+            ],
+        ];
 
-        // Static URLs
-        $urls[] = ['loc' => $this->generateUrl('brand_index', ['_locale' => 'ru']), 'priority' => '1.00'];
+        $urls[] = [
+            'loc' => $this->generateUrl('brand_index', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'daily',
+            'priority' => '0.9',
+            'alternates' => [
+                ['locale' => 'ru', 'loc' => $this->generateUrl('brand_index', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL)],
+                ['locale' => 'en', 'loc' => $this->generateUrl('brand_index', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
+            ],
+        ];
 
-        // Динамические URL-адреса из таблицы Post
-        $items = $this->repository->findAll();
-        foreach ($items as $item) {
-            $urls[] = [
-                'loc' => $this->generateUrl('brand_show', [
-                    '_locale' => 'ru',
-                    'slug' => $item->getSlug(),
-//                    'id' => $item->getId(),
-                ]),
-                'priority' => '1.00',
-                'lastmod' => $item->getUpdatedAt()->format('Y-m-d')
-            ];
+        $brands = $repo->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->setParameter('status', 'active')
+            ->getQuery()
+            ->getResult();
+
+        foreach ($brands as $brand) {
+            if ($brand->getSlug()) {
+                $urls[] = [
+                    'loc' => $this->generateUrl('brand_show', [
+                        '_locale' => 'ru',
+                        'slug' => $brand->getSlug()
+                    ], UrlGeneratorInterface::ABSOLUTE_URL),
+                    'changefreq' => 'weekly',
+                    'priority' => $brand->getDescription() ? '0.7' : '0.5',
+                    'lastmod' => $brand->getUpdatedAt()?->format('Y-m-d'),
+                    'alternates' => [
+                        ['locale' => 'ru', 'loc' => $this->generateUrl('brand_show', ['_locale' => 'ru', 'slug' => $brand->getSlug()], UrlGeneratorInterface::ABSOLUTE_URL)],
+                        ['locale' => 'en', 'loc' => $this->generateUrl('brand_show', ['_locale' => 'en', 'slug' => $brand->getSlug()], UrlGeneratorInterface::ABSOLUTE_URL)],
+                    ],
+                ];
+            }
         }
 
-        $xml = $this->renderView('sitemap/sitemap.xml.twig', [
+        $xml = $this->renderView('sitemap/xml.html.twig', [
             'urls' => $urls,
-            'hostname' => $hostname
         ]);
 
-
-        return new Response($xml, 200, ['Content-Type' => 'text/xml']);
+        return new Response($xml, 200, [
+            'Content-Type' => 'application/xml; charset=utf-8',
+        ]);
     }
 }
