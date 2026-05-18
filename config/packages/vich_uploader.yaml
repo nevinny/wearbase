@@ -4,7 +4,16 @@ vich_uploader:
 
     mappings:
         brand_logo:
+            uri_prefix: /images/logos
+            upload_destination: '%kernel.project_dir%/public_html/images/logos'
+            namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
+
+        brand_image_preview:
             uri_prefix: /images/brands
             upload_destination: '%kernel.project_dir%/public_html/images/brands'
             namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
 
+        brand_image_image:
+            uri_prefix: /images/brands
+            upload_destination: '%kernel.project_dir%/public_html/images/brands'
+            namer: Vich\UploaderBundle\Naming\SmartUniqueNamer

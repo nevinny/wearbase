@@ -10,7 +10,7 @@
 
 {% block og_description %}{{ brand.anons ? brand.anons|slice(0, 155) : "Одежда и аксессуары бренда " ~ brand.title ~ " в каталоге WEARBASE" }}{% endblock %}
 
-{% block og_image %}{% if brand.logo %}https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=1200&q=75{% else %}{{ parent() }}{% endif %}{% endblock %}
+{% block og_image %}{% if brand.logo %}{{ absolute_url(asset('images/logos/' ~ brand.logo)) }}{% else %}{{ absolute_url('/og-image.svg') }}{% endif %}{% endblock %}
 
 {% block canonical_url %}{{ url('brand_show', {slug: brand.slug}) }}{% endblock %}
 
@@ -41,8 +41,6 @@
             {% endif %}
 
             <h1 class="text-3xl md:text-4xl font-bold">{{ brand.title }}</h1>
-            {% if brand. %}
-
             {% if brand.anons %}
                 <p class="text-gray-600 max-w-xl">{{ brand.anons }}</p>
             {% endif %}

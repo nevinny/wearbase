@@ -8,7 +8,10 @@ use Nevinny\AdminCoreBundle\Entity\Trait\Created;
 use Nevinny\AdminCoreBundle\Entity\Trait\DefaultFields;
 use Nevinny\AdminCoreBundle\Entity\Trait\Owner;
 use Nevinny\AdminCoreBundle\Entity\Trait\Status;
+use Symfony\Component\HttpFoundation\File\File;
+use Vich\UploaderBundle\Mapping\Annotation as Vich;
 
+#[Vich\Uploadable]
 #[ORM\Entity(repositoryClass: BrandImageRepository::class)]
 class BrandImage
 {
@@ -25,8 +28,14 @@ class BrandImage
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $preview = null;
 
+    #[Vich\UploadableField(mapping: 'brand_image_preview', fileNameProperty: 'preview')]
+    private ?File $previewFile = null;
+
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $image = null;
+
+    #[Vich\UploadableField(mapping: 'brand_image_image', fileNameProperty: 'image')]
+    private ?File $imageFile = null;
 
     public function getId(): ?int
     {
@@ -57,6 +66,21 @@ class BrandImage
         return $this;
     }
 
+    public function getPreviewFile(): ?File
+    {
+        return $this->previewFile;
+    }
+
+    public function setPreviewFile(?File $file = null): void
+    {
+        $this->previewFile = $file;
+
+        if ($file !== null) {
+            $this->updated_at = new \DateTime();
+        }
+    }
+
+
     public function getImage(): ?string
     {
         return $this->image;
@@ -67,5 +91,21 @@ class BrandImage
         $this->image = $image;
 
         return $this;
+    }
+
+
+
+    public function getImageFile(): ?File
+    {
+        return $this->imageFile;
+    }
+
+    public function setImageFile(?File $file = null): void
+    {
+        $this->imageFile = $file;
+
+        if ($file !== null) {
+            $this->updated_at = new \DateTime();
+        }
     }
 }

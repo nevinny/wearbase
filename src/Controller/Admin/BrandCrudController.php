@@ -8,8 +8,13 @@ use App\Entity\Product;
 use App\Entity\SectionType;
 use App\Service\AlphabetManagerService;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FieldCollection;
+use EasyCorp\Bundle\EasyAdminBundle\Collection\FilterCollection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use Nevinny\AdminCoreBundle\Controller\Admin\DefaultCrudController;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -41,6 +46,13 @@ class BrandCrudController extends DefaultCrudController
 
         // добавляем кастомные NEW, если нужно
         return $actions;
+    }
+    public function createIndexQueryBuilder(SearchDto $searchDto, EntityDto $entityDto, FieldCollection $fields, FilterCollection $filters): QueryBuilder
+    {
+        $qb = parent::createIndexQueryBuilder($searchDto, $entityDto, $fields, $filters);
+
+        $qb->orderBy('entity.created_at', 'DESC');
+        return $qb;
     }
 
     public function persistEntity(EntityManagerInterface $entityManager, $entityInstance): void

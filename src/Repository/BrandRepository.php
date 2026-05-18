@@ -2,7 +2,7 @@
 
 namespace App\Repository;
 
-use AdminCore\Enum\Statuses;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use App\Entity\Brand;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -69,6 +69,47 @@ class BrandRepository extends ServiceEntityRepository
     /**
      * Получить статистику по буквам
      */
+    public function findSimilarBrands(Brand $brand, int $limit = 8): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->setParameter('status', Statuses::Active)
+            ->andWhere('b.id != :excludeId')
+            ->setParameter('excludeId', $brand->getId());
+
+        $city = $brand->getCity();
+        $styles = $brand->getStyles();
+
+        if ($city) {
+            $qb->orWhere('b.city = :city');
+            $qb->setParameter('city', $city);
+        }
+
+        if (count($styles) > 0) {
+            $qb->leftJoin('b.styles', 's')
+               ->andWhere('s.id IN (:styleIds)')
+               ->setParameter('styleIds', $styles->map(fn($s) => $s->getId())->toArray());
+        }
+
+        $qb->orderBy('b.created_at', 'DESC')
+           ->setMaxResults($limit);
+
+        return $qb->getQuery()->getResult();
+    }
+
+    public function findFeaturedBrands(int $limit = 12): array
+    {
+        return $this->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->andWhere('b.description IS NOT NULL')
+            ->andWhere('LENGTH(b.description) > 100')
+            ->setParameter('status', Statuses::Active)
+            ->orderBy('b.created_at', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     public function getLetterStats(): array
     {
         $brands = $this->findAllActiveBrands();
@@ -90,5 +131,27 @@ class BrandRepository extends ServiceEntityRepository
         }
 
         return $stats;
+    }
+
+    public function findWithDescriptionWithoutMeta(int $limit): array
+    {
+        return $this->createQueryBuilder('b')
+            ->where('b.description IS NOT NULL')
+            ->andWhere('b.description != :empty')
+            ->andWhere('b.metaTitle IS NULL OR b.metaTitle = :empty')
+            ->setParameter('empty', '')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
+    public function findWithoutDescription(int $limit): array
+    {
+        return $this->createQueryBuilder('b')
+            ->where('b.description IS NULL OR b.description = :empty')
+            ->setParameter('empty', '')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
     }
 }

@@ -1,8 +1,21 @@
 User-agent: *
-Disallow:
+Allow: /
 
-# Указание на карту сайта (замените на ваш домен)
+# Tracking parameters — prevent crawl waste on UTM/ref variants
+Disallow: /*?utm_*
+Disallow: /*?ref=*
+
+# AI Overviews visibility
+User-agent: Googlebot-Extended
+Allow: /
+
+# Sitemap
 Sitemap: https://wearbase.ru/sitemap.xml
 
-# Опционально: задержка между запросами (в секундах)
+# Crawl-delay
 Crawl-delay: 1
+
+# Disallow admin
+Disallow: /admin/
+Disallow: /_profiler/
+Disallow: /_wdt/

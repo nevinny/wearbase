@@ -1,45 +1,141 @@
 {% extends 'tailwind/base.html.twig' %}
 
-{% block title %}{{ brand.title }} - российский бренд одежды | WEARBASE{% endblock %}
+{% block title %}{{ brand.metaTitle ?: (brand.title ~ ' - российский бренд одежды | WEARBASE') }}{% endblock %}
 
-{% block meta_description %}{{ brand.anons ? brand.anons|slice(0, 155) : (brand.description ? brand.description|striptags|slice(0, 155) : "Купить одежду бренда " ~ brand.title ~ " в каталоге российских брендов одежды. Цены, отзывы, официальные сайты.") }}{% endblock %}
+{% block meta_description %}{{ brand.metaDescription ?: (brand.anons ? brand.anons|slice(0, 155) : (brand.description ? brand.description|striptags|slice(0, 155) : "Купить одежду бренда " ~ brand.title ~ " в каталоге российских брендов одежды. Цены, отзывы, официальные сайты.")) }}{% endblock %}
 
-{% block meta_keywords %}{{ brand.title }}, российский бренд одежды, уличная мода, одежда, купить {{ brand.title }}{% if brand.address %}, {{ brand.address|split(',')[0] }}{% endif %}{% endblock %}
+{% block meta_keywords %}{{ brand.metaKeywords ?: (brand.title ~ ', российский бренд одежды, уличная мода, одежда, купить ' ~ brand.title) }}{% endblock %}
 
-{% block og_title %}{{ brand.title }} - российский бренд одежды | WEARBASE{% endblock %}
+{% block og_title %}{{ brand.metaTitle ?: (brand.title ~ ' - российский бренд одежды | WEARBASE') }}{% endblock %}
 
-{% block og_description %}{{ brand.anons ? brand.anons|slice(0, 155) : (brand.description ? brand.description|striptags|slice(0, 155) : "Одежда и аксессуары бренда " ~ brand.title ~ " в каталоге WEARBASE") }}{% endblock %}
+{% block og_description %}{{ brand.metaDescription ?: (brand.anons ? brand.anons|slice(0, 155) : (brand.description ? brand.description|striptags|slice(0, 155) : "Одежда и аксессуары бренда " ~ brand.title ~ " в каталоге WEARBASE")) }}{% endblock %}
 
-{% block og_image %}{% if brand.logo %}https://russianstreetwear.club/_next/image?url=%2Fapi%2Fimage%3Furl%3D{{ brand.logo|url_encode }}&w=1200&q=75{% else %}{{ parent() }}{% endif %}{% endblock %}
+{% block og_image %}{% if brand.logo %}{{ absolute_url(asset('images/logos/' ~ brand.logo)) }}{% else %}{{ absolute_url('/og-image.svg') }}{% endif %}{% endblock %}
 
 {% block canonical_url %}{{ url('brand_show', {slug: brand.slug}) }}{% endblock %}
 
 {% block body %}
-    {# Structured Data для бренда #}
     <script type="application/ld+json">
-        {
-            "@context": "https://schema.org",
-            "@type": "Brand",
-            "name": "{{ brand.title }}",
-        "description": "{{ (brand.anons ?: brand.description ?: 'Российский бренд одежды')|escape('js') }}",
-        "url": "{{ url('brand_show', {slug: brand.slug}) }}",
-        {% if brand.logo %}
-        "logo": "{{ asset('images/logos/' ~ brand.logo) }}",
-        {% endif %}
-        {% if brand.email %}
-        "email": "{{ brand.email }}",
-        {% endif %}
-        {% if brand.phone %}
-        "telephone": "{{ brand.phone }}",
-        {% endif %}
-        {% if brand.address %}
-        "address": {
-            "@type": "PostalAddress",
-            "streetAddress": "{{ brand.address }}"
-        },
-        {% endif %}
-        "sameAs": [
-
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "WebPage",
+                "@id": "{{ url('brand_show', {slug: brand.slug}) }}#webpage",
+                "url": "{{ url('brand_show', {slug: brand.slug}) }}",
+                "name": "{{ brand.metaTitle ?: (brand.title ~ ' - российский бренд одежды | WEARBASE') }}",
+                "description": "{{ (brand.anons ?: brand.description ?: 'Российский бренд одежды')|escape('js') }}",
+                "datePublished": "{{ brand.createdAt ? brand.createdAt|date('Y-m-d') : 'now'|date('Y-m-d') }}",
+                "dateModified": "{{ brand.updatedAt ? brand.updatedAt|date('Y-m-d') : 'now'|date('Y-m-d') }}",
+                "inLanguage": "{{ brand.locale|default('ru') }}",
+                "isPartOf": {"@id": "#website"},
+                "breadcrumb": {
+                    "@id": "{{ url('brand_index', {_locale: 'ru'}) }}#breadcrumb"
+                }
+            },
+            {
+                "@type": "BreadcrumbList",
+                "@id": "{{ url('brand_index', {_locale: 'ru'}) }}#breadcrumb",
+                "itemListElement": [
+                    {
+                        "@type": "ListItem",
+                        "position": 1,
+                        "name": "Главная",
+                        "item": "{{ url('home_hub', {_locale: 'ru'}) }}"
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 2,
+                        "name": "Бренды",
+                        "item": "{{ url('brand_index', {_locale: 'ru'}) }}"
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 3,
+                        "name": "{{ brand.title }}",
+                        "item": "{{ url('brand_show', {slug: brand.slug}) }}"
+                    }
+                ]
+            },
+            {
+                "@type": "Brand",
+                "@id": "{{ url('brand_show', {slug: brand.slug}) }}#brand",
+                "name": "{{ brand.title }}",
+                "description": "{{ (brand.anons ?: brand.description ?: 'Российский бренд одежды')|escape('js') }}",
+                "url": "{{ url('brand_show', {slug: brand.slug}) }}",
+                {% if brand.logo %}
+                "logo": {
+                    "@type": "ImageObject",
+                    "url": "{{ absolute_url(asset('images/logos/' ~ brand.logo)) }}"
+                },
+                {% endif %}
+                {% if brand.email %}
+                "email": "{{ brand.email }}",
+                {% endif %}
+                {% if brand.phone %}
+                "telephone": "{{ brand.phone }}",
+                {% endif %}
+                {% if brand.address %}
+                "address": {
+                    "@type": "PostalAddress",
+                    "streetAddress": "{{ brand.address }}"
+                },
+                {% endif %}
+                {% if brand.city %}
+                "areaServed": {
+                    "@type": "City",
+                    "name": "{{ brand.city }}"
+                },
+                {% endif %}
+                "sameAs": [
+                    {% set linkUrls = [] %}
+                    {% for link in brand.links %}
+                        {% if link.linkUrl %}
+                            {% set linkUrls = linkUrls|merge([link.linkUrl]) %}
+                        {% endif %}
+                    {% endfor %}
+                    {% for url in linkUrls %}
+                    "{{ url }}"{{ not loop.last ? ',' }}
+                    {% endfor %}
+                ]
+            },
+            {
+                "@type": "FAQPage",
+                "mainEntity": [
+                    {
+                        "@type": "Question",
+                        "name": "Где купить одежду бренда {{ brand.title }}?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "Одежду бренда {{ brand.title }} можно приобрести на официальном сайте бренда или в фирменных магазинах.{{ brand.city ? ' Бренд базируется в городе ' ~ brand.city ~ '.' : '' }}"
+                        }
+                    },
+                    {
+                        "@type": "Question",
+                        "name": "Какой стиль у бренда {{ brand.title }}?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "{% if brand.styles|length > 0 %}{{ brand.styles|map(s => s.title)|join(', ') }}.{% else %}Бренд предлагает актуальную одежду в современном стиле.{% endif %}"
+                        }
+                    },
+                    {
+                        "@type": "Question",
+                        "name": "Доставляет ли {{ brand.title }} заказы по России?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "Для получения актуальной информации о доставке рекомендуем посетить официальный сайт бренда."
+                        }
+                    },
+                    {
+                        "@type": "Question",
+                        "name": "Есть ли у бренда {{ brand.title }} размеры для больших размеров?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "{% if brand.sizes|length > 0 %}Доступные размеры: {{ brand.sizes|map(s => s.title)|join(', ') }}.{% else %}Информацию о размерах смотрите на сайте бренда.{% endif %}"
+                        }
+                    }
+                ]
+            }
         ]
     }
     </script>
@@ -47,7 +143,9 @@
     <div class="container mx-auto px-4 py-10">
         {# Хлебные крошки для SEO #}
         <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
-            <a href="{{ path('brand_index') }}" class="text-gray-500 hover:text-gray-900">Все бренды</a>
+            <a href="{{ path('home_hub', {_locale: 'ru'}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <a href="{{ path('brand_index', {_locale: 'ru'}) }}" class="text-gray-500 hover:text-gray-900">Бренды</a>
             <span class="mx-2 text-gray-400">/</span>
             <span class="text-gray-900 font-medium">{{ brand.title }}</span>
         </nav>
@@ -90,6 +188,34 @@
                         <h2 class="text-2xl font-semibold mb-4">О бренде {{ brand.title }}</h2>
                         <div class="prose max-w-none text-gray-700">
                             {{ brand.description|raw }}
+                        </div>
+                    </section>
+                {% endif %}
+
+                {% if similarBrands is defined and similarBrands|length > 0 %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-6">Похожие бренды</h2>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            {% for similar in similarBrands %}
+                                <a href="{{ path('brand_show', {slug: similar.slug}) }}"
+                                   class="group bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition border">
+                                    {% if similar.logo %}
+                                        <img src="{{ asset('images/logos/' ~ similar.logo) }}"
+                                             alt="{{ similar.title }}"
+                                             class="w-full h-24 object-contain p-2 group-hover:scale-105 transition">
+                                    {% else %}
+                                        <div class="w-full h-24 bg-gray-200 flex items-center justify-center">
+                                            <span class="text-gray-400 text-sm">{{ similar.title }}</span>
+                                        </div>
+                                    {% endif %}
+                                    <div class="p-3 text-center">
+                                        <div class="font-medium text-sm truncate">{{ similar.title }}</div>
+                                        {% if similar.city %}
+                                            <div class="text-xs text-gray-500">{{ similar.city }}</div>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                            {% endfor %}
                         </div>
                     </section>
                 {% endif %}
@@ -177,38 +303,124 @@
                 {% endif %}
 
 
-                {# Мета-информация #}
-                <section class="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
-                    <div class="space-y-2">
+                {# Мета-информация с микроразметкой #}
+                <section class="bg-gray-50 rounded-xl p-4 text-sm text-gray-600" itemscope itemtype="https://schema.org/WebPage">
+                    <meta itemprop="name" content="{{ brand.title }}">
+                    <div class="space-y-1">
                         {% if brand.createdAt %}
-                            <div>Добавлен: {{ brand.createdAt|date('d.m.Y') }}</div>
+                            <div>
+                                <span class="text-gray-500">Добавлен:</span>
+                                <time itemprop="datePublished" datetime="{{ brand.createdAt|date('Y-m-d') }}">{{ brand.createdAt|date('d.m.Y') }}</time>
+                            </div>
                         {% endif %}
                         {% if brand.updatedAt %}
-                            <div>Обновлен: {{ brand.updatedAt|date('d.m.Y') }}</div>
+                            <div>
+                                <span class="text-gray-500">Обновлен:</span>
+                                <time itemprop="dateModified" datetime="{{ brand.updatedAt|date('Y-m-d') }}">{{ brand.updatedAt|date('d.m.Y') }}</time>
+                            </div>
                         {% endif %}
                     </div>
                 </section>
             </div>
         </div>
 
-        {# Резервный SEO-текст если нет товаров и описания #}
-        {% if not brand.description and (brand.products is not defined or brand.products|length == 0) %}
-            <section class="bg-white rounded-xl shadow-sm p-8 text-center">
-                <h2 class="text-2xl font-semibold mb-4">Бренд {{ brand.title }}</h2>
-                <p class="text-gray-600 max-w-2xl mx-auto mb-6">
-                    Российский бренд одежды {{ brand.title }} предлагает актуальную уличную одежду и аксессуары.
-                    Следите за обновлениями коллекции на официальных страницах бренда.
-                </p>
-                {% if brand.websiteUrl %}
-                    <a href="{{ brand.websiteUrl }}" target="_blank" rel="nofollow noopener"
-                       class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
-                        Перейти на сайт бренда
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                        </svg>
-                    </a>
+                {# --- SEO текст если нет описания и товаров --- #}
+                {% if not brand.description and (products is not defined or products|length == 0) %}
+                    <section class="bg-white rounded-xl shadow-sm p-8 text-center">
+                        <h2 class="text-2xl font-semibold mb-4">Бренд {{ brand.title }}</h2>
+                        <p class="text-gray-600 max-w-2xl mx-auto mb-6">
+                            Российский бренд одежды {{ brand.title }} предлагает актуальную уличную одежду и аксессуары.
+                            Следите за обновлениями коллекции на официальных страницах бренда.
+                        </p>
+                        {% if brand.links|length > 0 %}
+                            {% for link in brand.links|filter(l => l.linkUrl) %}
+                                {% if loop.first %}
+                                    <a href="{{ link.linkUrl }}" target="_blank" rel="nofollow noopener"
+                                       class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                                        Перейти на сайт бренда
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                        </svg>
+                                    </a>
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                    </section>
                 {% endif %}
-            </section>
-        {% endif %}
-    </div>
+
+                {# --- FAQ блок --- #}
+                <section class="bg-white rounded-xl shadow-sm p-6">
+                    <h2 class="text-2xl font-semibold mb-6">Часто задаваемые вопросы</h2>
+                    <div class="space-y-4">
+                        <details class="group" open>
+                            <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
+                                <span>Где купить одежду бренда {{ brand.title }}?</span>
+                                <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                            </summary>
+                            <p class="text-gray-600 mt-2">Одежду бренда {{ brand.title }} можно приобрести на официальном сайте бренда или в фирменных магазинах.{{ brand.city ? ' Бренд базируется в городе ' ~ brand.city ~ '.' : '' }}</p>
+                        </details>
+                        <details class="group">
+                            <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
+                                <span>Какой стиль у бренда {{ brand.title }}?</span>
+                                <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                            </summary>
+                            <p class="text-gray-600 mt-2">{% if brand.styles|length > 0 %}{{ brand.styles|map(s => s.title)|join(', ') }}.{% else %}Бренд предлагает актуальную одежду в современном стиле.{% endif %}</p>
+                        </details>
+                        <details class="group">
+                            <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
+                                <span>Доставляет ли {{ brand.title }} заказы по России?</span>
+                                <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                            </summary>
+                            <p class="text-gray-600 mt-2">Для получения актуальной информации о доставке рекомендуем посетить официальный сайт бренда.</p>
+                        </details>
+                        <details class="group">
+                            <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
+                                <span>Есть ли у бренда {{ brand.title }} sizes для больших размеров?</span>
+                                <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                </svg>
+                            </summary>
+                            <p class="text-gray-600 mt-2">{% if brand.sizes|length > 0 %}Доступные размеры: {{ brand.sizes|map(s => s.title)|join(', ') }}.{% else %}Информацию о размерах смотрите на сайте бренда.{% endif %}</p>
+                        </details>
+                    </div>
+                </section>
+
+                {# --- Блок "Другие стили" --- #}
+                {% if styles|length > 0 %}
+                <section class="bg-white rounded-xl shadow-sm p-6">
+                    <h2 class="text-2xl font-semibold mb-6">Другие бренды стиля</h2>
+                    <div class="flex flex-wrap gap-2">
+                        {% for style in styles %}
+                            {% if style.slug %}
+                            <a href="{{ path('brand_index', {style: style.slug}) }}"
+                               class="px-4 py-2 bg-gray-100 rounded-full text-sm hover:bg-gray-200 transition">
+                                {{ style.title }}
+                            </a>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </section>
+                {% endif %}
+
+                {# --- Блок "Другие города" --- #}
+                {% if cities|length > 0 %}
+                <section class="bg-white rounded-xl shadow-sm p-6">
+                    <h2 class="text-2xl font-semibold mb-6">Бренды из других городов</h2>
+                    <div class="flex flex-wrap gap-2">
+                        {% for city in cities %}
+                        <a href="{{ path('brand_index', {city: city}) }}"
+                           class="px-4 py-2 bg-gray-100 rounded-full text-sm hover:bg-gray-200 transition">
+                            {{ city }}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </section>
+                {% endif %}
+            </div>
 {% endblock %}
