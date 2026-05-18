@@ -9,7 +9,7 @@
 {% block canonical_url %}{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}{% endblock %}
 
 {% block meta_robots %}
-{% if app.request.query.has('letter') or app.request.query.has('page') or app.request.query.has('search') %}
+{% if app.request.query.has('letter') or app.request.query.has('page') or app.request.query.has('search') or app.request.query.has('city') or app.request.query.has('style') %}
 <meta name="robots" content="noindex, follow">
 {% endif %}
 {% endblock %}
@@ -95,6 +95,12 @@
         {# --- Сетка брендов --- #}
         {% if brands|length > 0 %}
             <section>
+                <p class="text-sm text-gray-500 mb-4">
+                    {% if currentLetter %}Буква «{{ currentLetter }}»: {% endif %}
+                    {% if currentCity %}Город «{{ currentCity }}»: {% endif %}
+                    {% if currentStyle %}Стиль: {% endif %}
+                    {{ totalItems }} брендов
+                </p>
                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
                     {% for brand in brands %}
                         <article class="group bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -120,7 +126,37 @@
                     {% endfor %}
                 </div>
 
-                <div class="mt-8">
+                <div class="mt-8 flex justify-center">
+                    {% if totalPages > 1 %}
+                    <nav class="flex items-center gap-1" aria-label="Пагинация">
+                        {% if page > 1 %}
+                        <a href="{{ path('brand_index', {_locale: app.request.locale, letter: currentLetter, city: currentCity, style: currentStyle, page: page - 1}) }}"
+                           class="px-3 py-2 rounded-md border text-sm font-medium bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition">
+                            ←
+                        </a>
+                        {% endif %}
+
+                        {% for p in 1..totalPages %}
+                            {% if p == page %}
+                                <span class="px-3 py-2 rounded-md border text-sm font-medium bg-black text-white border-black">{{ p }}</span>
+                            {% elseif p == 1 or p == totalPages or (p >= page - 2 and p <= page + 2) %}
+                                <a href="{{ path('brand_index', {_locale: app.request.locale, letter: currentLetter, city: currentCity, style: currentStyle, page: p}) }}"
+                                   class="px-3 py-2 rounded-md border text-sm font-medium bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition">
+                                    {{ p }}
+                                </a>
+                            {% elseif p == page - 3 or p == page + 3 %}
+                                <span class="px-2 py-2 text-gray-400">…</span>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if page < totalPages %}
+                        <a href="{{ path('brand_index', {_locale: app.request.locale, letter: currentLetter, city: currentCity, style: currentStyle, page: page + 1}) }}"
+                           class="px-3 py-2 rounded-md border text-sm font-medium bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition">
+                            →
+                        </a>
+                        {% endif %}
+                    </nav>
+                    {% endif %}
                 </div>
             </section>
 
@@ -128,6 +164,10 @@
             <section class="text-center py-20 text-gray-500">
                 {% if app.request.get('letter') %}
                     Нет брендов на букву «{{ app.request.get('letter') }}».
+                {% elseif app.request.get('city') %}
+                    Нет брендов из города «{{ app.request.get('city') }}».
+                {% elseif app.request.get('style') %}
+                    Нет брендов в данном стиле.
                 {% else %}
                     <p class="text-lg mb-2 font-medium">Популярные бренды:</p>
                     <div class="flex flex-wrap justify-center gap-4 text-gray-700 text-sm">

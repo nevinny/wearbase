@@ -43,34 +43,99 @@ class BrandsController extends AbstractController
         }
 
         $letter = $request->query->get('letter');
+        $city = $request->query->get('city');
+        $style = $request->query->get('style');
+        $page = max(1, (int) $request->query->get('page', 1));
+        $perPage = 24;
 
-        $qb = $repo->createQueryBuilder('b')
+        $baseQb = $repo->createQueryBuilder('b')
             ->andWhere('b.status = :active')
             ->setParameter('active', 'active')
-
-
         ;
 
         if ($letter) {
-            $qb->andWhere('UPPER(SUBSTRING(b.title, 1, 1)) = :letter')
+            $baseQb->andWhere('UPPER(SUBSTRING(b.title, 1, 1)) = :letter')
                 ->setParameter('letter', strtoupper($letter));
         }
 
-        $brands = $qb
+        if ($city) {
+            $baseQb->andWhere('b.city = :city')
+                ->setParameter('city', $city);
+        }
+
+        if ($style) {
+            $baseQb->join('b.styles', 's')
+                ->andWhere('s.id = :styleId OR s.slug = :styleSlug')
+                ->setParameter('styleId', is_numeric($style) ? (int)$style : null)
+                ->setParameter('styleSlug', is_numeric($style) ? null : $style);
+        }
+
+        $totalItemsQb = $repo->createQueryBuilder('b')
+            ->select('COUNT(DISTINCT b.id)')
+            ->andWhere('b.status = :active')
+            ->setParameter('active', 'active');
+
+        if ($letter) {
+            $totalItemsQb->andWhere('UPPER(SUBSTRING(b.title, 1, 1)) = :letter')
+                ->setParameter('letter', strtoupper($letter));
+        }
+
+        if ($city) {
+            $totalItemsQb->andWhere('b.city = :city')
+                ->setParameter('city', $city);
+        }
+
+        if ($style) {
+            $totalItemsQb->join('b.styles', 's')
+                ->andWhere('s.id = :styleId OR s.slug = :styleSlug')
+                ->setParameter('styleId', is_numeric($style) ? (int)$style : null)
+                ->setParameter('styleSlug', is_numeric($style) ? null : $style);
+        }
+
+        $totalItems = (int) $totalItemsQb->getQuery()->getSingleScalarResult();
+        $totalPages = max(1, (int) ceil($totalItems / $perPage));
+        $page = min($page, $totalPages);
+
+        $brandsQb = $repo->createQueryBuilder('b')
+            ->andWhere('b.status = :active')
+            ->setParameter('active', 'active');
+
+        if ($letter) {
+            $brandsQb->andWhere('UPPER(SUBSTRING(b.title, 1, 1)) = :letter')
+                ->setParameter('letter', strtoupper($letter));
+        }
+
+        if ($city) {
+            $brandsQb->andWhere('b.city = :city')
+                ->setParameter('city', $city);
+        }
+
+        if ($style) {
+            $brandsQb->join('b.styles', 's')
+                ->andWhere('s.id = :styleId OR s.slug = :styleSlug')
+                ->setParameter('styleId', is_numeric($style) ? (int)$style : null)
+                ->setParameter('styleSlug', is_numeric($style) ? null : $style);
+        }
+
+        $brands = $brandsQb
             ->orderBy('b.created_at', 'DESC')
-            ->setMaxResults(24)
+            ->setFirstResult(($page - 1) * $perPage)
+            ->setMaxResults($perPage)
             ->getQuery()
             ->getResult()
         ;
-        $brandsLetters = $qb
+
+        $lettersQb = $repo->createQueryBuilder('b')
+            ->select('b.title')
+            ->andWhere('b.status = :active')
+            ->setParameter('active', 'active')
             ->orderBy('b.title', 'ASC')
-//            ->setMaxResults(60)
             ->getQuery()
-            ->getResult()
+            ->getArrayResult()
         ;
         $foundLetters = [];
-        foreach ($brandsLetters as $brand) {
-            $firstChar = mb_strtoupper(mb_substr($brand->getTitle(), 0, 1));
+        foreach ($lettersQb as $brandData) {
+            $firstChar = mb_strtoupper(mb_substr($brandData['title'], 0, 1));
             if (!array_key_exists($firstChar, $foundLetters)) {
                 $foundLetters[$firstChar] = 0;
             }
@@ -99,7 +164,13 @@ class BrandsController extends AbstractController
             'alphabets' => $displayAlphabets,
             'foundLetters' => $foundLetters,
             'currentLetter' => $letter,
+            'currentCity' => $city,
+            'currentStyle' => $style,
             'locale' => $locale,
+            'page' => $page,
+            'totalPages' => $totalPages,
+            'totalItems' => $totalItems,
+            'perPage' => $perPage,
         ]);
     }
 
