@@ -143,9 +143,9 @@ class BrandsController extends AbstractController
         }
 
         foreach ($displayAlphabets as $localAZ => $displayAlphabet) {
-            foreach ($displayAlphabet as $letter) {
-                if (!array_key_exists($letter, $foundLetters)) {
-                    unset($displayAlphabets[$localAZ][$letter]);
+            foreach ($displayAlphabet as $azLetter) {
+                if (!array_key_exists($azLetter, $foundLetters)) {
+                    unset($displayAlphabets[$localAZ][$azLetter]);
                 }
             }
         }
