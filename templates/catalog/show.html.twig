@@ -127,12 +127,49 @@
 
             <h1 class="text-2xl font-bold mt-1 mb-3">{{ product.title }}</h1>
 
-            {# Price #}
-            <div class="text-3xl font-bold mb-4">
-                {% if minPrice %}
-                    {{ minPrice|price }}
+            {# Price with discount #}
+            {% set firstVar = product.variants|filter(v => v.isInStock and v.status == 'active')|first %}
+            <div class="mb-4" id="price-display">
+                {% if firstVar %}
+                    <div class="flex items-center gap-3 flex-wrap">
+                        {% if firstVar.comparePrice and firstVar.comparePrice > firstVar.price %}
+                            <span class="text-2xl text-gray-400 line-through">{{ firstVar.comparePrice|price }}</span>
+                            <span class="text-sm font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">−{{ firstVar.discountPercent }}%</span>
+                        {% endif %}
+                        <span class="text-3xl font-bold" id="current-price">{{ firstVar.priceFloat|price }}</span>
+                    </div>
+                {% else %}
+                    <span class="text-3xl font-bold">—</span>
                 {% endif %}
             </div>
+
+            {# ── Цвет ── #}
+            {% set grouped = product.variants|filter(v => v.status == 'active' and v.isInStock) %}
+            {% set uniqueColors = {} %}
+            {% for v in grouped %}
+                {% set key = v.color ~ '|' ~ v.colorHex %}
+                {% if key not in uniqueColors|keys %}
+                    {% set uniqueColors = uniqueColors|merge({(key): {'color': v.color, 'colorHex': v.colorHex}}) %}
+                {% endif %}
+            {% endfor %}
+
+            {% if uniqueColors|length > 0 %}
+            <div class="mb-4">
+                <div class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Цвет</div>
+                <div class="flex flex-wrap gap-2" id="color-swatches">
+                    {% for key, colorData in uniqueColors %}
+                    <button type="button"
+                            class="color-swatch w-9 h-9 rounded-full border-2 transition cursor-pointer
+                                   {{ loop.first ? 'border-gray-900' : 'border-gray-300 hover:border-gray-500' }}"
+                            style="background-color: {{ colorData.colorHex ?: '#ccc' }}"
+                            data-color="{{ colorData.color }}"
+                            data-color-hex="{{ colorData.colorHex }}"
+                            title="{{ colorData.color }}">
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
 
             {# Variants #}
             {% if product.variants|length > 0 %}
@@ -147,8 +184,10 @@
                                            {{ loop.index == 1 ? 'ring-2 ring-gray-900 border-gray-900' : '' }}"
                                     data-variant-id="{{ variant.id }}"
                                     data-price="{{ variant.priceFloat }}"
-                                    {% if variant.comparePrice %}data-compare-price="{{ variant.comparePrice }}"{% endif %}
-                                    title="{{ variant.color ?: '' }} — {{ variant.price|price }}">
+                                    data-compare-price="{{ variant.comparePrice }}"
+                                    data-color="{{ variant.color }}"
+                                    data-color-hex="{{ variant.colorHex }}"
+                                    data-stock="{{ variant.stockQty }}">
                                 {{ variant.size ?: variant.sku }}
                             </button>
                         {% endif %}
@@ -211,8 +250,56 @@
 
     var sizeBtns = document.querySelectorAll('#size-selector .size-btn');
     var selectedId = null;
+    var priceDisplay = document.getElementById('price-display');
 
-    // Size selection
+    function updatePrice(btn) {
+        var price = btn.getAttribute('data-price');
+        var compare = btn.getAttribute('data-compare-price');
+        var discountHtml = '';
+        if (compare && parseFloat(compare) > parseFloat(price)) {
+            var pct = Math.round((1 - price / compare) * 100);
+            discountHtml = '<span class="text-2xl text-gray-400 line-through">' + parseFloat(compare).toLocaleString('ru-RU') + ' ₽</span> <span class="text-sm font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">−' + pct + '%</span> ';
+        }
+        priceDisplay.innerHTML = '<div class="flex items-center gap-3 flex-wrap">' + discountHtml + '<span class="text-3xl font-bold" id="current-price">' + parseFloat(price).toLocaleString('ru-RU') + ' ₽</span></div>';
+    }
+
+    // ── Color swatches ──
+    var swatches = document.querySelectorAll('.color-swatch');
+    swatches.forEach(function(sw) {
+        sw.addEventListener('click', function() {
+            var color = sw.getAttribute('data-color');
+            swatches.forEach(function(s) {
+                s.classList.remove('border-gray-900');
+                s.classList.add('border-gray-300', 'hover:border-gray-500');
+            });
+            sw.classList.remove('border-gray-300', 'hover:border-gray-500');
+            sw.classList.add('border-gray-900');
+
+            sizeBtns.forEach(function(btn) {
+                var btnColor = btn.getAttribute('data-color');
+                if (!color || !btnColor || btnColor === color) {
+                    btn.style.display = '';
+                } else {
+                    btn.style.display = 'none';
+                }
+            });
+
+            var visible = Array.from(sizeBtns).filter(function(b) { return b.style.display !== 'none'; });
+            sizeBtns.forEach(function(b) {
+                b.classList.remove('ring-2', 'ring-gray-900', 'border-gray-900');
+                b.classList.add('border-gray-300', 'hover:border-gray-900');
+            });
+            if (visible.length > 0) {
+                visible[0].classList.add('ring-2', 'ring-gray-900', 'border-gray-900');
+                visible[0].classList.remove('border-gray-300', 'hover:border-gray-900');
+                updatePrice(visible[0]);
+                selectedId = visible[0].getAttribute('data-variant-id');
+                form.action = form.action.replace(/\/cart\/add\/\d+$/, '/cart/add/' + selectedId);
+            }
+        });
+    });
+
+    // ── Size selection ──
     sizeBtns.forEach(function(btn) {
         btn.addEventListener('click', function() {
             sizeBtns.forEach(function(b) {
@@ -223,6 +310,7 @@
             btn.classList.remove('border-gray-300', 'hover:border-gray-900');
             selectedId = btn.getAttribute('data-variant-id');
             form.action = form.action.replace(/\/cart\/add\/\d+$/, '/cart/add/' + selectedId);
+            updatePrice(btn);
         });
     });
 
@@ -256,7 +344,7 @@
         });
     }
 
-    // AJAX submit
+    // ── AJAX submit ──
     form.addEventListener('submit', function(e) {
         e.preventDefault();
         var btn = form.querySelector('button[type="submit"]');
