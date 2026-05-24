@@ -267,6 +267,29 @@
 
 </div>
 
+{# ── Характеристики ── #}
+{% set chars = {
+    'Материал': product.material,
+    'Состав': product.composition,
+    'Уход': product.careInstructions,
+    'Страна производства': product.countryOfOrigin,
+    'Производитель': product.manufacturer,
+}|filter(v => v is not null) %}
+
+{% if chars|length > 0 %}
+<div class="mt-12 mx-auto px-4" style="max-width:1280px">
+    <h2 class="text-xl font-bold mb-4">Характеристики</h2>
+    <div class="border border-gray-200 rounded-xl overflow-hidden max-w-2xl">
+        {% for label, value in chars %}
+        <div class="flex border-b border-gray-100 last:border-b-0">
+            <div class="w-48 px-4 py-3 bg-gray-50 text-sm font-medium text-gray-600">{{ label }}</div>
+            <div class="flex-1 px-4 py-3 text-sm text-gray-900 break-words">{{ value }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {# ── Блок бренда ── #}
 <div class="mt-12 p-6 bg-white rounded-xl border border-gray-100 mx-auto px-4" style="max-width:1280px">
     <div class="flex items-start gap-4">
