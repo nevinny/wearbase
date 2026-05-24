@@ -224,6 +224,30 @@
             </div>
             {% endif %}
 
+            {# ── Количество ── #}
+            {% set firstVar = product.variants|filter(v => v.isInStock and v.status == 'active')|first %}
+            {% if firstVar %}
+            <div class="mb-4" id="quantity-selector">
+                <div class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Количество</div>
+                <div class="flex items-center gap-0 border border-gray-300 rounded-lg w-fit">
+                    <button type="button"
+                            class="qty-btn px-3 py-2 text-lg font-medium text-gray-600 hover:bg-gray-100 transition disabled:opacity-30 rounded-l-lg border-r border-gray-300"
+                            data-action="decrease" disabled>−</button>
+                    <input type="number"
+                           id="qty-input"
+                           value="1"
+                           min="1"
+                           max="{{ firstVar.stockQty }}"
+                           class="w-12 text-center py-2 text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                           readonly>
+                    <button type="button"
+                            class="qty-btn px-3 py-2 text-lg font-medium text-gray-600 hover:bg-gray-100 transition disabled:opacity-30 rounded-r-lg border-l border-gray-300"
+                            data-action="increase">+</button>
+                </div>
+                <span class="text-xs text-gray-400 ml-2">{{ firstVar.stockQty }} шт. в наличии</span>
+            </div>
+            {% endif %}
+
             {# Add to cart button #}
             {% set firstVariant = product.variants|filter(v => v.isInStock and v.status == 'active')|first %}
             {% if firstVariant %}
@@ -251,6 +275,7 @@
     var sizeBtns = document.querySelectorAll('#size-selector .size-btn');
     var selectedId = null;
     var priceDisplay = document.getElementById('price-display');
+    var qtyInput = document.getElementById('qty-input');
 
     function updatePrice(btn) {
         var price = btn.getAttribute('data-price');
@@ -344,6 +369,29 @@
         });
     }
 
+    // ── Quantity selector ──
+    var qtyBtns = document.querySelectorAll('.qty-btn');
+    if (qtyInput) {
+        function updateQtyBtns() {
+            var val = parseInt(qtyInput.value) || 1;
+            var max = parseInt(qtyInput.getAttribute('max'));
+            qtyBtns.forEach(function(btn) {
+                var action = btn.getAttribute('data-action');
+                btn.disabled = (action === 'decrease' && val <= 1) || (action === 'increase' && val >= max);
+            });
+        }
+        qtyBtns.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var val = parseInt(qtyInput.value) || 1;
+                var max = parseInt(qtyInput.getAttribute('max'));
+                if (btn.getAttribute('data-action') === 'decrease' && val > 1) qtyInput.value = val - 1;
+                if (btn.getAttribute('data-action') === 'increase' && val < max) qtyInput.value = val + 1;
+                updateQtyBtns();
+            });
+        });
+        updateQtyBtns();
+    }
+
     // ── AJAX submit ──
     form.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -352,7 +400,13 @@
         btn.textContent = '…';
         btn.disabled = true;
 
-        fetch(form.action, { method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'} })
+        var qty = qtyInput ? parseInt(qtyInput.value) || 1 : 1;
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            body: new URLSearchParams({qty: qty})
+        })
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) { alert(data.error); return; }
