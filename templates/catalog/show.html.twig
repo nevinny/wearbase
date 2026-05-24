@@ -267,6 +267,71 @@
 
 </div>
 
+{# ── Блок бренда ── #}
+<div class="mt-12 p-6 bg-white rounded-xl border border-gray-100 mx-auto px-4" style="max-width:1280px">
+    <div class="flex items-start gap-4">
+        {% if brand.logo %}
+        <div class="w-20 h-20 rounded-lg overflow-hidden bg-gray-50 flex-shrink-0">
+            <img src="{{ asset('images/brands/' ~ brand.logo) }}"
+                 alt="{{ brand.title }}"
+                 class="w-full h-full object-contain">
+        </div>
+        {% else %}
+        <div class="w-20 h-20 rounded-lg bg-gray-100 flex items-center justify-center text-3xl flex-shrink-0">🏷️</div>
+        {% endif %}
+        <div class="flex-1 min-w-0">
+            <a href="{{ path('brand_show', {slug: brand.slug}) }}"
+               class="text-xl font-bold hover:text-indigo-600 transition">
+                {{ brand.title }}
+            </a>
+            {% if brand.anons %}
+            <p class="text-gray-600 mt-1 text-sm">{{ brand.anons }}</p>
+            {% endif %}
+            {% if brand.links|length > 0 %}
+            <div class="flex flex-wrap gap-2 mt-3">
+                {% for link in brand.links %}
+                <a href="{{ link.linkUrl }}" target="_blank" rel="noopener"
+                   class="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition">
+                    {% if link.linkType == 'website' %}🌐{% elseif link.linkType == 'instagram' %}📷{% elseif link.linkType == 'telegram' %}✈️{% elseif link.linkType == 'vk' %}💙{% elseif link.linkType == 'youtube' %}▶️{% elseif link.linkType == 'tiktok' %}🎵{% else %}🔗{% endif %}
+                    {{ link.linkType|capitalize }}
+                </a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ── Похожие товары ── #}
+{% if similarProducts|length > 0 %}
+<div class="mt-12 mx-auto px-4" style="max-width:1280px">
+    <h2 class="text-2xl font-bold mb-6">Похожие товары</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {% for similar in similarProducts %}
+        <a href="{{ path('product_show', {uuid: similar.uuid}) }}"
+           class="group bg-white rounded-xl overflow-hidden border border-gray-100 hover:shadow-md transition">
+            {% set simImg = similar.mainImage %}
+            {% if simImg and (simImg.preview or simImg.image) %}
+            <div class="aspect-[3/4] overflow-hidden bg-gray-50">
+                <img src="{{ asset('images/products/' ~ (simImg.preview ?? simImg.image)) }}"
+                     alt="{{ similar.title }}"
+                     class="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                     loading="lazy">
+            </div>
+            {% else %}
+            <div class="aspect-[3/4] bg-gray-100 flex items-center justify-center text-4xl text-gray-300">👗</div>
+            {% endif %}
+            <div class="p-3">
+                <p class="text-xs text-gray-500">{{ similar.brand.title }}</p>
+                <p class="text-sm font-medium mt-0.5 line-clamp-2">{{ similar.title }}</p>
+                <p class="text-sm font-bold mt-1">{{ similar.minPrice|price }}</p>
+            </div>
+        </a>
+    {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <script>
 (function() {
     var form = document.getElementById('add-to-cart-form');
