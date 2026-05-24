@@ -1,0 +1,285 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}{{ product.title }} — {{ product.brand.title }} — WEARBASE{% endblock %}
+
+{% block meta_description %}{{ product.metaDescription ?: product.anons ?: product.title ~ ' — купить от ' ~ product.brand.title }}{% endblock %}
+
+{% block canonical_url %}{{ url('product_show', {uuid: product.uuid}) }}{% endblock %}
+
+{% block body %}
+{% set mainImage = product.mainImage %}
+{% set minPrice = product.minPrice %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@graph": [
+        {
+            "@type": "WebPage",
+            "@id": "{{ url('product_show', {uuid: product.uuid}) }}#webpage",
+            "url": "{{ url('product_show', {uuid: product.uuid}) }}",
+            "name": "{{ product.title }} — {{ product.brand.title }}",
+            "description": "{{ (product.metaDescription ?: product.anons ?: product.title)|escape('js') }}",
+            "isPartOf": {"@id": "#website"},
+            "breadcrumb": {"@id": "{{ url('product_show', {uuid: product.uuid}) }}#breadcrumb"}
+        },
+        {
+            "@type": "BreadcrumbList",
+            "@id": "{{ url('product_show', {uuid: product.uuid}) }}#breadcrumb",
+            "itemListElement": [
+                {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: 'ru'}) }}"},
+                {"@type": "ListItem", "position": 2, "name": "Каталог", "item": "{{ url('catalog_index') }}"},
+                {% if product.category %}
+                {"@type": "ListItem", "position": 3, "name": "{{ product.category.title }}", "item": "{{ url('catalog_index', {gender: product.gender}) }}"},
+                {"@type": "ListItem", "position": 4, "name": "{{ product.title }}"}
+                {% else %}
+                {"@type": "ListItem", "position": 3, "name": "{{ product.title }}"}
+                {% endif %}
+            ]
+        },
+        {
+            "@type": "Product",
+            "@id": "{{ url('product_show', {uuid: product.uuid}) }}#product",
+            "name": "{{ product.title }}",
+            "description": "{{ (product.description ?: product.anons ?: product.title)|escape('js') }}",
+            "url": "{{ url('product_show', {uuid: product.uuid}) }}",
+            "sku": "{{ product.slug }}",
+            {% if product.gender %}
+            "gender": "{{ product.gender == 'men' ? 'Male' : (product.gender == 'women' ? 'Female' : (product.gender == 'unisex' ? 'Unisex' : '')) }}",
+            {% endif %}
+            "brand": {
+                "@type": "Brand",
+                "name": "{{ product.brand.title }}",
+                "url": "{{ url('brand_show', {slug: product.brand.slug}) }}"
+            },
+            {% if mainImage and (mainImage.preview or mainImage.image) %}
+            "image": "{{ absolute_url(asset('images/products/' ~ (mainImage.preview ?? mainImage.image))) }}",
+            {% endif %}
+            "offers": {
+                "@type": "AggregateOffer",
+                "priceCurrency": "RUB",
+                "lowPrice": "{{ minPrice }}",
+                "highPrice": "{{ minPrice }}",
+                "offerCount": "{{ product.variants|length }}",
+                "availability": "{{ product.isInStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock' }}"
+            }
+        }
+    ]
+}
+</script>
+<div class="container mx-auto px-4 py-8">
+
+    {# Breadcrumbs #}
+    <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+        <a href="{{ path('home_hub', {_locale: 'ru'}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+        <span class="mx-2 text-gray-400">/</span>
+        <a href="{{ path('catalog_index') }}" class="text-gray-500 hover:text-gray-900">Каталог</a>
+        {% if product.category %}
+        <span class="mx-2 text-gray-400">/</span>
+        <a href="{{ path('catalog_index', {gender: product.gender}) }}" class="text-gray-500 hover:text-gray-900">{{ product.category.title }}</a>
+        {% endif %}
+        <span class="mx-2 text-gray-400">/</span>
+        <span class="text-gray-900 font-medium">{{ product.title }}</span>
+    </nav>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
+
+        {# ── Галерея ── #}
+        <div>
+            {% if product.productImages|length > 0 %}
+                {% set mainImgSrc = product.mainImage ? asset('images/products/' ~ (product.mainImage.image ?? product.mainImage.preview)) : null %}
+                <div class="bg-white rounded-xl overflow-hidden shadow-sm mb-3 relative group cursor-pointer"
+                     id="main-image-container">
+                    <img id="main-image"
+                         src="{{ mainImgSrc }}"
+                         alt="{{ product.title }}"
+                         class="w-full h-auto object-cover"
+                         style="max-height:500px"
+                         loading="lazy">
+                </div>
+
+                {% if product.productImages|length > 1 %}
+                <div class="flex gap-2 overflow-x-auto pb-1" id="thumbnail-list">
+                    {% for image in product.productImages %}
+                    <button type="button"
+                            class="thumbnail-btn w-20 h-20 rounded-lg overflow-hidden border-2 flex-shrink-0 transition cursor-pointer
+                                   {{ image.isMain ? 'border-gray-900' : 'border-transparent hover:border-gray-400' }}"
+                            data-src="{{ asset('images/products/' ~ (image.image ?? image.preview)) }}"
+                            data-full="{{ asset('images/products/' ~ (image.image ?? image.preview)) }}">
+                        <img src="{{ asset('images/products/' ~ (image.preview ?? image.image)) }}"
+                             alt="" class="w-full h-full object-cover">
+                    </button>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            {% else %}
+                <div class="bg-gray-100 rounded-xl flex items-center justify-center" style="height:400px">
+                    <span class="text-6xl text-gray-300">👗</span>
+                </div>
+            {% endif %}
+        </div>
+
+        {# ── Информация о товаре ── #}
+        <div>
+            <a href="{{ path('brand_show', {slug: brand.slug, _locale: 'ru'}) }}"
+               class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+                {{ brand.title }}
+            </a>
+
+            <h1 class="text-2xl font-bold mt-1 mb-3">{{ product.title }}</h1>
+
+            {# Price #}
+            <div class="text-3xl font-bold mb-4">
+                {% if minPrice %}
+                    {{ minPrice|price }}
+                {% endif %}
+            </div>
+
+            {# Variants #}
+            {% if product.variants|length > 0 %}
+            <div class="mb-6">
+                <div class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Размер</div>
+                <div class="flex flex-wrap gap-2" id="size-selector">
+                    {% for variant in product.variants %}
+                        {% if variant.status == 'active' and variant.isInStock %}
+                            <button type="button"
+                                    class="size-btn px-4 py-2 border rounded-lg text-sm transition cursor-pointer
+                                           {% if variant.comparePrice %}border-red-300{% else %}border-gray-300 hover:border-gray-900{% endif %}
+                                           {{ loop.index == 1 ? 'ring-2 ring-gray-900 border-gray-900' : '' }}"
+                                    data-variant-id="{{ variant.id }}"
+                                    data-price="{{ variant.priceFloat }}"
+                                    {% if variant.comparePrice %}data-compare-price="{{ variant.comparePrice }}"{% endif %}
+                                    title="{{ variant.color ?: '' }} — {{ variant.price|price }}">
+                                {{ variant.size ?: variant.sku }}
+                            </button>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {# Gender badge #}
+            {% if product.gender %}
+            <div class="mb-4">
+                <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Пол: </span>
+                <span class="text-sm">{{ product.gender == 'women' ? 'Женский' : (product.gender == 'men' ? 'Мужской' : (product.gender == 'kids' ? 'Детский' : 'Унисекс')) }}</span>
+            </div>
+            {% endif %}
+
+            {# Description #}
+            {% if product.description %}
+            <div class="mb-6">
+                <div class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Описание</div>
+                <p class="text-gray-700 leading-relaxed">{{ product.description }}</p>
+            </div>
+            {% endif %}
+
+            {# Styles #}
+            {% if product.styles|length > 0 %}
+            <div class="mb-6">
+                <div class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Стили</div>
+                <div class="flex flex-wrap gap-1">
+                    {% for style in product.styles %}
+                        <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">{{ style.title }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {# Add to cart button #}
+            {% set firstVariant = product.variants|filter(v => v.isInStock and v.status == 'active')|first %}
+            {% if firstVariant %}
+            <form method="post" action="{{ path('cart_add', {variantId: firstVariant.id}) }}"
+                  class="mt-6" id="add-to-cart-form">
+                <button type="submit" class="w-full bg-gray-900 text-white py-3 px-6 rounded-xl font-semibold hover:bg-gray-800 transition">
+                    В корзину
+                </button>
+            </form>
+            {% else %}
+                <div class="mt-6 bg-gray-100 text-gray-500 py-3 px-6 rounded-xl text-center font-semibold">
+                    Нет в наличии
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+<script>
+(function() {
+    var form = document.getElementById('add-to-cart-form');
+    if (!form) return;
+
+    var sizeBtns = document.querySelectorAll('#size-selector .size-btn');
+    var selectedId = null;
+
+    // Size selection
+    sizeBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            sizeBtns.forEach(function(b) {
+                b.classList.remove('ring-2', 'ring-gray-900', 'border-gray-900');
+                b.classList.add('border-gray-300', 'hover:border-gray-900');
+            });
+            btn.classList.add('ring-2', 'ring-gray-900', 'border-gray-900');
+            btn.classList.remove('border-gray-300', 'hover:border-gray-900');
+            selectedId = btn.getAttribute('data-variant-id');
+            form.action = form.action.replace(/\/cart\/add\/\d+$/, '/cart/add/' + selectedId);
+        });
+    });
+
+    // ── Gallery thumbnails ──
+    var mainImg = document.getElementById('main-image');
+    var thumbs = document.querySelectorAll('.thumbnail-btn');
+    thumbs.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var src = btn.getAttribute('data-src');
+            if (mainImg) mainImg.src = src;
+            thumbs.forEach(function(t) { t.classList.remove('border-gray-900'); t.classList.add('border-transparent'); });
+            btn.classList.remove('border-transparent');
+            btn.classList.add('border-gray-900');
+        });
+    });
+
+    // ── Lightbox ──
+    var container = document.getElementById('main-image-container');
+    if (container) {
+        container.addEventListener('click', function() {
+            var src = mainImg ? mainImg.src : '';
+            if (!src) return;
+            var overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;cursor:pointer';
+            overlay.addEventListener('click', function() { document.body.removeChild(overlay); });
+            var img = document.createElement('img');
+            img.src = src;
+            img.style.cssText = 'max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px';
+            overlay.appendChild(img);
+            document.body.appendChild(overlay);
+        });
+    }
+
+    // AJAX submit
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var btn = form.querySelector('button[type="submit"]');
+        var orig = btn.textContent;
+        btn.textContent = '…';
+        btn.disabled = true;
+
+        fetch(form.action, { method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'} })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert(data.error); return; }
+                if (window.updateCartBadge) window.updateCartBadge(data.count);
+                btn.textContent = '✓ В корзине';
+                setTimeout(function() {
+                    btn.textContent = orig;
+                    btn.disabled = false;
+                }, 1500);
+            })
+            .catch(function() {
+                btn.textContent = 'Ошибка';
+                btn.disabled = false;
+            });
+    });
+})();
+</script>
+{% endblock %}
