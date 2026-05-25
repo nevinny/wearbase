@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\Brand;
 use App\Entity\Product;
+use App\Entity\ProductImage;
 use App\Entity\ProductVariant;
 use App\Repository\ProductCategoryRepository;
 use App\Repository\ProductRepository;
@@ -63,6 +64,7 @@ class ProductImportService
         private readonly ProductCategoryRepository $categoryRepo,
         private readonly ProductRepository         $productRepo,
         private readonly SluggerInterface          $slugger,
+        private readonly ImageDownloaderService    $imageDownloader,
     ) {}
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -332,6 +334,32 @@ class ProductImportService
                 $manufacturer = trim($this->cell($row, self::COL_MANUFACTURER));
                 if ($manufacturer !== '' && !$product->getManufacturer()) {
                     $product->setManufacturer($manufacturer);
+                }
+
+                // Photo URLs (only from first row of this product)
+                if ($product->getProductImages()->isEmpty()) {
+                    $photoUrls = trim($this->cell($row, self::COL_PHOTO_URLS));
+                    if ($photoUrls !== '') {
+                        $urls = array_filter(array_map('trim', explode('|', $photoUrls)));
+                        $sort = 0;
+                        foreach ($urls as $url) {
+                            $filename = $this->imageDownloader->download($url);
+                            if ($filename === null) {
+                                continue;
+                            }
+                            $image = new ProductImage();
+                            $image->setImage($filename);
+                            $image->setPreview($filename);
+                            $image->setIsMain($sort === 0);
+                            $image->setSort($sort);
+                            $product->addProductImage($image);
+                            $this->em->persist($image);
+                            $sort++;
+                            if ($sort >= 10) {
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 $productCache[$title] = $product;
