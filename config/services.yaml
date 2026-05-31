@@ -30,6 +30,22 @@ services:
         arguments:
             $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
 
+    App\Service\PaymentService:
+        arguments:
+            $shopId: '%env(YOOKASSA_SHOP_ID)%'
+            $secretKey: '%env(YOOKASSA_SECRET_KEY)%'
+
+    App\Service\BrandClaimService:
+        arguments:
+            # Авто-выдача доступа при сильной верификации (можно отключить без правки кода)
+            $autoGrantEmail: '%env(bool:BRAND_CLAIM_AUTOGRANT_EMAIL)%'
+            $autoGrantVk: '%env(bool:BRAND_CLAIM_AUTOGRANT_VK)%'
+
+    App\Service\VkVerifier:
+        arguments:
+            $appId: '%env(VK_APP_ID)%'
+            $appSecret: '%env(VK_APP_SECRET)%'
+
     App\Service\DeliveryService:
         arguments:
             $cdekAccount: '%env(CDEK_ACCOUNT)%'
@@ -37,6 +53,10 @@ services:
             $boxberryToken: '%env(BOXBERRY_TOKEN)%'
 
     App\Command\MigrateImagesToSubdirsCommand:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Command\GenerateBrandDeepseekCommand:
         arguments:
             $projectDir: '%kernel.project_dir%'
 

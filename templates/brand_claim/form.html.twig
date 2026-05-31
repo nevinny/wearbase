@@ -1,0 +1,107 @@
+{% extends 'base.html.twig' %}
+{% block title %}Подтверждение владения брендом — {{ brand.title }}{% endblock %}
+
+{% block body %}
+<div class="container py-5" style="max-width:620px">
+
+    <a href="{{ path('brand_show', {slug: brand.slug, _locale: 'ru'}) }}"
+       class="text-muted text-decoration-none small">
+        ← {{ brand.title }}
+    </a>
+
+    <div class="card border-0 shadow-sm mt-3">
+        <div class="card-body p-5">
+
+            <div class="mb-4">
+                <h1 class="h4 fw-bold mb-1">Я владелец бренда «{{ brand.title }}»</h1>
+                <p class="text-muted small mb-0">
+                    Подтвердите владение одним из способов ниже — получите доступ к кабинету бренда.
+                </p>
+            </div>
+
+            {% for message in app.flashes('success') %}
+                <div class="alert alert-success border-0 small">{{ message }}</div>
+            {% endfor %}
+            {% for message in app.flashes('error') %}
+                <div class="alert alert-danger border-0 small">{{ message }}</div>
+            {% endfor %}
+            {% for message in app.flashes('info') %}
+                <div class="alert alert-info border-0 small">{{ message }}</div>
+            {% endfor %}
+
+            {# ── Способ: VK-админ ── #}
+            {% if 'vk_admin' in methods %}
+                <div class="border rounded-3 p-4 mb-3">
+                    <div class="fw-semibold mb-1"><i class="fab fa-vk me-2 text-primary"></i>Подтвердить через VK</div>
+                    <p class="text-muted small">
+                        Войдите через VK — если вы администратор официальной группы бренда,
+                        доступ будет выдан автоматически.
+                    </p>
+                    <a href="{{ path('brand_claim_vk_start', {id: brand.id}) }}" class="btn btn-outline-primary btn-sm">
+                        Войти через VK
+                    </a>
+                </div>
+            {% endif %}
+
+            {# ── Способ: код на email бренда ── #}
+            {% if 'email_code' in methods %}
+                <div class="border rounded-3 p-4 mb-3">
+                    <div class="fw-semibold mb-1"><i class="fas fa-envelope me-2 text-muted"></i>Код на email бренда</div>
+                    <p class="text-muted small">
+                        Отправим 6-значный код на официальный email бренда
+                        {% if brandEmailHint %}<strong>{{ brandEmailHint }}</strong>{% endif %}.
+                        Введите его — если у вас есть доступ к почте бренда.
+                    </p>
+
+                    {% if codePending %}
+                        <form method="post" action="{{ path('brand_claim_email_verify', {id: brand.id}) }}" class="d-flex gap-2">
+                            <input type="hidden" name="_token" value="{{ csrf_token('brand_claim_email') }}">
+                            <input type="text" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                                   class="form-control" placeholder="000000" autocomplete="one-time-code" required>
+                            <button type="submit" class="btn btn-dark flex-shrink-0">Подтвердить</button>
+                        </form>
+                        <form method="post" action="{{ path('brand_claim_email_send', {id: brand.id}) }}" class="mt-2">
+                            <input type="hidden" name="_token" value="{{ csrf_token('brand_claim_email') }}">
+                            <button type="submit" class="btn btn-link btn-sm text-muted p-0">Отправить код ещё раз</button>
+                        </form>
+                    {% else %}
+                        <form method="post" action="{{ path('brand_claim_email_send', {id: brand.id}) }}">
+                            <input type="hidden" name="_token" value="{{ csrf_token('brand_claim_email') }}">
+                            <button type="submit" class="btn btn-outline-dark btn-sm">Отправить код</button>
+                        </form>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {# ── Способ: ручная проверка (для всех) ── #}
+            <div class="border rounded-3 p-4">
+                <div class="fw-semibold mb-1"><i class="fas fa-id-card me-2 text-muted"></i>Заявка с проверкой администратором</div>
+                {% if willAutoVerify %}
+                    <p class="text-success small mb-2">
+                        <i class="fas fa-check-circle me-1"></i>
+                        Ваш email <strong>@{{ userDomain }}</strong> совпадает с доменом бренда — заявку рассмотрят в приоритете.
+                    </p>
+                {% else %}
+                    <p class="text-muted small mb-2">
+                        Укажите подтверждения: ссылки на соцсети бренда, документы (товарный знак, ИНН/ОГРН),
+                        кабинет продавца на маркетплейсе.
+                    </p>
+                {% endif %}
+                <form method="post" action="{{ path('brand_claim_manual', {id: brand.id}) }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('brand_claim_manual') }}">
+                    <textarea name="comment" class="form-control mb-3" rows="3"
+                              placeholder="Ваш сайт, ссылки на соцсети бренда, ИНН, другие подтверждения..."></textarea>
+                    <button type="submit" class="btn btn-dark w-100 fw-semibold">Отправить заявку</button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <p class="text-center text-muted small mt-4">
+        Вопросы? Напишите нам на
+        <a href="mailto:hello@wearbase.ru" class="text-dark">hello@wearbase.ru</a>
+    </p>
+
+</div>
+{% endblock %}

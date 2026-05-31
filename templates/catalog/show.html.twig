@@ -492,7 +492,7 @@
 
         fetch(form.action, {
             method: 'POST',
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': '{{ csrf_token('cart') }}'},
             body: new URLSearchParams({qty: qty})
         })
             .then(function(r) { return r.json(); })

@@ -25,6 +25,12 @@ class BrandClaim
     public const STATUS_APPROVED       = 'approved';
     public const STATUS_REJECTED       = 'rejected';
 
+    public const METHOD_EMAIL_CODE  = 'email_code';
+    public const METHOD_VK_ADMIN    = 'vk_admin';
+    public const METHOD_DOCUMENT    = 'document';
+    public const METHOD_MARKETPLACE = 'marketplace';
+    public const METHOD_MANUAL      = 'manual';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -49,6 +55,38 @@ class BrandClaim
     /** Домен email пользователя совпал с доменом email бренда */
     #[ORM\Column(options: ['default' => false])]
     private bool $emailDomainMatch = false;
+
+    /** Выбранный метод верификации */
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $method = null;
+
+    /** Код подтверждения (email) */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $verificationCode = null;
+
+    /** State/nonce для OAuth (VK) */
+    #[ORM\Column(length: 128, nullable: true)]
+    private ?string $verificationToken = null;
+
+    /** TTL кода */
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $codeExpiresAt = null;
+
+    /** Когда код последний раз отправлен (cooldown) */
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $codeSentAt = null;
+
+    /** Сколько раз отправляли код (лимит на отправку) */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $codeSends = 0;
+
+    /** Сколько раз вводили код (защита от перебора) */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $codeAttempts = 0;
+
+    /** Чем реально подтверждено владение (аудит) */
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $verifiedVia = null;
 
     /** Комментарий администратора при одобрении/отклонении */
     #[ORM\Column(type: 'text', nullable: true)]
@@ -111,6 +149,30 @@ class BrandClaim
 
     public function isEmailDomainMatch(): bool { return $this->emailDomainMatch; }
     public function setEmailDomainMatch(bool $v): static { $this->emailDomainMatch = $v; return $this; }
+
+    public function getMethod(): ?string { return $this->method; }
+    public function setMethod(?string $m): static { $this->method = $m; return $this; }
+
+    public function getVerificationCode(): ?string { return $this->verificationCode; }
+    public function setVerificationCode(?string $c): static { $this->verificationCode = $c; return $this; }
+
+    public function getVerificationToken(): ?string { return $this->verificationToken; }
+    public function setVerificationToken(?string $t): static { $this->verificationToken = $t; return $this; }
+
+    public function getCodeExpiresAt(): ?\DateTimeImmutable { return $this->codeExpiresAt; }
+    public function setCodeExpiresAt(?\DateTimeImmutable $d): static { $this->codeExpiresAt = $d; return $this; }
+
+    public function getCodeSentAt(): ?\DateTimeImmutable { return $this->codeSentAt; }
+    public function setCodeSentAt(?\DateTimeImmutable $d): static { $this->codeSentAt = $d; return $this; }
+
+    public function getCodeSends(): int { return $this->codeSends; }
+    public function setCodeSends(int $n): static { $this->codeSends = $n; return $this; }
+
+    public function getCodeAttempts(): int { return $this->codeAttempts; }
+    public function setCodeAttempts(int $n): static { $this->codeAttempts = $n; return $this; }
+
+    public function getVerifiedVia(): ?string { return $this->verifiedVia; }
+    public function setVerifiedVia(?string $v): static { $this->verifiedVia = $v; return $this; }
 
     public function getAdminNote(): ?string { return $this->adminNote; }
     public function setAdminNote(?string $adminNote): static { $this->adminNote = $adminNote; return $this; }

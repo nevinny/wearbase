@@ -5,13 +5,10 @@ declare(strict_types=1);
 namespace App\Controller\Admin;
 
 use App\Entity\BrandClaim;
-use App\Entity\BrandUser;
 use App\Entity\Notification;
-use App\Entity\User;
 use App\Notification\NotificationDispatcher;
 use App\Repository\BrandClaimRepository;
-use App\Repository\BrandUserRepository;
-use App\Service\SubscriptionFactory;
+use App\Service\BrandClaimService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -25,8 +22,7 @@ class BrandClaimAdminController extends AbstractController
 {
     public function __construct(
         private readonly BrandClaimRepository   $claimRepo,
-        private readonly BrandUserRepository    $brandUserRepo,
-        private readonly SubscriptionFactory    $subscriptionFactory,
+        private readonly BrandClaimService      $claimService,
         private readonly EntityManagerInterface $em,
         private readonly NotificationDispatcher $notifier,
     ) {}
@@ -59,42 +55,13 @@ class BrandClaimAdminController extends AbstractController
 
         $note = trim((string) $request->request->get('admin_note', ''));
 
-        // Проверяем что BrandUser ещё нет
-        $existing = $this->brandUserRepo->findOneBy([
-            'brand' => $claim->getBrand(),
-            'user'  => $claim->getUser(),
-        ]);
-
-        if (!$existing) {
-            $brandUser = new BrandUser();
-            $brandUser->setBrand($claim->getBrand());
-            $brandUser->setUser($claim->getUser());
-            $brandUser->setRole(BrandUser::ROLE_OWNER);
-            $brandUser->setAcceptedAt(new \DateTimeImmutable());
-            $this->em->persist($brandUser);
-        }
-
-        // Добавляем ROLE_BRAND_MANAGER если нет
-        $user  = $claim->getUser();
-        $roles = $user->getRoles();
-        if (!in_array('ROLE_BRAND_MANAGER', $roles, true)) {
-            $roles[] = 'ROLE_BRAND_MANAGER';
-            $user->setRoles(array_values(array_unique($roles)));
-        }
-
-        $claim->setStatus(BrandClaim::STATUS_APPROVED);
+        /** @var \App\Entity\User|null $admin */
+        $admin = $this->getUser();
         $claim->setAdminNote($note ?: null);
-        $claim->setReviewedAt(new \DateTimeImmutable());
-        $this->em->flush();
-
-        $this->notifier->dispatch(
-            $claim->getUser(),
-            Notification::TYPE_SYSTEM,
-            "Заявка на бренд «{$claim->getBrand()->getTitle()}» одобрена!",
-            "Поздравляем! Вы стали владельцем бренда «{$claim->getBrand()->getTitle()}».",
-            ['brand_id' => $claim->getBrand()->getId(), 'claim_id' => $claim->getId()],
-            'brand_claim_approved',
-            ['claim' => $claim],
+        $this->claimService->grantOwnership(
+            $claim,
+            $admin instanceof \App\Entity\User ? $admin : null,
+            'admin',
         );
 
         $this->addFlash('success', sprintf(
@@ -125,6 +92,8 @@ class BrandClaimAdminController extends AbstractController
             'brand_claim_rejected',
             ['claim' => $claim],
         );
+        // dispatch только persist'ит in-app — коммитим
+        $this->em->flush();
 
         $this->addFlash('success', 'Заявка отклонена');
         return $this->redirectToRoute('admin_brand_claims');

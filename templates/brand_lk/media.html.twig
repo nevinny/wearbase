@@ -1,0 +1,125 @@
+{% extends 'brand_lk/layout.html.twig' %}
+
+{% block title %}Медиа — {{ brand.title }} — WEARBASE{% endblock %}
+
+{% block brand_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="h4 fw-bold mb-0">Медиа</h2>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <h6 class="fw-semibold mb-3">Загрузить изображения</h6>
+        <div id="upload-area"
+             class="border border-2 border-dashed rounded text-center py-5 px-3 text-muted"
+             style="cursor:pointer; border-color:#ccc !important">
+            <i class="fas fa-cloud-upload-alt fa-2x mb-2"></i>
+            <div>Перетащите файлы или <span class="text-dark fw-semibold">выберите</span></div>
+            <div class="small">JPG, PNG, WebP — до 5 МБ каждый</div>
+            <input type="file" id="file-input" multiple accept="image/*" class="d-none">
+        </div>
+        <div id="upload-progress" class="mt-3 d-none">
+            <div class="progress">
+                <div id="progress-bar" class="progress-bar bg-dark" style="width:0%"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white fw-semibold">
+        Галерея ({{ images|length }})
+    </div>
+    <div class="card-body">
+        {% if images|length == 0 %}
+            <div class="text-center text-muted py-5">Изображений пока нет</div>
+        {% else %}
+            <div id="gallery" class="row g-3">
+                {% for image in images %}
+                <div class="col-6 col-md-4 col-lg-3" data-id="{{ image.id }}">
+                    <div class="position-relative group border rounded overflow-hidden">
+                        {% if image.preview %}
+                            <img src="{{ vich_uploader_asset(image, 'previewFile') }}"
+                                 class="img-fluid w-100" style="height:160px; object-fit:cover"
+                                 alt="">
+                        {% elseif image.image %}
+                            <img src="{{ vich_uploader_asset(image, 'imageFile') }}"
+                                 class="img-fluid w-100" style="height:160px; object-fit:cover"
+                                 alt="">
+                        {% endif %}
+                        <button class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1 delete-btn"
+                                data-id="{{ image.id }}"
+                                title="Удалить">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+const uploadUrl = '{{ path('brand_media_upload') }}';
+const deleteUrl = '/brand/media/delete/';
+const csrfToken = '{{ csrf_token('brand_media') }}';
+
+// Drag & drop
+const area = document.getElementById('upload-area');
+const fileInput = document.getElementById('file-input');
+
+area.addEventListener('click', () => fileInput.click());
+area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('bg-light'); });
+area.addEventListener('dragleave', () => area.classList.remove('bg-light'));
+area.addEventListener('drop', e => {
+    e.preventDefault();
+    area.classList.remove('bg-light');
+    uploadFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => uploadFiles(fileInput.files));
+
+function uploadFiles(files) {
+    const formData = new FormData();
+    [...files].forEach(f => formData.append('images[]', f));
+
+    const progress = document.getElementById('upload-progress');
+    const bar = document.getElementById('progress-bar');
+    progress.classList.remove('d-none');
+    bar.style.width = '0%';
+
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = e => {
+        if (e.lengthComputable) bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+    };
+    xhr.onload = () => {
+        if (xhr.status === 200) {
+            window.location.reload();
+        } else {
+            alert('Ошибка загрузки');
+            progress.classList.add('d-none');
+        }
+    };
+    xhr.open('POST', uploadUrl);
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+    xhr.send(formData);
+}
+
+// Удаление
+document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Удалить изображение?')) return;
+        const id = btn.dataset.id;
+        const resp = await fetch(deleteUrl + id, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': csrfToken }
+        });
+        if (resp.ok) {
+            btn.closest('[data-id]').remove();
+        }
+    });
+});
+</script>
+{% endblock %}

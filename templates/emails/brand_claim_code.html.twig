@@ -1,0 +1,18 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Код подтверждения владения брендом — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">Подтверждение владения брендом</h2>
+<p style="color:#555;line-height:1.6;">
+    Кто-то запросил подтверждение владения брендом «{{ brand.title }}» на WEARBASE.
+    Если это вы — введите код на сайте:
+</p>
+<p style="text-align:center;">
+    <span style="display:inline-block;font-size:30px;letter-spacing:8px;font-weight:700;
+                 background:#f4f4f5;border-radius:10px;padding:14px 24px;">{{ code }}</span>
+</p>
+<p style="color:#888;font-size:13px;">
+    Код действителен 15 минут.<br>
+    Если вы не запрашивали подтверждение — просто проигнорируйте это письмо,
+    доступ к бренду никто не получит.
+</p>
+{% endblock %}

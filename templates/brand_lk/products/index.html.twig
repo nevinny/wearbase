@@ -1,0 +1,111 @@
+{% extends 'brand_lk/layout.html.twig' %}
+{% block title %}Товары — {{ brand.title }}{% endblock %}
+
+{% block brand_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="h4 fw-bold mb-0">Товары</h2>
+    <div class="d-flex gap-2">
+        <a href="{{ path('brand_product_import') }}" class="btn btn-outline-secondary">
+            <i class="fas fa-file-upload me-1"></i>Импорт из файла
+        </a>
+        <a href="{{ path('brand_product_new') }}" class="btn btn-dark">
+            <i class="fas fa-plus me-1"></i>Добавить товар
+        </a>
+    </div>
+</div>
+
+{% if products|length == 0 %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5 text-muted">
+            <i class="fas fa-tshirt fa-3x mb-3 d-block opacity-25"></i>
+            <p>Товаров пока нет.</p>
+            <div class="d-flex gap-2 justify-content-center">
+                <a href="{{ path('brand_product_import') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-file-upload me-1"></i>Импортировать из файла
+                </a>
+                <a href="{{ path('brand_product_new') }}" class="btn btn-dark">Добавить вручную</a>
+            </div>
+        </div>
+    </div>
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:70px"></th>
+                    <th>Название</th>
+                    <th>Категория</th>
+                    <th>Вариантов</th>
+                    <th>Мин. цена</th>
+                    <th>Статус</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for product in products %}
+            <tr>
+                <td>
+                    {% set mainImg = product.mainImage %}
+                    {% if mainImg and mainImg.preview %}
+                        <img src="{{ vich_uploader_asset(mainImg, 'previewFile') }}"
+                             style="width:56px;height:56px;object-fit:cover" class="rounded">
+                    {% else %}
+                        <div class="bg-light rounded d-flex align-items-center justify-content-center"
+                             style="width:56px;height:56px">
+                            <i class="fas fa-image text-muted"></i>
+                        </div>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ path('brand_product_edit', {id: product.id}) }}" class="fw-semibold text-dark">
+                        {{ product.title }}
+                    </a>
+                    {% if product.slug %}
+                        <div class="text-muted small">/{{ product.slug }}</div>
+                    {% endif %}
+                </td>
+                <td class="text-muted small">{{ product.category ? product.category.title : '—' }}</td>
+                <td>{{ product.variants|length }}</td>
+                <td>
+                    {% set minPrice = product.minPrice %}
+                    {{ minPrice ? 'от ' ~ price(minPrice) : '—' }}
+                </td>
+                <td>
+                    <span class="badge bg-{{ product.status == 'active' ? 'success' : (product.status == 'draft' ? 'secondary' : 'warning') }}">
+                        {{ product.status == 'active' ? 'Активен' : (product.status == 'draft' ? 'Черновик' : 'Архив') }}
+                    </span>
+                </td>
+                <td class="text-end">
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                            <i class="fas fa-ellipsis-h"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ path('brand_product_edit', {id: product.id}) }}">
+                                <i class="fas fa-edit me-2"></i>Редактировать</a></li>
+                            <li><a class="dropdown-item" href="{{ path('brand_product_variants', {id: product.id}) }}">
+                                <i class="fas fa-layer-group me-2"></i>Варианты</a></li>
+                            <li><a class="dropdown-item" href="{{ path('brand_product_images', {id: product.id}) }}">
+                                <i class="fas fa-images me-2"></i>Фото</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="post" action="{{ path('brand_product_publish', {id: product.id}) }}">
+                                    <input type="hidden" name="_token" value="{{ csrf_token('brand_product') }}">
+                                    <button class="dropdown-item text-{{ product.status == 'active' ? 'warning' : 'success' }}" type="submit">
+                                        <i class="fas fa-{{ product.status == 'active' ? 'eye-slash' : 'eye' }} me-2"></i>
+                                        {{ product.status == 'active' ? 'Снять с публикации' : 'Опубликовать' }}
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

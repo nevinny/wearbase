@@ -1,14 +1,16 @@
 {% extends 'tailwind/base.html.twig' %}
 
-{% block title %}{{ brand.metaTitle ?: (brand.title ~ ' - российский бренд одежды | WEARBASE') }}{% endblock %}
+{% set _bt = brand_t(brand, 'title') %}
+{% set _ba = brand_t(brand, 'anons') %}
+{% set _bd = brand_t(brand, 'description') %}
+{% set _bmt = brand_t(brand, 'metaTitle') ?: (_bt ~ ' — бренд одежды | WEARBASE') %}
+{% set _bmd = brand_t(brand, 'metaDescription') ?: (_ba ? _ba|slice(0,155) : (_bd ? _bd|striptags|slice(0,155) : '')) %}
 
-{% block meta_description %}{{ brand.metaDescription ?: (brand.anons ? brand.anons|slice(0, 155) : (brand.description ? brand.description|striptags|slice(0, 155) : "Купить одежду бренда " ~ brand.title ~ " в каталоге российских брендов одежды. Цены, отзывы, официальные сайты.")) }}{% endblock %}
-
-{% block meta_keywords %}{{ brand.metaKeywords ?: (brand.title ~ ', российский бренд одежды, уличная мода, одежда, купить ' ~ brand.title) }}{% endblock %}
-
-{% block og_title %}{{ brand.metaTitle ?: (brand.title ~ ' - российский бренд одежды | WEARBASE') }}{% endblock %}
-
-{% block og_description %}{{ brand.metaDescription ?: (brand.anons ? brand.anons|slice(0, 155) : (brand.description ? brand.description|striptags|slice(0, 155) : "Одежда и аксессуары бренда " ~ brand.title ~ " в каталоге WEARBASE")) }}{% endblock %}
+{% block title %}{{ _bmt }}{% endblock %}
+{% block meta_description %}{{ _bmd }}{% endblock %}
+{% block meta_keywords %}{{ _bt }}, бренд одежды, уличная мода, купить {{ _bt }}{% endblock %}
+{% block og_title %}{{ _bmt }}{% endblock %}
+{% block og_description %}{{ _bmd }}{% endblock %}
 
 {% block og_image %}{% if brand.logo %}{{ absolute_url(asset('images/logos/' ~ brand.logo)) }}{% else %}{{ absolute_url('/og-image.svg') }}{% endif %}{% endblock %}
 
@@ -30,24 +32,24 @@
                 "inLanguage": "{{ brand.locale|default('ru') }}",
                 "isPartOf": {"@id": "#website"},
                 "breadcrumb": {
-                    "@id": "{{ url('brand_index', {_locale: 'ru'}) }}#breadcrumb"
+                    "@id": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}#breadcrumb"
                 }
             },
             {
                 "@type": "BreadcrumbList",
-                "@id": "{{ url('brand_index', {_locale: 'ru'}) }}#breadcrumb",
+                "@id": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}#breadcrumb",
                 "itemListElement": [
                     {
                         "@type": "ListItem",
                         "position": 1,
                         "name": "Главная",
-                        "item": "{{ url('home_hub', {_locale: 'ru'}) }}"
+                        "item": "{{ url('home_hub', {_locale: app.request.locale|default('ru')}) }}"
                     },
                     {
                         "@type": "ListItem",
                         "position": 2,
                         "name": "Бренды",
-                        "item": "{{ url('brand_index', {_locale: 'ru'}) }}"
+                        "item": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}"
                     },
                     {
                         "@type": "ListItem",
@@ -142,12 +144,13 @@
 
     <div class="container mx-auto px-4 py-10">
         {# Хлебные крошки для SEO #}
+        {% set show_locale = app.request.locale|default('ru') %}
         <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
-            <a href="{{ path('home_hub', {_locale: 'ru'}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <a href="{{ path('home_hub', {_locale: show_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
             <span class="mx-2 text-gray-400">/</span>
-            <a href="{{ path('brand_index', {_locale: 'ru'}) }}" class="text-gray-500 hover:text-gray-900">Бренды</a>
+            <a href="{{ path('brand_index', {_locale: show_locale}) }}" class="text-gray-500 hover:text-gray-900">Бренды</a>
             <span class="mx-2 text-gray-400">/</span>
-            <span class="text-gray-900 font-medium">{{ brand.title }}</span>
+            <span class="text-gray-900 font-medium">{{ _bt }}</span>
         </nav>
 
         {# --- Header бренда --- #}
@@ -165,13 +168,35 @@
                     {% endif %}
 
                     <div class="flex-1 text-center lg:text-left">
-                        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-gray-900">{{ brand.title }}</h1>
+                        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-gray-900">{{ _bt }}</h1>
 
-                        {% if brand.anons %}
+                        {% if _ba %}
                             <p class="text-gray-700 text-xl lg:text-2xl leading-relaxed max-w-3xl mx-auto lg:mx-0 font-light">
-                                {{ brand.anons }}
+                                {{ _ba }}
                             </p>
                         {% endif %}
+
+                        {# CTA «Я владелец» (как в Яндекс.Картах) #}
+                        <div class="mt-6">
+                            {% if app.user and isMemberOfThisBrand %}
+                                <a href="{{ path('brand_dashboard') }}"
+                                   class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition shadow-sm">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                                    </svg>
+                                    Кабинет бренда
+                                </a>
+                            {% else %}
+                                <a href="{{ path('brand_claim_new', {id: brand.id}) }}"
+                                   class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-800 hover:border-gray-900 hover:text-gray-900 transition shadow-sm">
+                                    <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                    </svg>
+                                    Я владелец бренда
+                                </a>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -183,11 +208,11 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
             {# Контент бренда #}
             <div class="lg:col-span-2">
-                {% if brand.description %}
+                {% if _bd %}
                     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
-                        <h2 class="text-2xl font-semibold mb-4">О бренде {{ brand.title }}</h2>
+                        <h2 class="text-2xl font-semibold mb-4">О бренде {{ _bt }}</h2>
                         <div class="prose max-w-none text-gray-700">
-                            {{ brand.description|raw }}
+                            {{ _bd|raw }}
                         </div>
                     </section>
                 {% endif %}
@@ -227,7 +252,7 @@
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {% for product in products %}
                                 <a
-{#                                    href="{{ path('product_show', { slug: product.slug }) }}"#}
+{#                                    href="{{ path('product_show', { uuid: product.uuid }) }}"#}
                                    class="bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition transform hover:-translate-y-1 border">
                                     {% if product.image %}
                                         <img src="{{ asset('uploads/products/' ~ product.image) }}"
@@ -244,7 +269,7 @@
                                     <div class="p-3">
                                         <div class="font-medium truncate text-sm">{{ product.title }}</div>
                                         {% if product.price %}
-                                            <div class="text-indigo-600 font-semibold mt-1">{{ product.price }} ₽</div>
+                                            <div class="text-indigo-600 font-semibold mt-1">{{ price(product.price) }}</div>
                                         {% endif %}
                                     </div>
                                 </a>
@@ -298,7 +323,7 @@
                 {% endif %}
 
                 {# Социальные сети и ссылки #}
-                {% if brand.links %}
+                {% if brand.links|length > 0 %}
                 {% include 'tailwind/brand/links.html.twig' %}
                 {% endif %}
 
@@ -381,7 +406,7 @@
                         </details>
                         <details class="group">
                             <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
-                                <span>Есть ли у бренда {{ brand.title }} sizes для больших размеров?</span>
+                                <span>Есть ли у бренда {{ brand.title }} размеры для больших размеров?</span>
                                 <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                                 </svg>

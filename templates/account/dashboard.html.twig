@@ -1,0 +1,87 @@
+{% extends 'account/layout.html.twig' %}
+{% block title %}Личный кабинет — WEARBASE{% endblock %}
+
+{% block account_content %}
+<h1 class="h4 fw-bold mb-4">Добро пожаловать, {{ app.user.firstName ?: app.user.email }}!</h1>
+
+{# Точка входа для брендов #}
+{% if is_granted('ROLE_BRAND_MANAGER') %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <div class="fw-semibold">Кабинет бренда</div>
+            <div class="text-muted small">Управляйте товарами, заказами, командой и тарифом.</div>
+        </div>
+        <a href="{{ path('brand_dashboard') }}" class="btn btn-dark btn-sm">Перейти в ЛК бренда →</a>
+    </div>
+</div>
+{% else %}
+<div class="card border-0 shadow-sm mb-4 bg-light">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <div class="fw-semibold">Представляете бренд?</div>
+            <div class="text-muted small">Найдите свой бренд в каталоге и нажмите «Я владелец», чтобы заявить права и получить кабинет.</div>
+        </div>
+        <a href="{{ path('brand_index') }}" class="btn btn-outline-dark btn-sm">Найти свой бренд</a>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="display-6 fw-bold">{{ stats.totalOrders }}</div>
+            <div class="text-muted small">Всего заказов</div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="display-6 fw-bold">{{ stats.activeOrders }}</div>
+            <div class="text-muted small">Активных</div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center py-3">
+            <div class="display-6 fw-bold">{{ price(stats.totalSpent) }}</div>
+            <div class="text-muted small">Потрачено</div>
+        </div>
+    </div>
+</div>
+
+{% if recentOrders|length > 0 %}
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        Последние заказы
+        <a href="{{ path('account_orders') }}" class="btn btn-sm btn-outline-dark">Все заказы</a>
+    </div>
+    <div class="list-group list-group-flush">
+        {% for order in recentOrders %}
+        <a href="{{ path('account_order_show', {number: order.orderNumber}) }}"
+           class="list-group-item list-group-item-action py-3">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="fw-semibold">#{{ order.orderNumber }}</div>
+                    <div class="text-muted small">{{ order.brand.title }} · {{ order.createdAt|date('d.m.Y') }}</div>
+                </div>
+                <div class="text-end">
+                    <div class="fw-semibold">{{ price(order.totalAmount) }}</div>
+                    {% set statusLabels = order.getStatusLabels() %}
+                    <span class="badge bg-{{ order.status == 'new' ? 'secondary' : (order.status == 'shipped' ? 'info' : (order.status == 'delivered' or order.status == 'completed' ? 'success' : (order.status == 'cancelled' ? 'danger' : 'primary'))) }}">
+                        {{ statusLabels[order.status] ?? order.status }}
+                    </span>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="fas fa-box-open fa-3x mb-3 opacity-25 d-block"></i>
+        <p>У вас пока нет заказов</p>
+        <a href="{{ path('catalog_index') }}" class="btn btn-dark">Перейти в каталог</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

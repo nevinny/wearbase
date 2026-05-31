@@ -1,0 +1,154 @@
+{% extends 'base.html.twig' %}
+{% block title %}Корзина — WEARBASE{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:960px">
+    <h1 class="h4 fw-bold mb-4">Корзина</h1>
+
+    {% if cart.empty %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center py-5 text-muted">
+                <i class="fas fa-shopping-cart fa-3x mb-3 d-block opacity-25"></i>
+                <p class="mb-3">В корзине пусто</p>
+                <a href="{{ path('catalog_index') }}" class="btn btn-dark px-4">Перейти в каталог</a>
+            </div>
+        </div>
+    {% else %}
+    <div class="row g-4">
+
+        {# Товары #}
+        <div class="col-lg-8">
+            {% for group in groups %}
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white d-flex align-items-center gap-2">
+                    <i class="fas fa-store text-muted" style="font-size:.8rem"></i>
+                    <span class="fw-semibold small">{{ group.brand.title }}</span>
+                </div>
+                <div class="list-group list-group-flush">
+                {% for item in group.items %}
+                <div class="list-group-item py-3 px-4" id="cart-item-{{ item.id }}">
+                    <div class="d-flex align-items-center gap-3">
+
+                        {# Фото #}
+                        {% set img = item.variant.product.mainImage %}
+                        {% if img and img.preview %}
+                            <img src="{{ vich_uploader_asset(img, 'previewFile') }}"
+                                 class="rounded-3 flex-shrink-0"
+                                 style="width:68px;height:68px;object-fit:cover" alt="">
+                        {% else %}
+                            <div class="bg-light rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width:68px;height:68px">
+                                <i class="fas fa-image text-muted"></i>
+                            </div>
+                        {% endif %}
+
+                        {# Описание #}
+                        <div class="flex-grow-1 min-width-0">
+                            <div class="fw-semibold small text-truncate">{{ item.variant.product.title }}</div>
+                            <div class="text-muted" style="font-size:.78rem">{{ item.variant.title }}</div>
+                            <div class="fw-semibold small mt-1">{{ price(item.variant.price) }}</div>
+                        </div>
+
+                        {# Количество #}
+                        <div class="d-flex align-items-center gap-1">
+                            <button class="btn btn-sm btn-outline-secondary qty-btn"
+                                    data-id="{{ item.id }}" data-delta="-1"
+                                    style="width:30px;height:30px;padding:0">−</button>
+                            <span class="fw-semibold text-center qty-val" data-id="{{ item.id }}"
+                                  style="min-width:28px">{{ item.qty }}</span>
+                            <button class="btn btn-sm btn-outline-secondary qty-btn"
+                                    data-id="{{ item.id }}" data-delta="1"
+                                    style="width:30px;height:30px;padding:0">+</button>
+                        </div>
+
+                        {# Сумма + удаление #}
+                        <div class="text-end flex-shrink-0" style="min-width:90px">
+                            <div class="fw-bold small" id="item-total-{{ item.id }}">
+                                {{ price(item.subtotal) }}
+                            </div>
+                            <form method="post" action="{{ path('cart_remove', {itemId: item.id}) }}">
+                                <input type="hidden" name="_token" value="{{ csrf_token('cart') }}">
+                                <button class="btn btn-link text-muted p-0 mt-1" style="font-size:.75rem">
+                                    удалить
+                                </button>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+                {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {# Итог #}
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm sticky-top" style="top:1rem">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3 small text-uppercase" style="letter-spacing:.05em">Итого</h5>
+                    <div class="d-flex justify-content-between small mb-2">
+                        <span class="text-muted">Товары</span>
+                        <span id="cart-total" class="fw-semibold">{{ price(cart.total) }}</span>
+                    </div>
+                    {% if app_currency.code != 'RUB' %}
+                    <div class="text-muted mb-2" style="font-size:.75rem">
+                        ≈ {{ cart.total|number_format(0, '.', ' ') }} ₽
+                    </div>
+                    {% endif %}
+                    <div class="d-flex justify-content-between small mb-4 text-muted">
+                        <span>Доставка</span>
+                        <span>рассчитается при оформлении</span>
+                    </div>
+                    <a href="{{ path('checkout_index') }}" class="btn btn-dark w-100 btn-lg fw-semibold">
+                        Оформить заказ
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Код валюты и символ для обновления через JS (AJAX qty update)
+const currencyCode = '{{ app_currency.code }}';
+const currencySymbol = '{{ app_currency.symbol }}';
+const currencyIsRub = currencyCode === 'RUB';
+const cartCsrf = '{{ csrf_token('cart') }}';
+
+document.querySelectorAll('.qty-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const id    = btn.dataset.id;
+        const delta = +btn.dataset.delta;
+        const span  = document.querySelector(`.qty-val[data-id="${id}"]`);
+        const newQty = Math.max(0, +span.textContent + delta);
+
+        const fd = new FormData();
+        fd.append('qty', newQty);
+        const r = await fetch(`/cart/update/${id}`, { method:'POST', headers:{'X-CSRF-Token': cartCsrf}, body: fd });
+        const data = await r.json();
+
+        if (newQty === 0) {
+            document.getElementById(`cart-item-${id}`)?.remove();
+        } else {
+            span.textContent = newQty;
+        }
+
+        // Обновляем итог — если не RUB, запрашиваем конвертированную сумму
+        if (currencyIsRub) {
+            document.getElementById('cart-total').textContent =
+                data.total.toLocaleString('ru') + ' ₽';
+        } else {
+            fetch(`/currency/api/convert?amount=${data.total}&from=RUB&to=${currencyCode}`)
+                .then(r => r.json())
+                .then(c => {
+                    document.getElementById('cart-total').textContent = c.formatted ?? c.result;
+                });
+        }
+        window.updateCartBadge?.(data.count ?? 0);
+    });
+});
+</script>
+{% endblock %}

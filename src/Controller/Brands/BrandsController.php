@@ -14,7 +14,7 @@ use Symfony\Component\Routing\Annotation\Route;
 
 class BrandsController extends AbstractController
 {
-    #[Route('/{_locale}/brands', name: 'brand_index', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
+    #[Route('/{_locale}/brands', name: 'brand_index', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
     public function brand_index(Request $request, BrandRepository $repo): Response
     {
         $locale = $request->getLocale(); // 'en' или 'ru'
@@ -76,8 +76,9 @@ class BrandsController extends AbstractController
             ->setParameter('active', 'active');
 
         if ($letter) {
-            $totalItemsQb->andWhere('UPPER(SUBSTRING(b.title, 1, 1)) = :letter')
-                ->setParameter('letter', strtoupper($letter));
+            $totalItemsQb->andWhere('UPPER(SUBSTRING(b.title, 1, :letterLen)) = :letter')
+                ->setParameter('letter', mb_strtoupper($letter))
+                ->setParameter('letterLen', mb_strlen($letter));
         }
 
         if ($city) {
@@ -101,8 +102,9 @@ class BrandsController extends AbstractController
             ->setParameter('active', 'active');
 
         if ($letter) {
-            $brandsQb->andWhere('UPPER(SUBSTRING(b.title, 1, 1)) = :letter')
-                ->setParameter('letter', strtoupper($letter));
+            $brandsQb->andWhere('UPPER(SUBSTRING(b.title, 1, :letterLen)) = :letter')
+                ->setParameter('letter', mb_strtoupper($letter))
+                ->setParameter('letterLen', mb_strlen($letter));
         }
 
         if ($city) {
@@ -150,6 +152,24 @@ class BrandsController extends AbstractController
             }
         }
 
+        // Второй уровень: валидные двухбуквенные префиксы для выбранной буквы (напр. WA, WY)
+        $currentFirstLetter = $letter ? mb_strtoupper(mb_substr($letter, 0, 1)) : null;
+        $subLetters = [];
+        if ($currentFirstLetter !== null) {
+            foreach ($lettersQb as $brandData) {
+                $title = $brandData['title'];
+                if (mb_strlen($title) < 2) {
+                    continue;
+                }
+                if (mb_strtoupper(mb_substr($title, 0, 1)) !== $currentFirstLetter) {
+                    continue;
+                }
+                $prefix = mb_strtoupper(mb_substr($title, 0, 2));
+                $subLetters[$prefix] = ($subLetters[$prefix] ?? 0) + 1;
+            }
+            ksort($subLetters);
+        }
+
         // Подставляем популярные бренды, если буква не выбрана
         $featured = [];
         if (!$letter) {
@@ -163,7 +183,9 @@ class BrandsController extends AbstractController
             'featuredBrands' => $featured,
             'alphabets' => $displayAlphabets,
             'foundLetters' => $foundLetters,
+            'subLetters' => $subLetters,
             'currentLetter' => $letter,
+            'currentFirstLetter' => $currentFirstLetter,
             'currentCity' => $city,
             'currentStyle' => $style,
             'locale' => $locale,
@@ -176,12 +198,18 @@ class BrandsController extends AbstractController
 
     #[Route('/{_locale}/brands/{slug}',
         name: 'brand_show',
-        requirements: ['_locale' => 'en|ru'],
+        requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'],
         defaults: ['_locale' => 'ru'])]
-    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo): Response
+    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo): Response
     {
         $demoProducts = $this->createDemoProducts($brand);
         $similarBrands = $brandRepo->findSimilarBrands($brand, 8);
+
+        // Является ли текущий пользователь участником команды ИМЕННО этого бренда
+        $isMemberOfThisBrand = false;
+        if ($this->getUser() !== null) {
+            $isMemberOfThisBrand = $brandUserRepo->findOneBy(['brand' => $brand, 'user' => $this->getUser()]) !== null;
+        }
 
         $brandStyles = $brand->getStyles()->toArray();
         $brandCity = $brand->getCity();
@@ -222,21 +250,26 @@ class BrandsController extends AbstractController
             'similarBrands' => $similarBrands,
             'styles' => $styles,
             'cities' => $cities,
+            'isMemberOfThisBrand' => $isMemberOfThisBrand,
         ]);
     }
 
     #[Route('/', name: 'home', priority: 10)]
-    public function home(): Response
+    public function home(Request $request): Response
     {
-        return $this->redirectToRoute('home_hub', [
-            '_locale' => 'ru'
-        ], 302);
+        // Используем locale из cookie/LocaleListener, fallback — 'ru'
+        $locale = $request->getLocale() ?: 'ru';
+        $supported = ['ru', 'en', 'zh', 'ar', 'tr', 'de', 'fr', 'es', 'ko'];
+        if (!in_array($locale, $supported, true)) {
+            $locale = 'ru';
+        }
+        return $this->redirectToRoute('home_hub', ['_locale' => $locale], 302);
     }
 
-    #[Route('/{_locale}/', name: 'home_hub', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
-    public function homeHub(BrandRepository $repo): Response
+    #[Route('/{_locale}/', name: 'home_hub', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
+    public function homeHub(BrandRepository $repo, Request $request): Response
     {
-        $locale = 'ru';
+        $locale = $request->getLocale();
 
         $featuredBrands = $repo->findFeaturedBrands(12);
         $recentBrands = $repo->findBy(['status' => Statuses::Active], ['created_at' => 'DESC'], 12);
