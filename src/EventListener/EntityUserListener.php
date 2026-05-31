@@ -21,14 +21,11 @@ class EntityUserListener
     public function prePersist(LifecycleEventArgs $event): void
     {
         $entity = $event->getObject();
+        $user   = $this->security->getUser();
 
-        if (method_exists($entity, 'setCreatedBy') && method_exists($entity, 'setUpdatedBy')) {
-            $user = $this->security->getUser();
-            if ($user) {
-                $entity->setCreatedBy($user);
-                $entity->setUpdatedBy($user);
-            }
-        }
+        // blameable-поля могут ждать админского User (Nevinny) — ставим только если тип совпадает
+        $this->setBlameable($entity, 'setCreatedBy', $user);
+        $this->setBlameable($entity, 'setUpdatedBy', $user);
 
         if (method_exists($entity, 'setCreatedAt') && method_exists($entity, 'setUpdatedAt')) {
             $now = new \DateTime();
@@ -41,15 +38,32 @@ class EntityUserListener
     {
         $entity = $event->getObject();
 
-        if (method_exists($entity, 'setUpdatedBy')) {
-            $user = $this->security->getUser();
-            if ($user) {
-                $entity->setUpdatedBy($user);
-            }
-        }
+        $this->setBlameable($entity, 'setUpdatedBy', $this->security->getUser());
 
         if (method_exists($entity, 'setUpdatedAt')) {
             $entity->setUpdatedAt(new \DateTime());
         }
+    }
+
+    /**
+     * Вызывает setCreatedBy/setUpdatedBy только если текущий пользователь
+     * совместим с типом, который принимает сеттер (две разные User-сущности:
+     * App\Entity\User на фронте и Nevinny\AdminCoreBundle\Entity\User в админке).
+     */
+    private function setBlameable(object $entity, string $method, ?object $user): void
+    {
+        if ($user === null || !method_exists($entity, $method)) {
+            return;
+        }
+
+        $type = (new \ReflectionMethod($entity, $method))->getParameters()[0]?->getType();
+        if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
+            $expected = $type->getName();
+            if (!$user instanceof $expected) {
+                return; // тип не подходит — пропускаем (напр. App\User для админского поля)
+            }
+        }
+
+        $entity->{$method}($user);
     }
 }
