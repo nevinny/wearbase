@@ -6,6 +6,12 @@
 parameters:
     app.admin_email: '%env(ADMIN_EMAIL)%'
     app.telegram_bot_username: 'wearbase_bot'
+    # Дефолты опциональных env (чтобы приложение грузилось без записи в .env)
+    env(ADMIN_TELEGRAM_CHAT_ID): ''
+    env(VK_APP_ID): ''
+    env(VK_APP_SECRET): ''
+    env(BRAND_CLAIM_AUTOGRANT_EMAIL): '1'
+    env(BRAND_CLAIM_AUTOGRANT_VK): '1'
 
 services:
     # default configuration for services in *this* file
@@ -29,6 +35,10 @@ services:
     App\Notification\TelegramNotifier:
         arguments:
             $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
+
+    App\Notification\AdminNotifier:
+        arguments:
+            $adminChatId: '%env(ADMIN_TELEGRAM_CHAT_ID)%'
 
     App\Service\PaymentService:
         arguments:
