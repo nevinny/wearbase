@@ -34,6 +34,9 @@ class BrandImage
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $image = null;
 
+    #[ORM\Column(type: 'integer', options: ['default' => 0])]
+    private int $sortOrder = 0;
+
     #[Vich\UploadableField(mapping: 'brand_image_image', fileNameProperty: 'image')]
     private ?File $imageFile = null;
 
@@ -107,5 +110,16 @@ class BrandImage
         if ($file !== null) {
             $this->updated_at = new \DateTime();
         }
+    }
+
+    public function getSortOrder(): int
+    {
+        return $this->sortOrder;
+    }
+
+    public function setSortOrder(int $sortOrder): static
+    {
+        $this->sortOrder = $sortOrder;
+        return $this;
     }
 }

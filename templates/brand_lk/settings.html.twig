@@ -1,0 +1,86 @@
+{% extends 'brand_lk/layout.html.twig' %}
+
+{% block title %}Настройки — {{ brand.title }}{% endblock %}
+
+{% block brand_content %}
+<h4 class="mb-3">Настройки бренда</h4>
+
+<div class="row g-4">
+
+    {# ── Тариф и подписка ── #}
+    <div class="col-12 col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-semibold">
+                <i class="fas fa-credit-card me-2"></i>Тариф и подписка
+            </div>
+            <div class="card-body">
+                {% if subscription %}
+                    <div class="mb-3">
+                        <span class="badge bg-dark fs-6 mb-2">{{ subscription.tariff.name }}</span>
+                        {% if subscription.isOnTrial %}
+                            <span class="badge bg-warning text-dark">Пробный период</span>
+                        {% elseif subscription.status == 'active' %}
+                            <span class="badge bg-success">Активен</span>
+                        {% endif %}
+                        <p class="text-muted small mt-2 mb-0">
+                            Действует до: {{ subscription.currentPeriodEnd|date('d.m.Y') }}
+                        </p>
+                    </div>
+                {% else %}
+                    <div class="text-center py-3">
+                        <p class="text-muted mb-3">У бренда нет активной подписки</p>
+                    </div>
+                {% endif %}
+
+                <hr>
+
+                <h6 class="mb-3">Доступные тарифы</h6>
+                {% for tariff in tariffs %}
+                    <div class="border rounded p-3 mb-2 d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ tariff.name }}</strong>
+                            <span class="text-muted small d-block">{{ tariff.description }}</span>
+                            {% if tariff.maxProducts %}
+                                <small class="text-muted">до {{ tariff.maxProducts }} товаров</small>
+                            {% else %}
+                                <small class="text-muted">безлимит товаров</small>
+                            {% endif %}
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold">
+                                {% if tariff.priceRub > 0 %}
+                                    {{ tariff.priceRub|number_format(0, '.', ' ') }} ₽/мес
+                                {% else %}
+                                    Бесплатно
+                                {% endif %}
+                            </div>
+                            {% if subscription and subscription.tariff.id == tariff.id %}
+                                <span class="badge bg-secondary">Текущий</span>
+                            {% elseif tariff.priceRub > 0 and subscription and subscription.tariff.code == 'free' %}
+                                <form method="post" action="{{ path('payment_subscribe', {subscriptionId: subscription.id}) }}">
+                                    <input type="hidden" name="_token" value="{{ csrf_token('subscribe') }}">
+                                    <button class="btn btn-sm btn-dark mt-1">Перейти</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {# ── Внешний вид ── #}
+    <div class="col-12 col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-semibold">
+                <i class="fas fa-palette me-2"></i>Внешний вид
+            </div>
+            <div class="card-body text-center py-5">
+                <p class="text-muted small">Настройка витрины и отображения бренда</p>
+                <button class="btn btn-outline-secondary btn-sm disabled" disabled>Скоро</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

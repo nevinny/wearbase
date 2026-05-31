@@ -1,0 +1,17 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Заказ #{{ order.orderNumber }} оформлен — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">✅ Заказ принят!</h2>
+<p style="color:#555;line-height:1.6;">
+    Ваш заказ <strong>#{{ order.orderNumber }}</strong>
+    на сумму <strong>{{ price(order.totalAmount) }}</strong> успешно оформлен.
+</p>
+<p style="color:#555;line-height:1.6;">
+    Вы получите уведомление, когда статус заказа изменится.
+</p>
+<p style="text-align:center;">
+    <a href="{{ url('account_order_show', {number: order.orderNumber}) }}" class="btn">
+        Посмотреть заказ
+    </a>
+</p>
+{% endblock %}

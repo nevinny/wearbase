@@ -1,0 +1,14 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Заявка одобрена — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">✅ Заявка одобрена!</h2>
+<p style="color:#555;line-height:1.6;">
+    Поздравляем! Ваша заявка на владение брендом <strong>{{ claim.brand.title }}</strong> одобрена.
+</p>
+<p style="color:#555;line-height:1.6;">
+    Теперь вы можете управлять брендом в личном кабинете.
+</p>
+<p style="text-align:center;">
+    <a href="{{ url('brand_dashboard') }}" class="btn">Перейти в ЛК бренда</a>
+</p>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Новая заявка на бренд — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">📋 Новая заявка на бренд</h2>
+<p style="color:#555;line-height:1.6;">
+    Пользователь <strong>{{ claim.user.email }}</strong> подал заявку на бренд
+    <strong>{{ claim.brand.title }}</strong>.
+</p>
+<p style="color:#555;line-height:1.6;">
+    Комментарий: {{ claim.comment ?? '—' }}
+</p>
+{% if claim.isEmailDomainMatch %}
+<p style="color:#28a745;">✅ Домен email совпадает с доменом бренда</p>
+{% else %}
+<p style="color:#dc3545;">⚠️ Домен email не совпал — требуется проверка</p>
+{% endif %}
+{% endblock %}

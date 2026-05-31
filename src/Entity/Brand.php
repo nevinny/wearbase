@@ -124,7 +124,40 @@ class Brand
      * @var Collection<int, BrandImage>
      */
     #[ORM\OneToMany(targetEntity: BrandImage::class, mappedBy: 'brand', orphanRemoval: true)]
+    #[ORM\OrderBy(['sortOrder' => 'ASC'])]
     private Collection $images;
+
+    /**
+     * @var Collection<int, Subscription>
+     */
+    #[ORM\OneToMany(targetEntity: Subscription::class, mappedBy: 'brand')]
+    private Collection $subscriptions;
+
+    /**
+     * @var Collection<int, BrandStore>
+     */
+    #[ORM\OneToMany(targetEntity: BrandStore::class, mappedBy: 'brand', cascade: ['persist'], orphanRemoval: true)]
+    private Collection $stores;
+
+    // ---- Contact enrichment tracking ----
+
+    /** Когда последний раз запускалось обогащение (NULL = ещё не запускалось) */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $contactEnrichedAt = null;
+
+    /**
+     * Результат последнего обогащения:
+     * 'enriched'  — найден хотя бы сайт или email
+     * 'partial'   — найдено что-то, но неполно
+     * 'not_found' — ничего не нашлось (терминальный статус, не повторяем)
+     * 'error'     — ошибка запроса (можно повторить до 3 раз)
+     */
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $contactStatus = null;
+
+    /** Количество попыток обогащения (для ограничения ретраев по статусу 'error') */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $contactAttempts = 0;
 
     public function __construct()
     {
@@ -135,6 +168,8 @@ class Brand
         $this->tiers = new ArrayCollection();
         $this->links = new ArrayCollection();
         $this->images = new ArrayCollection();
+        $this->subscriptions = new ArrayCollection();
+        $this->stores = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -586,6 +621,93 @@ class Brand
     public function setLocale(string $locale): static
     {
         $this->locale = $locale;
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Subscription>
+     */
+    public function getSubscriptions(): Collection
+    {
+        return $this->subscriptions;
+    }
+
+    public function getActiveSubscription(): ?Subscription
+    {
+        foreach ($this->subscriptions as $subscription) {
+            if ($subscription->isActive()) {
+                return $subscription;
+            }
+        }
+        return null;
+    }
+
+    // ---- BrandStore ----
+
+    /**
+     * @return Collection<int, BrandStore>
+     */
+    public function getStores(): Collection
+    {
+        return $this->stores;
+    }
+
+    public function addStore(BrandStore $store): static
+    {
+        if (!$this->stores->contains($store)) {
+            $this->stores->add($store);
+            $store->setBrand($this);
+        }
+
+        return $this;
+    }
+
+    public function removeStore(BrandStore $store): static
+    {
+        if ($this->stores->removeElement($store)) {
+            if ($store->getBrand() === $this) {
+                $store->setBrand(null);
+            }
+        }
+
+        return $this;
+    }
+
+    // ---- Contact enrichment ----
+
+    public function getContactEnrichedAt(): ?\DateTimeInterface
+    {
+        return $this->contactEnrichedAt;
+    }
+
+    public function setContactEnrichedAt(?\DateTimeInterface $contactEnrichedAt): static
+    {
+        $this->contactEnrichedAt = $contactEnrichedAt;
+
+        return $this;
+    }
+
+    public function getContactStatus(): ?string
+    {
+        return $this->contactStatus;
+    }
+
+    public function setContactStatus(?string $contactStatus): static
+    {
+        $this->contactStatus = $contactStatus;
+
+        return $this;
+    }
+
+    public function getContactAttempts(): int
+    {
+        return $this->contactAttempts;
+    }
+
+    public function setContactAttempts(int $contactAttempts): static
+    {
+        $this->contactAttempts = $contactAttempts;
 
         return $this;
     }

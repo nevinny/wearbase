@@ -1,0 +1,16 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Заявка отклонена — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">❌ Заявка отклонена</h2>
+<p style="color:#555;line-height:1.6;">
+    К сожалению, ваша заявка на владение брендом <strong>{{ claim.brand.title }}</strong> отклонена.
+</p>
+{% if claim.adminNote %}
+<p style="color:#555;line-height:1.6;">
+    Причина: {{ claim.adminNote }}
+</p>
+{% endif %}
+<p style="color:#555;line-height:1.6;">
+    Если у вас есть вопросы, свяжитесь с поддержкой.
+</p>
+{% endblock %}

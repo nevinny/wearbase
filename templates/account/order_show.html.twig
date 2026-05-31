@@ -1,0 +1,181 @@
+{% extends 'account/layout.html.twig' %}
+{% block title %}Заказ #{{ order.orderNumber }} — WEARBASE{% endblock %}
+
+{% block account_content %}
+<div class="d-flex align-items-center gap-3 mb-4">
+    <a href="{{ path('account_orders') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Назад
+    </a>
+    <h1 class="h4 fw-bold mb-0">Заказ #{{ order.orderNumber }}</h1>
+</div>
+
+{# Прогресс статуса #}
+{% set statuses = ['new','confirmed','processing','shipped','delivered','completed'] %}
+{% set statusLabels = order.getStatusLabels() %}
+{% set currentIdx = 0 %}
+{% for s in statuses %}{% if s == order.status %}{% set currentIdx = loop.index0 %}{% endif %}{% endfor %}
+{% if order.status not in ['cancelled','returned','refunded'] %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+        <div class="d-flex justify-content-between position-relative">
+            <div class="position-absolute top-50 start-0 end-0 border-top" style="z-index:0"></div>
+            {% for s in statuses %}
+            {% set isPast = loop.index0 <= currentIdx %}
+            {% set isActive = order.status == s %}
+            <div class="text-center position-relative" style="z-index:1;flex:1">
+                <div class="rounded-circle mx-auto mb-1 d-flex align-items-center justify-content-center
+                    {{ isPast ? 'bg-dark text-white' : 'bg-white border' }}"
+                    style="width:28px;height:28px;font-size:12px">
+                    {{ isPast ? '✓' : '' }}
+                </div>
+                <div class="small {{ isActive ? 'fw-semibold' : 'text-muted' }}" style="font-size:11px">
+                    {{ statusLabels[s] ?? s }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-{{ order.status == 'cancelled' ? 'danger' : 'warning' }} mb-4">
+    <i class="fas fa-{{ order.status == 'cancelled' ? 'times-circle' : 'undo' }} me-2"></i>
+    Статус заказа: <strong>{{ statusLabels[order.status] ?? order.status }}</strong>
+</div>
+{% endif %}
+
+<div class="row g-4">
+    <div class="col-lg-8">
+
+        {# Товары #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white fw-semibold">Товары</div>
+            <div class="list-group list-group-flush">
+                {% for item in order.orderItems %}
+                <div class="list-group-item py-3">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <div class="fw-semibold">{{ item.productTitle }}</div>
+                            <div class="text-muted small">{{ item.variantTitle }}</div>
+                            {% if item.sku %}
+                                <div class="text-muted small">Арт.: {{ item.sku }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-semibold">{{ price(item.total) }}</div>
+                            <div class="text-muted small">{{ price(item.price) }} × {{ item.qty }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        {# История статусов #}
+        {% if order.statusHistory|length > 0 %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-semibold">История статусов</div>
+            <div class="list-group list-group-flush">
+                {% for h in order.statusHistory|reverse %}
+                <div class="list-group-item py-2 small">
+                    <div class="d-flex justify-content-between">
+                        <span>
+                            {% if h.fromStatus %}
+                                {{ statusLabels[h.fromStatus] ?? h.fromStatus }} →
+                            {% endif %}
+                            <strong>{{ statusLabels[h.toStatus] ?? h.toStatus }}</strong>
+                            {% if h.comment %} — {{ h.comment }}{% endif %}
+                        </span>
+                        <span class="text-muted">{{ h.createdAt|date('d.m.Y H:i') }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <div class="col-lg-4">
+
+        {# Итог #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3">Итого</h6>
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="text-muted">Товары</span>
+                    <span>{{ price(order.subtotal) }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Доставка</span>
+                    <span>{{ order.shippingCost == '0' ? 'Бесплатно' : price(order.shippingCost) }}</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between fw-bold">
+                    <span>Итого</span>
+                    <span>{{ price(order.totalAmount) }}</span>
+                </div>
+            </div>
+        </div>
+
+        {# Доставка #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3">Доставка</h6>
+                {% set deliveryLabels = {
+                    'courier': 'Курьер',
+                    'cdek': 'СДЭК',
+                    'boxberry': 'Boxberry',
+                    'pochta': 'Почта России',
+                    'pickup': 'Самовывоз'
+                } %}
+                <div class="small mb-2">
+                    <i class="fas fa-truck me-1 text-muted"></i>
+                    {{ deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod }}
+                </div>
+                {% if order.trackingNumber %}
+                <div class="small">
+                    <i class="fas fa-barcode me-1 text-muted"></i>
+                    Трек: <code>{{ order.trackingNumber }}</code>
+                    {% set trackingUrls = {
+                        'cdek': 'https://www.cdek.ru/ru/tracking?order_id=%s',
+                        'boxberry': 'https://boxberry.ru/tracking/?tracking_id=%s',
+                        'pochta': 'https://www.pochta.ru/tracking#%s',
+                    } %}
+                    {% if trackingUrls[order.deliveryMethod] is defined %}
+                    · <a href="{{ trackingUrls[order.deliveryMethod]|replace({'%s': order.trackingNumber}) }}" target="_blank" class="text-decoration-underline">отследить</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+                <hr class="my-2">
+                <div class="small">
+                    {% set addr = order.shippingAddress %}
+                    <div class="fw-semibold">{{ addr.fullName }}</div>
+                    <div class="text-muted">{{ addr.phone }}</div>
+                    <div class="text-muted">{{ addr.zip ? addr.zip ~ ', ' : '' }}{{ addr.city }}, {{ addr.street }}, д. {{ addr.building }}{{ addr.apartment ? ', кв. ' ~ addr.apartment : '' }}</div>
+                </div>
+            </div>
+        </div>
+
+        {# Оплата #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body small">
+                <h6 class="fw-bold mb-2">Оплата</h6>
+                {% set payLabels = {'card_online': 'Карта онлайн', 'sbp': 'СБП', 'upon_receipt': 'При получении'} %}
+                {{ payLabels[order.paymentMethod] ?? order.paymentMethod }}
+            </div>
+        </div>
+
+        {# Отмена #}
+        {% if order.canBeCancelledByCustomer() %}
+        <form method="post" action="{{ path('account_order_cancel', {number: order.orderNumber}) }}"
+              onsubmit="return confirm('Отменить заказ?')">
+            <input type="hidden" name="_token" value="{{ csrf_token('cancel_order') }}">
+            <button type="submit" class="btn btn-outline-danger w-100">
+                <i class="fas fa-times me-1"></i>Отменить заказ
+            </button>
+        </form>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}

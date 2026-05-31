@@ -1,0 +1,212 @@
+{% extends 'brand_lk/layout.html.twig' %}
+{% block title %}Заказ #{{ order.orderNumber }}{% endblock %}
+
+{% block brand_content %}
+<div class="d-flex align-items-center gap-3 mb-4">
+    <a href="{{ path('brand_orders') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Заказы
+    </a>
+    <h1 class="h5 fw-bold mb-0">#{{ order.orderNumber }}</h1>
+    <span class="badge fs-6 bg-{{ order.status == 'new' ? 'danger' : (order.status == 'shipped' ? 'info' : (order.status == 'completed' ? 'success' : 'secondary')) }}">
+        {{ status_labels[order.status] ?? order.status }}
+    </span>
+</div>
+
+<div class="row g-4">
+
+    {# ── Основная информация ── #}
+    <div class="col-lg-8">
+
+        {# Товары #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white fw-semibold">Состав заказа</div>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Товар</th>
+                            <th>Вариант</th>
+                            <th>Арт.</th>
+                            <th class="text-center">Кол-во</th>
+                            <th class="text-end">Сумма</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in order.orderItems %}
+                    <tr>
+                        <td class="fw-semibold">{{ item.productTitle }}</td>
+                        <td class="text-muted small">{{ item.variantTitle }}</td>
+                        <td class="text-muted small">{{ item.sku }}</td>
+                        <td class="text-center">{{ item.qty }}</td>
+                        <td class="fw-semibold text-end">{{ price(item.total) }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <td colspan="4" class="text-end text-muted small">Товары</td>
+                            <td class="fw-semibold text-end">{{ price(order.subtotal) }}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="4" class="text-end text-muted small">Доставка</td>
+                            <td class="fw-semibold text-end">{{ price(order.shippingCost) }}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="4" class="text-end fw-bold">Итого</td>
+                            <td class="fw-bold text-end fs-6">{{ price(order.totalAmount) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        {# Покупатель #}
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white fw-semibold">Покупатель</div>
+            <div class="card-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <span class="label-caps">Имя</span>
+                        <div class="small">{{ order.shippingAddress.fullName ?? order.customer.fullName }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <span class="label-caps">Телефон</span>
+                        <div class="small">{{ order.shippingAddress.phone ?? order.customer.phone ?? '—' }}</div>
+                    </div>
+                    <div class="col-12">
+                        <span class="label-caps">Адрес доставки</span>
+                        <div class="small">
+                            {% set a = order.shippingAddress %}
+                            {{ [a.zip, a.city, a.street, a.building ? 'д.' ~ a.building : '', a.apartment ? 'кв.' ~ a.apartment : '']|filter(v => v)|join(', ') }}
+                        </div>
+                    </div>
+                    {% if order.customerNote %}
+                    <div class="col-12">
+                        <span class="label-caps">Комментарий покупателя</span>
+                        <div class="small fst-italic text-muted">{{ order.customerNote }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# История статусов #}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-semibold">История статусов</div>
+            <ul class="list-group list-group-flush">
+                {% for h in order.statusHistory %}
+                <li class="list-group-item d-flex justify-content-between align-items-start px-4 py-3">
+                    <div class="small">
+                        {% if h.fromStatus %}
+                            <span class="text-muted">{{ status_labels[h.fromStatus] ?? h.fromStatus }}</span>
+                            <i class="fas fa-arrow-right mx-1 text-muted" style="font-size:.65rem"></i>
+                        {% endif %}
+                        <span class="fw-semibold">{{ status_labels[h.toStatus] ?? h.toStatus }}</span>
+                        {% if h.comment %}
+                            <div class="text-muted mt-1">{{ h.comment }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="text-muted text-nowrap ms-3" style="font-size:.75rem">
+                        {{ h.createdAt|date('d.m H:i') }}
+                        {% if h.createdBy %}<br>{{ h.createdBy.fullName }}{% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+    </div>
+
+    {# ── Боковая панель ── #}
+    <div class="col-lg-4 d-flex flex-column gap-3">
+
+        {# Статус и оплата #}
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="mb-3">
+                    <span class="label-caps">Статус заказа</span>
+                    <span class="badge bg-{{ order.status == 'new' ? 'danger' : (order.status == 'shipped' ? 'info' : (order.status == 'completed' ? 'success' : 'secondary')) }}">
+                        {{ status_labels[order.status] ?? order.status }}
+                    </span>
+                </div>
+                <div class="mb-3">
+                    <span class="label-caps">Оплата</span>
+                    <div class="{{ order.paid ? 'text-success' : 'text-warning' }} fw-semibold small">
+                        <i class="fas fa-{{ order.paid ? 'check-circle' : 'clock' }} me-1"></i>
+                        {{ order.paid ? 'Оплачен' : 'Ожидает оплаты' }}
+                    </div>
+                </div>
+                <div>
+                    <span class="label-caps">Доставка</span>
+                    <div class="small">{{ order.deliveryMethod ?? '—' }}</div>
+                </div>
+            </div>
+        </div>
+
+        {# Изменить статус #}
+        {% if allowed_statuses|length > 0 %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-semibold">Изменить статус</div>
+            <div class="card-body p-4">
+                <form method="post" action="{{ path('brand_order_status', {id: order.id}) }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('order_status') }}">
+                    <div class="mb-3">
+                        <label class="label-caps">Новый статус</label>
+                        <select name="status" class="form-select">
+                            {% for s in allowed_statuses %}
+                                <option value="{{ s }}">{{ status_labels[s] ?? s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="label-caps">Комментарий</label>
+                        <textarea name="comment" class="form-control" rows="2"
+                                  placeholder="Необязательно"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-dark btn-sm w-100">Обновить статус</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {# Трекинг #}
+        {% if order.status in ['confirmed', 'processing'] or (order.status == 'shipped' and not order.trackingNumber) %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-semibold">Отправить заказ</div>
+            <div class="card-body p-4">
+                <form method="post" action="{{ path('brand_order_ship', {id: order.id}) }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('ship_order') }}">
+                    <div class="mb-3">
+                        <label class="label-caps">Трекинг-номер</label>
+                        <input type="text" name="tracking_number" class="form-control"
+                               value="{{ order.trackingNumber }}"
+                               placeholder="CD123456789RU">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fas fa-truck me-1"></i>Отметить как отправлен
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% elseif order.trackingNumber %}
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <span class="label-caps">Трекинг-номер</span>
+                <code class="d-block mt-1">{{ order.trackingNumber }}</code>
+            </div>
+        </div>
+        {% endif %}
+
+        {# Заметка #}
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-semibold">Внутренняя заметка</div>
+            <div class="card-body p-4">
+                <div class="text-muted small mb-2">Не видна покупателю</div>
+                <textarea class="form-control" rows="3" id="admin-note">{{ order.adminNote }}</textarea>
+                <button class="btn btn-outline-secondary btn-sm w-100 mt-2" id="save-note">Сохранить</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

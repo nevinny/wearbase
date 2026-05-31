@@ -1,0 +1,100 @@
+{% extends 'brand_lk/layout.html.twig' %}
+{% block title %}Команда — {{ brand.title }} — WEARBASE{% endblock %}
+
+{% block brand_content %}
+<h1 class="h5 fw-bold mb-4">Команда</h1>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+                Участники
+                <span class="badge bg-secondary">{{ members|length }}</span>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for member in members %}
+                <div class="list-group-item py-3 px-4">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center gap-3">
+                            {% if member.user.avatar %}
+                                <img src="{{ vich_uploader_asset(member.user, 'avatarFile') }}"
+                                     class="rounded-circle flex-shrink-0" width="38" height="38"
+                                     style="object-fit:cover" alt="">
+                            {% else %}
+                                <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center flex-shrink-0"
+                                     style="width:38px;height:38px;font-size:14px">
+                                    {{ (member.user.firstName ?: member.user.email)|first|upper }}
+                                </div>
+                            {% endif %}
+                            <div>
+                                <div class="fw-semibold small">{{ member.user.fullName }}</div>
+                                <div class="text-muted" style="font-size:.78rem">{{ member.user.email }}</div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="badge {{ member.role == 'owner' ? 'bg-dark' : 'bg-light text-dark border' }}">
+                                {{ member.role == 'owner' ? 'Владелец' : 'Менеджер' }}
+                            </span>
+                            {% if member.user != app.user and member.role != 'owner' %}
+                            <form method="post"
+                                  action="{{ path('brand_team_member_remove', {id: member.id}) }}"
+                                  onsubmit="return confirm('Удалить участника из команды?')">
+                                <input type="hidden" name="_token" value="{{ csrf_token('remove_member') }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="list-group-item py-5 text-center text-muted">
+                    <i class="fas fa-users fa-2x mb-2 d-block opacity-25"></i>
+                    Нет участников
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+
+    <div class="col-lg-4 d-flex flex-column gap-3">
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white fw-semibold">Пригласить участника</div>
+            <div class="card-body p-4">
+                <form method="post" action="{{ path('brand_team_invite') }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('invite_team') }}">
+                    <div class="mb-3">
+                        <label class="label-caps">Email</label>
+                        <input type="email" name="email" class="form-control"
+                               placeholder="user@example.com" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="label-caps">Роль</label>
+                        <select name="role" class="form-select">
+                            <option value="manager">Менеджер</option>
+                            <option value="owner">Владелец</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-dark w-100">
+                        <i class="fas fa-paper-plane me-1"></i>Отправить приглашение
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="d-flex gap-2 text-muted small">
+                    <i class="fas fa-info-circle mt-1 flex-shrink-0"></i>
+                    <span>Приглашение действует 7 дней. Пользователь получит ссылку на email и сможет присоединиться к команде бренда.</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

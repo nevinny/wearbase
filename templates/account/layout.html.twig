@@ -1,0 +1,86 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+<div class="container py-4">
+    <div class="row g-4">
+
+        {# ── Боковое меню ── #}
+        <div class="col-md-3 col-lg-2">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body px-3 py-3">
+                    {% set u = app.user %}
+                    <div class="d-flex align-items-center gap-2 mb-3 px-1">
+                        {% if u.avatar %}
+                            <img src="{{ vich_uploader_asset(u, 'avatarFile') }}"
+                                 class="rounded-circle flex-shrink-0" width="36" height="36"
+                                 style="object-fit:cover" alt="">
+                        {% else %}
+                            <div class="rounded-circle bg-dark text-white d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width:36px;height:36px;font-size:14px">
+                                {{ (u.firstName ?: u.email)|first|upper }}
+                            </div>
+                        {% endif %}
+                        <div class="small fw-semibold text-truncate lh-sm">{{ u.fullName }}</div>
+                    </div>
+
+                    {% set route = app.request.attributes.get('_route') %}
+                    <nav class="account-nav nav flex-column gap-1">
+                        <a class="nav-link {{ route == 'account_dashboard' ? 'active' : '' }}"
+                           href="{{ path('account_dashboard') }}">
+                            <i class="fas fa-home me-2"></i>Главная
+                        </a>
+                        <a class="nav-link {{ route starts with 'account_notification' ? 'active' : '' }}"
+                           href="{{ path('account_notification_index') }}">
+                            <i class="fas fa-bell me-2"></i>Уведомления
+                            <span class="badge bg-danger rounded-pill float-end" id="notification-count" style="font-size:.65rem">{{ unreadCount|default(0) }}</span>
+                        </a>
+                        <a class="nav-link {{ route == 'account_notification_settings' ? 'active' : '' }}"
+                           href="{{ path('account_notification_settings') }}">
+                            <i class="fas fa-cog me-2"></i>Настройки уведомлений
+                        </a>
+                        <a class="nav-link {{ route starts with 'account_order' ? 'active' : '' }}"
+                           href="{{ path('account_orders') }}">
+                            <i class="fas fa-box me-2"></i>Мои заказы
+                        </a>
+                        <a class="nav-link {{ route == 'account_favorites' ? 'active' : '' }}"
+                           href="{{ path('account_favorites') }}">
+                            <i class="fas fa-heart me-2"></i>Избранное
+                        </a>
+                        <a class="nav-link {{ route starts with 'account_address' ? 'active' : '' }}"
+                           href="{{ path('account_addresses') }}">
+                            <i class="fas fa-map-marker-alt me-2"></i>Адреса
+                        </a>
+                        <a class="nav-link {{ route == 'account_profile' ? 'active' : '' }}"
+                           href="{{ path('account_profile') }}">
+                            <i class="fas fa-user me-2"></i>Профиль
+                        </a>
+                        <a class="nav-link {{ route == 'account_security' ? 'active' : '' }}"
+                           href="{{ path('account_security') }}">
+                            <i class="fas fa-lock me-2"></i>Безопасность
+                        </a>
+                        <hr class="my-2 opacity-25">
+                        <a class="nav-link text-muted" href="{{ path('app_logout') }}">
+                            <i class="fas fa-sign-out-alt me-2"></i>Выйти
+                        </a>
+                    </nav>
+                </div>
+            </div>
+        </div>
+
+        {# ── Основной контент ── #}
+        <div class="col-md-9 col-lg-10">
+            {% for type, messages in app.flashes %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ type == 'error' ? 'danger' : type }} alert-dismissible fade show border-0 rounded-3" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endfor %}
+
+            {% block account_content %}{% endblock %}
+        </div>
+
+    </div>
+</div>
+{% endblock %}

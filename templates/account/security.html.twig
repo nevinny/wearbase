@@ -1,0 +1,42 @@
+{% extends 'account/layout.html.twig' %}
+
+{% block title %}Безопасность — WEARBASE{% endblock %}
+
+{% block account_content %}
+<h4 class="mb-3">Безопасность</h4>
+
+<form method="post" class="row g-3">
+    <input type="hidden" name="_token" value="{{ csrf_token('change_password') }}">
+    <div class="col-12 col-md-6">
+        <label class="form-label">Текущий пароль</label>
+        <input type="password" name="current_password" class="form-control" required>
+    </div>
+
+    <div class="col-12 col-md-6">
+        <label class="form-label">Новый пароль</label>
+        <input type="password" name="new_password" class="form-control" required minlength="6">
+    </div>
+
+    <div class="col-12">
+        <hr>
+        <h5>Telegram-уведомления</h5>
+        <p class="text-muted small mb-2">
+            Получайте уведомления о заказах и других событиях в Telegram.
+        </p>
+        {% if user.telegramChatId %}
+            <span class="badge bg-success">Telegram подключён</span>
+            <p class="text-muted small mt-2">Chat ID: {{ user.telegramChatId }}</p>
+            <input type="hidden" name="telegram_chat_id" value="{{ user.telegramChatId }}">
+        {% elseif telegramLink %}
+            <a href="{{ telegramLink }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                <i class="fab fa-telegram me-1"></i>Привязать Telegram
+            </a>
+            <p class="text-muted small mt-2">Ссылка действительна однократно. После отправки сообщения боту вернитесь на эту страницу.</p>
+        {% endif %}
+    </div>
+
+    <div class="col-12">
+        <button type="submit" class="btn btn-dark">Сохранить</button>
+    </div>
+</form>
+{% endblock %}
