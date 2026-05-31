@@ -7,13 +7,56 @@ vich_uploader:
             uri_prefix: /images/logos
             upload_destination: '%kernel.project_dir%/public_html/images/logos'
             namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
+            # Лого хранятся плоско: все существующие 300+ лежат в корне images/logos,
+            # и публичные шаблоны рендерят их как asset('images/logos/' ~ brand.logo).
+            # directory_namer убран — иначе файл уходит в подкаталог и не находится.
 
         brand_image_preview:
             uri_prefix: /images/brands
             upload_destination: '%kernel.project_dir%/public_html/images/brands'
             namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
+            directory_namer:
+                service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer
+                options:
+                    chars_per_dir: 2
+                    dirs: 2
 
         brand_image_image:
             uri_prefix: /images/brands
             upload_destination: '%kernel.project_dir%/public_html/images/brands'
             namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
+            directory_namer:
+                service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer
+                options:
+                    chars_per_dir: 2
+                    dirs: 2
+
+        product_image_preview:
+            uri_prefix: /images/products
+            upload_destination: '%kernel.project_dir%/public_html/images/products'
+            namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
+            directory_namer:
+                service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer
+                options:
+                    chars_per_dir: 2
+                    dirs: 2
+
+        product_image_image:
+            uri_prefix: /images/products
+            upload_destination: '%kernel.project_dir%/public_html/images/products'
+            namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
+            directory_namer:
+                service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer
+                options:
+                    chars_per_dir: 2
+                    dirs: 2
+
+        user_avatar:
+            uri_prefix: /images/avatars
+            upload_destination: '%kernel.project_dir%/public_html/images/avatars'
+            namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
+            directory_namer:
+                service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer
+                options:
+                    chars_per_dir: 2
+                    dirs: 2
