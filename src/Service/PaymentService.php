@@ -9,6 +9,7 @@ use App\Entity\Notification;
 use App\Entity\Order;
 use App\Entity\Payment;
 use App\Entity\Subscription;
+use App\Notification\AdminNotifier;
 use App\Notification\NotificationDispatcher;
 use Doctrine\ORM\EntityManagerInterface;
 use YooKassa\Client;
@@ -33,6 +34,7 @@ readonly class PaymentService
     public function __construct(
         private EntityManagerInterface $em,
         private NotificationDispatcher $notifier,
+        private AdminNotifier $admin,
         string $shopId,
         string $secretKey,
     ) {
@@ -275,6 +277,17 @@ readonly class PaymentService
         }
 
         $this->em->flush();
+
+        if ($status === 'succeeded' && $payment->getStatus() === Payment::STATUS_PAID) {
+            $sub = $payment->getSubscription();
+            $this->admin->send(sprintf(
+                "💰 <b>Оплата подписки</b>\nБренд «%s», тариф %s\nСумма: %s ₽",
+                htmlspecialchars((string) $sub?->getBrand()?->getTitle(), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars((string) $sub?->getTariff()?->getCode(), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($payment->getAmount(), ENT_QUOTES, 'UTF-8'),
+            ));
+        }
+
         return true;
     }
 
@@ -353,6 +366,15 @@ readonly class PaymentService
         }
 
         $this->em->flush();
+
+        if ($status === 'succeeded' && $payment->getStatus() === Payment::STATUS_PAID) {
+            $this->admin->send(sprintf(
+                "💰 <b>Оплата заказа(ов)</b> %s\nСумма: %s ₽",
+                htmlspecialchars($orderNumbersStr, ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($payment->getAmount(), ENT_QUOTES, 'UTF-8'),
+            ));
+        }
+
         return true;
     }
 }
