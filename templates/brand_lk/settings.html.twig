@@ -59,6 +59,7 @@
                             {% elseif tariff.priceRub > 0 and subscription and subscription.tariff.code == 'free' %}
                                 <form method="post" action="{{ path('payment_subscribe', {subscriptionId: subscription.id}) }}">
                                     <input type="hidden" name="_token" value="{{ csrf_token('subscribe') }}">
+                                    <input type="hidden" name="tariff_id" value="{{ tariff.id }}">
                                     <button class="btn btn-sm btn-dark mt-1">Перейти</button>
                                 </form>
                             {% endif %}

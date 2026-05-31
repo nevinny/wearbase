@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Entity\BrandUser;
 use App\Entity\Subscription;
+use App\Entity\Tariff;
 use App\Repository\BrandUserRepository;
 use App\Service\PaymentService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -70,11 +71,18 @@ class PaymentController extends AbstractController
             return $this->redirectToRoute('brand_setting');
         }
 
+        // Целевой (выбранный) тариф
+        $tariff = $em->getRepository(Tariff::class)->find((int) $request->request->get('tariff_id'));
+        if (!$tariff || !$tariff->isActive() || (float) $tariff->getPriceRub() <= 0) {
+            $this->addFlash('error', 'Тариф недоступен');
+            return $this->redirectToRoute('brand_setting');
+        }
+
         $brand = $subscription->getBrand();
         $returnUrl = $this->generateUrl('brand_setting', [], UrlGeneratorInterface::ABSOLUTE_URL);
-        $description = sprintf('Подписка %s — %s', $subscription->getTariff()?->getName(), $brand?->getTitle());
+        $description = sprintf('Подписка %s — %s', $tariff->getName(), $brand?->getTitle());
 
-        $paymentUrl = $paymentService->createSubscriptionPayment($subscription, $returnUrl, $description);
+        $paymentUrl = $paymentService->createSubscriptionPayment($subscription, $tariff, $returnUrl, $description);
 
         if ($paymentUrl === null) {
             $this->addFlash('error', 'Не удалось создать платёж');

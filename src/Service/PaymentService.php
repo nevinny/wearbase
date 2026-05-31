@@ -9,6 +9,7 @@ use App\Entity\Notification;
 use App\Entity\Order;
 use App\Entity\Payment;
 use App\Entity\Subscription;
+use App\Entity\Tariff;
 use App\Notification\AdminNotifier;
 use App\Notification\NotificationDispatcher;
 use Doctrine\ORM\EntityManagerInterface;
@@ -84,21 +85,23 @@ readonly class PaymentService
 
     // ── Subscription payments ───────────────────────────────
 
-    public function createSubscriptionPayment(Subscription $subscription, string $returnUrl, string $description): ?string
+    /**
+     * Создаёт платёж за переход на выбранный (целевой) тариф.
+     * Цена берётся из $tariff, а не из текущего тарифа подписки.
+     */
+    public function createSubscriptionPayment(Subscription $subscription, Tariff $tariff, string $returnUrl, string $description): ?string
     {
-        $tariff = $subscription->getTariff();
-        if (!$tariff || (float) $tariff->getPriceRub() <= 0) {
+        if ((float) $tariff->getPriceRub() <= 0) {
             return null;
         }
 
-        $brand = $subscription->getBrand();
         $payment = new Payment();
         $payment->setSubscription($subscription);
         $payment->setAmount($tariff->getPriceRub());
         $payment->setCurrency('RUB');
 
         try {
-            $idempotenceKey = sprintf('sub-%d-%s', $subscription->getId(), $subscription->getCurrentPeriodStart()->format('Y-m-d'));
+            $idempotenceKey = sprintf('sub-%d-tariff-%d-%s', $subscription->getId(), $tariff->getId(), $subscription->getCurrentPeriodStart()->format('Y-m-d'));
             $response = $this->client->createPayment([
                 'amount' => [
                     'value'    => $tariff->getPriceRub(),
@@ -112,6 +115,7 @@ readonly class PaymentService
                 'description' => $description,
                 'metadata' => [
                     'subscription_id' => $subscription->getId(),
+                    'tariff_id'       => $tariff->getId(),
                     'payment_type'    => 'subscription',
                 ],
             ], $idempotenceKey);
@@ -210,7 +214,7 @@ readonly class PaymentService
             }
 
             if ($paymentType === 'subscription') {
-                return $this->handleSubscriptionPayment($bodyPaymentId, $status, $confirmedAmount);
+                return $this->handleSubscriptionPayment($bodyPaymentId, $status, $metadata, $confirmedAmount);
             }
 
             if ($paymentType === 'order') {
@@ -238,7 +242,7 @@ readonly class PaymentService
         return true;
     }
 
-    private function handleSubscriptionPayment(string $paymentId, string $status, object $confirmedAmount): bool
+    private function handleSubscriptionPayment(string $paymentId, string $status, array $metadata, object $confirmedAmount): bool
     {
         $payment = $this->em->getRepository(Payment::class)->findOneBy(['gatewayPaymentId' => $paymentId]);
         if (!$payment) {
@@ -263,11 +267,17 @@ readonly class PaymentService
             $subscription = $payment->getSubscription();
             if ($subscription) {
                 $now = new \DateTimeImmutable();
+                // Апгрейд на оплаченный тариф
+                $tariffId = $metadata['tariff_id'] ?? null;
+                if ($tariffId) {
+                    $tariff = $this->em->getRepository(Tariff::class)->find((int) $tariffId);
+                    if ($tariff) {
+                        $subscription->setTariff($tariff);
+                    }
+                }
                 $subscription->setCurrentPeriodStart($now);
                 $subscription->setCurrentPeriodEnd($now->modify('+1 month'));
-                if ($subscription->isOnTrial()) {
-                    $subscription->setStatus(Subscription::STATUS_ACTIVE);
-                }
+                $subscription->setStatus(Subscription::STATUS_ACTIVE);
             }
         } elseif (in_array($status, ['canceled', 'failed'], true)) {
             if ($payment->getStatus() === Payment::STATUS_PAID) {
