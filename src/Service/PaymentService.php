@@ -13,6 +13,7 @@ use App\Entity\Tariff;
 use App\Notification\AdminNotifier;
 use App\Notification\NotificationDispatcher;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use YooKassa\Client;
 use YooKassa\Model\Notification\NotificationEventType;
 use YooKassa\Model\Notification\NotificationFactory;
@@ -36,11 +37,18 @@ readonly class PaymentService
         private EntityManagerInterface $em,
         private NotificationDispatcher $notifier,
         private AdminNotifier $admin,
-        string $shopId,
-        string $secretKey,
+        private LoggerInterface $logger,
+        private string $shopId,
+        private string $secretKey,
     ) {
         $this->client = new Client();
         $this->client->setAuth($shopId, $secretKey);
+    }
+
+    /** Настроены ли реквизиты платёжного шлюза. */
+    public function isConfigured(): bool
+    {
+        return $this->shopId !== '' && $this->secretKey !== '';
     }
 
     public static function isYooIp(string $ip): bool
@@ -126,7 +134,8 @@ readonly class PaymentService
             $this->em->flush();
 
             return $response->getConfirmation()->getConfirmationUrl();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            $this->logger->error('YooKassa: ошибка создания платежа', ['exception' => $e]);
             return null;
         }
     }
@@ -184,7 +193,8 @@ readonly class PaymentService
             $this->em->flush();
 
             return $response->getConfirmation()->getConfirmationUrl();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            $this->logger->error('YooKassa: ошибка создания платежа', ['exception' => $e]);
             return null;
         }
     }
@@ -222,7 +232,8 @@ readonly class PaymentService
             }
 
             return false;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            $this->logger->error('YooKassa: ошибка обработки webhook', ['exception' => $e]);
             return false;
         }
     }

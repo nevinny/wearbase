@@ -282,6 +282,11 @@ class CheckoutController extends AbstractController
                     $redirectResponse = $this->redirect($paymentUrl);
                     return;
                 }
+
+                // Платёж не инициализирован — заказ создан, информируем покупателя
+                $this->addFlash('warning', $paymentService->isConfigured()
+                    ? 'Платёжный шлюз временно недоступен — заказ создан, мы свяжемся с вами для оплаты.'
+                    : 'Онлайн-оплата пока не настроена — заказ создан, мы свяжемся с вами.');
             }
 
             if (count($createdOrders) === 1) {

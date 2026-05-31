@@ -85,7 +85,9 @@ class PaymentController extends AbstractController
         $paymentUrl = $paymentService->createSubscriptionPayment($subscription, $tariff, $returnUrl, $description);
 
         if ($paymentUrl === null) {
-            $this->addFlash('error', 'Не удалось создать платёж');
+            $this->addFlash('error', $paymentService->isConfigured()
+                ? 'Платёжный шлюз временно недоступен. Попробуйте позже.'
+                : 'Онлайн-оплата пока не настроена. Обратитесь в поддержку.');
             return $this->redirectToRoute('brand_setting');
         }
 
