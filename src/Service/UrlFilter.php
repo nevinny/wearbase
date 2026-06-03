@@ -24,13 +24,25 @@ class UrlFilter
      */
     private const SELF = ['wearbase.ru', 'russianstreetwear.club'];
 
+    /**
+     * Job-/рекрутинг-агрегаторы: упоминают бренд как РАБОТОДАТЕЛЯ (вакансии, зарплаты,
+     * отзывы сотрудников), а не как fashion-бренд. Проходят co-occurrence фильтр
+     * ("{бренд} магазин одежды" в тексте вакансии) → шум в корпусе. Не парсим.
+     * @var string[]
+     */
+    private const JOB_NOISE = [
+        'hh.ru', 'headhunter.ru', 'superjob.ru', 'rabota.ru', 'zarplata.ru',
+        'trudvsem.ru', 'jobfilter.ru', 'dreamjob.ru', 'gorodrabot.ru',
+        'jooble.org', 'trud.com', 'joblab.ru', 'gorabota.ru', 'rabotavgorode.ru',
+    ];
+
     /** @var string[] */
     private array $excluded;
 
     public function __construct(string $extraExcludedDomains = '')
     {
         $extra = array_filter(array_map('trim', explode(',', strtolower($extraExcludedDomains))));
-        $this->excluded = array_merge(self::SELF, $extra);
+        $this->excluded = array_merge(self::SELF, self::JOB_NOISE, $extra);
     }
 
     public function isExcluded(string $url): bool
