@@ -16,8 +16,13 @@ namespace App\Service;
  */
 class UrlFilter
 {
-    /** @var string[] собственные домены — НИКОГДА не скрейпим */
-    private const SELF = ['wearbase.ru'];
+    /**
+     * Собственные домены и источники-ОСНОВЫ нашего каталога — НИКОГДА не скрейпим
+     * (иначе скармливаем модели свои же данные → самозагрязнение).
+     * russianstreetwear.club — каталог, на котором строился наш (сейчас разросся).
+     * @var string[]
+     */
+    private const SELF = ['wearbase.ru', 'russianstreetwear.club'];
 
     /** @var string[] */
     private array $excluded;
