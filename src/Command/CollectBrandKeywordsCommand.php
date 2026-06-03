@@ -24,9 +24,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * ВАЖНО: у Yandex Cloud Wordstat жёсткая квота 100 запросов/ЧАС на аккаунт.
  * Троттлинг ~37с/запрос (≤97/час). НЕ шардить параллельно — квота общая на аккаунт,
- * параллель только быстрее исчерпает её. При исчерпании команда останавливается
- * (resumable — добор при следующем запуске). Если поднять квоту в Yandex Cloud —
- * уменьшить SLEEP_BETWEEN_MS.
+ * параллель только быстрее исчерпает её. При исчерпании команда САМА встаёт на
+ * паузу (10 мин) и повторяет тот же бренд, пока окно квоты не восстановится —
+ * перезапуск не нужен, можно оставить в окне на долгий прогон. Если поднять квоту
+ * в Yandex Cloud — уменьшить SLEEP_BETWEEN_MS.
  *
  *   php bin/console app:brand:keywords --id=42 --dry-run
  *   php bin/console app:brand:keywords 100000 --quiet >> var/log/kw.log 2>&1 &
@@ -39,6 +40,9 @@ class CollectBrandKeywordsCommand extends Command
 {
     // Wordstat: жёсткая квота 100 запросов/ЧАС. 37с между запросами → ≤97/час.
     private const SLEEP_BETWEEN_MS = 37000;
+    // На исчерпании квоты — пауза и повтор того же бренда, пока окно не восстановится.
+    private const QUOTA_PAUSE_SEC  = 600;   // 10 мин между попытками
+    private const QUOTA_MAX_PAUSES = 24;    // предохранитель (~4 ч), потом стоп
 
     private int $withKeywords = 0;
     private int $totalKeywords = 0;
@@ -94,7 +98,7 @@ class CollectBrandKeywordsCommand extends Command
                 $io->error("Бренд ID {$brandId} не найден.");
                 return Command::FAILURE;
             }
-            $this->processBrand($brand, $io, $dryRun, $force);
+            $this->processWithQuotaPause((int) $brandId, $io, $dryRun, $force);
             $this->printResults($io);
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
         }
@@ -116,14 +120,11 @@ class CollectBrandKeywordsCommand extends Command
         $io->progressStart(count($brandIds));
 
         foreach ($brandIds as $id) {
-            $brand = $this->em->find(Brand::class, $id);
-            if ($brand) {
-                $this->processBrand($brand, $io, $dryRun, $force);
-            }
+            $this->processWithQuotaPause((int) $id, $io, $dryRun, $force);
             $io->progressAdvance();
-            if ($this->quotaExhausted) {
+            if ($this->quotaExhausted) {  // сработал предохранитель QUOTA_MAX_PAUSES
                 $io->progressFinish();
-                $io->warning('Квота Wordstat (100/час) исчерпана — остановка. Запусти позже, доберёт оставшиеся (resumable).');
+                $io->warning('Квота Wordstat не восстановилась за лимит попыток — остановка (resumable).');
                 $this->printResults($io);
                 return Command::SUCCESS;
             }
@@ -134,6 +135,32 @@ class CollectBrandKeywordsCommand extends Command
         $this->printResults($io);
 
         return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /** Обрабатывает бренд; при исчерпании квоты — пауза и повтор ТОГО ЖЕ бренда. */
+    private function processWithQuotaPause(int $brandId, SymfonyStyle $io, bool $dryRun, bool $force): void
+    {
+        for ($pause = 0; ; ) {
+            $brand = $this->em->find(Brand::class, $brandId);
+            if ($brand === null) {
+                return;
+            }
+            try {
+                $this->processBrand($brand, $io, $dryRun, $force);
+                return;
+            } catch (WordstatQuotaException) {
+                if (++$pause > self::QUOTA_MAX_PAUSES) {
+                    $io->warning('Квота Wordstat не восстановилась — остановка (resumable, запусти позже).');
+                    $this->quotaExhausted = true;
+                    return;
+                }
+                $io->warning(sprintf(
+                    'Квота Wordstat (100/час) исчерпана — пауза %d мин (попытка %d/%d), затем продолжу тот же бренд…',
+                    intdiv(self::QUOTA_PAUSE_SEC, 60), $pause, self::QUOTA_MAX_PAUSES,
+                ));
+                sleep(self::QUOTA_PAUSE_SEC);
+            }
+        }
     }
 
     private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force): void
@@ -186,10 +213,10 @@ class CollectBrandKeywordsCommand extends Command
                 $this->em->flush();
                 $this->em->clear();
             }
-        } catch (WordstatQuotaException) {
-            // Часовая квота кончилась — не считаем ошибкой, сигналим остановку.
-            $this->quotaExhausted = true;
+        } catch (WordstatQuotaException $e) {
+            // Часовая квота — не ошибка: пробрасываем в обёртку (пауза + повтор).
             $this->em->clear();
+            throw $e;
         } catch (\Throwable $e) {
             $io->warning(sprintf('    Ошибка «%s»: %s', $name, $e->getMessage()));
             $this->failed++;
