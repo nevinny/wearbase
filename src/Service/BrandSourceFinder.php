@@ -29,8 +29,8 @@ use App\Service\Discovery\SourceTypeClassifier;
  */
 class BrandSourceFinder
 {
-    private const MAX_PER_HOST = 4;    // не больше N страниц с одного хоста (глобально)
-    private const PER_QUERY    = 20;   // результатов на поисковый запрос
+    private const MAX_PER_HOST = 5;    // не больше N страниц с одного хоста (глобально)
+    private const PER_QUERY    = 25;   // результатов на поисковый запрос
 
     private const FLOOR = 0.35;        // ниже — не кладём в очередь (для корпуса)
     private const SEED_SCORE = 0.9;    // доверенные сиды (DB / slug-guess) — высокий baseline
@@ -38,14 +38,14 @@ class BrandSourceFinder
     private const T1_CAP = 2;              // own_site в очередь
     private const T1_VERIFY_BUDGET = 5;    // макс. verifyUrl-вызовов в T1 (10s каждый)
 
-    // T2 (corpus)
-    private const T2_MARKETPLACE_CAP = 3;
-    private const T2_MENTION_CAP     = 4;   // catalog свёрнут в mention
+    // T2 (corpus) — побольше товарных источников (особенно для брендов без своего сайта)
+    private const T2_MARKETPLACE_CAP = 5;
+    private const T2_MENTION_CAP     = 8;   // catalog свёрнут в mention
 
     // T3 (mentions/social)
-    private const T3_SOCIAL_CAP  = 4;
-    private const T3_REVIEW_CAP  = 3;
-    private const T3_MENTION_CAP = 3;
+    private const T3_SOCIAL_CAP  = 6;
+    private const T3_REVIEW_CAP  = 5;
+    private const T3_MENTION_CAP = 6;
 
     /** fashion-термины для co-occurrence (имя бренда + ≥1 термин). */
     private const FASHION_TERMS = [
@@ -223,6 +223,8 @@ class BrandSourceFinder
             $queries = [
                 "{$title} одежда",
                 "{$title} купить",
+                "{$title} интернет-магазин",
+                "{$title} бренд",
             ];
             if ($city !== '') {
                 $queries[] = "{$title} {$city} магазин";
@@ -291,7 +293,7 @@ class BrandSourceFinder
 
             // SearXNG «отзывы/обзор».
             if ($title !== '' && $this->searx->isConfigured() && count($out) < $max) {
-                foreach (["{$title} одежда отзывы", "{$title} обзор"] as $q) {
+                foreach (["{$title} одежда отзывы", "{$title} обзор", "{$title} бренд одежды"] as $q) {
                     if (count($out) >= $max) {
                         break;
                     }

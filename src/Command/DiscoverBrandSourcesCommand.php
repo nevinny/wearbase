@@ -44,11 +44,11 @@ class DiscoverBrandSourcesCommand extends Command
     /** Cap по source_type: максимум URL данного типа в очереди у бренда (суммарно по запускам). */
     private const CAPS = [
         BrandSourceUrl::TYPE_OWN_SITE       => 2,
-        BrandSourceUrl::TYPE_MARKETPLACE    => 3,
-        BrandSourceUrl::TYPE_CATALOG        => 4,
-        BrandSourceUrl::TYPE_ARTICLE_REVIEW => 3,
-        BrandSourceUrl::TYPE_SOCIAL         => 4,
-        BrandSourceUrl::TYPE_MENTION        => 3,
+        BrandSourceUrl::TYPE_MARKETPLACE    => 5,
+        BrandSourceUrl::TYPE_CATALOG        => 6,
+        BrandSourceUrl::TYPE_ARTICLE_REVIEW => 5,
+        BrandSourceUrl::TYPE_SOCIAL         => 6,
+        BrandSourceUrl::TYPE_MENTION        => 6,
     ];
 
     private int $discovered = 0;   // брендов с ≥1 новым URL в очереди
