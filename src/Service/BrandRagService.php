@@ -9,13 +9,30 @@ use App\Entity\Brand;
  * собирает «Проверенные факты» для промпта. Жёсткий gate качества — если
  * фактов мало или релевантность низкая, возвращает null → генерация уходит
  * в legacy-режим (модель пишет из своих знаний), а не заземляется на шуме.
+ *
+ * Адаптивно: у бренда мало чанков → один запрос (все чанки и так влезают,
+ * лишние embed-вызовы не тратим). Много чанков (контентный сайт) → запросы
+ * по аспектам (ассортимент/материалы/философия/...), чтобы покрыть разные
+ * грани, а не топ-6 по одному общему запросу.
  */
 class BrandRagService
 {
-    private const TOP_K       = 6;
-    private const MIN_CHUNKS  = 3;     // меньше — не заземляем
-    private const MIN_SCORE   = 0.5;   // cosine; ниже — мусорная релевантность
+    private const TOP_K            = 6;     // одиночный запрос
+    private const MULTI_ASPECT_MIN = 8;     // больше этого числа чанков → multi-aspect
+    private const PER_ASPECT       = 3;     // сколько брать на каждый аспект
+    private const MAX_HITS         = 8;     // итоговый максимум чанков в контекст
+    private const MIN_CHUNKS       = 3;     // меньше — не заземляем
+    private const MIN_SCORE        = 0.5;   // cosine; ниже — мусорная релевантность
     private const MAX_CONTEXT_CHARS = 6000;
+
+    /** Грани бренда для multi-aspect запросов (дополняются названием). */
+    private const ASPECTS = [
+        'ассортимент и товары',
+        'материалы ткани качество',
+        'философия и история бренда',
+        'целевая аудитория и стиль',
+        'производство город доставка',
+    ];
 
     public function __construct(
         private readonly EmbeddingService   $embedder,
@@ -31,28 +48,72 @@ class BrandRagService
     {
         $brandId = $brand->getId();
         if ($brandId === null) {
-            return ['context' => null, 'score' => null, 'chunks' => 0];
+            return $this->miss();
         }
-
-        $query = trim(sprintf('%s %s одежда бренд', (string) $brand->getTitle(), (string) $brand->getCity()));
 
         try {
-            $qvec = $this->embedder->embed($query);
-            $hits = $this->vectors->searchByBrand($brandId, $qvec, self::TOP_K);
+            $count = $this->vectors->countByBrand($brandId);
+            if ($count === 0) {
+                return $this->miss();
+            }
+            $hits = $count <= self::MULTI_ASPECT_MIN
+                ? $this->singleQuery($brand, $brandId, $count)
+                : $this->multiAspect($brand, $brandId);
         } catch (\Throwable) {
-            return ['context' => null, 'score' => null, 'chunks' => 0];
+            return $this->miss();
         }
 
-        $count = count($hits);
-        $topScore = $count > 0 ? (float) ($hits[0]['score'] ?? 0) : null;
+        $cnt = count($hits);
+        $topScore = $cnt > 0 ? (float) ($hits[0]['score'] ?? 0) : null;
 
-        if ($count < self::MIN_CHUNKS || $topScore === null || $topScore < self::MIN_SCORE) {
-            return ['context' => null, 'score' => $topScore, 'chunks' => $count];
+        if ($cnt < self::MIN_CHUNKS || $topScore === null || $topScore < self::MIN_SCORE) {
+            return ['context' => null, 'score' => $topScore, 'chunks' => $cnt];
         }
 
-        $context = $this->assemble($hits);
+        return ['context' => $this->assemble($hits), 'score' => $topScore, 'chunks' => $cnt];
+    }
 
-        return ['context' => $context, 'score' => $topScore, 'chunks' => $count];
+    /** Один запрос — для брендов с малым числом чанков (возвращаются все). */
+    private function singleQuery(Brand $brand, int $brandId, int $count): array
+    {
+        $query = trim(sprintf('%s %s одежда бренд', (string) $brand->getTitle(), (string) $brand->getCity()));
+        $qvec  = $this->embedder->embed($query);
+
+        return $this->vectors->searchByBrand($brandId, $qvec, min($count, self::TOP_K));
+    }
+
+    /** Запросы по аспектам (батч-embed за 1 вызов) + дедуп по id, лучший score. */
+    private function multiAspect(Brand $brand, int $brandId): array
+    {
+        $title   = trim((string) $brand->getTitle());
+        $queries = array_map(static fn(string $a) => trim($title . ' ' . $a), self::ASPECTS);
+        $vectors = $this->embedder->embedBatch($queries);
+
+        $byId = [];
+        foreach ($vectors as $qvec) {
+            foreach ($this->vectors->searchByBrand($brandId, $qvec, self::PER_ASPECT) as $hit) {
+                $id = $hit['id'] ?? null;
+                if ($id === null) {
+                    continue;
+                }
+                $score = (float) ($hit['score'] ?? 0);
+                if (!isset($byId[$id]) || $score > (float) $byId[$id]['score']) {
+                    $hit['score'] = $score;
+                    $byId[$id] = $hit;
+                }
+            }
+        }
+
+        $hits = array_values($byId);
+        usort($hits, static fn($a, $b) => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
+
+        return array_slice($hits, 0, self::MAX_HITS);
+    }
+
+    /** @return array{context:null,score:null,chunks:0} */
+    private function miss(): array
+    {
+        return ['context' => null, 'score' => null, 'chunks' => 0];
     }
 
     /** @param array<int,array{score:float,payload:array}> $hits */

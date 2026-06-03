@@ -24,15 +24,15 @@ class WebScraperService
         private readonly HttpClientInterface $httpClient,
         private readonly UrlFilter $urlFilter,
         private readonly string $userAgent = 'Mozilla/5.0 (compatible; WearbaseBot/1.0)',
-        private readonly string $trafilaturaBin = '',
+        private readonly string $trafilaturaBin = 'trafilatura',
     ) {
     }
 
     /**
-     * Единая точка: URL → чистый текст. Если задан TRAFILATURA_BIN — извлекаем
-     * через trafilatura (качает + чистит основной контент, лучше DomCrawler);
-     * иначе/при сбое — fallback на HttpClient + DomCrawler. Исключённые домены
-     * (wearbase.ru) не качаются ни одним путём.
+     * Единая точка: URL → чистый текст. ПО УМОЛЧАНИЮ извлекаем через trafilatura
+     * (качает + чистит основной контент, лучше DomCrawler); при недоступности
+     * бинаря/сбое/пустом выводе — fallback на HttpClient + DomCrawler. Исключённые
+     * домены (wearbase.ru) не качаются ни одним путём.
      */
     public function fetchCleanText(string $url): ?string
     {
@@ -40,7 +40,7 @@ class WebScraperService
             return null;
         }
 
-        if ($this->trafilaturaBin !== '') {
+        if ($this->trafilaturaAvailable()) {
             $extracted = $this->runTrafilatura($url);
             if ($extracted !== null && trim($extracted) !== '') {
                 return $this->normalizeText($extracted);
@@ -55,6 +55,20 @@ class WebScraperService
         $text = $this->clean($page['html']);
 
         return $text !== '' ? $text : null;
+    }
+
+    /**
+     * Доступна ли trafilatura. Абсолютный путь → проверяем is_executable
+     * (на машине без неё — например Mac — сразу fallback, без лишнего спавна).
+     * Голое имя → доверяем PATH (Process разрешит, при отсутствии поймаем сбой).
+     */
+    private function trafilaturaAvailable(): bool
+    {
+        $bin = $this->trafilaturaBin;
+        if ($bin === '') {
+            return false;
+        }
+        return str_contains($bin, '/') ? is_executable($bin) : true;
     }
 
     /** trafilatura -u URL: сам качает и извлекает основной текст. */
