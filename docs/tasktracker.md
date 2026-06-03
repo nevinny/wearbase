@@ -542,6 +542,7 @@ php bin/console doctrine:migrations:migrate
 - [ ] (опц.) использовать ещё `regions` (affinity>130 — региональный спрос) и `dynamics` (тренды) из того же API
 
 ## НЕ СДЕЛАНО / TODO
+- [ ] **Разделить scrape на discover→URL-очередь→fetch** (ПРИОРИТЕТ): сначала ищем сайт бренда (может не быть) → потом поиск/общие упоминания, всё в `brand_source_url`; fetch дренит очередь. Полный дизайн — раздел «Архитектура: Discovery → URL-очередь → Fetch». Включает дизамбигуацию (MariDeniz) и `has_own_site`.
 - [ ] **Боевой прогон scrape на сервере** (там trafilatura): задать `TRAFILATURA_BIN` в серверном `.env.local`; на Mac сейчас fallback DomCrawler
 - [ ] **Реальный батч**: прогнать N брендов без `--dry-run`, глазами проверить качество grounded-описаний, потом масштабировать шардами
 - [ ] **Очередь + воркеры на LLM-сервере** (приоритет): скрейпер ДОЛЖЕН запускаться на сервере 192.168.2.43 (там trafilatura/ollama/Qdrant/SearXNG). Воркер ходит в очередь, берёт задания, выполняет, отдаёт результаты. Заменяет ручной `--shard/--total`. Архитектуру (Symfony Messenger / транспорт / топология воркеров / доступ к БД / деплой systemd-консьюмеров) — продумать отдельно (см. ниже «Архитектура очереди»)
@@ -566,9 +567,9 @@ php bin/console doctrine:migrations:migrate
 
 **Решение (рекоменд.):** Symfony Messenger + **Doctrine-транспорт** (уже установлен; `messenger_messages` в MySQL, `SKIP LOCKED`). Транспорта три: `scrape` (IO, 4-8 воркеров), `keywords` (rate-limited, 1-2), `gpu` (embed+generate+enrich, **суммарно ≤ OLLAMA_NUM_PARALLEL=4** — общий GPU!). Failure-транспорт `failed`, retry exponential. Middleware `doctrine_ping/close_connection` вместо ручного resetManager.
 
-**Доступ к БД (открытый вопрос — решить ПЕРВЫМ):**
-- (a, реком.) **Tailscale** Mac↔сервер → серверный `.env.local` `DATABASE_HOST=<mac-tailscale-ip>`, воркер пишет напрямую через Doctrine (код не меняется). Или перенести MySQL на сервер (тогда всё localhost).
-- (b, fallback) сервер без БД → транспорт Redis на сервере + result-очередь, консьюмер-писатель на Mac. Сильно больше кода.
+**Доступ к БД — РЕШЕНО (Mac и сервер в одной локалке, Tailscale НЕ нужен):**
+- Сервер ходит в MySQL Mac'а по LAN напрямую: на Mac `bind-address` на LAN-интерфейс (не только 127.0.0.1), грант `wearbase@'192.168.2.%'`, серверный `.env.local` `DATABASE_HOST=<lan-ip-мака>`. Воркер пишет через Doctrine, код не меняется. (Альтернатива — перенести MySQL на сервер, тогда всё localhost.)
+- Doctrine-транспорт Messenger работает (сервер видит БД по LAN). Fallback с Redis/result-очередью НЕ нужен.
 
 **Сообщения/хендлеры:** вынести `processBrand` каждой команды в headless-сервис `src/Service/Rag/Brand*Processor.php` (один код — два входа: команда + хендлер). Сообщения `ScrapeBrand/EmbedBrand/GenerateBrandContent/CollectKeywords/EnrichBrandContacts` (только brandId+флаги). **Цепочка** (scrape→dispatch embed→dispatch generate) для латентности + **диспетчер-cron** `app:rag:dispatch` для посева/backstop (через finders, дедуп через новые `*QueuedAt` колонки).
 
@@ -576,9 +577,53 @@ php bin/console doctrine:migrations:migrate
 
 **Ретраи:** Messenger = транзиентные сбои (throw → retry); статус-машина `*_failed`+attempts = ТЕРМИНАЛЬНЫЕ (через `WorkerMessageFailedEvent` subscriber, `!willRetry()`), чтобы не двойного счёта.
 
-**Миграция (по шагам, каждый shippable):** 1) extract processors; 2) messages+handlers+messenger.yaml; 3) `app:rag:dispatch`+`*QueuedAt`; 4) Tailscale+деплой на сервер; 5) terminal-failure subscriber+chain; 6) systemd-консьюмеры, низкие counts→масштаб.
+**Миграция (по шагам, каждый shippable):** 1) extract processors; 2) messages+handlers+messenger.yaml; 3) `app:rag:dispatch`+`*QueuedAt`; 4) деплой на сервер + доступ к MySQL Mac'а по LAN (bind-address+грант); 5) terminal-failure subscriber+chain; 6) systemd-консьюмеры, низкие counts→масштаб.
 
 **Риски:** латентность БД с сервера (round-trips per brand — ок при текущем темпе); GPU-thrashing embed↔generate (27b ~16-20ГБ — проверить, влезают ли обе модели; иначе разнести `gpu_embed`/`gpu_generate`); bloat `messenger_messages` (cron `messenger:failed:remove`); утечки памяти консьюмеров (обязательны `--limit/--time-limit/--memory-limit`).
 
 Файлы: `config/packages/messenger.yaml`, новые `src/Service/Rag/`, `src/Message/`, `src/MessageHandler/`, `src/EventSubscriber/`, `src/Command/DispatchRagJobsCommand.php`, `BrandRagPipeline` (+`*QueuedAt`), `BrandRepository` (дедуп-clause).
 ```
+
+## Архитектура: Discovery → URL-очередь → Fetch (дизайн от агента-архитектора)
+
+Разбить монолитный `app:brand:scrape` на 3 концерна (сходятся в тот же `STATUS_SCRAPED` — embed/generate не трогаем):
+```
+app:brand:discover  (лёгкий, только SearXNG)  → наполняет brand_source_url + ставит has_own_site
+app:brand:fetch     (тяжёлый, trafilatura)    → дренит очередь → brand_source_document → status=scraped
+app:brand:scrape    (без изменений)           → монолит-fallback по --id
+```
+
+**Многоуровневый discovery** (caps на enqueue, чтобы очередь была сбалансирована):
+- **T1 own_site** (cap 1–2): DB website-link → `ContactVerifier::verifyUrl`; угадывание `{slug}.ru/.com`; SearXNG «{бренд} одежда официальный сайт». Скоринг own-site confidence.
+- **T2 corpus** (marketplace ≤3, catalog ≤4): «{бренд} одежда/купить/{город} магазин».
+- **T3 mentions/social** (social ≤4, article_review ≤3, mention ≤3): соц-ссылки из БД, «{бренд} отзывы/обзор».
+- Таксономия `source_type`: `own_site|marketplace|catalog|article_review|social|mention` (единая для очереди→документа→Qdrant payload; legacy `official_site→own_site`).
+
+**«У бренда может не быть сайта» — 2 фазы:**
+- Фаза A (discover, лёгкая): кандидат живой (`verifyUrl`) + не маркетплейс/соцсеть + slug-в-хосте/DB-ссылка + (для поисковых) имя+fashion-термин → `has_own_site=provisional`. Если все мёртвы / только маркетплейсы-соцсети / нет fashion-контекста → `has_own_site=false`.
+- Фаза B (fetch, авторитетная): own_site реально скачался с ≥MIN_TEXT_CHARS релевантного текста → confirmed; иначе demote в false (ловит «живой, но не тот домен»).
+
+**Дизамбигуация (MariDeniz→диабет)** — на discover, без скачиваний (хватает SearXNG title+snippet):
+- Co-occurrence: имя бренда (или slug) И ≥1 fashion-термин в title+snippet.
+- `relevance_score` 0–1: +имя в title/snippet, +fashion co-occur, +own-site сигналы, **−deny-list** («диабет/сахар/медицин/клиника» без fashion → штраф ловит класс MariDeniz). Ниже floor (~0.35) — не кладём в очередь.
+- LLM tie-breaker (узко, опц.): только для неоднозначного T1 own-site («Это офиц. страница бренда одежды X? да/нет»). Не в hot-path.
+- **Carry-forward**: fetch копирует `relevance_score`+`source_type` на `BrandSourceDocument` → embed кладёт в Qdrant payload → `BrandRagService` взвешивает own_site выше и гейтит низко-релевантное.
+
+**Очередь — таблица `brand_source_url`** (DB-очередь сейчас, Messenger потом):
+```sql
+brand_source_url(id, brand_id, url VARCHAR(1024), url_hash CHAR(64), source_type,
+  tier TINYINT, relevance_score FLOAT, status pending|claimed|fetched|failed|skipped,
+  attempts, last_error, discovered_at, claimed_at, fetched_at,
+  UNIQUE(brand_id, url_hash), INDEX(status,brand_id), INDEX(brand_id,tier), FK brand CASCADE)
+```
+- ⚠️ Уникальный индекс по `url_hash` (sha256), НЕ по url — VARCHAR(1024) utf8mb4 > 3072 байт лимита InnoDB (тот же урок, что content_hash).
+- Enqueue: `ON DUPLICATE KEY UPDATE` по `(brand_id,url_hash)` — дедуп бесплатно; caps по типу в PHP.
+- Drain: атомарный claim `SELECT ... FOR UPDATE SKIP LOCKED` (MySQL 9), порядок `tier ASC, relevance_score DESC` (own_site/высокая уверенность раньше); шард `MOD(brand_id,total)`. Успех→fetched+документ; сбой→attempts++/failed; протухший claimed реклеймится.
+
+**Рефактор:** `BrandSourceFinder::discoverTiered(): DiscoveredUrl[]` (DTO url/sourceType/tier/relevanceScore/live) + `SourceTypeClassifier`; старый `discover()` оставить шимом (монолит цел). Новые сущности `BrandSourceUrl`+repo; команды `DiscoverBrandSourcesCommand`/`FetchBrandSourcesCommand` (fetch ПЕРЕИСПОЛЬЗУЕТ кеш 30д + `existsForBrandHash` из монолита). `BrandRagPipeline` +`has_own_site`+`discovered_at`; `BrandSourceDocument` +`relevance_score`+расширенный `source_type`.
+
+**Шаги (incremental):** 1) миграция+сущности; 2) `discoverTiered`+DTO+classifier (шим); 3) `app:brand:discover`; 4) `app:brand:fetch` (A/B рядом с монолитом на разных шардах); 5) relevance/source_type в Qdrant + has_own_site в генерацию; 6) депрекейт монолита (кроме --id); 7) позже — Messenger `ScrapeUrl`.
+
+**Риски:** SearXNG rate-limit→пустые тиры (idempotent re-run добирает); омоним-false-pos (deny-list+score+LLM tie-breaker+gate); рост таблицы (caps+TTL-prune); over-fetch маркетплейсов (cap 3+host-cap 4+tier-порядок); живой-но-не-тот домен (Фаза B demote); EM (resetManager как в монолите).
+
+Новые файлы: `src/Entity/BrandSourceUrl.php`, `src/Repository/BrandSourceUrlRepository.php`, `src/Command/DiscoverBrandSourcesCommand.php`, `src/Command/FetchBrandSourcesCommand.php`, `src/Service/Discovery/DiscoveredUrl.php`, `src/Service/Discovery/SourceTypeClassifier.php`, миграция `brand_source_url`.
