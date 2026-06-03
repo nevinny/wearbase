@@ -7,28 +7,27 @@ use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionIn
 
 /**
  * Ключевики через Yandex Cloud Search API (Wordstat).
- * Auth: ключ формата AQVN… (Yandex Cloud Api-Key) → заголовок `Authorization: Api-Key <key>`.
- * Требует folderId (каталог Yandex Cloud). Если токен/folderId не заданы или запрос
- * упал — возвращает [] (вызывающий откатится на LLM-ключевики). Эндпоинт/формат
- * ответа Yandex Cloud Wordstat могут потребовать сверки при первом включении.
- *
- * @see https://yandex.cloud/en/docs/search-api/api-ref/Wordstat/
+ *  POST https://searchapi.api.cloud.yandex.net/v2/wordstat/topRequests
+ *  Auth: заголовок `Authorization: Api-Key <ключ>` (ключ формата AQVN…).
+ *  Body: {phrase, region:[225], numPhrases}. folderId НЕ нужен — ключ привязан
+ *        к каталогу сам.
+ *  Resp: results[{phrase,count}] (включающие фразы → origin) +
+ *        associations[{phrase,count}] (похожие → related). count = показов/мес.
  */
 class WordstatClient implements KeywordProviderInterface
 {
-    private const ENDPOINT = 'https://searchapi.api.cloud.yandex.net/v2/wordstat:getTopRequests';
+    private const ENDPOINT = 'https://searchapi.api.cloud.yandex.net/v2/wordstat/topRequests';
     private const REGION_RUSSIA = 225;
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly string $apiKey,
-        private readonly string $folderId,
     ) {
     }
 
     public function isConfigured(): bool
     {
-        return trim($this->apiKey) !== '' && trim($this->folderId) !== '';
+        return trim($this->apiKey) !== '';
     }
 
     public function keywordsFor(string $seed, int $limit = 30): array
@@ -44,9 +43,9 @@ class WordstatClient implements KeywordProviderInterface
                     'Content-Type'  => 'application/json',
                 ],
                 'json' => [
-                    'folderId' => $this->folderId,
-                    'phrase'   => $seed,
-                    'region'   => [self::REGION_RUSSIA],
+                    'phrase'     => $seed,
+                    'region'     => [self::REGION_RUSSIA],
+                    'numPhrases' => max(1, min(2000, $limit)),
                 ],
                 'timeout' => 30,
             ]);
@@ -59,24 +58,23 @@ class WordstatClient implements KeywordProviderInterface
             return [];
         }
 
-        // Wordstat: «включающие» фразы (origin, левая колонка) и «похожие» (related,
-        // правая). Структура ответа Yandex Cloud может отличаться по версии API —
-        // парсим оборонительно несколько вероятных ключей.
+        // results — включающие фразы (origin), associations — похожие (related).
         $out = [];
-        $origin  = $data['includingPhrases'] ?? $data['topRequests'] ?? $data['requests'] ?? $data['items'] ?? [];
-        $related = $data['associatedPhrases'] ?? $data['relatedRequests'] ?? [];
-
-        foreach ([['rows' => $origin, 'type' => 'origin'], ['rows' => $related, 'type' => 'related']] as $group) {
+        $groups = [
+            ['rows' => $data['results'] ?? [],      'type' => 'origin'],
+            ['rows' => $data['associations'] ?? [], 'type' => 'related'],
+        ];
+        foreach ($groups as $group) {
             foreach ($group['rows'] as $row) {
-                $phrase = is_array($row) ? ($row['phrase'] ?? $row['text'] ?? null) : (is_string($row) ? $row : null);
+                $phrase = is_array($row) ? ($row['phrase'] ?? null) : null;
                 if (!is_string($phrase) || trim($phrase) === '') {
                     continue;
                 }
-                $shows = is_array($row) ? ($row['count'] ?? $row['shows'] ?? $row['number'] ?? null) : null;
+                $count = is_array($row) ? ($row['count'] ?? null) : null;
                 $out[] = [
                     'keyword'      => trim($phrase),
                     'type'         => $group['type'],
-                    'monthlyShows' => is_numeric($shows) ? (int) $shows : null,
+                    'monthlyShows' => is_numeric($count) ? (int) $count : null,
                 ];
                 if (count($out) >= $limit) {
                     return $out;

@@ -22,8 +22,19 @@ class KeywordService
         return $this->provider->isConfigured();
     }
 
+    /** Fashion-якоря: фраза релевантна, если содержит имя бренда ИЛИ один из них. */
+    private const FASHION_TERMS = [
+        'одежд', 'бренд', 'куртк', 'футболк', 'худи', 'свитшот', 'толстовк', 'штаны',
+        'джинс', 'платье', 'кофт', 'рубашк', 'пальто', 'магазин', 'купить', 'носить',
+        'обувь', 'аксессуар', 'мерч', 'streetwear', 'стритвир', 'лукбук', 'коллекци',
+    ];
+
     /**
      * Live-сбор ключевиков бренда от провайдера (для app:brand:keywords).
+     * Фильтрует мусор брендов-омонимов: оставляет фразы с именем бренда или
+     * fashion-термином (иначе Wordstat-associations тянут нерелевантное:
+     * SYNOPTIC→«синупрет», synthetics→«синтетика»).
+     *
      * @return array<int,array{keyword:string,type:string,monthlyShows:?int}>
      */
     public function collect(Brand $brand): array
@@ -37,6 +48,27 @@ class KeywordService
             return [];
         }
 
-        return $this->provider->keywordsFor($seed);
+        $brandNeedle = mb_strtolower(str_replace([' ', '-', '.'], '', $seed));
+
+        return array_values(array_filter(
+            $this->provider->keywordsFor($seed),
+            fn(array $row) => $this->relevant((string) ($row['keyword'] ?? ''), $brandNeedle),
+        ));
+    }
+
+    private function relevant(string $keyword, string $brandNeedle): bool
+    {
+        $kw = mb_strtolower($keyword);
+        if ($brandNeedle !== '' && mb_strlen($brandNeedle) >= 3
+            && str_contains(str_replace([' ', '-', '.'], '', $kw), $brandNeedle)) {
+            return true;
+        }
+        foreach (self::FASHION_TERMS as $term) {
+            if (str_contains($kw, $term)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

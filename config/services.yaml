@@ -65,8 +65,7 @@ services:
 
     App\Service\Keyword\WordstatClient:
         arguments:
-            $apiKey:   '%env(WORDSTAT_OAUTH_TOKEN)%'
-            $folderId: '%env(WORDSTAT_FOLDER_ID)%'
+            $apiKey: '%env(WORDSTAT_API_KEY)%'
 
     App\Service\Keyword\KeywordProviderInterface: '@App\Service\Keyword\WordstatClient'
 
