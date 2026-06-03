@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\BrandKeyword;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use App\Entity\Brand;
 use App\Entity\BrandRagPipeline;
@@ -261,12 +262,19 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /** Бренды без собранных ключевиков (нет ни одной строки brand_keyword). */
+    /**
+     * Бренды на опрос Wordstat: ещё НИ РАЗУ не опрашивали.
+     * Пропускаем: у кого уже есть ключевики (k.id), и у кого keywords_status
+     * проставлен (found / not_found — нишевые с 0 фраз больше не дёргаем).
+     */
     public function findForKeywords(int $limit, int $shard = 0, int $total = 1): array
     {
         $qb = $this->createQueryBuilder('b')
-            ->leftJoin(\App\Entity\BrandKeyword::class, 'k', 'WITH', 'k.brand = b')
+            ->leftJoin(BrandKeyword::class, 'k', 'WITH', 'k.brand = b')
+            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
             ->where('b.status = :active')
             ->andWhere('k.id IS NULL')
+            ->andWhere('p.id IS NULL OR p.keywordsStatus IS NULL')
             ->setParameter('active', Statuses::Active)
             ->groupBy('b.id');
 

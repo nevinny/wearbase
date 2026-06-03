@@ -4,7 +4,9 @@ namespace App\Command;
 
 use App\Entity\Brand;
 use App\Entity\BrandKeyword;
+use App\Entity\BrandRagPipeline;
 use App\Repository\BrandKeywordRepository;
+use App\Repository\BrandRagPipelineRepository;
 use App\Repository\BrandRepository;
 use App\Service\Keyword\KeywordService;
 use App\Service\Keyword\WordstatQuotaException;
@@ -163,6 +165,16 @@ class CollectBrandKeywordsCommand extends Command
         }
     }
 
+    /** Помечает исход опроса Wordstat (found/not_found) — чтобы не переопрашивать. */
+    private function markChecked(Brand $brand, string $status): void
+    {
+        /** @var BrandRagPipelineRepository $repo */
+        $repo = $this->em->getRepository(BrandRagPipeline::class);
+        $repo->getOrCreate($brand)
+            ->setKeywordsStatus($status)
+            ->setKeywordsCheckedAt(new \DateTime());
+    }
+
     private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force): void
     {
         $name = $brand->getTitle() ?? "ID:{$brand->getId()}";
@@ -173,6 +185,11 @@ class CollectBrandKeywordsCommand extends Command
 
             if ($rows === []) {
                 $this->empty++;
+                if (!$dryRun) {
+                    $this->markChecked($brand, BrandRagPipeline::KW_NOT_FOUND);
+                    $this->em->flush();
+                    $this->em->clear();
+                }
                 return;
             }
 
@@ -210,6 +227,7 @@ class CollectBrandKeywordsCommand extends Command
             $this->withKeywords++;
 
             if (!$dryRun) {
+                $this->markChecked($brand, BrandRagPipeline::KW_FOUND);
                 $this->em->flush();
                 $this->em->clear();
             }

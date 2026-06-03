@@ -27,6 +27,9 @@ class BrandRagPipeline
     public const STATUS_EMBED_FAILED   = 'embed_failed';
     public const STATUS_GENERATE_FAILED = 'generate_failed';
 
+    public const KW_FOUND     = 'found';
+    public const KW_NOT_FOUND = 'not_found';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -79,6 +82,13 @@ class BrandRagPipeline
     /** Когда отработал discover (наполнил brand_source_url). */
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $discoveredAt = null;
+
+    /** Исход опроса Wordstat: null=никогда не опрашивали | found | not_found. */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $keywordsStatus = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $keywordsCheckedAt = null;
 
     public function getId(): ?int
     {
@@ -236,6 +246,28 @@ class BrandRagPipeline
     public function setDiscoveredAt(?\DateTimeInterface $at): self
     {
         $this->discoveredAt = $at;
+        return $this;
+    }
+
+    public function getKeywordsStatus(): ?string
+    {
+        return $this->keywordsStatus;
+    }
+
+    public function setKeywordsStatus(?string $status): self
+    {
+        $this->keywordsStatus = $status;
+        return $this;
+    }
+
+    public function getKeywordsCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->keywordsCheckedAt;
+    }
+
+    public function setKeywordsCheckedAt(?\DateTimeInterface $at): self
+    {
+        $this->keywordsCheckedAt = $at;
         return $this;
     }
 }
