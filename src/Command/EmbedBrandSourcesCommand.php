@@ -155,11 +155,12 @@ class EmbedBrandSourcesCommand extends Command
                 foreach ($this->chunker->chunk((string) $doc->getCleanText()) as $piece) {
                     $chunks[] = $piece;
                     $meta[] = [
-                        'docId' => $doc->getId(),
-                        'hash'  => $doc->getContentHash(),
-                        'idx'   => $i++,
-                        'url'   => $doc->getUrl(),
-                        'type'  => $doc->getSourceType(),
+                        'docId'     => $doc->getId(),
+                        'hash'      => $doc->getContentHash(),
+                        'idx'       => $i++,
+                        'url'       => $doc->getUrl(),
+                        'type'      => $doc->getSourceType(),
+                        'relevance' => $doc->getRelevanceScore(),
                     ];
                 }
             }
@@ -199,6 +200,7 @@ class EmbedBrandSourcesCommand extends Command
                         'chunk_index' => $m['idx'],
                         'source_url'  => $m['url'],
                         'source_type' => $m['type'],
+                        'relevance'   => $m['relevance'],
                         'text'        => $text,
                     ],
                 ];

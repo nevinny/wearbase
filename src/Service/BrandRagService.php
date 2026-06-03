@@ -24,6 +24,10 @@ class BrandRagService
     private const MIN_CHUNKS       = 3;     // меньше — не заземляем
     private const MIN_SCORE        = 0.5;   // cosine; ниже — мусорная релевантность
     private const MAX_CONTEXT_CHARS = 6000;
+    private const RELEVANCE_FLOOR  = 0.35;  // payload-relevance ниже (но >0) — омоним/мусор, выкидываем
+
+    /** source_type, считающиеся собственным сайтом бренда (вкл. legacy official_site). */
+    private const OWN_SITE_TYPES = ['own_site', 'official_site'];
 
     /** Грани бренда для multi-aspect запросов (дополняются названием). */
     private const ASPECTS = [
@@ -116,9 +120,52 @@ class BrandRagService
         return ['context' => null, 'score' => null, 'chunks' => 0];
     }
 
+    /**
+     * Carry-forward веса источника: выкидываем явно низко-релевантные чанки
+     * (омоним/мусор, relevance>0 и <floor; 0/отсутствие = не размечено → оставляем)
+     * и ставим own_site-чанки раньше, сохраняя cosine-порядок внутри групп
+     * (usort в PHP 8.2 стабилен). Гейт в retrieve() при этом не трогаем.
+     *
+     * @param array<int,array{score:float,payload:array}> $hits
+     * @return array<int,array{score:float,payload:array}>
+     */
+    private function prioritize(array $hits): array
+    {
+        $kept = [];
+        foreach ($hits as $hit) {
+            $rel = $hit['payload']['relevance'] ?? null;
+            if ($rel !== null && (float) $rel > 0 && (float) $rel < self::RELEVANCE_FLOOR) {
+                continue;
+            }
+            $kept[] = $hit;
+        }
+
+        // Если фильтр выкосил всё (например, всё было размечено низко), не остаёмся
+        // с пустым контекстом — откатываемся к исходному набору, гейт уже пройден.
+        if ($kept === []) {
+            $kept = $hits;
+        }
+
+        usort(
+            $kept,
+            fn($a, $b) => $this->isOwnSite($b) <=> $this->isOwnSite($a),
+        );
+
+        return $kept;
+    }
+
+    private function isOwnSite(array $hit): int
+    {
+        $type = (string) ($hit['payload']['source_type'] ?? '');
+
+        return in_array($type, self::OWN_SITE_TYPES, true) ? 1 : 0;
+    }
+
     /** @param array<int,array{score:float,payload:array}> $hits */
     private function assemble(array $hits): string
     {
+        $hits = $this->prioritize($hits);
+
         $blocks = [];
         $total = 0;
         foreach ($hits as $hit) {

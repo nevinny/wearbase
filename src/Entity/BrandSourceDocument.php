@@ -36,8 +36,13 @@ class BrandSourceDocument
     #[ORM\Column(length: 1024)]
     private string $url = '';
 
+    /** Таксономия очереди→документа→Qdrant: own_site|marketplace|catalog|article_review|social|mention (legacy official_site→own_site). */
     #[ORM\Column(length: 20, options: ['default' => self::TYPE_OFFICIAL])]
     private string $sourceType = self::TYPE_OFFICIAL;
+
+    /** Carry-forward из brand_source_url: вес источника при retrieve/gate (0–1). */
+    #[ORM\Column(type: 'float', options: ['default' => 0])]
+    private float $relevanceScore = 0.0;
 
     #[ORM\Column(nullable: true)]
     private ?int $httpStatus = null;
@@ -98,6 +103,17 @@ class BrandSourceDocument
     public function setSourceType(string $type): self
     {
         $this->sourceType = $type;
+        return $this;
+    }
+
+    public function getRelevanceScore(): float
+    {
+        return $this->relevanceScore;
+    }
+
+    public function setRelevanceScore(float $score): self
+    {
+        $this->relevanceScore = $score;
         return $this;
     }
 

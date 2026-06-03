@@ -234,6 +234,14 @@ class GenerateBrandContentCommand extends Command
             $io->text(sprintf('    RAG: grounded, чанков %d, score %.2f', $rag['chunks'], $rag['score'] ?? 0));
         }
 
+        // has_own_site=false → у бренда нет собственного сайта, корпус собран только из
+        // упоминаний/маркетплейсов. Генерируем, но фиксируем пониженную уверенность.
+        // null = discover не прогонялся (legacy) → не сигналим.
+        $lowConfidence = $this->pipelineHasOwnSite($brand) === false;
+        if ($lowConfidence) {
+            $io->text('    ⚠ has_own_site=false — нет собств. сайта, пониженная уверенность grounding');
+        }
+
         // 1. Генерация description (без retry — объём текста не гарантирован ретраем, лучше провалиться явно)
         $description = $this->llmService->generateBrandDescription(
             brandName: $brandName,
@@ -269,6 +277,19 @@ class GenerateBrandContentCommand extends Command
         }
 
         $this->processed++;
+    }
+
+    /**
+     * Прочитанный флаг наличия собственного сайта из brand_rag_pipeline:
+     * true=есть, false=нет (corpus только из упоминаний), null=discover не прогонялся.
+     */
+    private function pipelineHasOwnSite(Brand $brand): ?bool
+    {
+        /** @var \App\Repository\BrandRagPipelineRepository $repo */
+        $repo = $this->em->getRepository(\App\Entity\BrandRagPipeline::class);
+        $pipeline = $repo->findOneBy(['brand' => $brand]);
+
+        return $pipeline?->getHasOwnSite();
     }
 
     /** Отмечает в brand_rag_pipeline факт генерации + использовался ли RAG-контекст. */

@@ -72,6 +72,14 @@ class BrandRagPipeline
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $lastError = null;
 
+    /** Есть ли у бренда собственный сайт: null=не проверяли, true=есть, false=нет. */
+    #[ORM\Column(nullable: true)]
+    private ?bool $hasOwnSite = null;
+
+    /** Когда отработал discover (наполнил brand_source_url). */
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $discoveredAt = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -206,6 +214,28 @@ class BrandRagPipeline
     public function setLastError(?string $error): self
     {
         $this->lastError = $error;
+        return $this;
+    }
+
+    public function getHasOwnSite(): ?bool
+    {
+        return $this->hasOwnSite;
+    }
+
+    public function setHasOwnSite(?bool $hasOwnSite): self
+    {
+        $this->hasOwnSite = $hasOwnSite;
+        return $this;
+    }
+
+    public function getDiscoveredAt(): ?\DateTimeInterface
+    {
+        return $this->discoveredAt;
+    }
+
+    public function setDiscoveredAt(?\DateTimeInterface $at): self
+    {
+        $this->discoveredAt = $at;
         return $this;
     }
 }
