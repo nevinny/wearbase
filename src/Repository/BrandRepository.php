@@ -260,6 +260,19 @@ class BrandRepository extends ServiceEntityRepository
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }
 
+    /** Бренды без собранных ключевиков (нет ни одной строки brand_keyword). */
+    public function findForKeywords(int $limit, int $shard = 0, int $total = 1): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->leftJoin(\App\Entity\BrandKeyword::class, 'k', 'WITH', 'k.brand = b')
+            ->where('b.status = :active')
+            ->andWhere('k.id IS NULL')
+            ->setParameter('active', Statuses::Active)
+            ->groupBy('b.id');
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
     private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total): array
     {
         if ($total > 1) {

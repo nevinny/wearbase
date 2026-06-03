@@ -31,7 +31,7 @@ class WordstatClient implements KeywordProviderInterface
         return trim($this->apiKey) !== '' && trim($this->folderId) !== '';
     }
 
-    public function keywordsFor(string $seed, int $limit = 8): array
+    public function keywordsFor(string $seed, int $limit = 30): array
     {
         if (!$this->isConfigured() || trim($seed) === '') {
             return [];
@@ -59,20 +59,31 @@ class WordstatClient implements KeywordProviderInterface
             return [];
         }
 
-        // Ответ Yandex Cloud Wordstat: список фраз с частотами (структура может
-        // отличаться по версии API — берём оборонительно несколько вероятных ключей).
-        $rows = $data['topRequests'] ?? $data['requests'] ?? $data['items'] ?? [];
-        $phrases = [];
-        foreach ($rows as $row) {
-            $phrase = is_array($row) ? ($row['phrase'] ?? $row['text'] ?? null) : (is_string($row) ? $row : null);
-            if (is_string($phrase) && trim($phrase) !== '') {
-                $phrases[] = trim($phrase);
-            }
-            if (count($phrases) >= $limit) {
-                break;
+        // Wordstat: «включающие» фразы (origin, левая колонка) и «похожие» (related,
+        // правая). Структура ответа Yandex Cloud может отличаться по версии API —
+        // парсим оборонительно несколько вероятных ключей.
+        $out = [];
+        $origin  = $data['includingPhrases'] ?? $data['topRequests'] ?? $data['requests'] ?? $data['items'] ?? [];
+        $related = $data['associatedPhrases'] ?? $data['relatedRequests'] ?? [];
+
+        foreach ([['rows' => $origin, 'type' => 'origin'], ['rows' => $related, 'type' => 'related']] as $group) {
+            foreach ($group['rows'] as $row) {
+                $phrase = is_array($row) ? ($row['phrase'] ?? $row['text'] ?? null) : (is_string($row) ? $row : null);
+                if (!is_string($phrase) || trim($phrase) === '') {
+                    continue;
+                }
+                $shows = is_array($row) ? ($row['count'] ?? $row['shows'] ?? $row['number'] ?? null) : null;
+                $out[] = [
+                    'keyword'      => trim($phrase),
+                    'type'         => $group['type'],
+                    'monthlyShows' => is_numeric($shows) ? (int) $shows : null,
+                ];
+                if (count($out) >= $limit) {
+                    return $out;
+                }
             }
         }
 
-        return $phrases;
+        return $out;
     }
 }

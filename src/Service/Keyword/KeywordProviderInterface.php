@@ -12,7 +12,8 @@ interface KeywordProviderInterface
     public function isConfigured(): bool;
 
     /**
-     * @return string[] ключевые фразы по убыванию частотности (без частот)
+     * @return array<int,array{keyword:string,type:string,monthlyShows:?int}>
+     *         type: 'origin' (фраза включает запрос) | 'related' (похожие запросы)
      */
-    public function keywordsFor(string $seed, int $limit = 8): array;
+    public function keywordsFor(string $seed, int $limit = 30): array;
 }

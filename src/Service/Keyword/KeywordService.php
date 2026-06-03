@@ -5,9 +5,10 @@ namespace App\Service\Keyword;
 use App\Entity\Brand;
 
 /**
- * Возвращает SEO-ключевики для бренда. Если Wordstat-провайдер сконфигурирован
- * и отдал фразы — используем их (реальные частотные запросы). Иначе null —
- * вызывающий оставляет LLM-сгенерированные ключевики (текущее поведение).
+ * Сбор SEO-ключевиков для бренда от провайдера (Wordstat). LIVE-вызов —
+ * выполняется ЗАРАНЕЕ командой app:brand:keywords и кэшируется в
+ * BrandRagPipeline.keywords; генерация читает уже готовое (без live-вызова,
+ * чтобы не упираться в квоту Wordstat при параллельных прогонах).
  */
 class KeywordService
 {
@@ -16,23 +17,26 @@ class KeywordService
     ) {
     }
 
-    /** @return string|null comma-joined ключевики, либо null (оставить LLM-вариант) */
-    public function deriveKeywords(Brand $brand): ?string
+    public function isConfigured(): bool
+    {
+        return $this->provider->isConfigured();
+    }
+
+    /**
+     * Live-сбор ключевиков бренда от провайдера (для app:brand:keywords).
+     * @return array<int,array{keyword:string,type:string,monthlyShows:?int}>
+     */
+    public function collect(Brand $brand): array
     {
         if (!$this->provider->isConfigured()) {
-            return null;
+            return [];
         }
 
         $seed = trim((string) $brand->getTitle());
         if ($seed === '') {
-            return null;
+            return [];
         }
 
-        $phrases = $this->provider->keywordsFor($seed);
-        if ($phrases === []) {
-            return null;
-        }
-
-        return mb_substr(implode(', ', $phrases), 0, 200);
+        return $this->provider->keywordsFor($seed);
     }
 }

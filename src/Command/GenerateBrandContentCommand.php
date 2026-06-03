@@ -39,19 +39,23 @@ class GenerateBrandContentCommand extends Command
         private readonly LlmService $llmService,
         private readonly ContentValidator $validator,
         private readonly BrandRagService $rag,
-        private readonly \App\Service\Keyword\KeywordService $keywords,
     ) {
         parent::__construct();
         $this->em = $this->managerRegistry->getManager();
     }
 
-    /** Wordstat-ключевики (если провайдер сконфигурирован) перебивают LLM-вариант. */
+    /** Заранее собранные ключевики (brand_keyword) перебивают LLM-вариант. */
     private function withWordstatKeywords(Brand $brand, array $meta): array
     {
-        $kw = $this->keywords->deriveKeywords($brand);
-        if ($kw !== null) {
-            $meta['keywords'] = $kw;
+        /** @var \App\Repository\BrandKeywordRepository $repo */
+        $repo = $this->em->getRepository(\App\Entity\BrandKeyword::class);
+        $rows = $repo->findByBrandRanked($brand, 8);
+        if ($rows === []) {
+            return $meta;
         }
+        $phrases = array_map(static fn(\App\Entity\BrandKeyword $k) => $k->getKeyword(), $rows);
+        $meta['keywords'] = mb_substr(implode(', ', $phrases), 0, 200);
+
         return $meta;
     }
 

@@ -1,0 +1,197 @@
+<?php
+
+namespace App\Command;
+
+use App\Entity\Brand;
+use App\Entity\BrandKeyword;
+use App\Repository\BrandKeywordRepository;
+use App\Repository\BrandRepository;
+use App\Service\Keyword\KeywordService;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
+
+/**
+ * Собирает SEO-ключевики (Wordstat) ЗАРАНЕЕ и кэширует в brand_keyword по brand_id.
+ * Генерация (app:brand:generate-content) читает готовое — без live-вызова Wordstat
+ * (квоты/rate-limit при параллельных шардах). Если провайдер не настроен
+ * (нет WORDSTAT_FOLDER_ID) — команда ничего не делает.
+ *
+ *   php bin/console app:brand:keywords --id=42 --dry-run
+ *   php bin/console app:brand:keywords 200 --total=4 --shard=0 --quiet >> var/log/kw0.log 2>&1 &
+ */
+#[AsCommand(
+    name: 'app:brand:keywords',
+    description: 'Сбор ключевиков Wordstat в brand_keyword (заранее, для генерации)',
+)]
+class CollectBrandKeywordsCommand extends Command
+{
+    private const SLEEP_BETWEEN_MS = 1100; // вежливость к Wordstat API
+
+    private int $withKeywords = 0;
+    private int $totalKeywords = 0;
+    private int $empty = 0;
+    private int $failed = 0;
+
+    private EntityManagerInterface $em;
+
+    public function __construct(
+        private readonly ManagerRegistry $managerRegistry,
+        private readonly KeywordService  $keywords,
+    ) {
+        parent::__construct();
+        $this->em = $this->managerRegistry->getManager();
+    }
+
+    protected function configure(): void
+    {
+        $this
+            ->addArgument('limit', InputArgument::OPTIONAL, 'Максимум брендов за запуск', 50)
+            ->addOption('id',      null, InputOption::VALUE_REQUIRED, 'Один бренд по ID')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Не сохранять, показать найденное')
+            ->addOption('force',   null, InputOption::VALUE_NONE,     'Пересобрать (удалить старые ключевики бренда)')
+            ->addOption('shard',   null, InputOption::VALUE_REQUIRED, 'Номер шарда', '0')
+            ->addOption('total',   null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
+        ;
+    }
+
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $io      = new SymfonyStyle($input, $output);
+        $limit   = (int) $input->getArgument('limit');
+        $brandId = $input->getOption('id');
+        $dryRun  = (bool) $input->getOption('dry-run');
+        $force   = (bool) $input->getOption('force');
+        $shard   = (int) $input->getOption('shard');
+        $total   = max(1, (int) $input->getOption('total'));
+
+        $io->title('Сбор ключевиков Wordstat');
+
+        if (!$this->keywords->isConfigured()) {
+            $io->warning('Wordstat не настроен (нет WORDSTAT_FOLDER_ID) — сбор пропущен.');
+            return Command::SUCCESS;
+        }
+        if ($dryRun) {
+            $io->note('dry-run — без сохранения');
+        }
+
+        if ($brandId !== null) {
+            $brand = $this->em->find(Brand::class, (int) $brandId);
+            if (!$brand) {
+                $io->error("Бренд ID {$brandId} не найден.");
+                return Command::FAILURE;
+            }
+            $this->processBrand($brand, $io, $dryRun, $force);
+            $this->printResults($io);
+            return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
+        }
+
+        /** @var BrandRepository $repo */
+        $repo = $this->em->getRepository(Brand::class);
+        $brandIds = array_map(
+            static fn(Brand $b) => $b->getId(),
+            $repo->findForKeywords($limit, $shard, $total),
+        );
+
+        if ($brandIds === []) {
+            $io->success('Нет брендов на сбор ключевиков.');
+            return Command::SUCCESS;
+        }
+
+        $io->section(sprintf('Брендов: %d (shard %d/%d)', count($brandIds), $shard, $total));
+        $this->em->clear();
+        $io->progressStart(count($brandIds));
+
+        foreach ($brandIds as $id) {
+            $brand = $this->em->find(Brand::class, $id);
+            if ($brand) {
+                $this->processBrand($brand, $io, $dryRun, $force);
+            }
+            $io->progressAdvance();
+            usleep(self::SLEEP_BETWEEN_MS * 1000);
+        }
+
+        $io->progressFinish();
+        $this->printResults($io);
+
+        return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force): void
+    {
+        $name = $brand->getTitle() ?? "ID:{$brand->getId()}";
+
+        try {
+            $rows = $this->keywords->collect($brand);
+            $io->text(sprintf('  → %s: %d ключевик(ов)', $name, count($rows)));
+
+            if ($rows === []) {
+                $this->empty++;
+                return;
+            }
+
+            /** @var BrandKeywordRepository $kwRepo */
+            $kwRepo = $this->em->getRepository(BrandKeyword::class);
+
+            if ($force && !$dryRun) {
+                $kwRepo->deleteForBrand($brand);
+            }
+
+            $saved = 0;
+            foreach ($rows as $row) {
+                $phrase = trim((string) ($row['keyword'] ?? ''));
+                $type   = ($row['type'] ?? BrandKeyword::TYPE_ORIGIN) === BrandKeyword::TYPE_RELATED
+                    ? BrandKeyword::TYPE_RELATED : BrandKeyword::TYPE_ORIGIN;
+                if ($phrase === '') {
+                    continue;
+                }
+                if (!$force && $kwRepo->existsPhrase($brand, mb_substr($phrase, 0, 255), $type)) {
+                    continue;
+                }
+                if (!$dryRun) {
+                    $kw = (new BrandKeyword())
+                        ->setBrand($brand)
+                        ->setKeyword($phrase)
+                        ->setType($type)
+                        ->setMonthlyShows($row['monthlyShows'] ?? null)
+                        ->setSource(BrandKeyword::SOURCE_WORDSTAT);
+                    $this->em->persist($kw);
+                }
+                $saved++;
+            }
+
+            $this->totalKeywords += $saved;
+            $this->withKeywords++;
+
+            if (!$dryRun) {
+                $this->em->flush();
+                $this->em->clear();
+            }
+        } catch (\Throwable $e) {
+            $io->warning(sprintf('    Ошибка «%s»: %s', $name, $e->getMessage()));
+            $this->failed++;
+            if (!$this->em->isOpen()) {
+                $this->em = $this->managerRegistry->resetManager();
+            } else {
+                $this->em->clear();
+            }
+        }
+    }
+
+    private function printResults(SymfonyStyle $io): void
+    {
+        $io->newLine();
+        $io->table(['Результат', 'Кол-во'], [
+            ['Брендов с ключевиками', $this->withKeywords],
+            ['Всего ключевиков',      $this->totalKeywords],
+            ['Без ключевиков',        $this->empty],
+            ['Ошибок',                $this->failed],
+        ]);
+    }
+}
