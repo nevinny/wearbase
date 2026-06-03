@@ -12,12 +12,18 @@ parameters:
     env(VK_APP_SECRET): ''
     env(BRAND_CLAIM_AUTOGRANT_EMAIL): '1'
     env(BRAND_CLAIM_AUTOGRANT_VK): '1'
+    env(PAYMENT_SECRET_KEY): ''
 
 services:
     # default configuration for services in *this* file
     _defaults:
         autowire: true      # Automatically injects dependencies in your services.
         autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
+
+    # Платёжные шлюзы помечаем тегом — реестр собирает их через TaggedIterator
+    _instanceof:
+        App\Payment\Gateway\PaymentGatewayInterface:
+            tags: ['app.payment_gateway']
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
@@ -31,6 +37,38 @@ services:
         arguments:
             $apiKey: '%env(OPENROUTER_API_KEY)%'
             $model: '%env(OPENROUTER_MODEL)%'
+            $localUrl: '%env(LOCAL_LLM_URL)%'
+            $localModel: '%env(LOCAL_LLM_MODEL)%'
+
+    App\Service\EmbeddingService:
+        arguments:
+            $embedUrl: '%env(LOCAL_EMBED_URL)%'
+            $embedModel: '%env(LOCAL_EMBED_MODEL)%'
+
+    App\Service\VectorStoreService:
+        arguments:
+            $qdrantUrl: '%env(QDRANT_URL)%'
+            $qdrantApiKey: '%env(QDRANT_API_KEY)%'
+            $collection: '%env(QDRANT_COLLECTION)%'
+
+    App\Service\UrlFilter:
+        arguments:
+            $extraExcludedDomains: '%env(SCRAPE_EXCLUDED_DOMAINS)%'
+
+    App\Service\SearxClient:
+        arguments:
+            $searxUrl: '%env(SEARXNG_URL)%'
+
+    App\Service\WebScraperService:
+        arguments:
+            $trafilaturaBin: '%env(TRAFILATURA_BIN)%'
+
+    App\Service\Keyword\WordstatClient:
+        arguments:
+            $apiKey:   '%env(WORDSTAT_OAUTH_TOKEN)%'
+            $folderId: '%env(WORDSTAT_FOLDER_ID)%'
+
+    App\Service\Keyword\KeywordProviderInterface: '@App\Service\Keyword\WordstatClient'
 
     App\Notification\TelegramNotifier:
         arguments:
@@ -44,6 +82,10 @@ services:
         arguments:
             $shopId: '%env(YOOKASSA_SHOP_ID)%'
             $secretKey: '%env(YOOKASSA_SECRET_KEY)%'
+
+    App\Service\SecretCipher:
+        arguments:
+            $key: '%env(PAYMENT_SECRET_KEY)%'
 
     App\Service\BrandClaimService:
         arguments:
@@ -63,10 +105,6 @@ services:
             $boxberryToken: '%env(BOXBERRY_TOKEN)%'
 
     App\Command\MigrateImagesToSubdirsCommand:
-        arguments:
-            $projectDir: '%kernel.project_dir%'
-
-    App\Command\GenerateBrandDeepseekCommand:
         arguments:
             $projectDir: '%kernel.project_dir%'
 

@@ -1,0 +1,211 @@
+<?php
+
+namespace App\Entity;
+
+use App\Repository\BrandRagPipelineRepository;
+use Doctrine\ORM\Mapping as ORM;
+use Nevinny\AdminCoreBundle\Entity\Trait\Created;
+
+/**
+ * Состояние RAG-пайплайна для бренда: pending → scraped → embedded → generated → done
+ * (+ *_failed на каждом этапе). Ведёт finder-запросы команд-воркеров и переживает
+ * перезапуски многодневного прогона. Отдельная таблица, чтобы не раздувать Brand
+ * восемью per-stage колонками.
+ */
+#[ORM\Entity(repositoryClass: BrandRagPipelineRepository::class)]
+#[ORM\Table(name: 'brand_rag_pipeline')]
+class BrandRagPipeline
+{
+    use Created;
+
+    public const STATUS_PENDING        = 'pending';
+    public const STATUS_SCRAPED        = 'scraped';
+    public const STATUS_EMBEDDED       = 'embedded';
+    public const STATUS_GENERATED      = 'generated';
+    public const STATUS_DONE           = 'done';
+    public const STATUS_SCRAPE_FAILED  = 'scrape_failed';
+    public const STATUS_EMBED_FAILED   = 'embed_failed';
+    public const STATUS_GENERATE_FAILED = 'generate_failed';
+
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    private ?int $id = null;
+
+    #[ORM\OneToOne]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    private ?Brand $brand = null;
+
+    #[ORM\Column(length: 20, options: ['default' => self::STATUS_PENDING])]
+    private string $status = self::STATUS_PENDING;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $scrapedAt = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $embeddedAt = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $generatedAt = null;
+
+    #[ORM\Column(options: ['default' => 0])]
+    private int $scrapeAttempts = 0;
+
+    #[ORM\Column(options: ['default' => 0])]
+    private int $embedAttempts = 0;
+
+    #[ORM\Column(options: ['default' => 0])]
+    private int $generateAttempts = 0;
+
+    /** Сколько пригодных документов найдено при скрейпе. */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $sourceCount = 0;
+
+    /** Топовый cosine-score retrieval (аудит качества grounding). */
+    #[ORM\Column(type: 'float', nullable: true)]
+    private ?float $topRetrievalScore = null;
+
+    /** Использовался ли RAG-контекст при генерации (иначе legacy-fallback). */
+    #[ORM\Column(options: ['default' => false])]
+    private bool $grounded = false;
+
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $lastError = null;
+
+    public function getId(): ?int
+    {
+        return $this->id;
+    }
+
+    public function getBrand(): ?Brand
+    {
+        return $this->brand;
+    }
+
+    public function setBrand(?Brand $brand): self
+    {
+        $this->brand = $brand;
+        return $this;
+    }
+
+    public function getStatus(): string
+    {
+        return $this->status;
+    }
+
+    public function setStatus(string $status): self
+    {
+        $this->status = $status;
+        return $this;
+    }
+
+    public function getScrapedAt(): ?\DateTimeInterface
+    {
+        return $this->scrapedAt;
+    }
+
+    public function setScrapedAt(?\DateTimeInterface $at): self
+    {
+        $this->scrapedAt = $at;
+        return $this;
+    }
+
+    public function getEmbeddedAt(): ?\DateTimeInterface
+    {
+        return $this->embeddedAt;
+    }
+
+    public function setEmbeddedAt(?\DateTimeInterface $at): self
+    {
+        $this->embeddedAt = $at;
+        return $this;
+    }
+
+    public function getGeneratedAt(): ?\DateTimeInterface
+    {
+        return $this->generatedAt;
+    }
+
+    public function setGeneratedAt(?\DateTimeInterface $at): self
+    {
+        $this->generatedAt = $at;
+        return $this;
+    }
+
+    public function getScrapeAttempts(): int
+    {
+        return $this->scrapeAttempts;
+    }
+
+    public function setScrapeAttempts(int $n): self
+    {
+        $this->scrapeAttempts = $n;
+        return $this;
+    }
+
+    public function getEmbedAttempts(): int
+    {
+        return $this->embedAttempts;
+    }
+
+    public function setEmbedAttempts(int $n): self
+    {
+        $this->embedAttempts = $n;
+        return $this;
+    }
+
+    public function getGenerateAttempts(): int
+    {
+        return $this->generateAttempts;
+    }
+
+    public function setGenerateAttempts(int $n): self
+    {
+        $this->generateAttempts = $n;
+        return $this;
+    }
+
+    public function getSourceCount(): int
+    {
+        return $this->sourceCount;
+    }
+
+    public function setSourceCount(int $n): self
+    {
+        $this->sourceCount = $n;
+        return $this;
+    }
+
+    public function getTopRetrievalScore(): ?float
+    {
+        return $this->topRetrievalScore;
+    }
+
+    public function setTopRetrievalScore(?float $score): self
+    {
+        $this->topRetrievalScore = $score;
+        return $this;
+    }
+
+    public function isGrounded(): bool
+    {
+        return $this->grounded;
+    }
+
+    public function setGrounded(bool $grounded): self
+    {
+        $this->grounded = $grounded;
+        return $this;
+    }
+
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    public function setLastError(?string $error): self
+    {
+        $this->lastError = $error;
+        return $this;
+    }
+}

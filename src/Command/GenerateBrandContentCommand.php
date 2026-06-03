@@ -3,9 +3,12 @@
 namespace App\Command;
 
 use App\Entity\Brand;
+use App\Entity\BrandRagPipeline;
+use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -28,12 +31,28 @@ class GenerateBrandContentCommand extends Command
     private int $failed          = 0; // ошибка при обращении к LLM
     private int $validationFailed = 0; // не прошло валидацию
 
+    /** EM не readonly — после DB-ошибки пересоздаём через ManagerRegistry (многодневный прогон). */
+    private EntityManagerInterface $em;
+
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
+        private readonly ManagerRegistry $managerRegistry,
         private readonly LlmService $llmService,
         private readonly ContentValidator $validator,
+        private readonly BrandRagService $rag,
+        private readonly \App\Service\Keyword\KeywordService $keywords,
     ) {
         parent::__construct();
+        $this->em = $this->managerRegistry->getManager();
+    }
+
+    /** Wordstat-ключевики (если провайдер сконфигурирован) перебивают LLM-вариант. */
+    private function withWordstatKeywords(Brand $brand, array $meta): array
+    {
+        $kw = $this->keywords->deriveKeywords($brand);
+        if ($kw !== null) {
+            $meta['keywords'] = $kw;
+        }
+        return $meta;
     }
 
     protected function configure(): void
@@ -44,6 +63,8 @@ class GenerateBrandContentCommand extends Command
             ->addOption('id',            null, InputOption::VALUE_REQUIRED, 'Обработать конкретный бренд по ID')
             ->addOption('meta-only',     null, InputOption::VALUE_NONE, 'Генерировать только meta для брендов с описанием')
             ->addOption('skip-validate', null, InputOption::VALUE_NONE, 'Пропустить валидацию')
+            ->addOption('shard',         null, InputOption::VALUE_REQUIRED, 'Номер шарда (0..total-1)', '0')
+            ->addOption('total',         null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
         ;
     }
 
@@ -55,6 +76,8 @@ class GenerateBrandContentCommand extends Command
         $brandId      = $input->getOption('id');
         $metaOnly     = $input->getOption('meta-only');
         $skipValidate = $input->getOption('skip-validate');
+        $shard        = (int) $input->getOption('shard');
+        $total        = max(1, (int) $input->getOption('total'));
 
         $io->title('Генерация контента для брендов');
 
@@ -64,7 +87,7 @@ class GenerateBrandContentCommand extends Command
 
         // Обработка одного бренда по --id
         if ($brandId !== null) {
-            $brand = $this->entityManager->find(Brand::class, (int) $brandId);
+            $brand = $this->em->find(Brand::class, (int) $brandId);
             if (!$brand) {
                 $io->error("Бренд с ID {$brandId} не найден.");
                 return Command::FAILURE;
@@ -77,31 +100,33 @@ class GenerateBrandContentCommand extends Command
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
         }
 
-        // Пакетная обработка
-        $repo = $this->entityManager->getRepository(Brand::class);
-
-        $toProcess = $metaOnly
-            ? $repo->findWithDescriptionWithoutMeta($limit)
-            : $repo->findWithoutDescription($limit);
-
-        $io->section(sprintf(
-            'Будет обработано: %d брендов (%s)',
-            count($toProcess),
-            $metaOnly ? 'только meta' : 'description + meta'
-        ));
+        // Пакетная обработка: собираем только ID, грузим бренд свежим каждую итерацию,
+        // em->clear() после каждого (иначе detached RAG-pipeline/Brand ломают EM в долгом прогоне).
+        /** @var \App\Repository\BrandRepository $repo */
+        $repo = $this->em->getRepository(Brand::class);
+        $brandIds = array_map(
+            static fn(Brand $b) => $b->getId(),
+            $metaOnly
+                ? $repo->findWithDescriptionWithoutMeta($limit, $shard, $total)
+                : $repo->findWithoutDescription($limit, $shard, $total),
+        );
 
         $mode = $metaOnly ? 'только meta' : 'description + meta';
-        $io->section(sprintf('Будет обработано: %d брендов (%s)', count($toProcess), $mode));
+        $io->section(sprintf('Будет обработано: %d брендов (%s, shard %d/%d)', count($brandIds), $mode, $shard, $total));
 
-        if (count($toProcess) === 0) {
+        if ($brandIds === []) {
             $io->success('Нет брендов для обработки.');
             return Command::SUCCESS;
         }
 
-        $io->progressStart(count($toProcess));
+        $this->em->clear();
+        $io->progressStart(count($brandIds));
 
-        foreach ($toProcess as $brand) {
-            $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate);
+        foreach ($brandIds as $id) {
+            $brand = $this->em->find(Brand::class, $id);
+            if ($brand) {
+                $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate);
+            }
             $io->progressAdvance();
         }
 
@@ -140,9 +165,15 @@ class GenerateBrandContentCommand extends Command
                 // Режим: полная генерация (description + meta)
                 $this->processFullGeneration($brand, $brandName, $city, $io, $dryRun, $skipValidate);
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $io->warning(sprintf('Ошибка для "%s": %s', $brandName, $e->getMessage()));
             $this->failed++;
+            // Если EM сломан DB-ошибкой — пересоздаём, иначе весь батч упадёт.
+            if (!$this->em->isOpen()) {
+                $this->em = $this->managerRegistry->resetManager();
+            } else {
+                $this->em->clear();
+            }
         }
     }
 
@@ -155,7 +186,8 @@ class GenerateBrandContentCommand extends Command
         bool $dryRun,
         bool $skipValidate,
     ): void {
-        [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $existingDescription, $city, $skipValidate, $io);
+        $context = $this->rag->retrieve($brand)['context'];
+        [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $existingDescription, $city, $skipValidate, $io, $context);
 
         if (!$skipValidate && !empty($metaErrors)) {
             $io->warning(sprintf('Валидация meta не прошла для "%s": %s', $brandName, implode(', ', $metaErrors)));
@@ -175,9 +207,9 @@ class GenerateBrandContentCommand extends Command
         ));
 
         if (!$dryRun) {
-            $this->applyMeta($brand, $meta);
-            $this->entityManager->flush();
-            $this->entityManager->detach($brand);
+            $this->applyMeta($brand, $this->withWordstatKeywords($brand, $meta));
+            $this->em->flush();
+            $this->em->clear();
         }
 
         $this->metaGenerated++;
@@ -191,11 +223,19 @@ class GenerateBrandContentCommand extends Command
         bool $dryRun,
         bool $skipValidate,
     ): void {
+        // 0. RAG: достаём реальные факты из Qdrant. context=null → legacy-режим (модель из своих знаний).
+        $rag = $this->rag->retrieve($brand);
+        $context = $rag['context'];
+        if ($context !== null) {
+            $io->text(sprintf('    RAG: grounded, чанков %d, score %.2f', $rag['chunks'], $rag['score'] ?? 0));
+        }
+
         // 1. Генерация description (без retry — объём текста не гарантирован ретраем, лучше провалиться явно)
         $description = $this->llmService->generateBrandDescription(
             brandName: $brandName,
             city: $city,
             style: $this->getStyleContext($brand),
+            facts: $context,
         );
 
         if (!$skipValidate) {
@@ -208,7 +248,7 @@ class GenerateBrandContentCommand extends Command
         }
 
         // 2. Генерация meta на основе только что созданного description
-        [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $description, $city, $skipValidate, $io);
+        [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $description, $city, $skipValidate, $io, $context);
 
         if (!$skipValidate && !empty($metaErrors)) {
             $io->warning(sprintf('Валидация meta не прошла для "%s": %s', $brandName, implode(', ', $metaErrors)));
@@ -218,12 +258,25 @@ class GenerateBrandContentCommand extends Command
 
         if (!$dryRun) {
             $brand->setDescription($description);
-            $this->applyMeta($brand, $meta);
-            $this->entityManager->flush();
-            $this->entityManager->detach($brand);
+            $this->applyMeta($brand, $this->withWordstatKeywords($brand, $meta));
+            $this->markGenerated($brand, $rag);
+            $this->em->flush();
+            $this->em->clear();
         }
 
         $this->processed++;
+    }
+
+    /** Отмечает в brand_rag_pipeline факт генерации + использовался ли RAG-контекст. */
+    private function markGenerated(Brand $brand, array $rag): void
+    {
+        /** @var \App\Repository\BrandRagPipelineRepository $repo */
+        $repo = $this->em->getRepository(\App\Entity\BrandRagPipeline::class);
+        $repo->getOrCreate($brand)
+            ->setStatus(\App\Entity\BrandRagPipeline::STATUS_DONE)
+            ->setGeneratedAt(new \DateTime())
+            ->setGrounded($rag['context'] !== null)
+            ->setTopRetrievalScore($rag['score'] ?? null);
     }
 
     // -------------------------------------------------------------------------
@@ -240,6 +293,7 @@ class GenerateBrandContentCommand extends Command
         ?string $city,
         bool $skipValidate,
         SymfonyStyle $io,
+        ?string $facts = null,
     ): array {
         $meta   = [];
         $errors = [];
@@ -249,6 +303,7 @@ class GenerateBrandContentCommand extends Command
                 brandName: $brandName,
                 existingDescription: $description,
                 city: $city,
+                facts: $facts,
             );
 
             if ($skipValidate) {

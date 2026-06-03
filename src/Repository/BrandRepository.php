@@ -4,6 +4,8 @@ namespace App\Repository;
 
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use App\Entity\Brand;
+use App\Entity\BrandRagPipeline;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -99,7 +101,8 @@ class BrandRepository extends ServiceEntityRepository
 
     public function findFeaturedBrands(int $limit = 12): array
     {
-        return $this->createQueryBuilder('b')
+        // Сначала пытаемся найти бренды с описанием (для лучшего UX)
+        $results = $this->createQueryBuilder('b')
             ->where('b.status = :status')
             ->andWhere('b.description IS NOT NULL')
             ->andWhere('LENGTH(b.description) > 100')
@@ -108,6 +111,19 @@ class BrandRepository extends ServiceEntityRepository
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+
+        // Фолбэк: любые активные бренды (чтобы каталог не выглядел пустым)
+        if (empty($results)) {
+            $results = $this->createQueryBuilder('b')
+                ->where('b.status = :status')
+                ->setParameter('status', Statuses::Active)
+                ->orderBy('b.created_at', 'DESC')
+                ->setMaxResults($limit)
+                ->getQuery()
+                ->getResult();
+        }
+
+        return $results;
     }
 
     public function getLetterStats(): array
@@ -133,23 +149,126 @@ class BrandRepository extends ServiceEntityRepository
         return $stats;
     }
 
-    public function findWithDescriptionWithoutMeta(int $limit): array
+    public function findWithDescriptionWithoutMeta(int $limit, int $shard = 0, int $total = 1): array
     {
-        return $this->createQueryBuilder('b')
+        $qb = $this->createQueryBuilder('b')
             ->where('b.description IS NOT NULL')
             ->andWhere('b.description != :empty')
             ->andWhere('b.metaTitle IS NULL OR b.metaTitle = :empty')
-            ->setParameter('empty', '')
+            ->setParameter('empty', '');
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    public function findWithoutDescription(int $limit, int $shard = 0, int $total = 1): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->where('b.description IS NULL OR b.description = :empty')
+            ->setParameter('empty', '');
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /**
+     * Бренды, которые нужно обогатить контактами.
+     *
+     * Пропускает (без --force):
+     *  - бренды со статусом 'enriched' / 'partial' / 'not_found'
+     *  - бренды, у которых уже есть хотя бы одна ссылка в brand_link
+     *    (данные внесены вручную до запуска обогащения)
+     *  - ошибочные бренды, исчерпавшие лимит попыток
+     *
+     * Включает:
+     *  - contactEnrichedAt IS NULL И нет ссылок в brand_link
+     *  - завершились ошибкой и ещё есть попытки
+     *
+     * @param bool $force если true — возвращает все бренды без фильтрации
+     */
+    public function findForContactEnrichment(int $limit, bool $force = false, int $maxErrorAttempts = 3): array
+    {
+        if ($force) {
+            return $this->createQueryBuilder('b')
+                ->orderBy('b.id', 'ASC')
+                ->setMaxResults($limit)
+                ->getQuery()
+                ->getResult();
+        }
+
+        return $this->createQueryBuilder('b')
+            // Бренды без маркера обогащения И без уже существующих ссылок
+            ->leftJoin('b.links', 'l')
+            ->where(
+                '(' .
+                    'b.contactEnrichedAt IS NULL AND l.id IS NULL' .
+                ') OR (' .
+                    'b.contactStatus = :error AND b.contactAttempts < :maxAttempts' .
+                ')'
+            )
+            ->setParameter('error', 'error')
+            ->setParameter('maxAttempts', $maxErrorAttempts)
+            ->groupBy('b.id')
+            ->orderBy('b.id', 'ASC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
     }
 
-    public function findWithoutDescription(int $limit): array
+    // =========================================================================
+    // RAG pipeline stage finders (см. BrandRagPipeline). Каждый воркер берёт
+    // бренды на своём этапе; шардинг MOD(b.id, total)=shard даёт непересекающиеся
+    // наборы для параллельных процессов (ноль конфликтов записи).
+    // =========================================================================
+
+    /** Этап 1 — на скрейп: нет pipeline-строки, либо pending, либо повторяемый scrape_failed. */
+    public function findForScrape(int $limit, int $shard = 0, int $total = 1, int $maxAttempts = 3): array
     {
-        return $this->createQueryBuilder('b')
-            ->where('b.description IS NULL OR b.description = :empty')
-            ->setParameter('empty', '')
+        $qb = $this->createQueryBuilder('b')
+            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('b.status = :active')
+            ->andWhere('p.id IS NULL OR p.status = :pending OR (p.status = :failed AND p.scrapeAttempts < :max)')
+            ->setParameter('active', Statuses::Active)
+            ->setParameter('pending', BrandRagPipeline::STATUS_PENDING)
+            ->setParameter('failed', BrandRagPipeline::STATUS_SCRAPE_FAILED)
+            ->setParameter('max', $maxAttempts);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /** Этап 2 — на эмбеддинг: pipeline в статусе scraped, либо повторяемый embed_failed. */
+    public function findForEmbed(int $limit, int $shard = 0, int $total = 1, int $maxAttempts = 3): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.status = :scraped OR (p.status = :failed AND p.embedAttempts < :max)')
+            ->setParameter('scraped', BrandRagPipeline::STATUS_SCRAPED)
+            ->setParameter('failed', BrandRagPipeline::STATUS_EMBED_FAILED)
+            ->setParameter('max', $maxAttempts);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /** Этап 3 — на генерацию: pipeline в статусе embedded, либо повторяемый generate_failed. */
+    public function findForGeneration(int $limit, int $shard = 0, int $total = 1, int $maxAttempts = 3): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.status = :embedded OR (p.status = :failed AND p.generateAttempts < :max)')
+            ->setParameter('embedded', BrandRagPipeline::STATUS_EMBEDDED)
+            ->setParameter('failed', BrandRagPipeline::STATUS_GENERATE_FAILED)
+            ->setParameter('max', $maxAttempts);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total): array
+    {
+        if ($total > 1) {
+            $qb->andWhere('MOD(b.id, :total) = :shard')
+                ->setParameter('total', $total)
+                ->setParameter('shard', $shard);
+        }
+
+        return $qb->orderBy('b.id', 'ASC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
