@@ -97,6 +97,7 @@ class LlmService
         ?string $city = null,
         ?string $style = null,
         ?string $facts = null,
+        ?string $keywords = null,
     ): string {
         $lines = ["Бренд: {$brandName}"];
         if ($city !== null) {
@@ -125,6 +126,11 @@ class LlmService
             ? '- Опирайся ТОЛЬКО на «Проверенные факты» выше; не добавляй то, чего там нет'
             : '- Если данных о бренде нет — опиши российский streetwear-сегмент в целом';
 
+        // SEO (A): естественно вплести реальные поисковые запросы (Wordstat), БЕЗ переспама.
+        $kwRule = ($keywords !== null && trim($keywords) !== '')
+            ? "\n- SEO: естественно и органично вплети 2–4 из этих поисковых запросов (НЕ перечисляй списком, НЕ переспамь): {$keywords}"
+            : '';
+
         $prompt = <<<EOT
 Напиши развёрнутое описание для российского бренда одежды.
 
@@ -137,7 +143,7 @@ class LlmService
 - Включи: нишу бренда, философию, особенности (при наличии данных)
 - НЕ используй слова: "инновационный", "уникальный", "передовой", "лидирующий", "новаторский", "выделяется", "отличается"
 - НЕ используй фразы: "мы стремимся", "наша миссия", "в современном мире"
-{$sourceRule}
+{$sourceRule}{$kwRule}
 
 Формат: только текст, без заголовков и markdown-разметки.
 EOT;
@@ -172,11 +178,11 @@ EOT;
     /**
      * SEO-данные (title, description, keywords) на основе нового описания.
      */
-    public function generateBrandMeta(string $brandName, ?string $city = null, ?string $facts = null): array
+    public function generateBrandMeta(string $brandName, ?string $city = null, ?string $facts = null, ?string $keywords = null): array
     {
         $cityContext = $city ? " из города {$city}" : '';
 
-        $prompt   = $this->buildMetaPrompt($brandName, $cityContext, $facts);
+        $prompt   = $this->buildMetaPrompt($brandName, $cityContext, $facts, $keywords);
         $response = $this->generate($prompt, local: true, think: false);
         $meta     = $this->extractJson($response) ?? $this->fallbackMeta($brandName);
 
@@ -191,6 +197,7 @@ EOT;
         string $existingDescription,
         ?string $city = null,
         ?string $facts = null,
+        ?string $keywords = null,
     ): array {
         $cityContext = $city ? " из города {$city}" : '';
         $factsBlock  = ($facts !== null && trim($facts) !== '')
@@ -211,7 +218,7 @@ EOT;
   "keywords": "keyword1, keyword2, keyword3"
 }
 
-{$this->metaRequirements($brandName)}
+{$this->metaRequirements($brandName, $keywords)}
 
 Ответь ТОЛЬКО валидным JSON без markdown-разметки.
 EOT;
@@ -257,7 +264,7 @@ EOT;
             : $truncated;
     }
 
-    private function buildMetaPrompt(string $brandName, string $cityContext, ?string $facts = null): string
+    private function buildMetaPrompt(string $brandName, string $cityContext, ?string $facts = null, ?string $keywords = null): string
     {
         $factsBlock = ($facts !== null && trim($facts) !== '')
             ? "Факты о бренде (используй для точных ключевиков, не выдумывай):\n{$facts}\n\n"
@@ -271,17 +278,22 @@ EOT;
   "keywords": "keyword1, keyword2, keyword3"
 }
 
-{$factsBlock}{$this->metaRequirements($brandName)}
+{$factsBlock}{$this->metaRequirements($brandName, $keywords)}
 
 Ответь ТОЛЬКО валидным JSON без markdown-разметки.
 EOT;
     }
 
-    private function metaRequirements(string $brandName): string
+    private function metaRequirements(string $brandName, ?string $keywords = null): string
     {
+        // SEO (B): title тянется к самому частотному реальному запросу (первый в списке).
+        $titleSeo = ($keywords !== null && trim($keywords) !== '')
+            ? "\n- title: по возможности органично включи главный поисковый запрос (первый из: {$keywords}), если влезает в лимит и звучит естественно"
+            : '';
+
         return <<<EOT
 Требования:
-- title: ВСЕГДА включает название бренда "{$brandName}" + "бренд одежды" или "одежда"; строго до 55 символов
+- title: ВСЕГДА включает название бренда "{$brandName}" + "бренд одежды" или "одежда"; строго до 55 символов{$titleSeo}
 - description: ровно 130–140 символов, заканчивай на целом слове
 - keywords: 3–5 ключевых слов через запятую
 - НЕ используй слова: "уникальный", "инновационный", "передовой", "лидирующий", "новаторский", "выделяется", "отличается"

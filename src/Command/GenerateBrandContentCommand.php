@@ -44,18 +44,27 @@ class GenerateBrandContentCommand extends Command
         $this->em = $this->managerRegistry->getManager();
     }
 
-    /** Заранее собранные ключевики (brand_keyword) перебивают LLM-вариант. */
-    private function withWordstatKeywords(Brand $brand, array $meta): array
+    /** Топ ключевиков бренда (origin раньше related, по частоте) — comma-joined, либо null. */
+    private function rankedKeywords(Brand $brand): ?string
     {
         /** @var \App\Repository\BrandKeywordRepository $repo */
         $repo = $this->em->getRepository(\App\Entity\BrandKeyword::class);
         $rows = $repo->findByBrandRanked($brand, 8);
         if ($rows === []) {
-            return $meta;
+            return null;
         }
         $phrases = array_map(static fn(\App\Entity\BrandKeyword $k) => $k->getKeyword(), $rows);
-        $meta['keywords'] = mb_substr(implode(', ', $phrases), 0, 200);
 
+        return mb_substr(implode(', ', $phrases), 0, 200);
+    }
+
+    /** Заранее собранные ключевики (brand_keyword) перебивают LLM-вариант в meta.keywords. */
+    private function withWordstatKeywords(Brand $brand, array $meta): array
+    {
+        $kw = $this->rankedKeywords($brand);
+        if ($kw !== null) {
+            $meta['keywords'] = $kw;
+        }
         return $meta;
     }
 
@@ -191,7 +200,7 @@ class GenerateBrandContentCommand extends Command
         bool $skipValidate,
     ): void {
         $context = $this->rag->retrieve($brand)['context'];
-        [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $existingDescription, $city, $skipValidate, $io, $context);
+        [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $existingDescription, $city, $skipValidate, $io, $context, $this->rankedKeywords($brand));
 
         if (!$skipValidate && !empty($metaErrors)) {
             $io->warning(sprintf('Валидация meta не прошла для "%s": %s', $brandName, implode(', ', $metaErrors)));
@@ -242,12 +251,16 @@ class GenerateBrandContentCommand extends Command
             $io->text('    ⚠ has_own_site=false — нет собств. сайта, пониженная уверенность grounding');
         }
 
+        // SEO (A/B): топ-фразы Wordstat по частоте — для естественного вплетения в описание и title.
+        $keywords = $this->rankedKeywords($brand);
+
         // 1. Генерация description (без retry — объём текста не гарантирован ретраем, лучше провалиться явно)
         $description = $this->llmService->generateBrandDescription(
             brandName: $brandName,
             city: $city,
             style: $this->getStyleContext($brand),
             facts: $context,
+            keywords: $keywords,
         );
 
         if (!$skipValidate) {
@@ -260,7 +273,7 @@ class GenerateBrandContentCommand extends Command
         }
 
         // 2. Генерация meta на основе только что созданного description
-        [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $description, $city, $skipValidate, $io, $context);
+        [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $description, $city, $skipValidate, $io, $context, $keywords);
 
         if (!$skipValidate && !empty($metaErrors)) {
             $io->warning(sprintf('Валидация meta не прошла для "%s": %s', $brandName, implode(', ', $metaErrors)));
@@ -319,6 +332,7 @@ class GenerateBrandContentCommand extends Command
         bool $skipValidate,
         SymfonyStyle $io,
         ?string $facts = null,
+        ?string $keywords = null,
     ): array {
         $meta   = [];
         $errors = [];
@@ -329,6 +343,7 @@ class GenerateBrandContentCommand extends Command
                 existingDescription: $description,
                 city: $city,
                 facts: $facts,
+                keywords: $keywords,
             );
 
             if ($skipValidate) {
