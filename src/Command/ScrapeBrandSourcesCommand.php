@@ -118,6 +118,7 @@ class ScrapeBrandSourcesCommand extends Command
                 $this->processBrand($brand, $io, $dryRun, $force, $max);
             }
             $io->progressAdvance();
+            gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
             usleep(self::SLEEP_BETWEEN_MS * 1000);
         }
 

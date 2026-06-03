@@ -120,6 +120,7 @@ class FetchBrandSourcesCommand extends Command
             // claimPending вернул managed-сущности; чистим UoW только в конце пачки —
             // следующий claim перезапросит свежие строки.
             $this->em->clear();
+            gc_collect_cycles(); // циклические ссылки Doctrine иначе текут в долгом прогоне
 
             // dry-run не меняет статусы → очередь не дренится → бесконечный цикл. Стоп.
             if ($dryRun) {

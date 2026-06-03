@@ -124,6 +124,7 @@ class CollectBrandKeywordsCommand extends Command
         foreach ($brandIds as $id) {
             $this->processWithQuotaPause((int) $id, $io, $dryRun, $force);
             $io->progressAdvance();
+            gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
             if ($this->quotaExhausted) {  // сработал предохранитель QUOTA_MAX_PAUSES
                 $io->progressFinish();
                 $io->warning('Квота Wordstat не восстановилась за лимит попыток — остановка (resumable).');

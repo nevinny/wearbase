@@ -121,6 +121,7 @@ class EmbedBrandSourcesCommand extends Command
                 $this->processBrand($brand, $io, $dryRun, $force);
             }
             $io->progressAdvance();
+            gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
         }
 
         $io->progressFinish();

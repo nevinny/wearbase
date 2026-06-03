@@ -141,6 +141,7 @@ class GenerateBrandContentCommand extends Command
                 $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate);
             }
             $io->progressAdvance();
+            gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
         }
 
         $io->progressFinish();
