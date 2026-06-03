@@ -7,6 +7,7 @@ use App\Entity\BrandKeyword;
 use App\Repository\BrandKeywordRepository;
 use App\Repository\BrandRepository;
 use App\Service\Keyword\KeywordService;
+use App\Service\Keyword\WordstatQuotaException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -19,12 +20,16 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
  * Собирает SEO-ключевики (Wordstat) ЗАРАНЕЕ и кэширует в brand_keyword по brand_id.
- * Генерация (app:brand:generate-content) читает готовое — без live-вызова Wordstat
- * (квоты/rate-limit при параллельных шардах). Если провайдер не настроен
- * (нет WORDSTAT_FOLDER_ID) — команда ничего не делает.
+ * Генерация (app:brand:generate-content) читает готовое — без live-вызова Wordstat.
+ *
+ * ВАЖНО: у Yandex Cloud Wordstat жёсткая квота 100 запросов/ЧАС на аккаунт.
+ * Троттлинг ~37с/запрос (≤97/час). НЕ шардить параллельно — квота общая на аккаунт,
+ * параллель только быстрее исчерпает её. При исчерпании команда останавливается
+ * (resumable — добор при следующем запуске). Если поднять квоту в Yandex Cloud —
+ * уменьшить SLEEP_BETWEEN_MS.
  *
  *   php bin/console app:brand:keywords --id=42 --dry-run
- *   php bin/console app:brand:keywords 200 --total=4 --shard=0 --quiet >> var/log/kw0.log 2>&1 &
+ *   php bin/console app:brand:keywords 100000 --quiet >> var/log/kw.log 2>&1 &
  */
 #[AsCommand(
     name: 'app:brand:keywords',
@@ -32,12 +37,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class CollectBrandKeywordsCommand extends Command
 {
-    private const SLEEP_BETWEEN_MS = 1100; // вежливость к Wordstat API
+    // Wordstat: жёсткая квота 100 запросов/ЧАС. 37с между запросами → ≤97/час.
+    private const SLEEP_BETWEEN_MS = 37000;
 
     private int $withKeywords = 0;
     private int $totalKeywords = 0;
     private int $empty = 0;
     private int $failed = 0;
+    private bool $quotaExhausted = false;
 
     private EntityManagerInterface $em;
 
@@ -114,6 +121,12 @@ class CollectBrandKeywordsCommand extends Command
                 $this->processBrand($brand, $io, $dryRun, $force);
             }
             $io->progressAdvance();
+            if ($this->quotaExhausted) {
+                $io->progressFinish();
+                $io->warning('Квота Wordstat (100/час) исчерпана — остановка. Запусти позже, доберёт оставшиеся (resumable).');
+                $this->printResults($io);
+                return Command::SUCCESS;
+            }
             usleep(self::SLEEP_BETWEEN_MS * 1000);
         }
 
@@ -173,6 +186,10 @@ class CollectBrandKeywordsCommand extends Command
                 $this->em->flush();
                 $this->em->clear();
             }
+        } catch (WordstatQuotaException) {
+            // Часовая квота кончилась — не считаем ошибкой, сигналим остановку.
+            $this->quotaExhausted = true;
+            $this->em->clear();
         } catch (\Throwable $e) {
             $io->warning(sprintf('    Ошибка «%s»: %s', $name, $e->getMessage()));
             $this->failed++;

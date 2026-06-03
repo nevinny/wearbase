@@ -50,10 +50,17 @@ class WordstatClient implements KeywordProviderInterface
                 'timeout' => 30,
             ]);
 
-            if ($response->getStatusCode() >= 400) {
+            $status = $response->getStatusCode();
+            $body   = $response->getContent(false);
+            // Часовая квота (100 запросов/час, gRPC code 8 RESOURCE_EXHAUSTED → 429):
+            // отличаем от «нет результатов», чтобы вызывающий мог остановиться/подождать.
+            if ($status === 429 || str_contains($body, 'quota limit exceed') || str_contains($body, 'RESOURCE_EXHAUSTED')) {
+                throw new WordstatQuotaException('Wordstat hourly quota (100/час) exceeded');
+            }
+            if ($status >= 400) {
                 return [];
             }
-            $data = $response->toArray(false);
+            $data = json_decode($body, true) ?: [];
         } catch (HttpExceptionInterface) {
             return [];
         }
