@@ -15,5 +15,5 @@ interface KeywordProviderInterface
      * @return array<int,array{keyword:string,type:string,monthlyShows:?int}>
      *         type: 'origin' (фраза включает запрос) | 'related' (похожие запросы)
      */
-    public function keywordsFor(string $seed, int $limit = 30): array;
+    public function keywordsFor(string $seed, int $limit = 100): array;
 }

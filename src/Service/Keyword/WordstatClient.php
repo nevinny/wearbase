@@ -30,7 +30,7 @@ class WordstatClient implements KeywordProviderInterface
         return trim($this->apiKey) !== '';
     }
 
-    public function keywordsFor(string $seed, int $limit = 30): array
+    public function keywordsFor(string $seed, int $limit = 100): array
     {
         if (!$this->isConfigured() || trim($seed) === '') {
             return [];
