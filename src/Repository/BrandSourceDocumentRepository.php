@@ -29,6 +29,12 @@ class BrandSourceDocumentRepository extends ServiceEntityRepository
         return $this->count(['brand' => $brand, 'contentHash' => $contentHash]) > 0;
     }
 
+    /** Последний документ бренда по конкретному URL (для per-URL кеша скрейпа). */
+    public function findByBrandUrl(Brand $brand, string $url): ?BrandSourceDocument
+    {
+        return $this->findOneBy(['brand' => $brand, 'url' => $url], ['id' => 'DESC']);
+    }
+
     /** @return BrandSourceDocument[] документы бренда, ещё не залитые в Qdrant */
     public function findUnembeddedByBrand(Brand $brand): array
     {

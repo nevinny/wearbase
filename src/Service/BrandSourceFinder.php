@@ -5,16 +5,17 @@ namespace App\Service;
 use App\Entity\Brand;
 
 /**
- * Находит URL-источники бренда для скрейпа, дешевле→дороже:
- *  0) уже сохранённые ссылки бренда (BrandLink) — чаще всего сайт уже есть;
- *  1) SearXNG-поиск официального сайта;
- *  2) угадывание домена по slug.
- * Всё прогоняется через UrlFilter (wearbase.ru/маркетплейсы вон) и ранжируется
- * по статичным признакам (без лишних HTTP — живость проверит сам fetch).
+ * Находит URL-источники бренда для скрейпа. Режим «корпус»: собирает до $max
+ * результатов из интернета (несколько поисковых запросов через SearXNG) +
+ * сиды (ссылки из БД, угадывание домена). Фильтрует по релевантности (имя
+ * бренда в заголовке/сниппете — иначе для общих названий нахватаем мусора),
+ * дедуп по URL, cap по хосту (чтобы не утонуть в 50 страницах одного домена).
+ * Исключения (wearbase.ru) — через UrlFilter.
  */
 class BrandSourceFinder
 {
-    private const SOCIAL_HOSTS = ['instagram.com', 'vk.com', 't.me', 'telegram.me', 'youtube.com'];
+    private const MAX_PER_HOST    = 4;    // не больше N страниц с одного хоста
+    private const PER_QUERY       = 20;   // результатов на поисковый запрос
 
     public function __construct(
         private readonly SearxClient $searx,
@@ -23,71 +24,83 @@ class BrandSourceFinder
     }
 
     /**
-     * @return string[] ранжированный список URL для скрейпа (официальный сайт раньше соцсетей)
+     * @return string[] до $max URL (сиды раньше поискового корпуса)
      */
-    public function discover(Brand $brand, int $max = 5): array
+    public function discover(Brand $brand, int $max = 50): array
     {
-        $title = (string) $brand->getTitle();
+        $title = trim((string) $brand->getTitle());
         $slug  = (string) $brand->getSlug();
-        $scores = [];   // url => score
+        $city  = trim((string) $brand->getCity());
 
-        // 0) Ссылки из БД (приоритет — website).
+        $urls = [];          // url => true (упорядоченный дедуп)
+        $perHost = [];        // host => count
+
+        $add = function (?string $url) use (&$urls, &$perHost): void {
+            if ($url === null) {
+                return;
+            }
+            $url = rtrim(trim($url), '/');
+            if ($url === '' || isset($urls[$url]) || $this->urlFilter->isExcluded($url)) {
+                return;
+            }
+            $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+            if ($host === '') {
+                return;
+            }
+            if (($perHost[$host] ?? 0) >= self::MAX_PER_HOST) {
+                return;
+            }
+            $perHost[$host] = ($perHost[$host] ?? 0) + 1;
+            $urls[$url] = true;
+        };
+
+        // 1) Сиды: ссылки бренда из БД (сайт/соцсети) — приоритет.
         foreach ($brand->getLinks() as $link) {
-            $url = $link->getLinkUrl();
-            if ($url === null || $this->urlFilter->isExcluded($url)) {
-                continue;
-            }
-            $bonus = ($link->getLinkType() === 'website') ? 6 : 2;
-            $scores[$url] = max($scores[$url] ?? 0, $this->scoreUrl($url, $slug) + $bonus);
+            $add($link->getLinkUrl());
         }
 
-        // 1) SearXNG.
-        if ($title !== '' && $this->searx->isConfigured()) {
-            foreach ($this->searx->search("{$title} бренд одежды официальный сайт", 8) as $r) {
-                $url = $r['url'];
-                if ($this->urlFilter->isExcluded($url)) {
-                    continue;
-                }
-                $scores[$url] = max($scores[$url] ?? 0, $this->scoreUrl($url, $slug));
-            }
-        }
-
-        // 2) Угадывание домена по slug.
+        // 2) Угадывание официального домена по slug.
         if ($slug !== '') {
-            foreach (["https://{$slug}.ru", "https://{$slug}.com", "https://{$slug}store.ru"] as $guess) {
-                if (!$this->urlFilter->isExcluded($guess) && !isset($scores[$guess])) {
-                    $scores[$guess] = $this->scoreUrl($guess, $slug);
+            $add("https://{$slug}.ru");
+            $add("https://{$slug}.com");
+        }
+
+        // 3) Поисковый корпус (нужен SearXNG).
+        if ($title !== '' && $this->searx->isConfigured()) {
+            $queries = [
+                "{$title} бренд одежды",
+                "{$title} одежда отзывы",
+                "{$title} купить одежда",
+            ];
+            if ($city !== '') {
+                $queries[] = "{$title} {$city} магазин";
+            }
+
+            $needle = mb_strtolower($title);
+            foreach ($queries as $q) {
+                foreach ($this->searx->search($q, self::PER_QUERY) as $r) {
+                    if ($this->relevant($needle, $slug, $r)) {
+                        $add($r['url']);
+                    }
+                }
+                if (count($urls) >= $max) {
+                    break;
                 }
             }
         }
 
-        arsort($scores);
-
-        return array_slice(array_keys($scores), 0, $max);
+        return array_slice(array_keys($urls), 0, $max);
     }
 
-    /** Статичный скоринг кандидата: совпадение slug в хосте, RU-TLD, https, не-соцсеть. */
-    private function scoreUrl(string $url, string $slug): int
+    /** Имя бренда (или slug) должно встречаться в результате — отсев нерелевантного. */
+    private function relevant(string $needle, string $slug, array $r): bool
     {
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        $score = 0;
+        $hay = mb_strtolower(($r['title'] ?? '') . ' ' . ($r['content'] ?? '') . ' ' . ($r['url'] ?? ''));
+        if ($needle !== '' && mb_strlen($needle) >= 3 && str_contains($hay, $needle)) {
+            return true;
+        }
+        $slugN = str_replace('-', '', mb_strtolower($slug));
 
-        if ($slug !== '' && str_contains($host, str_replace('-', '', $slug))) {
-            $score += 3;
-        }
-        if (str_ends_with($host, '.ru') || str_ends_with($host, '.рф') || str_ends_with($host, '.xn--p1ai')) {
-            $score += 2;
-        }
-        if (str_starts_with($url, 'https://')) {
-            $score += 1;
-        }
-        foreach (self::SOCIAL_HOSTS as $social) {
-            if ($host === $social || str_ends_with($host, '.' . $social)) {
-                $score -= 2; // соцсети полезны, но официальный сайт важнее
-                break;
-            }
-        }
-
-        return $score;
+        return $slugN !== '' && mb_strlen($slugN) >= 3 && str_contains(str_replace('-', '', $hay), $slugN);
     }
 }

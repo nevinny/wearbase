@@ -37,10 +37,13 @@ class ScrapeBrandSourcesCommand extends Command
 {
     private const MIN_TEXT_CHARS  = 200;   // короче — мусор, не сохраняем
     private const SLEEP_BETWEEN_MS = 800;  // вежливость между брендами
+    private const CACHE_TTL_DAYS  = 30;    // свежий doc по URL не перекачиваем
+    private const DEFAULT_MAX     = 50;    // максимум источников на бренд
 
     private int $scraped = 0;
     private int $empty   = 0;
     private int $failed  = 0;
+    private int $cached  = 0;   // переиспользовано из кеша (без скачивания)
 
     private EntityManagerInterface $em;
 
@@ -59,7 +62,8 @@ class ScrapeBrandSourcesCommand extends Command
             ->addArgument('limit', InputArgument::OPTIONAL, 'Максимум брендов за запуск', 50)
             ->addOption('id',      null, InputOption::VALUE_REQUIRED, 'Один бренд по ID')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Не сохранять, показать найденное')
-            ->addOption('force',   null, InputOption::VALUE_NONE,     'Перескрейпить (удалить старые документы бренда)')
+            ->addOption('force',   null, InputOption::VALUE_NONE,     'Игнорировать кеш — перекачать все источники')
+            ->addOption('max',     null, InputOption::VALUE_REQUIRED, 'Максимум источников на бренд', (string) self::DEFAULT_MAX)
             ->addOption('shard',   null, InputOption::VALUE_REQUIRED, 'Номер шарда (0..total-1)', '0')
             ->addOption('total',   null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
         ;
@@ -72,6 +76,7 @@ class ScrapeBrandSourcesCommand extends Command
         $brandId = $input->getOption('id');
         $dryRun  = (bool) $input->getOption('dry-run');
         $force   = (bool) $input->getOption('force');
+        $max     = max(1, (int) $input->getOption('max'));
         $shard   = (int) $input->getOption('shard');
         $total   = max(1, (int) $input->getOption('total'));
 
@@ -86,7 +91,7 @@ class ScrapeBrandSourcesCommand extends Command
                 $io->error("Бренд ID {$brandId} не найден.");
                 return Command::FAILURE;
             }
-            $this->processBrand($brand, $io, $dryRun, $force);
+            $this->processBrand($brand, $io, $dryRun, $force, $max);
             $this->printResults($io);
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
         }
@@ -110,7 +115,7 @@ class ScrapeBrandSourcesCommand extends Command
         foreach ($brandIds as $id) {
             $brand = $this->em->find(Brand::class, $id);
             if ($brand) {
-                $this->processBrand($brand, $io, $dryRun, $force);
+                $this->processBrand($brand, $io, $dryRun, $force, $max);
             }
             $io->progressAdvance();
             usleep(self::SLEEP_BETWEEN_MS * 1000);
@@ -122,47 +127,63 @@ class ScrapeBrandSourcesCommand extends Command
         return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 
-    private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force): void
+    private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force, int $max): void
     {
         $name = $brand->getTitle() ?? "ID:{$brand->getId()}";
 
         try {
-            $urls = $this->finder->discover($brand);
+            $urls = $this->finder->discover($brand, $max);
             $io->text(sprintf('  → %s: %d источник(ов)', $name, count($urls)));
 
             /** @var BrandSourceDocumentRepository $docRepo */
             $docRepo = $this->em->getRepository(BrandSourceDocument::class);
-
-            if ($force && !$dryRun) {
-                foreach ($docRepo->findByBrand($brand) as $old) {
-                    $this->em->remove($old);
-                }
-                $this->em->flush();
-            }
+            $cacheSince = (new \DateTime())->modify('-' . self::CACHE_TTL_DAYS . ' days');
 
             $saved = 0;
             foreach ($urls as $url) {
+                $url = mb_substr(rtrim((string) $url, '/'), 0, 1024);
+                $existing = $docRepo->findByBrandUrl($brand, $url);
+
+                // КЕШ: свежий doc по этому URL и не --force → переиспользуем без скачивания.
+                $createdAt = $existing?->getCreatedAt();
+                if (!$force && $existing !== null && $createdAt !== null && $createdAt >= $cacheSince) {
+                    $this->cached++;
+                    $saved++;
+                    continue;
+                }
+
                 // trafilatura (если настроена) либо HTTP+DomCrawler — единая точка.
                 $text = $this->scraper->fetchCleanText($url);
                 if ($text === null || mb_strlen($text) < self::MIN_TEXT_CHARS) {
                     continue;
                 }
-
                 $hash = hash('sha256', $text);
-                if ($docRepo->existsForBrandHash($brand, $hash)) {
-                    continue; // дубль — уже есть
+
+                // Контент по этому URL не изменился — оставляем как есть (без переэмбеда).
+                if ($existing !== null && $existing->getContentHash() === $hash) {
+                    $saved++;
+                    continue;
+                }
+                // Дубль с другого URL того же бренда.
+                if ($existing === null && $docRepo->existsForBrandHash($brand, $hash)) {
+                    continue;
                 }
 
                 $io->text(sprintf('     ✓ %s (%d симв.)', $this->shortUrl($url), mb_strlen($text)));
 
                 if (!$dryRun) {
-                    $doc = (new BrandSourceDocument())
-                        ->setBrand($brand)
-                        ->setUrl(mb_substr($url, 0, 1024))
-                        ->setSourceType($this->classifyUrl($url))
-                        ->setRawText(null)            // сырой HTML не храним — только чистый текст
-                        ->setCleanText($text);        // сам выставит content_hash + char_count
-                    $this->em->persist($doc);
+                    if ($existing !== null) {
+                        // контент изменился → обновляем текст, помечаем на переэмбед
+                        $existing->setCleanText($text)->setEmbedded(false);
+                    } else {
+                        $doc = (new BrandSourceDocument())
+                            ->setBrand($brand)
+                            ->setUrl($url)
+                            ->setSourceType($this->classifyUrl($url))
+                            ->setRawText(null)            // сырой HTML не храним — только чистый текст
+                            ->setCleanText($text);        // сам выставит content_hash + char_count
+                        $this->em->persist($doc);
+                    }
                 }
                 $saved++;
             }
@@ -242,9 +263,10 @@ class ScrapeBrandSourcesCommand extends Command
     {
         $io->newLine();
         $io->table(['Результат', 'Кол-во'], [
-            ['Со страницами', $this->scraped],
-            ['Без источников', $this->empty],
-            ['Ошибок',         $this->failed],
+            ['Со страницами',        $this->scraped],
+            ['Без источников',       $this->empty],
+            ['Переисп. из кеша',     $this->cached],
+            ['Ошибок',               $this->failed],
         ]);
     }
 }
