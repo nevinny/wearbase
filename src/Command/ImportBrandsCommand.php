@@ -115,8 +115,9 @@ class ImportBrandsCommand extends Command
 
 
                 $brand->setTitle($title);
-//                $brand->setSlug((string)strtolower($this->slugger->slug($title)));
-                $brand->setSlug($brandData['slug']);
+                // Слаг ВСЕГДА транслитерируем (кириллица в URL — плохо для Google;
+                // инцидент «нечегонадеть» 2026-06-04). Импортный слаг — лишь источник текста.
+                $brand->setSlug(strtolower((string) $this->slugger->slug($brandData['slug'] ?: $title)));
                 $brand->setLogo($brandData['logo']['path'] ?? null);
                 $brand->setCity($brandData['city'] ?? null);
 
