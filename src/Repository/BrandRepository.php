@@ -161,11 +161,19 @@ class BrandRepository extends ServiceEntityRepository
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }
 
-    public function findWithoutDescription(int $limit, int $shard = 0, int $total = 1): array
+    public function findWithoutDescription(int $limit, int $shard = 0, int $total = 1, bool $excludeDeferred = false): array
     {
         $qb = $this->createQueryBuilder('b')
             ->where('b.description IS NULL OR b.description = :empty')
             ->setParameter('empty', '');
+
+        // --grounded-only: deferred-бренды ждут дозревания корпуса (fetch вернёт их в scraped);
+        // без исключения выборка крутилась бы по одним и тем же тонким брендам вечно.
+        if ($excludeDeferred) {
+            $qb->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+                ->andWhere('p.id IS NULL OR p.status != :deferred')
+                ->setParameter('deferred', BrandRagPipeline::STATUS_DEFERRED);
+        }
 
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }

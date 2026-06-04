@@ -30,6 +30,7 @@ class GenerateBrandContentCommand extends Command
     private int $metaGenerated   = 0; // обработано только meta (была готовая description)
     private int $failed          = 0; // ошибка при обращении к LLM
     private int $validationFailed = 0; // не прошло валидацию
+    private int $deferred        = 0; // grounded-only: корпус не прошёл gate, отложено
 
     /** EM не readonly — после DB-ошибки пересоздаём через ManagerRegistry (многодневный прогон). */
     private EntityManagerInterface $em;
@@ -76,6 +77,7 @@ class GenerateBrandContentCommand extends Command
             ->addOption('id',            null, InputOption::VALUE_REQUIRED, 'Обработать конкретный бренд по ID')
             ->addOption('meta-only',     null, InputOption::VALUE_NONE, 'Генерировать только meta для брендов с описанием')
             ->addOption('skip-validate', null, InputOption::VALUE_NONE, 'Пропустить валидацию')
+            ->addOption('grounded-only', null, InputOption::VALUE_NONE, 'Без RAG-фактов не генерить: бренд → deferred, ждёт дозревания корпуса (description не перезаписывается — legacy-вода зацементировалась бы)')
             ->addOption('shard',         null, InputOption::VALUE_REQUIRED, 'Номер шарда (0..total-1)', '0')
             ->addOption('total',         null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
         ;
@@ -89,6 +91,7 @@ class GenerateBrandContentCommand extends Command
         $brandId      = $input->getOption('id');
         $metaOnly     = $input->getOption('meta-only');
         $skipValidate = $input->getOption('skip-validate');
+        $groundedOnly = (bool) $input->getOption('grounded-only');
         $shard        = (int) $input->getOption('shard');
         $total        = max(1, (int) $input->getOption('total'));
 
@@ -107,7 +110,7 @@ class GenerateBrandContentCommand extends Command
             }
 
             $io->section(sprintf('Бренд: %s (ID: %d)', $brand->getTitle(), $brand->getId()));
-            $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate);
+            $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate, $groundedOnly);
             $this->printResults($io, $metaOnly);
 
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
@@ -121,7 +124,7 @@ class GenerateBrandContentCommand extends Command
             static fn(Brand $b) => $b->getId(),
             $metaOnly
                 ? $repo->findWithDescriptionWithoutMeta($limit, $shard, $total)
-                : $repo->findWithoutDescription($limit, $shard, $total),
+                : $repo->findWithoutDescription($limit, $shard, $total, $groundedOnly),
         );
 
         $mode = $metaOnly ? 'только meta' : 'description + meta';
@@ -138,7 +141,7 @@ class GenerateBrandContentCommand extends Command
         foreach ($brandIds as $id) {
             $brand = $this->em->find(Brand::class, $id);
             if ($brand) {
-                $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate);
+                $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate, $groundedOnly);
             }
             $io->progressAdvance();
             gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
@@ -160,6 +163,7 @@ class GenerateBrandContentCommand extends Command
         bool $dryRun,
         bool $metaOnly,
         bool $skipValidate,
+        bool $groundedOnly = false,
     ): void {
         $brandName   = $brand->getTitle() ?? 'Unknown';
         $city        = $brand->getCity();
@@ -177,7 +181,7 @@ class GenerateBrandContentCommand extends Command
                 $this->processMetaOnly($brand, $brandName, $city, $existingDescription, $io, $dryRun, $skipValidate);
             } else {
                 // Режим: полная генерация (description + meta)
-                $this->processFullGeneration($brand, $brandName, $city, $io, $dryRun, $skipValidate);
+                $this->processFullGeneration($brand, $brandName, $city, $io, $dryRun, $skipValidate, $groundedOnly);
             }
         } catch (\Throwable $e) {
             $io->warning(sprintf('Ошибка для "%s": %s', $brandName, $e->getMessage()));
@@ -236,12 +240,30 @@ class GenerateBrandContentCommand extends Command
         SymfonyStyle $io,
         bool $dryRun,
         bool $skipValidate,
+        bool $groundedOnly = false,
     ): void {
         // 0. RAG: достаём реальные факты из Qdrant. context=null → legacy-режим (модель из своих знаний).
         $rag = $this->rag->retrieve($brand);
         $context = $rag['context'];
         if ($context !== null) {
             $io->text(sprintf('    RAG: grounded, чанков %d, score %.2f', $rag['chunks'], $rag['score'] ?? 0));
+        }
+
+        // --grounded-only: без фактов не генерим (description потом НЕ перезаписывается,
+        // legacy-вода зацементировалась бы). Бренд → deferred; когда корпус дорастёт,
+        // fetch вернёт его в scraped → embed → сюда.
+        if ($groundedOnly && $context === null) {
+            $io->text('    ⏸ grounded-only: корпус не прошёл gate → deferred (ждёт дозревания)');
+            if (!$dryRun) {
+                /** @var \App\Repository\BrandRagPipelineRepository $repo */
+                $repo = $this->em->getRepository(BrandRagPipeline::class);
+                $repo->getOrCreate($brand)->setStatus(BrandRagPipeline::STATUS_DEFERRED);
+                $this->em->flush();
+                $this->em->clear();
+            }
+            $this->deferred++;
+
+            return;
         }
 
         // has_own_site=false → у бренда нет собственного сайта, корпус собран только из
@@ -391,6 +413,7 @@ class GenerateBrandContentCommand extends Command
         if (!$metaOnly) {
             $rows[] = ['Сгенерировано (description + meta)', $this->processed];
             $rows[] = ['Не прошло валидацию',               $this->validationFailed];
+            $rows[] = ['Отложено (grounded-only)',           $this->deferred];
         }
 
         $rows[] = ['Обновлено только meta', $this->metaGenerated];

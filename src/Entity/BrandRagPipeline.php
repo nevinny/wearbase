@@ -26,6 +26,8 @@ class BrandRagPipeline
     public const STATUS_SCRAPE_FAILED  = 'scrape_failed';
     public const STATUS_EMBED_FAILED   = 'embed_failed';
     public const STATUS_GENERATE_FAILED = 'generate_failed';
+    /** Корпус не прошёл gate при --grounded-only: ждём дозревания (новые URL → fetch вернёт в scraped). */
+    public const STATUS_DEFERRED        = 'deferred';
 
     public const KW_FOUND     = 'found';
     public const KW_NOT_FOUND = 'not_found';

@@ -42,7 +42,7 @@ class RagDaemonCommand extends Command
         'discover' => ['app:brand:discover', ['30']],
         'fetch'    => ['app:brand:fetch',    ['--max-urls=250']], // ломоть на цикл, дренаж продолжается между циклами
         'embed'    => ['app:brand:embed',    ['30']],
-        'generate' => ['app:brand:generate-content', ['10']],
+        'generate' => ['app:brand:generate-content', ['10', '--grounded-only']], // без фактов не генерим: вода зацементировалась бы
     ];
 
     private const CHILD_TIMEOUT_SEC = 7200; // потолок на стадию; зависший ребёнок не блокирует демон навсегда
