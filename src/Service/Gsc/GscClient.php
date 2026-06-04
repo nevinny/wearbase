@@ -3,12 +3,14 @@
 namespace App\Service\Gsc;
 
 use Google\Auth\Credentials\ServiceAccountCredentials;
+use Google\Auth\Credentials\UserRefreshCredentials;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * Google Search Console через Service Account (НЕ OAuth: один property, серверный крон).
- * Подключение: SA в Google Cloud → его email добавить в Search Console (Настройки →
- * Пользователи, право Full/Restricted) → JSON-ключ в GSC_CREDENTIALS_PATH.
+ * Google Search Console. GSC_CREDENTIALS_PATH принимает ДВА формата JSON:
+ *  - "type":"service_account"  — ключ сервис-аккаунта (если орг-политика разрешает);
+ *  - "type":"authorized_user"  — OAuth refresh-token (обход политики
+ *    iam.disableServiceAccountKeyCreation; получается один раз через app:gsc:auth).
  *
  * Fail-open: без кредов isConfigured()=false — синк логирует и выходит 0,
  * дрип-публикацию отсутствие GSC НЕ тормозит (правило дизайна).
@@ -111,10 +113,13 @@ class GscClient
             return $this->token;
         }
 
-        $creds = new ServiceAccountCredentials(self::SCOPE, (string) $this->credentialsPath);
+        $json  = json_decode((string) file_get_contents((string) $this->credentialsPath), true) ?: [];
+        $creds = ($json['type'] ?? '') === 'authorized_user'
+            ? new UserRefreshCredentials(self::SCOPE, (string) $this->credentialsPath)
+            : new ServiceAccountCredentials(self::SCOPE, (string) $this->credentialsPath);
         $token = $creds->fetchAuthToken();
         if (empty($token['access_token'])) {
-            throw new \RuntimeException('GSC: не удалось получить access_token по Service Account');
+            throw new \RuntimeException('GSC: не удалось получить access_token (' . ($json['type'] ?? 'unknown') . ')');
         }
 
         $this->tokenAt = $now;
