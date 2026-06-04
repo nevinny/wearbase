@@ -24,7 +24,10 @@ use Symfony\Component\Process\Process;
  *
  *   php bin/console app:rag:daemon                          # все стадии, цикл раз в минуту
  *   php bin/console app:rag:daemon --once --stages=discover:5   # один цикл, для теста
- *   php bin/console app:rag:daemon --stages=fetch,embed,generate  # без discovery (напр. на сервере)
+ *
+ *   # GPU не простаивает: два параллельных демона по типу ресурса (lock per набор стадий)
+ *   php bin/console app:rag:daemon --stages=discover:30,fetch:250   # сеть/CPU
+ *   php bin/console app:rag:daemon --stages=embed:30,generate:10    # GPU
  *
  * Времянка до Messenger-консьюмеров (см. tasktracker «Архитектура очереди»).
  */
@@ -76,8 +79,13 @@ class RagDaemonCommand extends Command
             return Command::FAILURE;
         }
 
-        if (!$this->acquireLock()) {
-            $io->error('Демон уже запущен (var/rag_daemon.lock). Второй экземпляр не нужен.');
+        // Lock per НАБОР стадий: можно крутить параллельно демон сетевых стадий
+        // (discover,fetch) и демон GPU-стадий (embed,generate) — иначе GPU простаивает,
+        // пока цикл занят сетью. Одинаковые наборы (независимо от лимитов) — коллизия.
+        // ВАЖНО: наборы разных демонов не должны ПЕРЕСЕКАТЬСЯ (иначе двойная работа).
+        $lockName = 'rag_daemon-' . implode('-', array_keys($stages));
+        if (!$this->acquireLock($lockName)) {
+            $io->error(sprintf('Демон уже запущен (var/%s.lock). Второй экземпляр не нужен.', $lockName));
             return Command::FAILURE;
         }
 
@@ -159,10 +167,10 @@ class RagDaemonCommand extends Command
         }
     }
 
-    /** Эксклюзивный flock — защита от случайного второго демона. */
-    private function acquireLock(): bool
+    /** Эксклюзивный flock — защита от случайного второго демона с теми же стадиями. */
+    private function acquireLock(string $name): bool
     {
-        $path = $this->projectDir . '/var/rag_daemon.lock';
+        $path = $this->projectDir . '/var/' . $name . '.lock';
         $handle = fopen($path, 'c');
         if ($handle === false || !flock($handle, LOCK_EX | LOCK_NB)) {
             return false;
