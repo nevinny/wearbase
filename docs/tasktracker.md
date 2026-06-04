@@ -595,6 +595,24 @@ php bin/console doctrine:migrations:migrate
 
 **Риски:** ramp-дрейф→env-якорь PUBLISH_LAUNCH_DATE; TZ-баг→явный Europe/Moscow; полу-обновление→транзакция; replay→content_version+HMAC; галлюцинация FAQ→grounded-gate+skipped; CAP недостижим→n за тик.
 
+## Архитектура: краудсорс-валидация данных бренда (дизайн от агента-архитектора, 2026-06-04)
+
+«Исправить неточность» (Яндекс Карты) + голосование ✓/✗ за data-point'ы (телефон/email/адрес бренда, BrandLink, BrandStore): посетители валидируют шумный enrichment-контент (кейс Zatmenie — адрес ночного клуба).
+
+**Модель (2 таблицы, ленивое создание строк):** `brand_datapoint` (полиморфный ключ brand_id+target_type+target_id+field; `provenance` enrichment|owner|crowd_confirmed; `state` active|doubtful|hidden|pinned; счётчики confirm/reject_window; `owner_edited_at` — owner-специфичный timestamp, т.к. brand.updated_at бьётся enrichment'ом!) + `brand_datapoint_vote` (vote confirm|reject + suggestion; `voter_hash`=sha256(ip+daily_salt+UA) — дедуп без PII/152-ФЗ; UNIQUE(datapoint,voter_hash) → повтор=upsert; вес: аноним 1, залогинен 3 — пороги по Σweight, не count).
+
+**Confidence/переходы (режим-зависимые):** unclaimed: reject_window≥3→doubtful (бейдж), ≥5 и reject>2×confirm→hidden (скрыт со страницы + queued_revalidate_at); confirm≥5 без reject→pinned (crowd_confirmed). Owner-правка → provenance=owner, счётчики reset. hidden не удаляется — ждёт ре-обогащения.
+
+**Три режима бренда** (`brand.owner_state` unclaimed|claimed|abandoned — денормализован, claim-предикат = BrandUser owner accepted): (а) unclaimed — голоса агрессивно скрывают, авто-ре-обогащение; (б) claimed-live — owner-данные неприкосновенны, reject = только нотификация владельцу + копится; (в) abandoned — детект КОМБИНАЦИЕЙ (подписка истекла И (нет owner-правок >6 мес ИЛИ notify_unanswered≥3); lastLoginAt в User НЕТ, updated_at не годится) → крон `app:brand:detect-abandoned` → доверие деградирует, возврат к режиму (а); owner вернулся → назад в (б).
+
+**Обратный канал прод→агент (agent-pull, прод не видит LAN):** `GET /api/v1/revalidation-queue` (token-auth) — агент поллит скрытые точки, ре-обогащает локально, возвращает существующим upsert. **КРИТИЧНО — owner-guard в BrandIngestService:** сейчас upsert delete-and-replace затирает ВСЁ → при claimed пропускать owner-поля и удалять только enrichment-строки (provenance-фильтр), guard независим от content_version (owner-правки на проде version не бампают).
+
+**Endpoints/анти-абьюз:** POST `/brand/{slug}/datapoint/vote` (main firewall, PUBLIC_ACCESS, rate_limiter `brand_vote` 20/час/IP, CSRF off как у вебхуков); UI ✓/✗/«исправить» inline-JS на showv2, data-nosnippet (SEO).
+
+**План:** MVP (1-5: миграция+сущности → vote endpoint → confidence режима (а) + фильтр hidden на странице → UI → revalidation-queue + owner-guard) — закрывает шум unclaimed-брендов сразу. Отложить: (6) режим (б) — зависит от LK CRUD магазинов (задача brand_store); (7) abandoned-детект; (8) pinned/веса/модерация в EasyAdmin.
+
+**Риски:** накрутка конкурентом (Σweight+окно 30д+порог только unclaimed); затирание owner-данных (provenance-guard); ложный abandoned (только комбинация сигналов); PII (хэш с daily salt); SEO (nosnippet, suggestion не рендерится); осиротевшие datapoint при удалении link/store (крон-уборка).
+
 ## Архитектура очереди (дизайн от агента-архитектора)
 
 **Центральный факт:** БД (MySQL) сейчас на Mac (`DATABASE_HOST=127.0.0.1`), GPU-сервис на 192.168.2.43 — **у сервера нет доступа к БД**. Это «петля» всего дизайна.
