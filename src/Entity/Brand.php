@@ -750,6 +750,17 @@ class Brand
         return $this;
     }
 
+    /**
+     * Магазины без soft-deleted (правило проекта: DELETE от пользователя только мягкий).
+     * @return Collection<int, BrandStore>
+     */
+    public function getActiveStores(): Collection
+    {
+        return $this->stores->filter(
+            static fn(BrandStore $s) => $s->getStatus() !== \Nevinny\AdminCoreBundle\Enum\Statuses::Deleted
+        );
+    }
+
     public function getContentVersion(): int
     {
         return $this->contentVersion;

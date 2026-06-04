@@ -85,6 +85,14 @@ Use the Twig filter `|price` (registered in `CurrencyExtension`) for displaying 
 
 `country.id` is declared `INT UNSIGNED NOT NULL AUTO_INCREMENT`. Any FK column pointing to it **must** also be `INT UNSIGNED NOT NULL`, or MySQL will throw error 3780. `brand.id` and `product.id` are plain `INT` (signed).
 
+### Удаление данных: ТОЛЬКО soft-delete
+
+**Никогда не делаем физический DELETE по действию пользователя** (ЛК, админка, публичные формы). Только soft-delete:
+- через поле `status` (`Statuses::Deleted` у сущностей с трейтом `Status`), или
+- через отдельное поле `deleted_at DATETIME NULL` (у простых сущностей).
+
+Выборки обязаны фильтровать удалённое (`deleted_at IS NULL` / `status != 'deleted'`). Физический DELETE допустим только в системных операциях (миграции, delete-and-replace в импортах/агент-API, чистка осиротевших строк кронами).
+
 ### Migrations
 
 Migrations use `CREATE TABLE IF NOT EXISTS` and `INSERT IGNORE` for idempotency. Use descriptive names: `Version20260523_phase5_brand_market.php`. Never use `php bin/console doctrine:schema:update`.

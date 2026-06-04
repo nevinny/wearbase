@@ -35,7 +35,7 @@ class BrandStoreController extends BrandDashboardController
 
         return $this->render('brand_lk/stores.html.twig', [
             'brand'     => $brand,
-            'stores'    => $brand->getStores(),
+            'stores'    => $brand->getActiveStores(),
             'editStore' => $editStore,
         ]);
     }
@@ -96,13 +96,9 @@ class BrandStoreController extends BrandDashboardController
             return $this->redirectToRoute('brand_stores');
         }
 
-        // Осиротевшие datapoint'ы точки убираем вместе с ней (мягкий target_id, FK нет).
-        $em->createQuery('DELETE FROM App\Entity\BrandDatapoint d WHERE d.targetType = :t AND d.targetId = :id')
-            ->setParameter('t', BrandDatapoint::TYPE_STORE)
-            ->setParameter('id', $store->getId())
-            ->execute();
-
-        $em->remove($store);
+        // Правило проекта: НИКАКОГО физического DELETE от пользователя — только soft.
+        // Datapoint'ы/голоса точки сохраняются (история; со страницы точка уходит вместе с магазином).
+        $store->setStatus(\Nevinny\AdminCoreBundle\Enum\Statuses::Deleted);
         $em->flush();
 
         $this->addFlash('success', 'Магазин удалён.');
@@ -110,11 +106,11 @@ class BrandStoreController extends BrandDashboardController
         return $this->redirectToRoute('brand_stores');
     }
 
-    /** Магазин, принадлежащий ИМЕННО активному бренду пользователя (не чужой). */
+    /** Магазин активного бренда пользователя (не чужой и не удалённый). */
     private function findOwnStore(int $id): ?BrandStore
     {
         $brand = $this->getActiveBrand();
-        foreach ($brand->getStores() as $store) {
+        foreach ($brand->getActiveStores() as $store) {
             if ($store->getId() === $id) {
                 return $store;
             }

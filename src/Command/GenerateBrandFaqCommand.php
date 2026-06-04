@@ -168,7 +168,7 @@ class GenerateBrandFaqCommand extends Command
             // Физические магазины (brand_store, из обогащения): точные адреса из НАШЕЙ БД —
             // спрос «где находится/купить» отвечаем своими данными, а не шумом омонимов.
             $stores = $this->em->getRepository(\App\Entity\BrandStore::class)
-                ->findBy(['brand' => $brand], ['id' => 'ASC'], 10);
+                ->findBy(['brand' => $brand, 'status' => \Nevinny\AdminCoreBundle\Enum\Statuses::Active], ['id' => 'ASC'], 10);
             if ($stores !== []) {
                 $lines = array_map(static function (\App\Entity\BrandStore $s): string {
                     $line = '- ' . $s->getAddress();
