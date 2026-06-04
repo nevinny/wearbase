@@ -1,0 +1,103 @@
+<?php
+
+namespace App\Command;
+
+use App\Notification\AdminNotifier;
+use Doctrine\DBAL\Connection;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
+
+/**
+ * Сводка RAG-конвейера в Telegram (по запросу владельца — раз в 3 часа кроном):
+ * парсинг/генерация/ключевики/готовность к пушу + темпы за час.
+ *
+ *   0 *\/3 * * * cd /home/zyablik/wearbase && php -d memory_limit=512M bin/console app:report:pipeline --no-debug >> var/log/report.log 2>&1
+ */
+#[AsCommand(
+    name: 'app:report:pipeline',
+    description: 'Сводка RAG-конвейера в Telegram (для крона раз в 3 часа)',
+)]
+class PipelineReportCommand extends Command
+{
+    public function __construct(
+        private readonly Connection $db,
+        private readonly AdminNotifier $notifier,
+    ) {
+        parent::__construct();
+    }
+
+    protected function configure(): void
+    {
+        $this->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Не слать в Telegram, только вывести');
+    }
+
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $io = new SymfonyStyle($input, $output);
+        $one = fn(string $sql) => (int) $this->db->fetchOne($sql);
+
+        // Темп за час — от MAX(ts) самой стадии (TZ-независимо)
+        $rate = function (string $table, string $col): int {
+            $max = $this->db->fetchOne("SELECT MAX({$col}) FROM {$table}");
+            if (!$max) {
+                return 0;
+            }
+            return (int) $this->db->fetchOne(
+                "SELECT COUNT(*) FROM {$table} WHERE {$col} >= DATE_SUB(:m, INTERVAL 1 HOUR)",
+                ['m' => $max],
+            );
+        };
+
+        $discovered = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE discovered_at IS NOT NULL");
+        $urlPending = $one("SELECT COUNT(*) FROM brand_source_url WHERE status='pending'");
+        $urlFetched = $one("SELECT COUNT(*) FROM brand_source_url WHERE status='fetched'");
+        $docs       = $one("SELECT COUNT(*) FROM brand_source_document");
+        $embedded   = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='embedded'");
+        $done       = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='done'");
+        $grounded   = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE grounded=1");
+        $deferred   = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='deferred'");
+        $kwChecked  = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE keywords_status IS NOT NULL");
+        $faqDone    = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE faq_status='done'");
+        $readyPush  = $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
+            WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3
+              AND p.faq_status IN ('done','skipped') AND p.keywords_status IN ('found','not_found')
+              AND b.description IS NOT NULL AND b.description != ''
+              AND b.meta_title IS NOT NULL AND b.meta_title != ''
+              AND b.meta_description IS NOT NULL AND b.meta_description != ''");
+        $pushed     = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE pushed_at IS NOT NULL");
+
+        $dHr = $rate('brand_rag_pipeline', 'discovered_at');
+        $fHr = $rate('brand_source_url', 'fetched_at');
+        $gHr = $rate('brand_rag_pipeline', 'generated_at');
+        $kHr = $rate('brand_rag_pipeline', 'keywords_checked_at');
+
+        $msg = sprintf(
+            "<b>Конвейер · %s</b>\n\n" .
+            "<b>Парсинг:</b> discovered %d (+%d/ч) · URL: %d ждут / %d скачано (+%d/ч) · доков %d\n" .
+            "<b>Генерация:</b> done %d (+%d/ч), grounded %d · FAQ %d · в очереди %d · deferred %d\n" .
+            "<b>Ключевики:</b> %d опрошено (+%d/ч)\n" .
+            "<b>Пуш:</b> готово %d · доставлено %d",
+            (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m H:i'),
+            $discovered, $dHr, $urlPending, $urlFetched, $fHr, $docs,
+            $done, $gHr, $grounded, $faqDone, $embedded, $deferred,
+            $kwChecked, $kHr,
+            $readyPush, $pushed,
+        );
+
+        $io->text(strip_tags($msg));
+
+        if (!$input->getOption('stdout-only')) {
+            if (!$this->notifier->isEnabled()) {
+                $io->warning('Telegram не настроен (ADMIN_TELEGRAM_CHAT_ID).');
+                return Command::SUCCESS; // fail-open
+            }
+            $this->notifier->send($msg);
+        }
+
+        return Command::SUCCESS;
+    }
+}
