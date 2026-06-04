@@ -463,6 +463,57 @@ EOT;
         return is_string($value) ? trim($value) : null;
     }
 
+    /**
+     * FAQ из поисковых фраз (SEO задача C): превращает фразы реального спроса в
+     * вопросы и отвечает СТРОГО из фактов (RAG-корпус + описание бренда).
+     * Grounded-принцип: нет факта для ответа — модель обязана пропустить вопрос.
+     *
+     * @param string[] $phrases вопросные/длиннохвостые фразы Wordstat
+     * @return array<int,array{question:string,answer:string}> 0..N пар (может быть пусто)
+     */
+    public function generateBrandFaq(string $brandName, array $phrases, string $facts, ?string $city = null): array
+    {
+        $cityContext = $city ? " из города {$city}" : '';
+        $phrasesList = implode("\n", array_map(static fn(string $p) => "- {$p}", $phrases));
+
+        $prompt = <<<EOT
+Бренд одежды: {$brandName}{$cityContext}
+
+ФАКТЫ о бренде (единственный источник истины):
+{$facts}
+
+Поисковые фразы реальных пользователей (Яндекс Wordstat):
+{$phrasesList}
+
+Составь FAQ для страницы бренда. Для каждой фразы сформулируй естественный вопрос
+от лица покупателя (сохрани интент фразы) и ответь на него.
+
+ЖЁСТКИЕ ПРАВИЛА:
+- Отвечай ТОЛЬКО на основе ФАКТОВ выше. НИЧЕГО не выдумывай.
+- Если в фактах НЕТ информации для ответа на фразу — ПРОПУСТИ её (не включай в результат).
+- Ответ: 2–4 предложения, конкретный, без воды и рекламных штампов.
+- Не дублируй вопросы с одинаковым смыслом — оставь один.
+- 3–6 пар максимум.
+
+Формат ответа — ТОЛЬКО валидный JSON без markdown:
+{"faq": [{"question": "...", "answer": "..."}]}
+EOT;
+
+        $response = $this->generate($prompt, local: true, think: false, timeout: 180);
+        $decoded  = $this->extractJson($response);
+
+        $out = [];
+        foreach (($decoded['faq'] ?? []) as $item) {
+            $q = trim((string) ($item['question'] ?? ''));
+            $a = trim((string) ($item['answer'] ?? ''));
+            if ($q !== '' && $a !== '' && mb_strlen($q) <= 500) {
+                $out[] = ['question' => $q, 'answer' => $a];
+            }
+        }
+
+        return array_slice($out, 0, 6);
+    }
+
     private function extractJson(string $response): ?array
     {
         // Убираем markdown-обёртку, если модель всё же её добавила

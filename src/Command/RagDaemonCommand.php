@@ -43,6 +43,7 @@ class RagDaemonCommand extends Command
         'fetch'    => ['app:brand:fetch',    ['--max-urls=250']], // ломоть на цикл, дренаж продолжается между циклами
         'embed'    => ['app:brand:embed',    ['30']],
         'generate' => ['app:brand:generate-content', ['10', '--grounded-only']], // без фактов не генерим: вода зацементировалась бы
+        'faq'      => ['app:brand:faq', ['10']],   // GPU-набор: после generate (status=done)
     ];
 
     private const CHILD_TIMEOUT_SEC = 7200; // потолок на стадию; зависший ребёнок не блокирует демон навсегда
