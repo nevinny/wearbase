@@ -558,6 +558,7 @@ php bin/console doctrine:migrations:migrate
 - [ ] (риск) переспам: промпт обязан требовать ЕСТЕСТВЕННОЕ вхождение (SpamBrain/E-E-A-T) — не стаффинг.
 
 ## НЕ СДЕЛАНО / TODO
+- [ ] **Re-discovery тонких после возвращения Google**: с 2026-06-04 ~08:00 UTC discovery едет на bing-only (Google капчит IP сервера после ночного обстрела) → niche-бренды помечаются discovered с 3-4 URL. Когда Google оживёт (~сутки-двое) — повторить сброс: `UPDATE brand_rag_pipeline p LEFT JOIN (SELECT brand_id, COUNT(*) c FROM brand_source_url GROUP BY brand_id) u ON u.brand_id=p.brand_id SET p.discovered_at=NULL WHERE p.discovered_at >= '2026-06-04 07:50:00' AND COALESCE(u.c,0) <= 5` — дедуп сделает дооткрытие дёшевым. Долгосрочно решается TTL-refresh'ем (см. «Оркестрация/cron»).
 - [ ] **Боевой прогон scrape на сервере** (там trafilatura): задать `TRAFILATURA_BIN` в серверном `.env.local`; на Mac сейчас fallback DomCrawler
 - [ ] **Реальный батч**: прогнать N брендов без `--dry-run`, глазами проверить качество grounded-описаний, потом масштабировать шардами
 - [ ] **Очередь + воркеры на LLM-сервере** (приоритет): скрейпер ДОЛЖЕН запускаться на сервере 192.168.2.43 (там trafilatura/ollama/Qdrant/SearXNG). Воркер ходит в очередь, берёт задания, выполняет, отдаёт результаты. Заменяет ручной `--shard/--total`. Архитектуру (Symfony Messenger / транспорт / топология воркеров / доступ к БД / деплой systemd-консьюмеров) — продумать отдельно (см. ниже «Архитектура очереди»)
