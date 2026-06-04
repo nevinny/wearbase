@@ -42,7 +42,7 @@ class PublishTickCommand extends Command
     private const HOUR_FROM   = 9;    // первый тик дня
     private const HOUR_TO     = 22;   // последний тик дня (sleep до 45м удержит публикацию до ~23)
     private const MAX_SLEEP   = 2700; // 45 мин
-    private const RATE_START  = 5.0;  // брендов/день на старте
+    private const RATE_START  = 3.0;  // брендов/день на старте (слабый домен: 21/357 наших страниц в индексе — начинаем тише)
     private const RATE_GROWTH = 0.125;// +12.5% в неделю
     private const RATE_CAP    = 28;   // потолок брендов/день
 
@@ -96,6 +96,14 @@ class PublishTickCommand extends Command
         $week   = max(0, (int) floor(($now->getTimestamp() - $launch->getTimestamp()) / (7 * 86400)));
         $target = (int) min(self::RATE_CAP, round(self::RATE_START * (1 + self::RATE_GROWTH) ** $week));
 
+        // Drip-health (СТРОГО fail-open, ТОЛЬКО торможение): если когорта опубликованных
+        // 7-21 день назад плохо индексируется (по данным gsc_index_status) — снижаем темп.
+        // Нет данных / мало когорты / GSC не настроен → множитель 1.0, публикация не тормозится.
+        $health = $this->dripHealthMultiplier();
+        if ($health < 1.0) {
+            $target = max(1, (int) floor($target * $health));
+        }
+
         $todayStart = (clone $now)->setTime(0, 0);
         $publishedToday = (int) $this->em->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM brand WHERE published_at >= :start',
@@ -108,8 +116,10 @@ class PublishTickCommand extends Command
         $n = (int) floor($p) + ((mt_rand() / mt_getrandmax()) < fmod($p, 1.0) ? 1 : 0);
 
         $io->text(sprintf(
-            '[%s МСК] неделя %d · таргет %d/день · опубликовано сегодня %d · тиков осталось %d · p=%.2f → n=%d',
-            $now->format('H:i'), $week, $target, $publishedToday, $ticksLeft, $p, $n,
+            '[%s МСК] неделя %d · таргет %d/день%s · опубликовано сегодня %d · тиков осталось %d · p=%.2f → n=%d',
+            $now->format('H:i'), $week, $target,
+            $health < 1.0 ? sprintf(' (заторможен ×%.2f: индексация когорты проседает)', $health) : '',
+            $publishedToday, $ticksLeft, $p, $n,
         ));
 
         if ($dryRun || $n === 0) {
@@ -152,5 +162,43 @@ class PublishTickCommand extends Command
         $io->success(sprintf('Опубликовано брендов: %d', $published));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Множитель темпа по здоровью индексации (внедрено по анализу 2026-06-04,
+     * только в сторону замедления — авто-разгон запрещён по дизайну):
+     * когорта published_at 7-21 день назад, из неё берём ПРОВЕРЕННЫХ в
+     * gsc_index_status; если проверено ≥10 и indexed-доля < 10% → ×0.25,
+     * < 30% → ×0.5. Любые отсутствующие данные → 1.0 (fail-open).
+     */
+    private function dripHealthMultiplier(): float
+    {
+        try {
+            $row = $this->em->getConnection()->fetchAssociative(
+                'SELECT COUNT(s.id) checked, COALESCE(SUM(s.indexed),0) idx
+                 FROM brand b
+                 JOIN gsc_index_status s ON s.brand_id = b.id
+                 WHERE b.published_at BETWEEN :from AND :to',
+                [
+                    'from' => (new \DateTime('-21 days'))->format('Y-m-d H:i:s'),
+                    'to'   => (new \DateTime('-7 days'))->format('Y-m-d H:i:s'),
+                ],
+            );
+        } catch (\Throwable) {
+            return 1.0; // таблиц GSC нет / БД-сбой — не тормозим
+        }
+
+        $checked = (int) ($row['checked'] ?? 0);
+        if ($checked < 10) {
+            return 1.0; // мало данных — не делаем выводов
+        }
+
+        $ratio = (int) $row['idx'] / $checked;
+
+        return match (true) {
+            $ratio < 0.10 => 0.25,
+            $ratio < 0.30 => 0.5,
+            default       => 1.0,
+        };
     }
 }

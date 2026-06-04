@@ -37,6 +37,7 @@ class SyncGscCommand extends Command
     public function __construct(
         private readonly GscClient  $gsc,
         private readonly Connection $db,
+        private readonly \App\Notification\AdminNotifier $notifier,
     ) {
         parent::__construct();
     }
@@ -183,6 +184,29 @@ class SyncGscCommand extends Command
     private function report(SymfonyStyle $io): void
     {
         $io->section('Отчёт');
+        $alerts = [];
+        $lines  = [];
+
+        // Общая индексация проверенных
+        $total = $this->db->fetchAssociative('SELECT COUNT(*) c, COALESCE(SUM(indexed),0) idx FROM gsc_index_status');
+        if ($total && (int) $total['c'] > 0) {
+            $lines[] = sprintf('Индексация: %d/%d (%.0f%%)', $total['idx'], $total['c'], 100 * $total['idx'] / $total['c']);
+        }
+
+        // Когорта «опубликовано ≥14 дней назад» — успели ли проиндексироваться за 14 дней
+        $cohort = $this->db->fetchAssociative(
+            "SELECT COUNT(s.id) checked, COALESCE(SUM(s.indexed),0) idx FROM brand b
+             JOIN gsc_index_status s ON s.brand_id = b.id
+             WHERE b.published_at IS NOT NULL AND b.published_at <= :cutoff",
+            ['cutoff' => (new \DateTime('-14 days'))->format('Y-m-d H:i:s')],
+        );
+        if ($cohort && (int) $cohort['checked'] >= 5) {
+            $ratio = (int) $cohort['idx'] / (int) $cohort['checked'];
+            $lines[] = sprintf('Когорта 14д+: %d/%d опубликованных в индексе (%.0f%%)', $cohort['idx'], $cohort['checked'], $ratio * 100);
+            if ($ratio < 0.5) {
+                $alerts[] = sprintf('⚠ Только %.0f%% страниц, опубликованных ≥14 дней назад, в индексе — дрип будет автоматически заторможен.', $ratio * 100);
+            }
+        }
 
         // Индексация свежеопубликованных
         $fresh = $this->db->fetchAssociative(
@@ -192,13 +216,7 @@ class SyncGscCommand extends Command
             ['since' => (new \DateTime(sprintf('-%d days', self::FRESH_DAYS)))->format('Y-m-d H:i:s')],
         );
         if ($fresh && (int) $fresh['total'] > 0) {
-            $ratio = (int) $fresh['idx'] / (int) $fresh['total'];
-            $io->text(sprintf('Свежие (%dд): %d, в индексе %d (%.0f%%)', self::FRESH_DAYS, $fresh['total'], $fresh['idx'], $ratio * 100));
-            if ($ratio < 0.5) {
-                $io->warning('⚠ indexed_ratio свежих < 50% — Google не успевает/не хочет индексировать. Проверь sitemap/качество.');
-            }
-        } else {
-            $io->text('Свежепубликованных за окно нет.');
+            $lines[] = sprintf('Свежие (%dд): %d, в индексе %d', self::FRESH_DAYS, $fresh['total'], $fresh['idx']);
         }
 
         // Динамика показов день-к-дню (последние 2 полных дня в данных)
@@ -207,9 +225,25 @@ class SyncGscCommand extends Command
         );
         if (count($days) === 2) {
             [$d1, $d0] = $days;
-            $io->text(sprintf('Показы: %s=%d → %s=%d · клики: %d → %d', $d0['day'], $d0['imp'], $d1['day'], $d1['imp'], $d0['clk'], $d1['clk']));
+            $lines[] = sprintf('Показы: %s=%d → %s=%d · клики: %d → %d', $d0['day'], $d0['imp'], $d1['day'], $d1['imp'], $d0['clk'], $d1['clk']);
             if ((int) $d0['imp'] > 100 && (int) $d1['imp'] < (int) $d0['imp'] / 2) {
-                $io->warning('⚠ Показы упали >50% день-к-дню.');
+                $alerts[] = '⚠ Показы упали >50% день-к-дню.';
+            }
+        }
+
+        foreach ($lines as $line) {
+            $io->text($line);
+        }
+        foreach ($alerts as $alert) {
+            $io->warning($alert);
+        }
+
+        // Телеграм: алерты всегда, ежедневная сводка — вместе с ними
+        if ($alerts !== [] && $this->notifier->isEnabled()) {
+            try {
+                $this->notifier->send("<b>GSC wearbase.ru</b>\n" . implode("\n", array_merge($alerts, $lines)));
+            } catch (\Throwable) {
+                // нотификация не должна ронять синк
             }
         }
     }

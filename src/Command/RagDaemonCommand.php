@@ -45,6 +45,7 @@ class RagDaemonCommand extends Command
         'generate' => ['app:brand:generate-content', ['10', '--grounded-only']], // без фактов не генерим: вода зацементировалась бы
         'faq'      => ['app:brand:faq', ['10']],   // GPU-набор: после generate (status=done)
         'push'     => ['app:brand:push', ['20']],  // сетевой набор: доставка готовых на прод
+        'keywords' => ['app:brand:keywords', ['90']], // СВОЙ демон (один!): квота Wordstat 100/час общая, 90×37с ≈ 56 мин/цикл
     ];
 
     private const CHILD_TIMEOUT_SEC = 7200; // потолок на стадию; зависший ребёнок не блокирует демон навсегда

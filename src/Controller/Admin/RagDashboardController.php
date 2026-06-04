@@ -84,9 +84,17 @@ class RagDashboardController extends AbstractController
         ];
 
         // --- GSC ---
+        $cohort = $this->db->fetchAssociative(
+            "SELECT COUNT(s.id) checked, COALESCE(SUM(s.indexed),0) idx FROM brand b
+             JOIN gsc_index_status s ON s.brand_id = b.id
+             WHERE b.published_at IS NOT NULL AND b.published_at <= DATE_SUB(NOW(), INTERVAL 14 DAY)",
+        ) ?: ['checked' => 0, 'idx' => 0];
         $gsc = [
             'проверено страниц' => $one("SELECT COUNT(*) FROM gsc_index_status"),
             'в индексе Google'  => $one("SELECT COALESCE(SUM(indexed),0) FROM gsc_index_status"),
+            'когорта 14д+ в индексе' => (int) $cohort['checked'] > 0
+                ? sprintf('%d/%d (%.0f%%)', $cohort['idx'], $cohort['checked'], 100 * $cohort['idx'] / $cohort['checked'])
+                : '— (нет когорты)',
             'последняя проверка' => $this->db->fetchOne("SELECT MAX(last_checked_at) FROM gsc_index_status") ?: '—',
             'строк аналитики'   => $one("SELECT COUNT(*) FROM gsc_page_stats"),
         ];
