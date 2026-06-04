@@ -289,13 +289,19 @@ class BrandRepository extends ServiceEntityRepository
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }
 
-    /** Бренды на генерацию FAQ: контент готов (done), FAQ ещё не генерили. */
+    /**
+     * Бренды на генерацию FAQ: контент готов (done), FAQ ещё не генерили,
+     * И Wordstat уже опрошен (keywordsStatus задан). Без последнего условия бренд,
+     * дошедший до done раньше квотного keywords-процесса, цементируется в skipped
+     * и уезжает на прод без FAQ, хотя ключевики появятся позже.
+     */
     public function findForFaq(int $limit, int $shard = 0, int $total = 1): array
     {
         $qb = $this->createQueryBuilder('b')
             ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
             ->where('p.status = :done')
             ->andWhere('p.faqStatus IS NULL')
+            ->andWhere('p.keywordsStatus IS NOT NULL')
             ->setParameter('done', BrandRagPipeline::STATUS_DONE);
 
         return $this->finishStageQuery($qb, $limit, $shard, $total);
