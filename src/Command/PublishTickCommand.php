@@ -49,6 +49,7 @@ class PublishTickCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly \App\Service\IndexNowPinger $indexNow,
+        private readonly \App\Notification\AdminNotifier $notifier,
         #[Autowire('%env(default::PUBLISH_LAUNCH_DATE)%')]
         private readonly ?string $launchDate,
         #[Autowire('%kernel.project_dir%')]
@@ -147,6 +148,7 @@ class PublishTickCommand extends Command
 
         $published = 0;
         $newUrls = [];
+        $tgLines = [];
         foreach ($ids as $id) {
             $brand = $this->em->find(Brand::class, (int) $id);
             if ($brand === null) {
@@ -158,7 +160,9 @@ class PublishTickCommand extends Command
                 ->setPublishedAt(new \DateTime('now', $tz));
             $this->em->flush();
             $io->text(sprintf('  ✓ опубликован: %s (id %d)', $brand->getTitle(), $brand->getId()));
-            $newUrls[] = 'https://wearbase.ru/ru/brands/' . $brand->getSlug();
+            $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
+            $newUrls[] = $url;
+            $tgLines[] = sprintf('• <a href="%s">%s</a>', $url, htmlspecialchars((string) $brand->getTitle()));
             $published++;
         }
 
@@ -166,6 +170,15 @@ class PublishTickCommand extends Command
         // Fail-open: неуспех пинга публикацию не ломает.
         if ($newUrls !== [] && $this->indexNow->ping($newUrls)) {
             $io->text(sprintf('  → IndexNow: %d URL отправлено (Яндекс/Bing)', count($newUrls)));
+        }
+
+        // ТГ-уведомление со ссылками — для верификации человеком (fail-open).
+        if ($tgLines !== [] && $this->notifier->isEnabled()) {
+            try {
+                $this->notifier->send("📢 <b>Дрип-публикация</b>\n" . implode("\n", $tgLines));
+            } catch (\Throwable) {
+                // уведомление не должно ломать публикацию
+            }
         }
 
         $io->success(sprintf('Опубликовано брендов: %d', $published));
