@@ -159,9 +159,10 @@ class DiscoverBrandSourcesCommand extends Command
     {
         $qb = $this->em->getRepository(Brand::class)->createQueryBuilder('b')
             ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
-            ->where('b.status = :active')
+            // new = скрыт до дрип-публикации, но конвейер его готовит
+            ->where('b.status IN (:statuses)')
             ->andWhere('p.id IS NULL OR p.discoveredAt IS NULL')
-            ->setParameter('active', Statuses::Active);
+            ->setParameter('statuses', [Statuses::Active, Statuses::New]);
 
         if ($total > 1) {
             $qb->andWhere('MOD(b.id, :total) = :shard')

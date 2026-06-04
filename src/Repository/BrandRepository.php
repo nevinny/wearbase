@@ -233,9 +233,10 @@ class BrandRepository extends ServiceEntityRepository
     {
         $qb = $this->createQueryBuilder('b')
             ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
-            ->where('b.status = :active')
+            // new = скрыт до дрип-публикации, но КОНВЕЙЕР его готовит (иначе очередь дрипа не дозреет)
+            ->where('b.status IN (:statuses)')
             ->andWhere('p.id IS NULL OR p.status = :pending OR (p.status = :failed AND p.scrapeAttempts < :max)')
-            ->setParameter('active', Statuses::Active)
+            ->setParameter('statuses', [Statuses::Active, Statuses::New])
             ->setParameter('pending', BrandRagPipeline::STATUS_PENDING)
             ->setParameter('failed', BrandRagPipeline::STATUS_SCRAPE_FAILED)
             ->setParameter('max', $maxAttempts);
@@ -280,10 +281,11 @@ class BrandRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('b')
             ->leftJoin(BrandKeyword::class, 'k', 'WITH', 'k.brand = b')
             ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
-            ->where('b.status = :active')
+            // new = очередь дрипа, конвейер её готовит (см. findForScrape)
+            ->where('b.status IN (:statuses)')
             ->andWhere('k.id IS NULL')
             ->andWhere('p.id IS NULL OR p.keywordsStatus IS NULL')
-            ->setParameter('active', Statuses::Active)
+            ->setParameter('statuses', [Statuses::Active, Statuses::New])
             ->groupBy('b.id');
 
         return $this->finishStageQuery($qb, $limit, $shard, $total);
