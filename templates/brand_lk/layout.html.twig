@@ -1,0 +1,131 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+<div class="container-fluid">
+    <div class="row">
+
+        {# ── Sidebar ── #}
+        <nav class="col-md-3 col-lg-2 d-md-block bg-dark sidebar py-4 min-vh-100">
+            <div class="px-3 mb-4">
+                {% if brand.logo %}
+                    <img src="{{ vich_uploader_asset(brand, 'logoFile') }}"
+                         alt="{{ brand.title }}" class="img-fluid rounded mb-2" style="max-height:50px">
+                {% endif %}
+                <div class="text-white fw-bold">{{ brand.title }}</div>
+                <a href="{{ path('brand_show', {slug: brand.slug, _locale: 'ru'}) }}" target="_blank"
+                   class="text-white-50 small">wearbase.ru/brands/{{ brand.slug }} ↗</a>
+            </div>
+
+            <ul class="nav flex-column px-2">
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white {% if app.request.attributes.get('_route') starts with 'brand_dashboard' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_dashboard') }}">
+                        <i class="fas fa-tachometer-alt me-2"></i> Дашборд
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white {% if app.request.attributes.get('_route') starts with 'brand_profile' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_profile') }}">
+                        <i class="fas fa-store me-2"></i> Профиль бренда
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white {% if app.request.attributes.get('_route') starts with 'brand_media' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_media') }}">
+                        <i class="fas fa-images me-2"></i> Медиа
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white {% if app.request.attributes.get('_route') starts with 'brand_product' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_products') }}">
+                        <i class="fas fa-tshirt me-2"></i> Товары
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white {% if app.request.attributes.get('_route') starts with 'brand_stores' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_stores') }}">
+                        <i class="fas fa-store me-2"></i> Магазины
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white d-flex align-items-center {% if app.request.attributes.get('_route') starts with 'brand_order' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_orders') }}">
+                        <i class="fas fa-shopping-bag me-2"></i> Заказы
+                        {% set new_orders_count = brand_new_orders_count() %}
+                        {% if new_orders_count > 0 %}
+                            <span class="badge bg-danger ms-auto">{{ new_orders_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white {% if app.request.attributes.get('_route') starts with 'brand_team' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_team') }}">
+                        <i class="fas fa-users me-2"></i> Команда
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white d-flex align-items-center {% if app.request.attributes.get('_route') == 'brand_notification' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_notification') }}">
+                        <i class="fas fa-bell me-2"></i> Уведомления
+                        {% set unread_count = brand_unread_notifications_count() %}
+                        {% if unread_count > 0 %}
+                            <span class="badge bg-danger ms-auto">{{ unread_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white {% if app.request.attributes.get('_route') starts with 'brand_payment_' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_payment_index') }}">
+                        <i class="fas fa-building-columns me-2"></i> Реквизиты и оплата
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white d-flex align-items-center {% if app.request.attributes.get('_route') == 'brand_offer' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_offer') }}">
+                        <i class="fas fa-file-signature me-2"></i> Оферта
+                        {% if brand_seller_offer_pending() %}<span class="badge bg-warning text-dark ms-auto">!</span>{% endif %}
+                    </a>
+                </li>
+                <li class="nav-item mb-1">
+                    <a class="nav-link text-white {% if app.request.attributes.get('_route') == 'brand_setting' %}active bg-secondary rounded{% endif %}"
+                       href="{{ path('brand_setting') }}">
+                        <i class="fas fa-cog me-2"></i> Настройки
+                    </a>
+                </li>
+
+                <li class="mt-4 px-2">
+                    <hr class="border-secondary">
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-white-50" href="{{ path('app_logout') }}">
+                        <i class="fas fa-sign-out-alt me-2"></i> Выйти
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        {# ── Main content ── #}
+        <main class="col-md-9 col-lg-10 ms-sm-auto px-4 py-4">
+
+            {% for type, messages in app.flashes %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ type == 'error' ? 'danger' : type }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endfor %}
+
+            {% if app.request.attributes.get('_route') != 'brand_offer' and brand_seller_offer_pending() %}
+                <div class="alert alert-warning d-flex justify-content-between align-items-center">
+                    <div><i class="fas fa-file-signature me-1"></i> Примите оферту продавца, чтобы продолжить работу с площадкой.</div>
+                    <a href="{{ path('brand_offer') }}" class="btn btn-dark btn-sm text-nowrap ms-3">Открыть оферту</a>
+                </div>
+            {% endif %}
+
+            {% block brand_content %}{% endblock %}
+
+        </main>
+    </div>
+</div>
+{% endblock %}

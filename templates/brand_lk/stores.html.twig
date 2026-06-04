@@ -1,0 +1,99 @@
+{% extends 'brand_lk/layout.html.twig' %}
+
+{% block title %}Магазины — {{ brand.title }} — WEARBASE{% endblock %}
+
+{% block brand_content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="h4 fw-bold mb-0">Офлайн-магазины</h2>
+</div>
+
+{# Форма добавления/редактирования #}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <h6 class="fw-semibold mb-3">{{ editStore ? 'Редактировать магазин' : 'Добавить магазин' }}</h6>
+        <form method="post" action="{{ path('brand_stores_save') }}" class="row g-3">
+            <input type="hidden" name="_token" value="{{ csrf_token('brand_stores') }}">
+            {% if editStore %}<input type="hidden" name="id" value="{{ editStore.id }}">{% endif %}
+            <div class="col-md-6">
+                <label class="form-label">Адрес <span class="text-danger">*</span></label>
+                <input type="text" name="address" class="form-control" required maxlength="500"
+                       placeholder="г. Москва, ул. Примерная, 1" value="{{ editStore ? editStore.address : '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Город</label>
+                <input type="text" name="city" class="form-control" maxlength="255"
+                       value="{{ editStore ? editStore.city : '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Телефон</label>
+                <input type="text" name="phone" class="form-control" maxlength="255"
+                       placeholder="+7 ..." value="{{ editStore ? editStore.phone : '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Часы работы</label>
+                <input type="text" name="work_hours" class="form-control" maxlength="255"
+                       placeholder="пн–вс 10:00–22:00" value="{{ editStore ? editStore.workHours : '' }}">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-dark">{{ editStore ? 'Сохранить' : 'Добавить' }}</button>
+                {% if editStore %}
+                    <a href="{{ path('brand_stores') }}" class="btn btn-outline-secondary">Отмена</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+{# Список магазинов #}
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        {% if stores|length == 0 %}
+            <p class="text-muted mb-0">Магазины не добавлены. Точки показываются на публичной странице бренда.</p>
+        {% else %}
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Адрес</th>
+                            <th>Город</th>
+                            <th>Часы</th>
+                            <th>Телефон</th>
+                            <th>Источник</th>
+                            <th class="text-end"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for store in stores %}
+                            <tr>
+                                <td>{{ store.address }}</td>
+                                <td>{{ store.city }}</td>
+                                <td>{{ store.workHours }}</td>
+                                <td>{{ store.phone }}</td>
+                                <td>
+                                    {% if store.source == 'owner' %}
+                                        <span class="badge bg-success">владелец</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary" title="Найдено автоматически — проверьте и сохраните, чтобы закрепить">авто</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    <a href="{{ path('brand_stores', {edit: store.id}) }}" class="btn btn-sm btn-outline-secondary">Изменить</a>
+                                    <form method="post" action="{{ path('brand_stores_delete', {id: store.id}) }}" class="d-inline"
+                                          onsubmit="return confirm('Удалить магазин?')">
+                                        <input type="hidden" name="_token" value="{{ csrf_token('brand_stores') }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-muted small mb-0">
+                «Авто» — точки, найденные автоматическим обогащением. Нажмите «Изменить» и сохраните,
+                чтобы подтвердить данные как владелец — тогда они не будут перезаписаны и скрыты голосами посетителей.
+            </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
