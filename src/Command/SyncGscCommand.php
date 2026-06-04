@@ -161,10 +161,14 @@ class SyncGscCommand extends Command
                 continue;
             }
 
+            // first_indexed_at — момент ПЕРВОГО появления в индексе (time-to-index);
+            // выставляется один раз и не сбрасывается при выпадении из индекса.
             $this->db->executeStatement(
-                'INSERT INTO gsc_index_status (brand_id, page_url, coverage_state, indexed, last_checked_at)
-                 VALUES (:brand_id, :url, :coverage, :indexed, NOW())
-                 ON DUPLICATE KEY UPDATE page_url = :url, coverage_state = :coverage, indexed = :indexed, last_checked_at = NOW()',
+                'INSERT INTO gsc_index_status (brand_id, page_url, coverage_state, indexed, last_checked_at, first_indexed_at)
+                 VALUES (:brand_id, :url, :coverage, :indexed, NOW(), IF(:indexed = 1, NOW(), NULL))
+                 ON DUPLICATE KEY UPDATE page_url = :url, coverage_state = :coverage, indexed = :indexed,
+                     last_checked_at = NOW(),
+                     first_indexed_at = COALESCE(first_indexed_at, IF(:indexed = 1, NOW(), NULL))',
                 [
                     'brand_id' => $brandId,
                     'url'      => $url,
@@ -217,6 +221,16 @@ class SyncGscCommand extends Command
         );
         if ($fresh && (int) $fresh['total'] > 0) {
             $lines[] = sprintf('Свежие (%dд): %d, в индексе %d', self::FRESH_DAYS, $fresh['total'], $fresh['idx']);
+        }
+
+        // Time-to-index: скорость реакции Google на публикацию (published_at → first_indexed_at)
+        $tti = $this->db->fetchAssociative(
+            "SELECT COUNT(*) c, AVG(TIMESTAMPDIFF(HOUR, b.published_at, s.first_indexed_at)) avg_h
+             FROM brand b JOIN gsc_index_status s ON s.brand_id = b.id
+             WHERE b.published_at IS NOT NULL AND s.first_indexed_at IS NOT NULL AND s.first_indexed_at >= b.published_at",
+        );
+        if ($tti && (int) $tti['c'] >= 3) {
+            $lines[] = sprintf('Time-to-index: в среднем %.1f дн. (%d стр.)', ((float) $tti['avg_h']) / 24, $tti['c']);
         }
 
         // Динамика показов день-к-дню (последние 2 полных дня в данных)

@@ -48,6 +48,7 @@ class PublishTickCommand extends Command
 
     public function __construct(
         private readonly EntityManagerInterface $em,
+        private readonly \App\Service\IndexNowPinger $indexNow,
         #[Autowire('%env(default::PUBLISH_LAUNCH_DATE)%')]
         private readonly ?string $launchDate,
         #[Autowire('%kernel.project_dir%')]
@@ -145,6 +146,7 @@ class PublishTickCommand extends Command
         }
 
         $published = 0;
+        $newUrls = [];
         foreach ($ids as $id) {
             $brand = $this->em->find(Brand::class, (int) $id);
             if ($brand === null) {
@@ -156,7 +158,14 @@ class PublishTickCommand extends Command
                 ->setPublishedAt(new \DateTime('now', $tz));
             $this->em->flush();
             $io->text(sprintf('  ✓ опубликован: %s (id %d)', $brand->getTitle(), $brand->getId()));
+            $newUrls[] = 'https://wearbase.ru/ru/brands/' . $brand->getSlug();
             $published++;
+        }
+
+        // IndexNow: мгновенный пинг Яндексу/Bing о новых URL (Google — через sitemap lastmod).
+        // Fail-open: неуспех пинга публикацию не ломает.
+        if ($newUrls !== [] && $this->indexNow->ping($newUrls)) {
+            $io->text(sprintf('  → IndexNow: %d URL отправлено (Яндекс/Bing)', count($newUrls)));
         }
 
         $io->success(sprintf('Опубликовано брендов: %d', $published));

@@ -71,6 +71,10 @@ services:
         arguments:
             $appSecret: '%kernel.secret%'
 
+    App\Service\IndexNowPinger:
+        arguments:
+            $indexNowKey: '%env(default::INDEXNOW_KEY)%'
+
     App\Service\Gsc\GscClient:
         arguments:
             $credentialsPath: '%env(default::GSC_CREDENTIALS_PATH)%'
