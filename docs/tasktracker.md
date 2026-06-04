@@ -609,7 +609,7 @@ php bin/console doctrine:migrations:migrate
 
 **Endpoints/анти-абьюз:** POST `/brand/{slug}/datapoint/vote` (main firewall, PUBLIC_ACCESS, rate_limiter `brand_vote` 20/час/IP, CSRF off как у вебхуков); UI ✓/✗/«исправить» inline-JS на showv2, data-nosnippet (SEO).
 
-**План:** MVP (1-5: миграция+сущности → vote endpoint → confidence режима (а) + фильтр hidden на странице → UI → revalidation-queue + owner-guard) — закрывает шум unclaimed-брендов сразу. Отложить: (6) режим (б) — зависит от LK CRUD магазинов (задача brand_store); (7) abandoned-детект; (8) pinned/веса/модерация в EasyAdmin.
+**План:** MVP СДЕЛАН 2026-06-04 (fe5c247): миграция+сущности, vote endpoint (/brand-data/{slug}/vote — PUBLIC_ACCESS ДО ^/brand, иначе перехват ROLE_BRAND_MANAGER!), confidence режима (а), фильтр hidden+кнопки на showv2, GET /api/v1/revalidation-queue, owner-guard в ingest. E2E проверен: 5×reject→hidden→адрес исчез→в очереди агента. Отложить: (6) режим (б) — зависит от LK CRUD магазинов (задача brand_store); (7) abandoned-детект; (8) pinned/веса/модерация в EasyAdmin.
 
 **Риски:** накрутка конкурентом (Σweight+окно 30д+порог только unclaimed); затирание owner-данных (provenance-guard); ложный abandoned (только комбинация сигналов); PII (хэш с daily salt); SEO (nosnippet, suggestion не рендерится); осиротевшие datapoint при удалении link/store (крон-уборка).
 
