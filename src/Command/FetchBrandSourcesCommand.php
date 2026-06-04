@@ -71,23 +71,25 @@ class FetchBrandSourcesCommand extends Command
             ->addOption('shard',   null, InputOption::VALUE_REQUIRED, 'Номер шарда (0..total-1)', '0')
             ->addOption('total',   null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
             ->addOption('batch',   null, InputOption::VALUE_REQUIRED, 'URL за один claim', (string) self::DEFAULT_BATCH)
+            ->addOption('max-urls', null, InputOption::VALUE_REQUIRED, 'Стоп после ~N URL (0 = дренить до пустой очереди)', '0')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Не сохранять, показать найденное')
         ;
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io     = new SymfonyStyle($input, $output);
-        $shard  = (int) $input->getOption('shard');
-        $total  = max(1, (int) $input->getOption('total'));
-        $batch  = max(1, (int) $input->getOption('batch'));
-        $dryRun = (bool) $input->getOption('dry-run');
+        $io      = new SymfonyStyle($input, $output);
+        $shard   = (int) $input->getOption('shard');
+        $total   = max(1, (int) $input->getOption('total'));
+        $batch   = max(1, (int) $input->getOption('batch'));
+        $maxUrls = max(0, (int) $input->getOption('max-urls'));
+        $dryRun  = (bool) $input->getOption('dry-run');
 
         $io->title('RAG · fetch источников брендов');
         if ($dryRun) {
             $io->note('dry-run — без сохранения');
         }
-        $io->section(sprintf('shard %d/%d · batch %d', $shard, $total, $batch));
+        $io->section(sprintf('shard %d/%d · batch %d%s', $shard, $total, $batch, $maxUrls > 0 ? " · max-urls {$maxUrls}" : ''));
 
         /** @var BrandSourceUrlRepository $urlRepo */
         $urlRepo = $this->em->getRepository(BrandSourceUrl::class);
@@ -101,11 +103,13 @@ class FetchBrandSourcesCommand extends Command
             }
         }
 
+        $processed = 0;
         while (true) {
             $claimed = $urlRepo->claimPending($shard, $total, $batch);
             if ($claimed === []) {
                 break;
             }
+            $processed += count($claimed);
 
             $touchedBrandIds = $this->processBatch($claimed, $io, $dryRun);
 
@@ -124,6 +128,13 @@ class FetchBrandSourcesCommand extends Command
 
             // dry-run не меняет статусы → очередь не дренится → бесконечный цикл. Стоп.
             if ($dryRun) {
+                break;
+            }
+
+            // Ломоть на запуск (для демона): обработанные URL терминальны,
+            // следующий запуск продолжит дренаж с места остановки.
+            if ($maxUrls > 0 && $processed >= $maxUrls) {
+                $io->text(sprintf('Достигнут max-urls (%d) — стоп, очередь продолжит следующий запуск.', $maxUrls));
                 break;
             }
         }

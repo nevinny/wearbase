@@ -34,10 +34,10 @@ use Symfony\Component\Process\Process;
 )]
 class RagDaemonCommand extends Command
 {
-    /** Стадии цикла: имя → [команда, [позиционные аргументы]]. Лимит можно переопределить в --stages=имя:N. */
+    /** Стадии цикла: имя → [команда, [аргументы]]. Лимит можно переопределить в --stages=имя:N. */
     private const STAGES = [
         'discover' => ['app:brand:discover', ['30']],
-        'fetch'    => ['app:brand:fetch',    []],     // лимита нет — дренит очередь до конца
+        'fetch'    => ['app:brand:fetch',    ['--max-urls=250']], // ломоть на цикл, дренаж продолжается между циклами
         'embed'    => ['app:brand:embed',    ['30']],
         'generate' => ['app:brand:generate-content', ['10']],
     ];
@@ -120,7 +120,11 @@ class RagDaemonCommand extends Command
             }
             [$command, $args] = self::STAGES[$name];
             if ($limit !== null && $args !== []) {
-                $args[0] = (string) max(1, (int) $limit);
+                $n = (string) max(1, (int) $limit);
+                // Позиционный лимит ('30') или опция с числом ('--max-urls=250') — меняем число.
+                $args[0] = str_starts_with($args[0], '--')
+                    ? (string) preg_replace('/\d+$/', $n, $args[0])
+                    : $n;
             }
             $stages[$name] = [$command, $args];
         }
