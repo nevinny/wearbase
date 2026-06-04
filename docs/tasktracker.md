@@ -533,6 +533,7 @@ php bin/console doctrine:migrations:migrate
 - [x] `app:brand:enrich-contacts` — контакты из локального скрейпа (Perplexity-fallback)
 - [x] `app:brand:keywords` — Wordstat → brand_keyword (origin/related + monthly_shows), заранее
 - [x] Все стадии: `--shard/--total`, `--dry-run`, `--force`
+- [x] **Память в долгих батчах**: per-brand `flush/clear` + `gc_collect_cycles()` в цикле; долгие прогоны — ТОЛЬКО с `--no-debug` (dev-профайлер Doctrine копит SQL+backtrace → OOM на ~750 брендах при 512M, keywords-прогон 2026-06-04)
 
 ## Discovery-split — СДЕЛАН (коммиты 81a3553, 948ce41, d8b3cae)
 - [x] `app:brand:discover` (лёгкий, только SearXNG) наполняет очередь `brand_source_url` (дедуп по url_hash, claim через SKIP LOCKED) + ставит `has_own_site`; `app:brand:fetch` (тяжёлый, trafilatura) дренит очередь → `brand_source_document`. Монолит `app:brand:scrape` оставлен fallback'ом по `--id`. Дизайн — раздел «Архитектура: Discovery → URL-очередь → Fetch».

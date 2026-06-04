@@ -152,6 +152,12 @@ VichUploader handles brand logos and brand/product images. Mappings are in `conf
 
 Весь AI-стек на LLM-сервере 192.168.2.43 (ollama qwen3.5:27b + qwen3-embedding:0.6b, Qdrant :6333, SearXNG :8080, trafilatura). Env в `.env.local`: `LOCAL_LLM_URL/MODEL`, `LOCAL_EMBED_URL/MODEL`, `QDRANT_URL/API_KEY/COLLECTION`, `SEARXNG_URL`, `TRAFILATURA_BIN`, `WORDSTAT_API_KEY`. Флоу: `discover → fetch → embed → generate-content` (статус-машина `brand_rag_pipeline`); подробности и текущие cap'ы — `docs/tasktracker.md`.
 
+⚠️ **Долгие батчи (сотни+ брендов) запускать с `--no-debug`**: в dev-режиме Doctrine-профайлер копит каждый SQL-запрос с backtrace в памяти (`BacktraceDebugDataHolder`) → OOM на ~750 брендах при 512M. `gc_collect_cycles()` не помогает — это живые ссылки профайлера.
+
+```bash
+php -d memory_limit=512M bin/console app:brand:keywords 6000 --no-debug
+```
+
 | Service | Location | Purpose |
 |---|---|---|
 | `BrandSourceFinder` | `src/Service/` | Tiered discovery URL-кандидатов (own_site→corpus→mentions), relevance-скоринг. ⚠️ cap'ы по типу живут здесь И в `DiscoverBrandSourcesCommand::CAPS` — менять синхронно |
