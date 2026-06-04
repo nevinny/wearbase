@@ -32,6 +32,11 @@ class BrandRagPipeline
     public const KW_FOUND     = 'found';
     public const KW_NOT_FOUND = 'not_found';
 
+    public const FAQ_DONE    = 'done';
+    /** У бренда нет ключевиков — FAQ не из чего генерить (вопросы «из головы» = анти-SEO). Не блокирует публикацию. */
+    public const FAQ_SKIPPED = 'skipped';
+    public const FAQ_FAILED  = 'failed';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -91,6 +96,40 @@ class BrandRagPipeline
 
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $keywordsCheckedAt = null;
+
+    /** Исход генерации FAQ: null=не генерили | done | skipped (нет ключевиков) | failed. */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $faqStatus = null;
+
+    /** Когда бренд доставлен на прод агентом-пушем (null = не доставлен). */
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $pushedAt = null;
+
+    #[ORM\Column(options: ['default' => 0])]
+    private int $pushAttempts = 0;
+
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $pushError = null;
+
+    /**
+     * Единый предикат готовности к публикации (использует агент-пуш):
+     * контент сгенерирован, meta заполнена, FAQ отработал (или законно пропущен),
+     * Wordstat опрошен (not_found = нишевый, не блокирует).
+     */
+    public function isPublishReady(): bool
+    {
+        $b = $this->brand;
+        if ($b === null) {
+            return false;
+        }
+
+        return trim((string) $b->getDescription()) !== ''
+            && trim((string) $b->getMetaTitle()) !== ''
+            && trim((string) $b->getMetaDescription()) !== ''
+            && $this->status === self::STATUS_DONE
+            && in_array($this->faqStatus, [self::FAQ_DONE, self::FAQ_SKIPPED], true)
+            && in_array($this->keywordsStatus, [self::KW_FOUND, self::KW_NOT_FOUND], true);
+    }
 
     public function getId(): ?int
     {
@@ -270,6 +309,50 @@ class BrandRagPipeline
     public function setKeywordsCheckedAt(?\DateTimeInterface $at): self
     {
         $this->keywordsCheckedAt = $at;
+        return $this;
+    }
+
+    public function getFaqStatus(): ?string
+    {
+        return $this->faqStatus;
+    }
+
+    public function setFaqStatus(?string $status): self
+    {
+        $this->faqStatus = $status;
+        return $this;
+    }
+
+    public function getPushedAt(): ?\DateTimeInterface
+    {
+        return $this->pushedAt;
+    }
+
+    public function setPushedAt(?\DateTimeInterface $at): self
+    {
+        $this->pushedAt = $at;
+        return $this;
+    }
+
+    public function getPushAttempts(): int
+    {
+        return $this->pushAttempts;
+    }
+
+    public function setPushAttempts(int $n): self
+    {
+        $this->pushAttempts = $n;
+        return $this;
+    }
+
+    public function getPushError(): ?string
+    {
+        return $this->pushError;
+    }
+
+    public function setPushError(?string $error): self
+    {
+        $this->pushError = $error;
         return $this;
     }
 }

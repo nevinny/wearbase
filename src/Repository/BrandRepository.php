@@ -289,6 +289,42 @@ class BrandRepository extends ServiceEntityRepository
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }
 
+    /** Бренды на генерацию FAQ: контент готов (done), FAQ ещё не генерили. */
+    public function findForFaq(int $limit, int $shard = 0, int $total = 1): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.status = :done')
+            ->andWhere('p.faqStatus IS NULL')
+            ->setParameter('done', BrandRagPipeline::STATUS_DONE);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /**
+     * Бренды, готовые к доставке на прод (isPublishReady, развёрнутый в SQL)
+     * и ещё не доставленные. Ретраи: push_attempts < maxAttempts.
+     */
+    public function findReadyToPush(int $limit, int $shard = 0, int $total = 1, int $maxAttempts = 3): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.status = :done')
+            ->andWhere('p.pushedAt IS NULL')
+            ->andWhere('p.pushAttempts < :maxAttempts')
+            ->andWhere('p.faqStatus IN (:faqOk)')
+            ->andWhere('p.keywordsStatus IN (:kwOk)')
+            ->andWhere("b.description IS NOT NULL AND b.description != ''")
+            ->andWhere("b.metaTitle IS NOT NULL AND b.metaTitle != ''")
+            ->andWhere("b.metaDescription IS NOT NULL AND b.metaDescription != ''")
+            ->setParameter('done', BrandRagPipeline::STATUS_DONE)
+            ->setParameter('maxAttempts', $maxAttempts)
+            ->setParameter('faqOk', [BrandRagPipeline::FAQ_DONE, BrandRagPipeline::FAQ_SKIPPED])
+            ->setParameter('kwOk', [BrandRagPipeline::KW_FOUND, BrandRagPipeline::KW_NOT_FOUND]);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
     private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total): array
     {
         if ($total > 1) {

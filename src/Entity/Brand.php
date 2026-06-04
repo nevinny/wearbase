@@ -159,6 +159,16 @@ class Brand
     #[ORM\Column(options: ['default' => 0])]
     private int $contactAttempts = 0;
 
+    // ---- Дрип-публикация (прод) ----
+
+    /** В очереди на дрип-публикацию (status='new' + publish_pending=1 → publish-tick активирует). */
+    #[ORM\Column(options: ['default' => false])]
+    private bool $publishPending = false;
+
+    /** Когда бренд опубликован дрип-кроном (аудит темпа ramp-up). */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $publishedAt = null;
+
     public function __construct()
     {
         $this->products = new ArrayCollection();
@@ -708,6 +718,30 @@ class Brand
     public function setContactAttempts(int $contactAttempts): static
     {
         $this->contactAttempts = $contactAttempts;
+
+        return $this;
+    }
+
+    public function isPublishPending(): bool
+    {
+        return $this->publishPending;
+    }
+
+    public function setPublishPending(bool $pending): static
+    {
+        $this->publishPending = $pending;
+
+        return $this;
+    }
+
+    public function getPublishedAt(): ?\DateTimeInterface
+    {
+        return $this->publishedAt;
+    }
+
+    public function setPublishedAt(?\DateTimeInterface $at): static
+    {
+        $this->publishedAt = $at;
 
         return $this;
     }
