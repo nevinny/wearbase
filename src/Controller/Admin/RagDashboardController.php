@@ -15,8 +15,14 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/admin/rag', name: 'admin_rag')]
 class RagDashboardController extends AbstractController
 {
-    public function __construct(private readonly Connection $db)
-    {
+    public function __construct(
+        private readonly Connection $db,
+        private readonly \Symfony\Contracts\HttpClient\HttpClientInterface $httpClient,
+        #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::PROD_API_URL)%')]
+        private readonly ?string $prodApiUrl,
+        #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::AGENT_API_TOKEN)%')]
+        private readonly ?string $agentToken,
+    ) {
     }
 
     #[Route('', name: '')]
@@ -65,10 +71,8 @@ class RagDashboardController extends AbstractController
             ],
             'push → прод' => $stage('brand_rag_pipeline', 'pushed_at')
                 + ['left' => $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3 AND p.faq_status IN ('done','skipped') AND p.keywords_status IN ('found','not_found') AND b.description IS NOT NULL AND b.description != '' AND b.meta_title IS NOT NULL AND b.meta_title != '' AND b.meta_description IS NOT NULL AND b.meta_description != ''"),
-                   'waitsProd' => true],
-            'publish-tick (прод, крон)' => $stage('brand', 'published_at')
-                + ['left' => $one("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1"),
-                   'waitsProd' => true],
+                   'waitsProd' => trim((string) $this->prodApiUrl) === ''],
+            'publish-tick (прод, крон)' => $this->prodPublishStage(),
         ];
 
         // --- Срезы готовности ---
@@ -99,13 +103,46 @@ class RagDashboardController extends AbstractController
             'строк аналитики'   => $one("SELECT COUNT(*) FROM gsc_page_stats"),
         ];
 
-        return $this->render('admin/rag_dashboard.html.twig', [
+        return $this->render('admin/rag_dashboard.html.twig', $this->viewParams($brandStatuses, $pipeline, $urlQueue, $stages, $readiness, $gsc));
+    }
+
+    /**
+     * Publish-данные живут ТОЛЬКО на проде (дрип-крон там) — тянем через агент-API.
+     * Fail-soft: прод недоступен/не настроен → строка с пометкой, дашборд не падает.
+     */
+    private function prodPublishStage(): array
+    {
+        if (trim((string) $this->prodApiUrl) === '' || trim((string) $this->agentToken) === '') {
+            return ['done' => 0, 'lastHour' => 0, 'lastAt' => '—', 'left' => 0, 'waitsProd' => true];
+        }
+
+        try {
+            $data = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/publish-stats', [
+                'headers' => ['X-Agent-Token' => (string) $this->agentToken],
+                'timeout' => 4,
+            ])->toArray(false);
+
+            return [
+                'done'     => (int) ($data['published_total'] ?? 0),
+                'lastHour' => (int) ($data['published_today'] ?? 0), // колонка «за час» → «сегодня» для прод-строки
+                'lastAt'   => ($data['last_published'] ?? null) ?: '—',
+                'left'     => (int) ($data['queue_pending'] ?? 0),
+            ];
+        } catch (\Throwable) {
+            return ['done' => 0, 'lastHour' => 0, 'lastAt' => 'прод недоступен', 'left' => 0, 'waitsProd' => true];
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private function viewParams(array $brandStatuses, array $pipeline, array $urlQueue, array $stages, array $readiness, array $gsc): array
+    {
+        return [
             'brandStatuses' => $brandStatuses,
             'pipeline'      => $pipeline,
             'urlQueue'      => $urlQueue,
             'stages'        => $stages,
             'readiness'     => $readiness,
             'gsc'           => $gsc,
-        ]);
+        ];
     }
 }

@@ -125,6 +125,28 @@ class BrandIngestController extends AbstractController
         return $this->json(['items' => $items]);
     }
 
+    /** Статистика дрип-публикации для dev-дашборда (publish-данные живут только на проде). */
+    #[Route('/publish-stats', name: 'api_publish_stats', methods: ['GET'])]
+    public function publishStats(
+        Request $request,
+        EntityManagerInterface $em,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter, checkSignature: false)) !== null) {
+            return $deny;
+        }
+
+        $db = $em->getConnection();
+        $todayMsk = (new \DateTime('today', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
+
+        return $this->json([
+            'published_total' => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at IS NOT NULL'),
+            'published_today' => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at >= ?', [$todayMsk]),
+            'queue_pending'   => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1"),
+            'last_published'  => $db->fetchOne('SELECT MAX(published_at) FROM brand') ?: null,
+        ]);
+    }
+
     #[Route('/brands/{slug}/status', name: 'api_brand_status', methods: ['GET'])]
     public function status(
         string $slug,
