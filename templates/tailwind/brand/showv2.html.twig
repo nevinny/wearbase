@@ -259,6 +259,44 @@
                     </script>
                 {% endif %}
 
+                {# --- Физические магазины (brand_store, из enrichment) --- #}
+                {% if brand.stores|length > 0 %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">Магазины {{ _bt }}</h2>
+                        <ul class="space-y-4">
+                            {% for store in brand.stores %}
+                                <li class="flex items-start gap-3">
+                                    <svg class="w-5 h-5 text-gray-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    </svg>
+                                    <div>
+                                        <div class="font-medium text-gray-900">{{ store.address }}</div>
+                                        <div class="text-sm text-gray-500">
+                                            {{ store.city }}{% if store.workHours %} · {{ store.workHours }}{% endif %}{% if store.phone %} · <a href="tel:{{ store.phone }}" class="hover:text-gray-900">{{ store.phone }}</a>{% endif %}
+                                        </div>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </section>
+                    <script type="application/ld+json">
+                    {
+                        "@context": "https://schema.org",
+                        "@graph": [
+                            {% for store in brand.stores %}
+                            {
+                                "@type": "ClothingStore",
+                                "name": "{{ brand.title|escape('js') }}",
+                                "address": "{{ store.address|escape('js') }}"{% if store.phone %},
+                                "telephone": "{{ store.phone|escape('js') }}"{% endif %}
+                            }{% if not loop.last %},{% endif %}
+                            {% endfor %}
+                        ]
+                    }
+                    </script>
+                {% endif %}
+
                 {% if similarBrands is defined and similarBrands|length > 0 %}
                     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
                         <h2 class="text-2xl font-semibold mb-6">Похожие бренды</h2>
