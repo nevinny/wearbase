@@ -47,6 +47,18 @@ class GenerateBrandFaqCommand extends Command
         'почему', 'можно ли', 'есть ли', 'кто ',
     ];
 
+    /**
+     * Шум омонимов в Wordstat (кейс Zatmenie: ночной клуб «ул зураба магкаева 75а»,
+     * ресурс-паки, игры) — такие фразы в FAQ не берём. Ответы дополнительно защищает
+     * grounded-принцип («нет факта — пропусти»), это фильтр на входе.
+     */
+    private const PHRASE_DENY_MARKERS = [
+        'ул ', 'улица ', 'проспект', 'шоссе ', 'переулок',          // адреса (омоним-заведения)
+        'скачать', 'торрент', 'ресурс пак', 'мод ', 'чит',          // игры/файлы
+        'смотреть онлайн', 'фильм', 'серия', 'сериал',              // кино
+        'http', 'www ', ' ru ', ' com ',                            // URL-обрывки
+    ];
+
     private int $generated = 0;
     private int $skipped   = 0;
     private int $failed    = 0;
@@ -220,6 +232,11 @@ class GenerateBrandFaqCommand extends Command
             $phrase = mb_strtolower(trim($kw->getKeyword()));
             if ($phrase === '') {
                 continue;
+            }
+            foreach (self::PHRASE_DENY_MARKERS as $deny) {
+                if (str_contains(' ' . $phrase . ' ', $deny)) {
+                    continue 2;
+                }
             }
             foreach (self::QUESTION_MARKERS as $marker) {
                 if (str_contains($phrase, $marker)) {
