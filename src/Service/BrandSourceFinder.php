@@ -32,6 +32,10 @@ class BrandSourceFinder
     private const MAX_PER_HOST = 5;    // не больше N страниц с одного хоста (глобально)
     private const PER_QUERY    = 25;   // результатов на поисковый запрос
 
+    // Пауза МЕЖДУ поисковыми запросами: ~8 запросов/бренд подряд без паузы → движки
+    // SearXNG ловят CAPTCHA/too-many-requests, тиры пустеют (инцидент 2026-06-04).
+    private const QUERY_SLEEP_MS = 1500;
+
     private const FLOOR = 0.35;        // ниже — не кладём в очередь (для корпуса)
     private const SEED_SCORE = 0.9;    // доверенные сиды (DB / slug-guess) — высокий baseline
 
@@ -62,6 +66,19 @@ class BrandSourceFinder
         private readonly SourceTypeClassifier $classifier,
         private readonly ContactVerifier $verifier,
     ) {
+    }
+
+    /**
+     * Все поисковые запросы — только через этот хелпер: пауза перед запросом
+     * размазывает нагрузку на движки SearXNG (см. QUERY_SLEEP_MS).
+     *
+     * @return array<int,array{url:string,title:string,content:string}>
+     */
+    private function searchPaced(string $query): array
+    {
+        usleep(self::QUERY_SLEEP_MS * 1000);
+
+        return $this->searx->search($query, self::PER_QUERY);
     }
 
     /**
@@ -164,7 +181,7 @@ class BrandSourceFinder
         }
         // SearXNG «официальный сайт» — приоритет 1, по score; own-сигнал если slug в хосте.
         if ($title !== '' && $this->searx->isConfigured()) {
-            foreach ($this->searx->search("{$title} одежда официальный сайт", self::PER_QUERY) as $r) {
+            foreach ($this->searchPaced("{$title} одежда официальный сайт") as $r) {
                 $pair = $accept($r['url']);
                 if ($pair === null) {
                     continue;
@@ -235,7 +252,7 @@ class BrandSourceFinder
                 if (count($out) >= $max) {
                     break;
                 }
-                foreach ($this->searx->search($q, self::PER_QUERY) as $r) {
+                foreach ($this->searchPaced($q) as $r) {
                     if (count($out) >= $max) {
                         break;
                     }
@@ -297,7 +314,7 @@ class BrandSourceFinder
                     if (count($out) >= $max) {
                         break;
                     }
-                    foreach ($this->searx->search($q, self::PER_QUERY) as $r) {
+                    foreach ($this->searchPaced($q) as $r) {
                         if (count($out) >= $max) {
                             break;
                         }

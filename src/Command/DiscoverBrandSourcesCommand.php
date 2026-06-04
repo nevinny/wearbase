@@ -9,6 +9,7 @@ use App\Repository\BrandRagPipelineRepository;
 use App\Repository\BrandSourceUrlRepository;
 use App\Service\BrandSourceFinder;
 use App\Service\Discovery\DiscoveredUrl;
+use App\Service\SearxUnavailableException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -51,11 +52,15 @@ class DiscoverBrandSourcesCommand extends Command
         BrandSourceUrl::TYPE_MENTION        => 6,
     ];
 
+    /** Подряд брендов с лежащим SearXNG → стоп всего прогона (движки suspended не лечатся ретраем). */
+    private const SEARX_DOWN_ABORT = 3;
+
     private int $discovered = 0;   // брендов с ≥1 новым URL в очереди
     private int $empty      = 0;   // брендов без новых URL (всё уже было / ничего не нашли)
     private int $enqueued   = 0;   // всего новых URL положено в очередь
     private int $withSite   = 0;   // брендов с has_own_site=true
     private int $failed     = 0;
+    private int $searxDownStreak = 0;
 
     private EntityManagerInterface $em;
 
@@ -124,6 +129,14 @@ class DiscoverBrandSourcesCommand extends Command
             $brand = $this->em->find(Brand::class, $id);
             if ($brand) {
                 $this->processBrand($brand, $io, $max, $dryRun);
+            }
+            // Circuit breaker: N брендов подряд без поиска — дальше идти бессмысленно,
+            // прогон только жжёт время. Бренды не помечены, повторный запуск доберёт.
+            if ($this->searxDownStreak >= self::SEARX_DOWN_ABORT) {
+                $io->progressFinish();
+                $io->error(sprintf('SearXNG лежит (%d брендов подряд) — стоп. Перезапусти, когда движки оживут.', $this->searxDownStreak));
+                $this->printResults($io);
+                return Command::FAILURE;
             }
             $io->progressAdvance();
             gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
@@ -234,6 +247,14 @@ class DiscoverBrandSourcesCommand extends Command
                 $this->em->flush();
                 $this->em->clear();
             }
+            $this->searxDownStreak = 0;
+        } catch (SearxUnavailableException $e) {
+            // Поиск лежит (движки suspended/CAPTCHA) — НЕ помечаем discovered:
+            // иначе бренд сгорает с пустыми тирами и больше не переобходится.
+            $io->warning(sprintf('    SearXNG лежит, «%s» пропущен (не помечен): %s', $name, $e->getMessage()));
+            $this->failed++;
+            $this->searxDownStreak++;
+            $this->recoverEm();
         } catch (\Throwable $e) {
             $io->warning(sprintf('    Ошибка «%s»: %s', $name, $e->getMessage()));
             $this->failed++;
