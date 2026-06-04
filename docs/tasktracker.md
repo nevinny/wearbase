@@ -597,6 +597,20 @@ php bin/console doctrine:migrations:migrate
 
 **Риски:** ramp-дрейф→env-якорь PUBLISH_LAUNCH_DATE; TZ-баг→явный Europe/Moscow; полу-обновление→транзакция; replay→content_version+HMAC; галлюцинация FAQ→grounded-gate+skipped; CAP недостижим→n за тик.
 
+## Архитектура: аналитика бренда + GSC (дизайн от агента-архитектора, 2026-06-04)
+
+Закрыть проданную фичу «Аналитика» Премиум-тарифа (has_analytics нигде не используется!) + GSC для мониторинга дрип-публикации (Фаза 6). ВАЖНО: кликов по контактам на странице сейчас НЕТ — это новый JS-маяк.
+
+**Контур 1 — ЛК (MVP за день, БЕЗ GSC):** таблица `brand_event_daily` (brand_id, day, event_type page_view|click_phone|click_site|click_social|click_store, cnt; UNIQUE по тройке; запись нативным `INSERT ON DUPLICATE KEY UPDATE cnt=cnt+1` — горячий путь без ORM; retention не нужен — агрегаты). Маяк: `POST /brand-data/{slug}/event` (паттерн dp-vote: stateless, rate-limiter brand_event ~120/час/IP, UA-denylist bot|crawl|spider|headless; бот-фильтр = сам факт JS). Страница `/brand/analytics` (BrandAnalyticsController extends BrandDashboard): KPI-cards (просмотры 30д, клики, заказы, выручка sumPaidRevenue, голоса валидации) + Chart.js (CDN inline) графики; gate `getActiveSubscription()?->getTariff()?->hasAnalytics()`; пункт меню ВСЕГДА виден, не-Премиум видит upsell-заглушку. OrderRepository: добавить дневную группировку.
+
+**Контур 2 — GSC:** Service Account (НЕ OAuth — один property, серверный крон): SA в Google Cloud → добавить его email в Search Console users; `composer require google/apiclient`; env GSC_CREDENTIALS_PATH + GSC_SITE_URL (sc-domain:wearbase.ru). Таблицы: `gsc_page_stats` (page_url, brand_id резолвнутый по slug без локали — суммирует 9 локалей, day, impressions/clicks/position, query NULL=агрегат) + `gsc_index_status` (1 строка/бренд: verdict/indexed/last_checked_at — текущее состояние, не история). Команда `app:gsc:sync` (cron 1/день): Search Analytics одним батчем dimensions=[page] rowLimit=25000 (лаг GSC 2-3 дня!); URL Inspection — лимит 2000/день на 6000 страниц → cap 1500: приоритет published_at DESC за 7 дней (свежий дрип = главный риск), остаток round-robin по last_checked_at; полный обход ~4 дня. `--report`: алерты в var/log/gsc.log (indexed_ratio<0.5 свежих, падение impressions>50% д/д).
+
+**КРИТИЧНО — drip-health сигнал строго FAIL-OPEN:** indexed_ratio свежеопубликованных — read-only метрика; publish-tick МОЖЕТ читать множитель темпа, но отсутствие/пустота GSC-данных = множитель 1.0. Мониторинг не должен уметь остановить публикацию. Хранимого ramp-state НЕ вводить (ramp намеренно stateless от PUBLISH_LAUNCH_DATE).
+
+**План:** MVP (миграция brand_event_daily → beacon+JS → страница ЛК+gate → дневные группировки Order) — закрывает обещание тарифа сразу; Фаза 2: GSC (apiclient, GscClient fail-open, миграции, sync+cron, GSC-блоки в ЛК); Фаза 3: dimension query (топ-запросы), drip-множитель, email-алерты.
+
+**Риски:** GSC-сигнал тормозит дрип (fail-open!); боты с JS (rate-limit+UA-denylist, визитор-дедуп не вводим); квота Inspection (cap+приоритизация); лаг GSC 2-3 дня (подписать в UI); локали ×9 (ключ по brand_id); vendor-раздувание google/apiclient (изолирован в GscClient, MVP без него).
+
 ## Архитектура: краудсорс-валидация данных бренда (дизайн от агента-архитектора, 2026-06-04)
 
 «Исправить неточность» (Яндекс Карты) + голосование ✓/✗ за data-point'ы (телефон/email/адрес бренда, BrandLink, BrandStore): посетители валидируют шумный enrichment-контент (кейс Zatmenie — адрес ночного клуба).
