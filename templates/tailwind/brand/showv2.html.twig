@@ -453,7 +453,10 @@
                     </section>
                 {% endif %}
 
-                {# --- FAQ блок --- #}
+                {# --- FAQ блок (boilerplate) — только когда НЕТ реального brand_faq:
+                       реальный grounded-блок «Вопросы и ответы» рендерится выше, два ЧаВо нельзя.
+                       Условие синхронно с boilerplate-FAQPage в @graph. --- #}
+                {% if faqs is not defined or faqs|length == 0 %}
                 <section class="bg-white rounded-xl shadow-sm p-6">
                     <h2 class="text-2xl font-semibold mb-6">Часто задаваемые вопросы</h2>
                     <div class="space-y-4">
@@ -495,6 +498,7 @@
                         </details>
                     </div>
                 </section>
+                {% endif %}
 
                 {# --- Блок "Другие стили" --- #}
                 {% if styles|length > 0 %}
