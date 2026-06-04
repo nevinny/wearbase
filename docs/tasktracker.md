@@ -598,6 +598,24 @@ php bin/console doctrine:migrations:migrate
 
 **Риски:** ramp-дрейф→env-якорь PUBLISH_LAUNCH_DATE; TZ-баг→явный Europe/Moscow; полу-обновление→транзакция; replay→content_version+HMAC; галлюцинация FAQ→grounded-gate+skipped; CAP недостижим→n за тик.
 
+## Архитектура: email-активация владельцев брендов (5 агентов: архитектор+маркетолог+devops+backend+frontend, 2026-06-05)
+
+Воронка: публикация страницы → письмо владельцу → open → click → регистрация/claim → подписка. ТОЛЬКО ДИЗАЙН, реализация отдельно.
+
+**ЮРИДИКА (определяет ВСЁ):** письмо №1 — ЧИСТОЕ УВЕДОМЛЕНИЕ без продажи. ФЗ-38 ст.18: реклама по email только с согласия (его нет!); защита — «это не реклама»: персонифицировано (ЕГО бренд, ЕГО адреса магазинов из БД), нет продвижения платных услуг → НИКАКИХ цен/подписок в письме. Подписка продаётся ПОСЛЕ claim внутри ЛК. ФЗ-152: законный интерес + общедоступные источники + журнал источника каждого email + право удаления (=unsub). Обязательно: реестр операторов РКН, политика ПДн, юрподвал. Серия: максимум 2 касания (№2 через 5-7 дн ТОЛЬКО открывшим-не-claimнувшим). Перед запуском — ревью юристом.
+
+**ДОСТАВКА:** SMTP reg.ru shared — категорически нет (лимиты, shared-IP в DNSBL, чужой DKIM, нет webhooks). Выбор: **RuSender** (5000/мес бесплатно, российские IP, постмастеры Mail.ru/Яндекс, полные webhooks); план Б Unisender Go. Поддомен **mail.wearbase.ru** (SPF/DKIM/DMARC p=none→quarantine) — основной домен НЕ трогаем. Регистрация в postoffice.yandex.ru + postmaster.mail.ru.
+
+**АРХИТЕКТУРА (вся воронка на ПРОДЕ):** таблица `brand_outreach` — широкая строка на бренд (brand_id UNIQUE, email-снимок, send_token CHAR(32) random, sent/opened/clicked/unsubscribed/bounced(ТОЛЬКО hard; soft→last_error)/attempts; INDEX(email) НЕ unique — suppression ПО EMAIL: один владелец=N брендов). Endpoint'ы: GET /e/o/{token}.gif (пиксель: UA-denylist + grace 5с от sent_at; ВСЕГДА 200), GET /e/c/{token} (цель из slug СЕРВЕРОМ — open-redirect невозможен; +UTM), GET+POST /e/u/{token} (RFC 8058), POST /api/v1/email/webhook (hard/soft маппинг), GET /api/v1/outreach-stats (когорты 7/14/30д: sent→opened→clicked→claimed(created_at>sent_at)→subscribed; дашборд/отчёт по агент-API). KPI — КЛИК (opens завышены Apple MPP/сканерами). BrandOutreachMailer fail-open, врезка в PublishTickCommand рядом с IndexNow, app:outreach:retry (≤3, backoff 6ч). access_control: ^/e PUBLIC_ACCESS.
+
+**РАЗРЕШЁННЫЙ КОНФЛИКТ (дрип случаен vs маркетингу нужна когорта A первой):** warmup-фаза — первые ~50 писем шлёт ОТДЕЛЬНАЯ команда app:outreach:send по когорте A (живой сайт+магазины+валидный email+спрос; 10→15→25 за 3 дня, цель 0 жалоб/open≥20%), ПОТОМ включается авто-врезка в publish-tick. Валидация email до отправки: MX-check + платный верификатор на сомнительные. Пороги (объём>200/день): complaint Mail.ru >0.05% стоп, hard bounce >3-4% стоп; на warmup — абсолютные числа.
+
+**ПИСЬМО:** прехедер; ТЕКСТ-лого (картинки у холодных заблокированы); крючок-карточка ЕГО данных («Всё верно?» — мотивация исправить сильнее регистрации); ОДНА bulletproof-CTA «Открыть страницу бренда→»; подвал кто/почему/юрлицо/unsub. ≤90 слов, plain-text обязателен. Темы A/B: «[Бренд] — мы опубликовали страницу о вашем магазине на Wearbase» / «Проверьте данные о [Бренд] в каталоге Wearbase».
+
+**ПОСАДОЧНАЯ:** страница бренда + липкий top-бар «Это ваш бренд?» (НЕ лендинг). Скрытие от Google: JS-рендер при utm/куке + data-nosnippet + не отдавать в HTML без маркера. НАХОДКА: brand_claim_new требует ROLE_USER → воронка 5 шагов с 2 барьерами; сократить: кнопка плашки → app_register?brand={id}&next=brand_claim_new (регистрация С КОНТЕКСТОМ бренда), верификация дефолтом «код на email бренда».
+
+**План реализации:** 1) RuSender+DNS (ручное); 2) brand_outreach+Mailer+шаблон; 3) /e/*+webhook; 4) плашка+register-контекст; 5) app:outreach:send (warmup 50 за 3 дня); 6) авто-врезка в publish-tick; 7) outreach-stats в дашборд/отчёт; 8) письмо №2. Бенчмарки: delivery>95% / open 15-30% / click 4-10% / claim 2-5%; open<10% у когорты A = мы в спаме, стоп.
+
 ## Архитектура: аналитика бренда + GSC (дизайн от агента-архитектора, 2026-06-04)
 
 Закрыть проданную фичу «Аналитика» Премиум-тарифа (has_analytics нигде не используется!) + GSC для мониторинга дрип-публикации (Фаза 6). ВАЖНО: кликов по контактам на странице сейчас НЕТ — это новый JS-маяк.
