@@ -164,6 +164,24 @@ class GenerateBrandFaqCommand extends Command
             if ($ragContext !== null) {
                 $facts .= "\n\nДополнительные факты из источников:\n" . $ragContext;
             }
+
+            // Физические магазины (brand_store, из обогащения): точные адреса из НАШЕЙ БД —
+            // спрос «где находится/купить» отвечаем своими данными, а не шумом омонимов.
+            $stores = $this->em->getRepository(\App\Entity\BrandStore::class)
+                ->findBy(['brand' => $brand], ['id' => 'ASC'], 10);
+            if ($stores !== []) {
+                $lines = array_map(static function (\App\Entity\BrandStore $s): string {
+                    $line = '- ' . $s->getAddress();
+                    if ($s->getWorkHours()) {
+                        $line .= ' (часы работы: ' . $s->getWorkHours() . ')';
+                    }
+                    return $line;
+                }, $stores);
+                $facts .= "\n\nФизические магазины бренда (точные адреса):\n" . implode("\n", $lines);
+                // Гарантированный location-вопрос: спрос почти всегда есть, ответ — точный.
+                $phrases[] = 'где купить ' . mb_strtolower((string) $brand->getTitle());
+                $phrases = array_slice(array_values(array_unique($phrases)), 0, self::MAX_PHRASES + 1);
+            }
             if ($facts === '') {
                 $io->text("  → {$name}: нет фактов (пустое описание) → failed");
                 $this->setFaqStatus($brand, BrandRagPipeline::FAQ_FAILED, $dryRun);
