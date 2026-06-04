@@ -534,6 +534,11 @@ php bin/console doctrine:migrations:migrate
 - [x] `app:brand:keywords` — Wordstat → brand_keyword (origin/related + monthly_shows), заранее
 - [x] Все стадии: `--shard/--total`, `--dry-run`, `--force`
 
+## Discovery-split — СДЕЛАН (коммиты 81a3553, 948ce41, d8b3cae)
+- [x] `app:brand:discover` (лёгкий, только SearXNG) наполняет очередь `brand_source_url` (дедуп по url_hash, claim через SKIP LOCKED) + ставит `has_own_site`; `app:brand:fetch` (тяжёлый, trafilatura) дренит очередь → `brand_source_document`. Монолит `app:brand:scrape` оставлен fallback'ом по `--id`. Дизайн — раздел «Архитектура: Discovery → URL-очередь → Fetch».
+- [x] **Подняты per-type cap'ы** (948ce41): было ~10 URL/бренд — резали cap'ы в ДВУХ слоях (BrandSourceFinder tier-cap'ы И DiscoverBrandSourcesCommand::CAPS поверх на enqueue, менять синхронно!). Теперь own_site 2, marketplace 5, catalog 6, article_review 5, social 6, mention 6 ≈ потолок 30/бренд; MAX_PER_HOST 4→5, PER_QUERY 20→25; +запросы «{бренд} интернет-магазин / бренд / бренд одежды». Телодвижения: 11→15. Niche-бренды остаются низкими (zyablik=6) — ограничены реальной выдачей SearXNG, не cap'ами; форсить выше = тянуть мусор.
+- [x] **Job-/рекрутинг-хосты исключены** (d8b3cae): hh.ru, superjob, rabota.ru, jobfilter, dreamjob, trud.com и др. упоминают бренд как РАБОТОДАТЕЛЯ (вакансии/зарплаты), проходили co-occurrence фильтр («{бренд} магазин одежды» в тексте вакансии) → шум в корпусе. Список `UrlFilter::JOB_NOISE`, suffix-match ловит поддомены (saratov.jobfilter.ru). Старые job-строки из очереди вычищены.
+
 ## Wordstat — АКТИВИРОВАН (коммит 062db00)
 - [x] Реальный API выяснен эмпирически: `POST /v2/wordstat/topRequests`, `Authorization: Api-Key`, **folderId НЕ нужен**. Ответ: results(origin)+associations(related), count=показов/мес.
 - [x] `WordstatClient` под реальный контракт; `WORDSTAT_API_KEY` в .env.local
@@ -543,14 +548,13 @@ php bin/console doctrine:migrations:migrate
 
 ### Использование богатого набора ключевиков в SEO
 `brand_keyword` хранит до 100 фраз с частотой (`monthly_shows`) и типом (origin/related). meta keywords тег Google/Яндекс игнорят — ценность в естественном вхождении в контент/title.
-- [x] **A. Заземление генерации на частотные запросы** — топ origin-фразы по частоте в промпт описания: «вплети естественно целевые запросы, без переспама». (коммит ниже)
-- [x] **B. Title/H1 из топ-фразы** — самая частотная релевантная фраза → primary keyword в title. (коммит ниже)
+- [x] **A. Заземление генерации на частотные запросы** — топ origin-фразы по частоте в промпт описания: «вплети естественно целевые запросы, без переспама». (коммит daf35ce)
+- [x] **B. Title/H1 из топ-фразы** — самая частотная релевантная фраза → primary keyword в title. (коммит daf35ce)
 - [ ] **C. FAQ-блоки из длинного хвоста + FAQPage schema** — низкочастотные/вопросные фразы → генерить FAQ + микроразметка (расширенные сниппеты).
 - [ ] **D. Кластеры ключевиков → теговые/фасетные посадочные** — группировка фраз по подтемам («{бренд} куртка/зима/oversize») → отдельные страницы или внутренние анкоры.
 - [ ] (риск) переспам: промпт обязан требовать ЕСТЕСТВЕННОЕ вхождение (SpamBrain/E-E-A-T) — не стаффинг.
 
 ## НЕ СДЕЛАНО / TODO
-- [ ] **Разделить scrape на discover→URL-очередь→fetch** (ПРИОРИТЕТ): сначала ищем сайт бренда (может не быть) → потом поиск/общие упоминания, всё в `brand_source_url`; fetch дренит очередь. Полный дизайн — раздел «Архитектура: Discovery → URL-очередь → Fetch». Включает дизамбигуацию (MariDeniz) и `has_own_site`.
 - [ ] **Боевой прогон scrape на сервере** (там trafilatura): задать `TRAFILATURA_BIN` в серверном `.env.local`; на Mac сейчас fallback DomCrawler
 - [ ] **Реальный батч**: прогнать N брендов без `--dry-run`, глазами проверить качество grounded-описаний, потом масштабировать шардами
 - [ ] **Очередь + воркеры на LLM-сервере** (приоритет): скрейпер ДОЛЖЕН запускаться на сервере 192.168.2.43 (там trafilatura/ollama/Qdrant/SearXNG). Воркер ходит в очередь, берёт задания, выполняет, отдаёт результаты. Заменяет ручной `--shard/--total`. Архитектуру (Symfony Messenger / транспорт / топология воркеров / доступ к БД / деплой systemd-консьюмеров) — продумать отдельно (см. ниже «Архитектура очереди»)
@@ -566,7 +570,7 @@ php bin/console doctrine:migrations:migrate
 - [ ] **Тюнинг качества**: gate MIN_SCORE/MIN_CHUNKS, top-k, размер чанка, multi-aspect аспекты — по результатам реального прогона
 - [ ] **Перепроверить bge-m3** при апдейте ollama (ушли на qwen3-embedding из-за NaN в ollama 0.22)
 - [ ] **SearXNG надёжность**: движки могут rate-limit'ить → пустые выдачи; мониторинг/ретраи
-- [ ] **CLAUDE.md**: дополнить таблицы команд/сервисов RAG-частью
+- [x] **CLAUDE.md**: дополнены таблицы команд/сервисов RAG-частью (раздел «RAG pipeline»)
 - [ ] (minor) URL-нормализация кеша для доков, сохранённых до rtrim-правки (новые консистентны)
 
 ## Архитектура очереди (дизайн от агента-архитектора)
@@ -606,6 +610,7 @@ app:brand:scrape    (без изменений)           → монолит-fal
 - **T2 corpus** (marketplace ≤3, catalog ≤4): «{бренд} одежда/купить/{город} магазин».
 - **T3 mentions/social** (social ≤4, article_review ≤3, mention ≤3): соц-ссылки из БД, «{бренд} отзывы/обзор».
 - Таксономия `source_type`: `own_site|marketplace|catalog|article_review|social|mention` (единая для очереди→документа→Qdrant payload; legacy `official_site→own_site`).
+- ⚠️ Cap'ы в дизайне выше — ИСХОДНЫЕ. Текущие (948ce41) подняты ≈ до потолка 30/бренд, живут в ДВУХ слоях (BrandSourceFinder + DiscoverBrandSourcesCommand::CAPS) — см. «Discovery-split — СДЕЛАН».
 
 **«У бренда может не быть сайта» — 2 фазы:**
 - Фаза A (discover, лёгкая): кандидат живой (`verifyUrl`) + не маркетплейс/соцсеть + slug-в-хосте/DB-ссылка + (для поисковых) имя+fashion-термин → `has_own_site=provisional`. Если все мёртвы / только маркетплейсы-соцсети / нет fashion-контекста → `has_own_site=false`.
