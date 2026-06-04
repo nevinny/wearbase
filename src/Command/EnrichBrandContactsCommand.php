@@ -20,7 +20,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Обогащает бренды контактными данными через Perplexity Sonar (веб-поиск).
+ * Обогащает бренды контактами из ЛОКАЛЬНОГО скрейп-корпуса (27b). Без корпуса — пропуск до fetch.
  *
  * Безопасен для фонового запуска:
  *  - Каждый бренд помечается после обработки (contactEnrichedAt + contactStatus)
@@ -49,7 +49,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 #[AsCommand(
     name: 'app:brand:enrich-contacts',
-    description: 'Обогащение брендов контактами через Perplexity Sonar (веб-поиск)',
+    description: 'Обогащение брендов контактами из локального скрейп-корпуса (27b)',
 )]
 class EnrichBrandContactsCommand extends Command
 {
@@ -96,7 +96,7 @@ class EnrichBrandContactsCommand extends Command
         $force    = $input->getOption('force');
         $noVerify = $input->getOption('no-verify');
 
-        $io->title('Обогащение брендов контактами (Perplexity Sonar)');
+        $io->title('Обогащение брендов контактами (локальный корпус)');
 
         if ($dryRun)   { $io->note('Режим dry-run — изменения не будут сохранены'); }
         if ($noVerify) { $io->note('URL-проверка отключена'); }
@@ -171,21 +171,20 @@ class EnrichBrandContactsCommand extends Command
                 $docs,
             ))));
 
-            if ($scrapedText !== '') {
-                $data = $this->llmService->extractBrandContactsFromText(
-                    brandName:   $name,
-                    scrapedText: $scrapedText,
-                    city:        $brand->getCity(),
-                );
-                $io->text(sprintf('    источник: локальный скрейп (%d стр.)', count($docs)));
-            } else {
-                // Fallback: Perplexity Sonar (платный) — только если скрейпа нет.
-                $data = $this->llmService->researchBrandContacts(
-                    brandName: $name,
-                    city:      $brand->getCity(),
-                    style:     $this->getStyleContext($brand),
-                );
+            if ($scrapedText === '') {
+                // Корпуса ещё нет — ждём discover/fetch: статус не трогаем, бренд останется
+                // в выборке и обогатится, когда конвейер принесёт текст. Платный
+                // Perplexity-fallback удалён (бэклог п.10, 2026-06-04).
+                $io->text('    нет корпуса — пропуск до fetch');
+                return;
             }
+
+            $data = $this->llmService->extractBrandContactsFromText(
+                brandName:   $name,
+                scrapedText: $scrapedText,
+                city:        $brand->getCity(),
+            );
+            $io->text(sprintf('    источник: локальный скрейп (%d стр.)', count($docs)));
 
             $io->text(sprintf('    confidence: %s | %s', $data['confidence'], $data['notes'] ?? ''));
 
@@ -428,15 +427,6 @@ class EnrichBrandContactsCommand extends Command
             }
         }
         return false;
-    }
-
-    private function getStyleContext(Brand $brand): ?string
-    {
-        $styles = [];
-        foreach ($brand->getStyles() as $style) {
-            $styles[] = $style->getTitle();
-        }
-        return $styles ? implode(', ', $styles) : null;
     }
 
     private function printResults(SymfonyStyle $io): void

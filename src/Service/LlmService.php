@@ -301,92 +301,13 @@ EOT;
     }
 
     // =========================================================================
-    // Contact enrichment (uses Perplexity Sonar — web-capable model)
+    // Contact enrichment (локальная модель по скрейп-тексту; Perplexity удалён 2026-06-04)
     // =========================================================================
-
-    /**
-     * Ищет контактные данные бренда через Perplexity Sonar (интернет-поиск).
-     *
-     * Модель ОБЯЗАНА уметь искать в интернете прямо сейчас — поэтому используем
-     * perplexity/sonar, а не дефолтный claude, который выдаёт только обученные знания.
-     *
-     * Структура ответа:
-     * {
-     *   "website":    "https://...",
-     *   "email":      "info@...",
-     *   "phone":      "+7...",
-     *   "instagram":  "https://instagram.com/...",
-     *   "vk":         "https://vk.com/...",
-     *   "telegram":   "https://t.me/...",
-     *   "youtube":    "https://youtube.com/...",
-     *   "stores": [
-     *     {"address": "...", "city": "...", "phone": "..."}
-     *   ],
-     *   "confidence": "high" | "medium" | "low" | "not_found",
-     *   "notes":      "краткий комментарий"
-     * }
-     *
-     * Все незнайденные поля — null.
-     * confidence = "not_found" если бренд вообще не найден в интернете.
-     *
-     * @throws \RuntimeException при сетевой ошибке
-     */
-    public function researchBrandContacts(
-        string $brandName,
-        ?string $city = null,
-        ?string $style = null,
-    ): array {
-        $cityContext  = $city  ? ", город: {$city}"  : '';
-        $styleContext = $style ? ", стиль: {$style}" : '';
-
-        $prompt = <<<EOT
-Найди актуальную контактную информацию для российского бренда одежды «{$brandName}»{$cityContext}{$styleContext}.
-
-Верни ТОЛЬКО валидный JSON (без markdown-обёртки, без пояснений):
-{
-  "website":   "https://официальный-сайт.ru или null",
-  "email":     "info@... или null",
-  "phone":     "+7XXXXXXXXXX или null",
-  "instagram": "https://instagram.com/... или null",
-  "vk":        "https://vk.com/... или null",
-  "telegram":  "https://t.me/... или null",
-  "youtube":   "https://youtube.com/... или null",
-  "stores": [
-    {"address": "полный адрес", "city": "город", "phone": "телефон или null"}
-  ],
-  "confidence": "high",
-  "notes": "краткий комментарий"
-}
-
-Правила:
-- Незнайденные поля: null (строкой), не пропускай ключи
-- stores: только реальные физические точки самого бренда (не дистрибьюторы)
-- stores: пустой массив [] если магазинов не найдено
-- phone: нормализованный формат +7XXXXXXXXXX (10 цифр после +7)
-- confidence уровни:
-  - "high"      — нашёл официальный сайт бренда
-  - "medium"    — нашёл только соцсети или косвенные упоминания
-  - "low"       — данные сомнительные или частично совпадают
-  - "not_found" — бренд в интернете не найден вообще
-- Не придумывай данные — лучше null чем выдумка
-EOT;
-
-        // 512 токенов достаточно для компактного JSON с контактами.
-        // Perplexity Sonar стоит дороже обычных моделей — экономим.
-        $response = $this->generate($prompt, model: 'perplexity/sonar', timeout: 60, maxTokens: 512);
-        $parsed   = $this->extractJson($response);
-
-        if ($parsed === null) {
-            throw new \RuntimeException("Не удалось распарсить JSON от Perplexity для бренда «{$brandName}»");
-        }
-
-        return $this->normalizeContactsResponse($parsed);
-    }
 
     /**
      * Извлекает контакты из УЖЕ собранного текста страниц бренда (RAG-скрейп)
      * локальной моделью — без платного Perplexity. Возвращает ТОТ ЖЕ контракт,
-     * что researchBrandContacts(), поэтому applyContacts()/нормализация не меняются.
+     * что был у Perplexity-пути (удалён 2026-06-04) — applyContacts()/нормализация не менялись.
      */
     public function extractBrandContactsFromText(
         string $brandName,
