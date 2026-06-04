@@ -202,14 +202,20 @@ class BrandsController extends AbstractController
         defaults: ['_locale' => 'ru'])]
     public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo): Response
     {
-        $demoProducts = $this->createDemoProducts($brand);
-        $similarBrands = $brandRepo->findSimilarBrands($brand, 8);
-
         // Является ли текущий пользователь участником команды ИМЕННО этого бренда
         $isMemberOfThisBrand = false;
         if ($this->getUser() !== null) {
             $isMemberOfThisBrand = $brandUserRepo->findOneBy(['brand' => $brand, 'user' => $this->getUser()]) !== null;
         }
+
+        // Неактивные бренды (new = в очереди дрип-публикации, disabled/deleted) публично
+        // не существуют — 404, как в каталоге/sitemap. Участникам бренда — превью.
+        if ($brand->getStatus() !== \Nevinny\AdminCoreBundle\Enum\Statuses::Active && !$isMemberOfThisBrand) {
+            throw $this->createNotFoundException('Бренд не опубликован');
+        }
+
+        $demoProducts = $this->createDemoProducts($brand);
+        $similarBrands = $brandRepo->findSimilarBrands($brand, 8);
 
         $brandStyles = $brand->getStyles()->toArray();
         $brandCity = $brand->getCity();
