@@ -5,3 +5,9 @@ framework:
             policy: sliding_window
             limit: 120
             interval: '1 minute'
+
+        # Голоса краудсорс-валидации (анонимные посетители): анти-флуд.
+        brand_vote:
+            policy: sliding_window
+            limit: 20
+            interval: '1 hour'

@@ -249,6 +249,13 @@ class BrandsController extends AbstractController
             ->getRepository(\App\Entity\BrandFaq::class)
             ->findByBrandOrdered($brand);
 
+        // Краудсорс-валидация: скрытые точки (state=hidden) не показываем.
+        // hiddenDp: ключи вида "{target_type}:{target_id|0}:{field}".
+        $hiddenDp = [];
+        foreach ($brandRepo->getEntityManager()->getRepository(\App\Entity\BrandDatapoint::class)->findHiddenByBrand($brand) as $dp) {
+            $hiddenDp[$dp->getTargetType() . ':' . ($dp->getTargetId() ?? 0) . ':' . $dp->getField()] = true;
+        }
+
         return $this->render('tailwind/brand/showv2.html.twig', [
             'brand' => $brand,
             'products' => $demoProducts,
@@ -257,6 +264,7 @@ class BrandsController extends AbstractController
             'cities' => $cities,
             'isMemberOfThisBrand' => $isMemberOfThisBrand,
             'faqs' => $faqs,
+            'hiddenDp' => $hiddenDp,
         ]);
     }
 

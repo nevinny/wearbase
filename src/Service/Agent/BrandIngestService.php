@@ -81,9 +81,16 @@ class BrandIngestService
                 $brand->setMetaKeywords((string) $meta['keywords']);
             }
 
+            // Owner-guard: поля с provenance=owner (правка владельца через ЛК) НЕ затираем
+            // ре-обогащением — guard независим от content_version (owner-правки на проде
+            // версию не бампают). Дизайн: tasktracker «краудсорс-валидация».
+            /** @var \App\Repository\BrandDatapointRepository $dpRepo */
+            $dpRepo = $this->em->getRepository(\App\Entity\BrandDatapoint::class);
+
             $contacts = $payload['contacts'] ?? [];
             foreach (['email' => 'setEmail', 'phone' => 'setPhone', 'address' => 'setAddress'] as $key => $setter) {
-                if (isset($contacts[$key])) {
+                if (isset($contacts[$key])
+                    && !$dpRepo->isOwnerProvenance($brand, \App\Entity\BrandDatapoint::TYPE_CONTACT, null, $key)) {
                     $brand->{$setter}((string) $contacts[$key]);
                 }
             }
@@ -102,6 +109,20 @@ class BrandIngestService
             }
             if (array_key_exists('links', $payload)) {
                 $this->replaceLinks($brand, (array) $payload['links']);
+            }
+
+            // Свежие данные приехали → забракованные голосами точки считаем ре-обогащёнными:
+            // state=active, голоса устарели (удаляем — sumWeights иначе воскресит счётчики).
+            foreach ($dpRepo->findBy(['brand' => $brand, 'state' => \App\Entity\BrandDatapoint::STATE_HIDDEN]) as $dp) {
+                if ($dp->getProvenance() === \App\Entity\BrandDatapoint::PROV_OWNER) {
+                    continue;
+                }
+                $dp->setRevalidatedAt(new \DateTime())
+                    ->setState(\App\Entity\BrandDatapoint::STATE_ACTIVE)
+                    ->setProvenance(\App\Entity\BrandDatapoint::PROV_ENRICHMENT)
+                    ->setConfirmCount(0)->setRejectCount(0)->setRejectWindow(0);
+                $this->em->createQuery('DELETE FROM App\Entity\BrandDatapointVote v WHERE v.datapoint = :dp')
+                    ->setParameter('dp', $dp)->execute();
             }
 
             $this->em->flush();
@@ -174,10 +195,16 @@ class BrandIngestService
         }
     }
 
-    /** @param array<int,array<string,mixed>> $rows delete-and-replace */
+    /** @param array<int,array<string,mixed>> $rows delete-and-replace (owner-строки сохраняются) */
     private function replaceLinks(Brand $brand, array $rows): void
     {
+        /** @var \App\Repository\BrandDatapointRepository $dpRepo */
+        $dpRepo = $this->em->getRepository(\App\Entity\BrandDatapoint::class);
         foreach ($brand->getLinks() as $existing) {
+            // Ссылку, внесённую/подтверждённую владельцем, ре-обогащение не трогает.
+            if ($dpRepo->isOwnerProvenance($brand, \App\Entity\BrandDatapoint::TYPE_LINK, $existing->getId(), 'url')) {
+                continue;
+            }
             $this->em->remove($existing);
         }
         foreach (array_slice($rows, 0, 20) as $row) {

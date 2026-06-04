@@ -67,6 +67,10 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    App\Service\DatapointVoteService:
+        arguments:
+            $appSecret: '%kernel.secret%'
+
     App\Command\PushBrandsCommand:
         arguments:
             $prodApiUrl: '%env(default::PROD_API_URL)%'

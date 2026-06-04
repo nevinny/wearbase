@@ -265,18 +265,21 @@
                         <h2 class="text-2xl font-semibold mb-4">Магазины {{ _bt }}</h2>
                         <ul class="space-y-4">
                             {% for store in brand.stores %}
+                                {% if hiddenDp is not defined or ('brand_store:' ~ store.id ~ ':address') not in hiddenDp|keys %}
                                 <li class="flex items-start gap-3">
                                     <svg class="w-5 h-5 text-gray-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                                     </svg>
-                                    <div>
+                                    <div class="flex-1">
                                         <div class="font-medium text-gray-900">{{ store.address }}</div>
                                         <div class="text-sm text-gray-500">
                                             {{ store.city }}{% if store.workHours %} · {{ store.workHours }}{% endif %}{% if store.phone %} · <a href="tel:{{ store.phone }}" class="hover:text-gray-900">{{ store.phone }}</a>{% endif %}
                                         </div>
                                     </div>
+                                    <span class="dp-vote shrink-0" data-nosnippet data-type="brand_store" data-target="{{ store.id }}" data-field="address"></span>
                                 </li>
+                                {% endif %}
                             {% endfor %}
                         </ul>
                     </section>
@@ -366,27 +369,29 @@
                     <section class="bg-white rounded-xl shadow-sm p-6">
                         <h3 class="text-xl font-semibold mb-4">Контакты</h3>
                         <div class="space-y-3">
-                            {% if brand.email %}
+                            {% if brand.email and (hiddenDp is not defined or 'brand_contact:0:email' not in hiddenDp|keys) %}
                                 <div class="flex items-center gap-3">
                                     <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                                         <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
                                         <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/>
                                     </svg>
-                                    <a href="mailto:{{ brand.email }}" class="text-gray-700 hover:text-indigo-600">
+                                    <a href="mailto:{{ brand.email }}" class="text-gray-700 hover:text-indigo-600 flex-1">
                                         {{ brand.email }}
                                     </a>
+                                    <span class="dp-vote shrink-0" data-nosnippet data-type="brand_contact" data-field="email"></span>
                                 </div>
                             {% endif %}
 
-                            {% if brand.phone %}
+                            {% if brand.phone and (hiddenDp is not defined or 'brand_contact:0:phone' not in hiddenDp|keys) %}
                                 <div class="flex items-center gap-3">
                                     <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                                         <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
                                     </svg>
                                     <a href="tel:{{ brand.phone|replace({' ': '', '-': '', '(': '', ')': ''}) }}"
-                                       class="text-gray-700 hover:text-indigo-600">
+                                       class="text-gray-700 hover:text-indigo-600 flex-1">
                                         {{ brand.phone }}
                                     </a>
+                                    <span class="dp-vote shrink-0" data-nosnippet data-type="brand_contact" data-field="phone"></span>
                                 </div>
                             {% endif %}
 
@@ -532,4 +537,42 @@
                 </section>
                 {% endif %}
             </div>
+
+    {# Краудсорс-валидация: кнопки ✓/✗/«исправить» рендерятся JS'ом в .dp-vote
+       (прогрессивное улучшение, не индексируются), POST на rate-limited endpoint. #}
+    <script>
+    (function () {
+        var url = '{{ path('brand_datapoint_vote', {slug: brand.slug}) }}';
+        document.querySelectorAll('.dp-vote').forEach(function (el) {
+            el.innerHTML =
+                '<button type="button" data-v="confirm" title="Данные верны" class="text-gray-300 hover:text-green-600 px-1">✓</button>' +
+                '<button type="button" data-v="reject" title="Данные неверны" class="text-gray-300 hover:text-red-600 px-1">✗</button>' +
+                '<button type="button" data-v="fix" title="Предложить исправление" class="text-gray-300 hover:text-indigo-600 px-1">✎</button>';
+        });
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.dp-vote button');
+            if (!btn) return;
+            var el = btn.closest('.dp-vote');
+            var payload = {
+                target_type: el.dataset.type,
+                field: el.dataset.field,
+                vote: btn.dataset.v === 'fix' ? 'reject' : btn.dataset.v
+            };
+            if (el.dataset.target) payload.target_id = parseInt(el.dataset.target, 10);
+            if (btn.dataset.v === 'fix') {
+                var s = prompt('Как правильно? (необязательно)');
+                if (s === null) return;
+                if (s.trim() !== '') payload.suggestion = s.trim();
+            }
+            fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d.error) { el.innerHTML = '<span class="text-xs text-gray-400">' + (d.error === 'rate limited' ? 'слишком часто' : 'ошибка') + '</span>'; return; }
+                el.innerHTML = '<span class="text-xs text-gray-400">спасибо!</span>';
+            }).catch(function () { el.innerHTML = '<span class="text-xs text-gray-400">ошибка</span>'; });
+        });
+    })();
+    </script>
 {% endblock %}

@@ -96,6 +96,35 @@ class BrandIngestController extends AbstractController
         return $this->json($result);
     }
 
+    /**
+     * Обратный канал краудсорс-валидации (agent-pull: прод не достучится до LAN):
+     * локальный агент поллит забракованные голосами точки и ре-обогащает их.
+     */
+    #[Route('/revalidation-queue', name: 'api_revalidation_queue', methods: ['GET'])]
+    public function revalidationQueue(
+        Request $request,
+        EntityManagerInterface $em,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter, checkSignature: false)) !== null) {
+            return $deny;
+        }
+
+        $items = [];
+        foreach ($em->getRepository(\App\Entity\BrandDatapoint::class)->findQueuedForRevalidation(100) as $dp) {
+            $items[] = [
+                'brand_slug'   => $dp->getBrand()?->getSlug(),
+                'target_type'  => $dp->getTargetType(),
+                'target_id'    => $dp->getTargetId(),
+                'field'        => $dp->getField(),
+                'reject_count' => $dp->getRejectCount(),
+                'queued_at'    => $dp->getQueuedRevalidateAt()?->format(DATE_ATOM),
+            ];
+        }
+
+        return $this->json(['items' => $items]);
+    }
+
     #[Route('/brands/{slug}/status', name: 'api_brand_status', methods: ['GET'])]
     public function status(
         string $slug,
