@@ -9,6 +9,14 @@ use App\Entity\BrandLink;
 use App\Entity\BrandSize;
 use App\Entity\BrandStyle;
 use App\Entity\BrandTier;
+use App\Entity\City;
+use App\Entity\Country;
+use App\Entity\Currency;
+use App\Entity\ExchangeRate;
+use App\Entity\Language;
+use App\Entity\BrandMarket;
+use App\Entity\ShippingRule;
+use App\Entity\TaxRule;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
@@ -56,6 +64,7 @@ class DashboardController extends AbstractDashboardController
     public function configureMenuItems(): iterable
     {
         yield MenuItem::linkToDashboard('Dashboard', 'fa fa-home');
+        yield MenuItem::linkToRoute('RAG-конвейер', 'fas fa-cogs', 'admin_rag');
          yield MenuItem::linkToCrud('Brands', 'fas fa-list', Brand::class);
 
         yield MenuItem::section('Dictionaries');
@@ -68,6 +77,21 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::section('Administration');
         yield MenuItem::linkToCrud('SectionType', 'fas fa-list', SectionType::class);
         yield MenuItem::linkToCrud('SectionLink', 'fas fa-list', SectionLink::class);
+        yield MenuItem::section('Заявки');
+        yield MenuItem::linkToUrl('Заявки на бренды', 'fas fa-store',
+            $this->generateUrl('admin', ['routeName' => 'admin_brand_claims']),
+        );
+
+        yield MenuItem::section('Международные рынки');
+        yield MenuItem::linkToCrud('Языки', 'fas fa-language', Language::class);
+        yield MenuItem::linkToCrud('Страны', 'fas fa-globe', Country::class);
+        yield MenuItem::linkToCrud('Города', 'fas fa-city', City::class);
+        yield MenuItem::linkToCrud('Валюты', 'fas fa-coins', Currency::class);
+        yield MenuItem::linkToCrud('Курсы валют', 'fas fa-chart-line', ExchangeRate::class);
+        yield MenuItem::linkToCrud('Правила доставки', 'fas fa-truck', ShippingRule::class);
+        yield MenuItem::linkToCrud('Налоговые правила', 'fas fa-receipt', TaxRule::class);
+        yield MenuItem::linkToCrud('Рынки брендов', 'fas fa-flag', BrandMarket::class);
+
         yield MenuItem::section('Пользователи');
         yield MenuItem::linkToCrud('Users', 'fas fa-users', User::class);
     }
