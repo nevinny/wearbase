@@ -64,6 +64,9 @@ security:
                 path: /
 
     access_control:
+        # Агент-API приёма контента: PUBLIC_ACCESS на уровне firewall, bearer-токен +
+        # HMAC-подпись тела проверяются в контроллере (паттерн платёжных вебхуков).
+        - { path: ^/api/v1, roles: PUBLIC_ACCESS }
         - { path: ^/admin/login, roles: PUBLIC_ACCESS }
         - { path: ^/admin, roles: ROLE_ADMIN }
         - { path: ^/login,        roles: PUBLIC_ACCESS }

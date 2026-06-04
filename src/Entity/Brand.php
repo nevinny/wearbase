@@ -169,6 +169,10 @@ class Brand
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTimeInterface $publishedAt = null;
 
+    /** Версия контента (агент-API): прод пропускает payload с версией ≤ текущей. */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $contentVersion = 0;
+
     public function __construct()
     {
         $this->products = new ArrayCollection();
@@ -742,6 +746,18 @@ class Brand
     public function setPublishedAt(?\DateTimeInterface $at): static
     {
         $this->publishedAt = $at;
+
+        return $this;
+    }
+
+    public function getContentVersion(): int
+    {
+        return $this->contentVersion;
+    }
+
+    public function setContentVersion(int $version): static
+    {
+        $this->contentVersion = $version;
 
         return $this;
     }

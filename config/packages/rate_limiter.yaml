@@ -1,0 +1,7 @@
+framework:
+    rate_limiter:
+        # Агент-API приёма контента (/api/v1): защита от долбёжки при утечке токена.
+        agent_api:
+            policy: sliding_window
+            limit: 120
+            interval: '1 minute'

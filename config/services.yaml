@@ -59,6 +59,10 @@ services:
         arguments:
             $searxUrl: '%env(SEARXNG_URL)%'
 
+    App\Service\Agent\BrandIngestService:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
     App\Service\WebScraperService:
         arguments:
             $trafilaturaBin: '%env(TRAFILATURA_BIN)%'
