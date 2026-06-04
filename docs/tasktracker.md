@@ -577,6 +577,22 @@ php bin/console doctrine:migrations:migrate
 - [x] **CLAUDE.md**: дополнены таблицы команд/сервисов RAG-частью (раздел «RAG pipeline»)
 - [ ] (minor) URL-нормализация кеша для доков, сохранённых до rtrim-правки (новые консистентны)
 
+## Архитектура: готовность брендов / FAQ / агент-сервер / дрип-публикация (дизайн от агента-архитектора, 2026-06-04)
+
+Цель: выложить расширенную базу в прод БЕЗ резкого скачка для Google — дрип-публикация с ramp-up, публикуются только «готовые» бренды (title+meta+description grounded+FAQ из ключевиков).
+
+**Модель признаков готовности** — БЕЗ новой таблицы/тегов (минимализм): признаки = существующие сигналы + 4 новые колонки на `brand_rag_pipeline` (`faq_status` done|skipped|failed, `pushed_at`, `push_attempts`, `push_error`) + 2 на `brand` (`publish_pending`, `published_at`, прод). Единый предикат `isPublishReady()`: description+metaTitle+metaDescription непусты И status=done И faq_status∈(done,skipped) И keywords_status∈(found,not_found). Выборки — финдеры по паттерну стадий: `findForFaq()` (status=done AND faq_status IS NULL), `findReadyToPush()` (isPublishReady AND pushed_at IS NULL).
+
+**FAQ (задача C)** — таблица `brand_faq` (question/answer/position/locale/source, FK brand CASCADE; реляционно — нужна сортировка и будущая локализация). Генерация `app:brand:faq`: вопросные/длиннохвостые фразы brand_keyword (как/где/сколько + low monthly_shows, топ 5-7) → ответы 27b ТОЛЬКО из RAG-фактов («нет факта — пропусти вопрос»). Без ключевиков → `faq_status=skipped` (FAQ опционален, не блокирует публикацию — вопросы «из головы» без спроса = низкий ROI + риск галлюцинаций). Рендер: аккордеон + FAQPage JSON-LD в `showv2.html.twig` (НЕ show — контроллер рендерит showv2). Стадия GPU-демона.
+
+**Агент-сервер (прод не видит LAN!)** — REST `/api/v1` в том же Symfony-проекте: `POST /api/v1/brands/upsert` (бренд целиком: description/meta/keywords/faq/contacts/links + логотип/картинки **base64-байтами** — прод не может дозагрузить из LAN), `GET /api/v1/brands/{slug}/status`. Идемпотентность: upsert по `slug` (dev brand.id ≠ прод, external_id только аудит), транзакция целиком, `content_version` против ре-доставки. Auth: bearer `AGENT_API_TOKEN` (hash_equals) + HMAC-подпись тела `X-Signature` (как платёжные вебхуки), access_control PUBLIC_ACCESS + проверка в контроллере (firewall'ы не трогаем), rate_limiter 120/мин (создать config/packages/rate_limiter.yaml). Агент-пуш: `app:brand:push` (dev, сетевая стадия демона), retry до 3, pushed_at/push_attempts на pipeline.
+
+**Дрип-публикация (прод)** — приехавший бренд: `status='new'` + publish_pending=1 (Statuses: Active/Disabled/Deleted/System/New — `Inactive` НЕ существует, CLAUDE.md ошибается; публичные запросы фильтруют status='active' → new авто-скрыт из каталога/hub/sitemap). Cron-команда `app:brand:publish-tick` раз в час: окно 9–23 MSK (явная TZ Europe/Moscow!), sleep(rand(0..45мин)), ramp-up БЕЗ хранимого state: `w=floor((now-PUBLISH_LAUNCH_DATE)/7д); T(w)=min(28, round(5*1.125^w))`; самокоррекция: `p=(T - published_today)/ticks_left`; за тик публикуем `n=floor(p)+Bernoulli(frac(p))` СЛУЧАЙНЫХ готовых брендов (один-за-тик не дотягивает до CAP при 15 тиках/день), флип status='active'+published_at.
+
+**План внедрения (shippable шаги):** 1) миграции флагов + isPublishReady + финдеры; 2) brand_faq + app:brand:faq + стадия демона; 3) рендер FAQ + JSON-LD; 4) REST API + rate_limiter + env-токены; 5) app:brand:push + стадия; 6) publish-tick + cron. Новые файлы: BrandFaq+repo, GenerateBrandFaqCommand, PushBrandsCommand, PublishTickCommand, Api/BrandIngestController, Agent/BrandPayloadAssembler+BrandIngestService, 3 миграции.
+
+**Риски:** ramp-дрейф→env-якорь PUBLISH_LAUNCH_DATE; TZ-баг→явный Europe/Moscow; полу-обновление→транзакция; replay→content_version+HMAC; галлюцинация FAQ→grounded-gate+skipped; CAP недостижим→n за тик.
+
 ## Архитектура очереди (дизайн от агента-архитектора)
 
 **Центральный факт:** БД (MySQL) сейчас на Mac (`DATABASE_HOST=127.0.0.1`), GPU-сервис на 192.168.2.43 — **у сервера нет доступа к БД**. Это «петля» всего дизайна.
