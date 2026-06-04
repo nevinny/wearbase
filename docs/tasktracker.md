@@ -572,7 +572,7 @@ php bin/console doctrine:migrations:migrate
 - [ ] **Валидация результатов поиска контактов** — та же дизамбигуация для enrich: найденные website/email/соцсети должны принадлежать бренду одежды, а не омониму (MariDeniz→диабет). Сейчас confidence ставит LLM по тексту; добавить fashion-проверку источника контактов + перепроверку, что домен/соцсеть про одежду, прежде чем сохранять в Brand/BrandLink.
 - [ ] **Тюнинг качества**: gate MIN_SCORE/MIN_CHUNKS, top-k, размер чанка, multi-aspect аспекты — по результатам реального прогона
 - [ ] **Перепроверить bge-m3** при апдейте ollama (ушли на qwen3-embedding из-за NaN в ollama 0.22)
-- [ ] **SearXNG надёжность**: движки могут rate-limit'ить → пустые выдачи; мониторинг/ретраи
+- [ ] **SearXNG надёжность**: движки могут rate-limit'ить → пустые выдачи; circuit breaker есть (ac3cecc), но фактически живой движок один — google. yandex включён в settings.yml (2026-06-04), но даёт `parsing error` — обновить образ searxng/searxng (вероятно починит парсер яндекса); у duckduckgo — connection error, разобраться. Бэкап конфига: /opt/searxng/settings.yml.bak-20260604
 - [x] **CLAUDE.md**: дополнены таблицы команд/сервисов RAG-частью (раздел «RAG pipeline»)
 - [ ] (minor) URL-нормализация кеша для доков, сохранённых до rtrim-правки (новые консистентны)
 
