@@ -567,8 +567,8 @@ php bin/console doctrine:migrations:migrate
 - [ ] **Реальный батч**: прогнать N брендов без `--dry-run`, глазами проверить качество grounded-описаний, потом масштабировать шардами
 - [ ] **Очередь + воркеры на LLM-сервере** (приоритет): скрейпер ДОЛЖЕН запускаться на сервере 192.168.2.43 (там trafilatura/ollama/Qdrant/SearXNG). Воркер ходит в очередь, берёт задания, выполняет, отдаёт результаты. Заменяет ручной `--shard/--total`. Архитектуру (Symfony Messenger / транспорт / топология воркеров / доступ к БД / деплой systemd-консьюмеров) — продумать отдельно (см. ниже «Архитектура очереди»)
 - [ ] **Оркестрация/cron** боевого флоу: порядок scrape→keywords→embed→generate, расписание, периодический refresh (re-обход по TTL — сейчас findForScrape берёт только pending/failed)
-- [ ] **Удалить Perplexity-ветку** в LlmService::researchBrandContacts после валидации локального пути
-- [ ] **PHPUnit-тесты** новых сервисов (UrlFilter, TextChunker, BrandRagService gate, WordstatClient-парсинг) — отсутствуют
+- [x] **Perplexity-ветка удалена** (bce3cd2, 2026-06-04): researchBrandContacts вырезан; enrich без корпуса пропускает бренд до fetch
+- [x] **PHPUnit-тесты** (a6c9633, 2026-06-04): 23 теста — UrlFilter, TextChunker (регрессия хвоста), WordstatClient (квота), SearxClient (canary). BrandRagService gate — TODO (нужны моки Qdrant)
 - [ ] **Валидация релевантности источников (дизамбигуация брендов-омонимов)** — ПРИОРИТЕТ. Текущий фильтр «имя бренда в title/snippet» слаб: для `MariDeniz` первый результат Яндекса — про диабет, только второй про бренд (ya.ru/search/?text=MariDeniz). Скрейпер может взять не тот сайт → ложные факты в RAG. Нужно валидировать, что страница вправду относится к ЭТОМУ бренду одежды:
   - усилить фильтр: требовать fashion-контекст (одежда/коллекция/магазин/streetwear…) рядом с именем, а не только имя;
   - LLM-классификатор по сниппету/первому экрану: «это страница бренда одежды X? да/нет» перед принятием источника;
@@ -577,7 +577,7 @@ php bin/console doctrine:migrations:migrate
 - [ ] **Валидация результатов поиска контактов** — та же дизамбигуация для enrich: найденные website/email/соцсети должны принадлежать бренду одежды, а не омониму (MariDeniz→диабет). Сейчас confidence ставит LLM по тексту; добавить fashion-проверку источника контактов + перепроверку, что домен/соцсеть про одежду, прежде чем сохранять в Brand/BrandLink.
 - [ ] **Тюнинг качества**: gate MIN_SCORE/MIN_CHUNKS, top-k, размер чанка, multi-aspect аспекты — по результатам реального прогона
 - [ ] **Перепроверить bge-m3** при апдейте ollama (ушли на qwen3-embedding из-за NaN в ollama 0.22)
-- [ ] **SearXNG надёжность**: движки могут rate-limit'ить → пустые выдачи; circuit breaker есть (ac3cecc), но фактически живой движок один — google. yandex включён в settings.yml (2026-06-04), но даёт `parsing error` — обновить образ searxng/searxng (вероятно починит парсер яндекса); у duckduckgo — connection error, разобраться. Бэкап конфига: /opt/searxng/settings.yml.bak-20260604
+- [ ] **SearXNG надёжность**: движки могут rate-limit'ить → пустые выдачи; circuit breaker есть (ac3cecc), но фактически живой движок один — google. yandex: parsing error НЕ лечится обновлением (проверено на latest 2026-06-04 — upstream-проблема: Яндекс отдаёт капчу/вёрстку, парсер падает); образ обновлён, выдачу несут bing+mojeek, canary защищает. ddg — connection error (вероятно блок IP), отложено. Бэкап конфига: /opt/searxng/settings.yml.bak-20260604
 - [x] **CLAUDE.md**: дополнены таблицы команд/сервисов RAG-частью (раздел «RAG pipeline»)
 - [ ] (minor) URL-нормализация кеша для доков, сохранённых до rtrim-правки (новые консистентны)
 
