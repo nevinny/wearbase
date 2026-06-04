@@ -244,6 +244,11 @@ class BrandsController extends AbstractController
             ->getResult();
         $cities = array_column($cities, 'city');
 
+        // FAQ (SEO задача C): аккордеон + FAQPage JSON-LD
+        $faqs = $brandRepo->getEntityManager()
+            ->getRepository(\App\Entity\BrandFaq::class)
+            ->findByBrandOrdered($brand);
+
         return $this->render('tailwind/brand/showv2.html.twig', [
             'brand' => $brand,
             'products' => $demoProducts,
@@ -251,6 +256,7 @@ class BrandsController extends AbstractController
             'styles' => $styles,
             'cities' => $cities,
             'isMemberOfThisBrand' => $isMemberOfThisBrand,
+            'faqs' => $faqs,
         ]);
     }
 

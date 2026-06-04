@@ -100,7 +100,10 @@
                     "{{ url }}"{{ not loop.last ? ',' }}
                     {% endfor %}
                 ]
-            },
+            }
+            {# Boilerplate-FAQ только когда НЕТ реального (brand_faq): два FAQPage на странице нельзя,
+               а реальный grounded-FAQ из Wordstat-фраз всегда приоритетнее шаблонного. #}
+            {% if faqs is not defined or faqs|length == 0 %},
             {
                 "@type": "FAQPage",
                 "mainEntity": [
@@ -138,6 +141,7 @@
                     }
                 ]
             }
+            {% endif %}
         ]
     }
     </script>
@@ -215,6 +219,44 @@
                             {{ _bd|raw }}
                         </div>
                     </section>
+                {% endif %}
+
+                {# --- FAQ (SEO задача C): вопросы из реального спроса Wordstat, grounded-ответы --- #}
+                {% if faqs is defined and faqs|length > 0 %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">Вопросы и ответы о {{ _bt }}</h2>
+                        <div class="divide-y divide-gray-100">
+                            {% for faq in faqs %}
+                                <details class="group py-3">
+                                    <summary class="flex items-center justify-between cursor-pointer list-none font-medium text-gray-900 hover:text-gray-600">
+                                        <span>{{ faq.question }}</span>
+                                        <svg class="w-5 h-5 text-gray-400 shrink-0 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                        </svg>
+                                    </summary>
+                                    <p class="mt-2 text-gray-700 leading-relaxed">{{ faq.answer }}</p>
+                                </details>
+                            {% endfor %}
+                        </div>
+                    </section>
+                    <script type="application/ld+json">
+                    {
+                        "@context": "https://schema.org",
+                        "@type": "FAQPage",
+                        "mainEntity": [
+                            {% for faq in faqs %}
+                            {
+                                "@type": "Question",
+                                "name": "{{ faq.question|escape('js') }}",
+                                "acceptedAnswer": {
+                                    "@type": "Answer",
+                                    "text": "{{ faq.answer|escape('js') }}"
+                                }
+                            }{% if not loop.last %},{% endif %}
+                            {% endfor %}
+                        ]
+                    }
+                    </script>
                 {% endif %}
 
                 {% if similarBrands is defined and similarBrands|length > 0 %}
