@@ -11,6 +11,18 @@ use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionIn
  */
 class SearxClient
 {
+    /**
+     * Canary: запрос, у которого результаты есть ВСЕГДА (пока жив хоть один движок).
+     * Отличает «по нишевому запросу честно пусто» от «поиск лежит»: часть движков
+     * перманентно в unresponsive (yandex parsing error), поэтому сам список
+     * suspended-движков сигналом служить не может.
+     */
+    private const CANARY_QUERY  = 'одежда купить';
+    private const CANARY_TTL_SEC = 120;
+
+    private ?bool $canaryAlive = null;
+    private float $canaryCheckedAt = 0.0;
+
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly string $searxUrl,
@@ -25,8 +37,8 @@ class SearxClient
     /**
      * @return array<int,array{url:string,title:string,content:string}>
      *
-     * @throws SearxUnavailableException SearXNG лежит или движки suspended — НЕ путать
-     *                                   с «по запросу честно ничего не найдено» (пустой массив).
+     * @throws SearxUnavailableException SearXNG лежит (HTTP-ошибка или canary без
+     *                                   результатов) — НЕ путать с честным пустым [].
      */
     public function search(string $query, int $limit = 10, string $language = 'ru'): array
     {
@@ -34,28 +46,16 @@ class SearxClient
             return [];
         }
 
-        try {
-            $response = $this->httpClient->request('GET', rtrim($this->searxUrl, '/') . '/search', [
-                'query'   => ['q' => $query, 'format' => 'json', 'language' => $language],
-                'timeout' => 20,
-            ]);
-            if ($response->getStatusCode() >= 400) {
-                throw new SearxUnavailableException("SearXNG HTTP {$response->getStatusCode()}");
-            }
-            $data = $response->toArray(false);
-        } catch (HttpExceptionInterface $e) {
-            throw new SearxUnavailableException('SearXNG недоступен: ' . $e->getMessage(), 0, $e);
-        }
+        $data = $this->doSearch($query, $language);
 
-        // 0 результатов при suspended-движках = поиск лежит (CAPTCHA/rate-limit),
-        // а не «ничего не найдено». Молча вернуть [] = сжечь бренд пустым discovery.
-        $unresponsive = $data['unresponsive_engines'] ?? [];
-        if (($data['results'] ?? []) === [] && $unresponsive !== []) {
+        // 0 результатов — честная пустота или лежащий поиск? Решает canary:
+        // молча вернуть [] при мёртвых движках = сжечь бренд пустым discovery.
+        if (($data['results'] ?? []) === [] && !$this->canaryAlive()) {
             $engines = implode(', ', array_map(
                 static fn($e) => is_array($e) ? implode(': ', $e) : (string) $e,
-                array_slice($unresponsive, 0, 5),
+                array_slice($data['unresponsive_engines'] ?? [], 0, 5),
             ));
-            throw new SearxUnavailableException("SearXNG: движки suspended ({$engines})");
+            throw new SearxUnavailableException("SearXNG: canary без результатов, движки лежат ({$engines})");
         }
 
         $out = [];
@@ -75,5 +75,48 @@ class SearxClient
         }
 
         return $out;
+    }
+
+    /**
+     * Сырой запрос к SearXNG без canary-логики (используется и самим canary).
+     *
+     * @return array<string,mixed> декодированный JSON
+     *
+     * @throws SearxUnavailableException сам SearXNG недоступен (HTTP/сеть)
+     */
+    private function doSearch(string $query, string $language = 'ru'): array
+    {
+        try {
+            $response = $this->httpClient->request('GET', rtrim($this->searxUrl, '/') . '/search', [
+                'query'   => ['q' => $query, 'format' => 'json', 'language' => $language],
+                'timeout' => 20,
+            ]);
+            if ($response->getStatusCode() >= 400) {
+                throw new SearxUnavailableException("SearXNG HTTP {$response->getStatusCode()}");
+            }
+
+            return $response->toArray(false);
+        } catch (HttpExceptionInterface $e) {
+            throw new SearxUnavailableException('SearXNG недоступен: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    /** Canary-запрос с кэшем на CANARY_TTL_SEC (движки умирают/оживают в течение прогона). */
+    private function canaryAlive(): bool
+    {
+        $now = microtime(true);
+        if ($this->canaryAlive !== null && ($now - $this->canaryCheckedAt) < self::CANARY_TTL_SEC) {
+            return $this->canaryAlive;
+        }
+
+        $this->canaryCheckedAt = $now;
+
+        try {
+            $data = $this->doSearch(self::CANARY_QUERY);
+        } catch (SearxUnavailableException) {
+            return $this->canaryAlive = false;
+        }
+
+        return $this->canaryAlive = (($data['results'] ?? []) !== []);
     }
 }
