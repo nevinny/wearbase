@@ -56,6 +56,7 @@ class FixCyrillicSlugsCommand extends Command
 
         $io->title(sprintf('Кириллических слагов: %d', count($brands)));
         $renamed = 0;
+        $taken = []; // слаги, назначенные в ЭТОМ батче (flush один в конце — БД их ещё не видит)
 
         foreach ($brands as $brand) {
             $source = trim((string) $brand->getTitle()) ?: (string) $brand->getSlug();
@@ -65,11 +66,12 @@ class FixCyrillicSlugsCommand extends Command
                 continue;
             }
 
-            // Коллизия с другим брендом → детерминированный суффикс
+            // Коллизия с другим брендом (в БД или внутри батча) → детерминированный суффикс
             $existing = $this->em->getRepository(Brand::class)->findOneBy(['slug' => $new]);
-            if ($existing !== null && $existing->getId() !== $brand->getId()) {
+            if (($existing !== null && $existing->getId() !== $brand->getId()) || isset($taken[$new])) {
                 $new .= '-' . $brand->getId();
             }
+            $taken[$new] = true;
 
             $io->text(sprintf('  %d: %s → %s', $brand->getId(), $brand->getSlug(), $new));
             if (!$dryRun) {
