@@ -8,41 +8,60 @@
 
 {% block main %}
 <style>
-    .rag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px; }
-    .rag-card { background: #fff; border: 1px solid #e3e7ee; border-radius: 8px; padding: 14px 16px; }
-    .rag-card h3 { font-size: 14px; text-transform: uppercase; color: #6c757d; margin: 0 0 10px; }
+    /* Цвета только через переменные EasyAdmin/Bootstrap — работает в обеих темах */
+    .rag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 20px 0; }
+    .rag-card { background: var(--content-bg, var(--bs-body-bg, #fff)); border: 1px solid var(--border-color, #444); border-radius: 8px; padding: 14px 16px; }
+    .rag-card h3 { font-size: 13px; text-transform: uppercase; opacity: .65; margin: 0 0 10px; }
     .rag-card table { width: 100%; font-size: 14px; }
     .rag-card td { padding: 3px 0; }
     .rag-card td:last-child { text-align: right; font-weight: 600; }
-    .rag-stages { width: 100%; background: #fff; border: 1px solid #e3e7ee; border-radius: 8px; font-size: 14px; border-collapse: separate; border-spacing: 0; }
-    .rag-stages th, .rag-stages td { padding: 8px 12px; border-bottom: 1px solid #eef1f5; text-align: left; }
-    .rag-stages th { background: #f8f9fb; font-size: 12px; text-transform: uppercase; color: #6c757d; }
+    .rag-stages { width: 100%; font-size: 14px; border-collapse: collapse; }
+    .rag-stages th, .rag-stages td { padding: 9px 12px; border-bottom: 1px solid var(--border-color, #444); text-align: left; }
+    .rag-stages th { font-size: 12px; text-transform: uppercase; opacity: .65; }
     .rag-stages td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .rag-hot { color: #198754; font-weight: 700; }
-    .rag-muted { color: #adb5bd; }
-    .rag-note { color: #6c757d; font-size: 12px; margin-top: 10px; }
+    .rag-row-stalled { background: rgba(220, 53, 69, .18); }
+    .rag-row-ok      { background: rgba(25, 135, 84, .10); }
+    .rag-badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .rag-badge-ok      { background: #198754; color: #fff; }
+    .rag-badge-stalled { background: #dc3545; color: #fff; }
+    .rag-badge-idle    { background: var(--border-color, #6c757d); color: var(--bs-body-color, #fff); opacity: .8; }
+    .rag-badge-wait    { background: #6c757d; color: #fff; }
+    .rag-note { opacity: .6; font-size: 12px; margin-top: 12px; }
 </style>
 
-<h1 class="title" style="margin-bottom:16px">RAG-конвейер <span class="rag-muted" style="font-size:14px">(обновляется каждые 30 сек)</span></h1>
+<h1 class="title" style="margin-bottom:16px">RAG-конвейер <span style="font-size:14px;opacity:.6">(автообновление 30 сек)</span></h1>
 
-<table class="rag-stages" style="margin-bottom:20px">
+<table class="rag-stages">
     <thead>
         <tr>
             <th>Стадия (где)</th>
+            <th>Статус</th>
             <th class="num">Сделано</th>
-            <th class="num">За последний час</th>
+            <th class="num">За час</th>
             <th class="num">Осталось</th>
             <th>Последняя активность</th>
         </tr>
     </thead>
     <tbody>
         {% for name, s in stages %}
-            <tr>
+            {# Статус: работает (есть активность за час) / СТОИТ (работа есть, активности нет) /
+               очередь пуста / ждёт прод (стадии деплоя) #}
+            {% if s.waitsProd is defined and s.waitsProd %}
+                {% set state, badge, cls = 'ждёт прод', 'rag-badge-wait', '' %}
+            {% elseif s.lastHour > 0 %}
+                {% set state, badge, cls = 'работает', 'rag-badge-ok', 'rag-row-ok' %}
+            {% elseif s.left > 0 %}
+                {% set state, badge, cls = 'СТОИТ', 'rag-badge-stalled', 'rag-row-stalled' %}
+            {% else %}
+                {% set state, badge, cls = 'очередь пуста', 'rag-badge-idle', '' %}
+            {% endif %}
+            <tr class="{{ cls }}">
                 <td>{{ name }}</td>
+                <td><span class="rag-badge {{ badge }}">{{ state }}</span></td>
                 <td class="num">{{ s.done }}</td>
-                <td class="num {{ s.lastHour > 0 ? 'rag-hot' : 'rag-muted' }}">{{ s.lastHour > 0 ? '+' ~ s.lastHour : '·' }}</td>
+                <td class="num">{{ s.lastHour > 0 ? '+' ~ s.lastHour : '·' }}</td>
                 <td class="num">{{ s.left }}</td>
-                <td class="{{ s.lastAt == '—' ? 'rag-muted' : '' }}">{{ s.lastAt }}</td>
+                <td style="opacity:{{ s.lastAt == '—' ? '.4' : '.8' }}">{{ s.lastAt }}</td>
             </tr>
         {% endfor %}
     </tbody>
@@ -73,7 +92,7 @@
             {% for status, cnt in urlQueue %}
                 <tr><td>{{ status }}</td><td>{{ cnt }}</td></tr>
             {% else %}
-                <tr><td colspan="2" class="rag-muted">пусто</td></tr>
+                <tr><td colspan="2" style="opacity:.5">пусто</td></tr>
             {% endfor %}
         </table>
     </div>
@@ -98,8 +117,8 @@
 </div>
 
 <p class="rag-note">
-    «За последний час» считается от последней записи самой стадии (TZ-независимо: демоны на сервере пишут UTC).
-    Discover/fetch/embed/generate/faq крутятся демонами на LLM-сервере 192.168.2.43; keywords — отдельный процесс на Mac (квота Wordstat);
+    «За час» — от последней записи самой стадии (TZ-независимо). «СТОИТ» = есть очередь, но нет активности за час —
+    проверь демоны: сервер 192.168.2.43 (discover/fetch/embed/generate/faq), Mac (keywords).
     push и publish-tick включаются после деплоя прода.
 </p>
 {% endblock %}

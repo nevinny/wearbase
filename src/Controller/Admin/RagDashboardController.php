@@ -64,9 +64,11 @@ class RagDashboardController extends AbstractController
                 'left'     => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='done' AND faq_status IS NULL AND keywords_status IS NOT NULL"),
             ],
             'push → прод' => $stage('brand_rag_pipeline', 'pushed_at')
-                + ['left' => $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3 AND p.faq_status IN ('done','skipped') AND p.keywords_status IN ('found','not_found') AND b.description IS NOT NULL AND b.description != '' AND b.meta_title IS NOT NULL AND b.meta_title != '' AND b.meta_description IS NOT NULL AND b.meta_description != ''")],
+                + ['left' => $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3 AND p.faq_status IN ('done','skipped') AND p.keywords_status IN ('found','not_found') AND b.description IS NOT NULL AND b.description != '' AND b.meta_title IS NOT NULL AND b.meta_title != '' AND b.meta_description IS NOT NULL AND b.meta_description != ''"),
+                   'waitsProd' => true],
             'publish-tick (прод, крон)' => $stage('brand', 'published_at')
-                + ['left' => $one("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1")],
+                + ['left' => $one("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1"),
+                   'waitsProd' => true],
         ];
 
         // --- Срезы готовности ---
