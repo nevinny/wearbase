@@ -55,6 +55,8 @@ class RagDashboardController extends AbstractController
         $stages = [
             'discover (сервер)' => $stage('brand_rag_pipeline', 'discovered_at')
                 + ['left' => $one("SELECT COUNT(*) FROM brand b LEFT JOIN brand_rag_pipeline p ON p.brand_id=b.id WHERE b.status IN ('active','new') AND (p.id IS NULL OR p.discovered_at IS NULL)")],
+            'crawl: own_site→own_page (сервер)' => $stage('brand_rag_pipeline', 'crawled_at')
+                + ['left' => $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id WHERE b.status IN ('active','new') AND p.discovered_at IS NOT NULL AND p.crawl_status IS NULL")],
             'fetch (сервер)' => $stage('brand_source_url', 'fetched_at')
                 + ['left' => (int) ($urlQueue['pending'] ?? 0) + (int) ($urlQueue['claimed'] ?? 0)],
             'embed (сервер, GPU)' => $stage('brand_rag_pipeline', 'embedded_at')
@@ -84,6 +86,8 @@ class RagDashboardController extends AbstractController
             'faq skipped'         => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE faq_status='skipped'"),
             'grounded генерация'  => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE grounded=1"),
             'deferred (ждёт корпус)' => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='deferred'"),
+            'own_page (раскрыто краулом)' => $one("SELECT COUNT(*) FROM brand_source_url WHERE type='own_page'"),
+            'брендов скраулено'   => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE crawl_status='done'"),
             'документов корпуса'  => $one("SELECT COUNT(*) FROM brand_source_document"),
         ];
 
