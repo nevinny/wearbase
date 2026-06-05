@@ -182,17 +182,23 @@ class BrandIngestController extends AbstractController
                 continue;
             }
 
+            // Номенклатура RuSender (рус.) + универсальные англ. кандидаты.
             $isPermanent = str_contains($type, 'hard') || str_contains($reason, 'permanent') || preg_match('~\b5\.\d\.\d~', $reason);
             if ((str_contains($type, 'bounce') && $isPermanent)
-                || in_array($type, ['failed', 'dropped', 'rejected', 'undeliverable'], true)) {
+                || in_array($type, ['failed', 'dropped', 'rejected', 'undeliverable'], true)
+                || str_contains($type, 'не существует') || str_contains($type, 'not_exist') || str_contains($type, 'unknown_user')) {
                 $db->executeStatement('UPDATE brand_outreach SET bounced_at = COALESCE(bounced_at, NOW()) WHERE email = :e', ['e' => $email]);
-            } elseif (str_contains($type, 'bounce') || str_contains($type, 'deferred')) {
-                $db->executeStatement('UPDATE brand_outreach SET last_error = :r WHERE email = :e', ['r' => 'soft bounce: ' . $reason, 'e' => $email]);
-            } elseif (str_contains($type, 'complain') || str_contains($type, 'spam') || str_contains($type, 'abuse')
-                || str_contains($type, 'unsub') || str_contains($type, 'optout')) {
+            } elseif (str_contains($type, 'bounce') || str_contains($type, 'deferred')
+                || str_contains($type, 'переполнен') || str_contains($type, 'недоступен')
+                || str_contains($type, 'overflow') || str_contains($type, 'unavailable')) {
+                $db->executeStatement('UPDATE brand_outreach SET last_error = :r WHERE email = :e', ['r' => 'soft bounce: ' . ($reason ?: $type), 'e' => $email]);
+            } elseif (str_contains($type, 'complain') || str_contains($type, 'spam') || str_contains($type, 'abuse') || str_contains($type, 'жалоба')
+                || str_contains($type, 'unsub') || str_contains($type, 'optout') || str_contains($type, 'отписка')) {
                 $db->executeStatement('UPDATE brand_outreach SET unsubscribed_at = COALESCE(unsubscribed_at, NOW()) WHERE email = :e', ['e' => $email]);
+            } elseif (str_contains($type, 'deliver') || str_contains($type, 'доставлено')) {
+                $db->executeStatement('UPDATE brand_outreach SET delivered_at = COALESCE(delivered_at, NOW()) WHERE email = :e', ['e' => $email]);
             }
-            // delivered/open/click — игнорируем: пиксель и /e/c надёжнее
+            // open/click — игнорируем: свой пиксель и /e/c надёжнее
         }
 
         return $this->json(['ok' => true]); // всегда 200 на валидный токен — иначе сервис ретраит
@@ -212,6 +218,7 @@ class BrandIngestController extends AbstractController
         $rows = $em->getConnection()->fetchAllAssociative(<<<'SQL'
             SELECT d.label,
                    COUNT(*)                                        AS sent,
+                   SUM(o.delivered_at IS NOT NULL)                 AS delivered,
                    SUM(o.first_opened_at  IS NOT NULL)             AS opened,
                    SUM(o.first_clicked_at IS NOT NULL)             AS clicked,
                    SUM(EXISTS(SELECT 1 FROM brand_claim c
