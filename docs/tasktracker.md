@@ -618,6 +618,22 @@ php bin/console doctrine:migrations:migrate
 
 **Риски:** прокси-утечка LAN→scoped+no_proxy явно тестировать; краул маркетплейса→sitemap-детектор+cap30+drop-фасеты; drain рано→persist own_page до fetched; cap-рассинхрон→отдельный тип own_page; галлюцинация атрибутов→structured+grounded+краудсорс; ротация бьёт rate-limit→per-host пауза обязательна.
 
+## Архитектура: парсинг каталогов/карточек → ассортимент + размерная сетка (агент-архитектор, 2026-06-05)
+
+Расширение crawl-стадии (НЕ новый парсер карточек, НЕ товарный каталог): вытащить АТРИБУТЫ бренда (ассортимент-категории, размерный ряд, материалы), а не товары.
+
+**🔴 БЛОКЕР (чинить независимо!):** размерные таблицы СЕЙЧАС молча выбрасываются обоими путями fetch — trafilatura `--no-tables` (прод-primary) + DomCrawler NOISE_TAGS режет form/select/option/table. Размерная сетка живёт ровно там (таблица /sizes или select в карточке) → на проде размерный ряд в текст НЕ попадает. Фикс: `WebScraperService::fetchCleanText($url, bool $keepTables=false)` — при keepTables trafilatura с `--include-tables`, DomCrawler без вырезания таблиц; app:brand:fetch выбирает режим по sourceType (sizes/product_sample → keepTables). Обычные страницы как есть (таблицы шумят эмбеддинги прозы).
+
+**Объём (cap 30 own-стр/бренд НЕ растёт, приоритет внутри):** INFO (about/delivery/sizes/contacts/faq) — все; CATEGORY (catalog 1-2 уровня) — остаток; PRODUCT_CARD семпл **≤6-8** (новый тип `product_sample`, relevance 0.40 — карточки не загрязняют grounding прозы; читает только extract, generate-content даун-вейтит); ORDINARY добор до 30. Семпл 6-8 карточек достаточно LLM понять ассортимент/материалы/размеры — НЕ весь каталог (тысячи SKU × 6000 = взрыв).
+
+**CrawlUrlFilter.classify()** → DROP|INFO|CATEGORY|PRODUCT_CARD|ORDINARY (rank() — обёртка). PRODUCT_CARD: /product//tovar//p//item/ + слаг/id-хвост или глубина≥3 под catalog; CATEGORY: catalog/collection глубина 1-2 без товарного хвоста. ⚠️ TYPE_CATALOG уже занят (внешний маркетплейс из discover) — внутренние категории идут own_page.
+
+**Извлечение (стадия extract, как в дизайне «полный краул» C2):** qwen format=JSON-schema по АГРЕГИРОВАННОМУ тексту бренда (приоритет size+category в агрегат, бюджет контекста — 30стр×12k переполнят qwen!) → {styles,categories,gender,sizes,materials,price_segment,geo}. Маппинг: categories→ProductCategory MtM (засеян ✓), styles→BrandStyle, sizes→BrandSize MtM (⚠️ ПУСТ — нет сидов/фикстур → **create-on-miss** по title+slug ИЛИ сырой ряд "42-52" в brand_attribute), остальное→brand_attribute EAV. attributes_status/extracted_at на pipeline, findForExtract(), краудсорс target_type='brand_attribute'.
+
+**ЮРИДИКА:** храним атрибуты УРОВНЯ БРЕНДА (категории/размерный ряд/сегмент/стили), per-SKU цены/позиции НЕ сохраняем; семпл-карточки = свидетельство для LLM, выбрасываются после extract. Product/ProductImport остаются owner-upload only. Копирования чужого каталога нет. OCR размерных картинок — вне скоупа (явный пробел).
+
+**План:** 1) CrawlUrlFilter.classify + TYPE_PRODUCT_SAMPLE + семплинг ≤8 в CrawlBrandSiteCommand; 2) table-preserving fetch (ЧИНИТ блокер размеров — verify: /sizes реального бренда даёт таблицу в тексте); 3) стадия extract (миграция brand_attribute+колонки, LlmService::extractBrandAttributes, app:brand:extract, маппинг+create-on-miss BrandSize); 4) краудсорс + extract в демон.
+
 ## Архитектура: email-активация владельцев брендов (5 агентов: архитектор+маркетолог+devops+backend+frontend, 2026-06-05)
 
 Воронка: публикация страницы → письмо владельцу → open → click → регистрация/claim → подписка. ТОЛЬКО ДИЗАЙН, реализация отдельно.
