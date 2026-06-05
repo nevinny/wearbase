@@ -40,6 +40,7 @@ class RagDaemonCommand extends Command
     /** Стадии цикла: имя → [команда, [аргументы]]. Лимит можно переопределить в --stages=имя:N. */
     private const STAGES = [
         'discover' => ['app:brand:discover', ['30']],
+        'crawl'    => ['app:brand:crawl',    ['30']],  // разворот own_site → own_page в очередь (между discover и fetch)
         'fetch'    => ['app:brand:fetch',    ['--max-urls=250']], // ломоть на цикл, дренаж продолжается между циклами
         'embed'    => ['app:brand:embed',    ['30']],
         'generate' => ['app:brand:generate-content', ['10', '--grounded-only']], // без фактов не генерим: вода зацементировалась бы

@@ -204,6 +204,103 @@ class WebScraperService
         return array_keys($found);
     }
 
+    /**
+     * Обнаружение внутренних страниц сайта для краула: sitemap.xml (включая
+     * sitemap-index, рекурсивно 1 уровень) + ссылки с главной как fallback.
+     * Возвращает абсолютные URL того же хоста, дедуп, без фильтрации ценности
+     * (её делает CrawlUrlFilter у вызывающего). Прокси НЕ используется (сайт
+     * бренда без анти-бота — ходим напрямую).
+     *
+     * @return string[]
+     */
+    public function discoverSitePages(string $siteUrl, int $hardCap = 300): array
+    {
+        $host = strtolower((string) parse_url($siteUrl, PHP_URL_HOST));
+        if ($host === '') {
+            return [];
+        }
+        $scheme = parse_url($siteUrl, PHP_URL_SCHEME) ?: 'https';
+        $root   = "{$scheme}://{$host}";
+
+        $urls = [];
+        // 1. sitemap.xml (+ один уровень sitemap-index)
+        foreach ($this->fetchSitemapUrls($root . '/sitemap.xml', $hardCap) as $u) {
+            $urls[$u] = true;
+            if (count($urls) >= $hardCap) {
+                break;
+            }
+        }
+
+        // 2. Fallback / добор: ссылки с главной (для сайтов без sitemap)
+        if (count($urls) < $hardCap) {
+            $page = $this->fetch($siteUrl);
+            if ($page !== null && $page['html'] !== '') {
+                foreach ($this->extractLinks($page['html'], $siteUrl) as $u) {
+                    if (strtolower((string) parse_url($u, PHP_URL_HOST)) === $host
+                        || strtolower((string) parse_url($u, PHP_URL_HOST)) === 'www.' . $host) {
+                        $urls[rtrim($u, '/')] = true;
+                    }
+                    if (count($urls) >= $hardCap) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        unset($urls[rtrim($siteUrl, '/')]); // саму главную не дублируем (она уже own_site)
+
+        return array_keys($urls);
+    }
+
+    /** @return string[] URL из sitemap; разворачивает sitemap-index на 1 уровень. */
+    private function fetchSitemapUrls(string $sitemapUrl, int $hardCap): array
+    {
+        $page = $this->fetchXml($sitemapUrl);
+        if ($page === null) {
+            return [];
+        }
+
+        // sitemap-index → вложенные <sitemap><loc>
+        if (stripos($page, '<sitemapindex') !== false) {
+            $out = [];
+            preg_match_all('~<loc>\s*([^<\s]+)\s*</loc>~i', $page, $m);
+            foreach (array_slice($m[1], 0, 10) as $childSitemap) {
+                preg_match_all('~<loc>\s*([^<\s]+)\s*</loc>~i', (string) $this->fetchXml($childSitemap), $cm);
+                foreach ($cm[1] as $u) {
+                    $out[] = rtrim($u, '/');
+                    if (count($out) >= $hardCap) {
+                        return $out;
+                    }
+                }
+            }
+            return $out;
+        }
+
+        // обычный sitemap → <url><loc>
+        preg_match_all('~<loc>\s*([^<\s]+)\s*</loc>~i', $page, $m);
+
+        return array_map(static fn(string $u) => rtrim($u, '/'), array_slice($m[1], 0, $hardCap));
+    }
+
+    /** Лёгкий GET XML (sitemap) без trafilatura. */
+    private function fetchXml(string $url): ?string
+    {
+        try {
+            $response = $this->httpClient->request('GET', $url, [
+                'headers'       => ['User-Agent' => $this->userAgent],
+                'timeout'       => self::TIMEOUT,
+                'max_redirects' => 3,
+            ]);
+            if ($response->getStatusCode() >= 400) {
+                return null;
+            }
+
+            return mb_substr($response->getContent(false), 0, 3_000_000);
+        } catch (HttpExceptionInterface) {
+            return null;
+        }
+    }
+
     private function absolutize(string $href, string $baseUrl): ?string
     {
         if (str_starts_with($href, 'http://') || str_starts_with($href, 'https://')) {

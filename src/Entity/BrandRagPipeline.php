@@ -32,6 +32,10 @@ class BrandRagPipeline
     public const KW_FOUND     = 'found';
     public const KW_NOT_FOUND = 'not_found';
 
+    public const CRAWL_DONE    = 'done';
+    public const CRAWL_SKIPPED = 'skipped'; // нет own_site — краулить нечего
+    public const CRAWL_FAILED  = 'failed';
+
     public const FAQ_DONE    = 'done';
     /** У бренда нет ключевиков — FAQ не из чего генерить (вопросы «из головы» = анти-SEO). Не блокирует публикацию. */
     public const FAQ_SKIPPED = 'skipped';
@@ -96,6 +100,13 @@ class BrandRagPipeline
 
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $keywordsCheckedAt = null;
+
+    /** Исход краула сайта: null=не краулили | done | skipped (нет own_site) | failed. */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $crawlStatus = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $crawledAt = null;
 
     /** Исход генерации FAQ: null=не генерили | done | skipped (нет ключевиков) | failed. */
     #[ORM\Column(length: 12, nullable: true)]
@@ -309,6 +320,28 @@ class BrandRagPipeline
     public function setKeywordsCheckedAt(?\DateTimeInterface $at): self
     {
         $this->keywordsCheckedAt = $at;
+        return $this;
+    }
+
+    public function getCrawlStatus(): ?string
+    {
+        return $this->crawlStatus;
+    }
+
+    public function setCrawlStatus(?string $status): self
+    {
+        $this->crawlStatus = $status;
+        return $this;
+    }
+
+    public function getCrawledAt(): ?\DateTimeInterface
+    {
+        return $this->crawledAt;
+    }
+
+    public function setCrawledAt(?\DateTimeInterface $at): self
+    {
+        $this->crawledAt = $at;
         return $this;
     }
 

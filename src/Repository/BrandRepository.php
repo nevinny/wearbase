@@ -292,6 +292,23 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Бренды на краул сайта: discover отработал, краул ещё не делали.
+     * Краул раскрывает own_site → own_page (ДО полного fetch). active+new
+     * (очередь дрипа тоже готовим, как discover/keywords).
+     */
+    public function findForCrawl(int $limit, int $shard = 0, int $total = 1): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('b.status IN (:statuses)')
+            ->andWhere('p.discoveredAt IS NOT NULL')
+            ->andWhere('p.crawlStatus IS NULL')
+            ->setParameter('statuses', [Statuses::Active, Statuses::New]);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /**
      * Бренды на генерацию FAQ: контент готов (done), FAQ ещё не генерили,
      * И Wordstat уже опрошен (keywordsStatus задан). Без последнего условия бренд,
      * дошедший до done раньше квотного keywords-процесса, цементируется в skipped
