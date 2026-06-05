@@ -200,7 +200,11 @@ class FetchBrandSourcesCommand extends Command
             return;
         }
 
-        $text = $this->scraper->fetchCleanText($url);
+        // Размерные сетки/каталог — сохраняем таблицы (иначе trafilatura --no-tables их выкидывает).
+        $type = $queued->getSourceType();
+        $keepTables = in_array($type, [BrandSourceUrl::TYPE_OWN_PAGE, BrandSourceUrl::TYPE_PRODUCT_SAMPLE], true)
+            || preg_match('~(size|razmer|таблиц)~iu', $url) === 1;
+        $text = $this->scraper->fetchCleanText($url, $keepTables);
         if ($text === null || mb_strlen($text) < self::MIN_TEXT_CHARS) {
             // Скачали, но мусор/пусто — URL обработан (не сбой), документа нет.
             $this->empty++;

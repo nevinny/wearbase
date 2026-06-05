@@ -18,6 +18,8 @@ class WebScraperService
     private const MAX_BYTES = 2_000_000;      // 2 МБ — обрезаем большие страницы
     private const MAX_TEXT_CHARS = 12_000;    // лимит чистого текста (контекст/стоимость)
     private const NOISE_TAGS = 'script, style, nav, header, footer, noscript, svg, iframe, form, img, picture, source, button, aside, select, option';
+    // То же, но БЕЗ form/select/option (там живёт размерная сетка) — для keepTables-режима.
+    private const NOISE_TAGS_KEEP_TABLES = 'script, style, nav, header, footer, noscript, svg, iframe, img, picture, source, button, aside';
     private const MIN_LINE_CHARS = 3;
 
     public function __construct(
@@ -34,14 +36,19 @@ class WebScraperService
      * бинаря/сбое/пустом выводе — fallback на HttpClient + DomCrawler. Исключённые
      * домены (wearbase.ru) не качаются ни одним путём.
      */
-    public function fetchCleanText(string $url): ?string
+    /**
+     * @param bool $keepTables сохранять таблицы/select (размерные сетки!) — для
+     *                         страниц /sizes и карточек товара. Обычная проза — false
+     *                         (таблицы шумят эмбеддинги).
+     */
+    public function fetchCleanText(string $url, bool $keepTables = false): ?string
     {
         if ($this->urlFilter->isExcluded($url)) {
             return null;
         }
 
         if ($this->trafilaturaAvailable()) {
-            $extracted = $this->runTrafilatura($url);
+            $extracted = $this->runTrafilatura($url, $keepTables);
             if ($extracted !== null && trim($extracted) !== '') {
                 return $this->normalizeText($extracted);
             }
@@ -52,7 +59,7 @@ class WebScraperService
         if ($page === null) {
             return null;
         }
-        $text = $this->clean($page['html']);
+        $text = $this->clean($page['html'], $keepTables);
 
         return $text !== '' ? $text : null;
     }
@@ -71,11 +78,15 @@ class WebScraperService
         return str_contains($bin, '/') ? is_executable($bin) : true;
     }
 
-    /** trafilatura -u URL: сам качает и извлекает основной текст. */
-    private function runTrafilatura(string $url): ?string
+    /** trafilatura -u URL: сам качает и извлекает основной текст. keepTables → не выкидывать таблицы (размеры). */
+    private function runTrafilatura(string $url, bool $keepTables = false): ?string
     {
+        // markdown сохраняет структуру таблиц текстом (| col | col |) — пригодно для LLM-extract.
+        $args = $keepTables
+            ? [$this->trafilaturaBin, '--no-comments', '--output-format', 'markdown', '-u', $url]
+            : [$this->trafilaturaBin, '--no-comments', '--no-tables', '-u', $url];
         try {
-            $proc = new Process([$this->trafilaturaBin, '--no-comments', '--no-tables', '-u', $url]);
+            $proc = new Process($args);
             $proc->setTimeout(self::TIMEOUT + 15);
             $proc->run();
 
@@ -127,7 +138,7 @@ class WebScraperService
     }
 
     /** HTML → чистый текст: выкидываем шум, схлопываем пустые строки, обрезаем. */
-    public function clean(string $html): string
+    public function clean(string $html, bool $keepTables = false): string
     {
         if (trim($html) === '') {
             return '';
@@ -136,7 +147,7 @@ class WebScraperService
         $crawler = new Crawler($html);
 
         $remove = [];
-        foreach ($crawler->filter(self::NOISE_TAGS) as $node) {
+        foreach ($crawler->filter($keepTables ? self::NOISE_TAGS_KEEP_TABLES : self::NOISE_TAGS) as $node) {
             $remove[] = $node;
         }
         foreach ($remove as $node) {
