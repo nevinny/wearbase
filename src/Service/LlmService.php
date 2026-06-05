@@ -435,6 +435,61 @@ EOT;
         return array_slice($out, 0, 6);
     }
 
+    /**
+     * Извлечение структурированных атрибутов бренда из накопленного текста краула
+     * (стадия extract). Grounded: ТОЛЬКО из переданных фактов, не выдумывать.
+     * Размерные сетки приходят markdown-таблицами (table-preserving fetch).
+     *
+     * @return array{styles:string[],categories:string[],gender:?string,sizes:string[],materials:string[],price_segment:?string,geo:?string}
+     */
+    public function extractBrandAttributes(string $brandName, string $facts): array
+    {
+        $prompt = <<<EOT
+Бренд одежды: {$brandName}
+
+ТЕКСТ С САЙТА БРЕНДА (единственный источник — НЕ выдумывай, чего тут нет):
+{$facts}
+
+Извлеки структурированные атрибуты бренда. Отвечай ТОЛЬКО валидным JSON:
+{
+  "styles": ["casual","streetwear"],
+  "categories": ["платья","худи","аксессуары"],
+  "gender": "женский|мужской|унисекс|детский|null",
+  "sizes": ["XS","S","M","L","XL"] или ["42","44","46"] или ["one size"],
+  "materials": ["хлопок","вискоза"],
+  "price_segment": "масс-маркет|средний|премиум|люкс|null",
+  "geo": "город/регион производства или null"
+}
+
+Правила:
+- Поля, которых НЕТ в тексте → пустой массив [] или null. Не придумывай.
+- categories — типы товаров, которые бренд реально продаёт (из каталога/ассортимента).
+- sizes — размерный ряд из размерной сетки/карточек (буквенный ИЛИ числовой, как на сайте).
+- Значения короткие, в нижнем регистре (кроме размеров).
+EOT;
+
+        $response = $this->generate($prompt, local: true, think: false, timeout: 180);
+        $d = $this->extractJson($response) ?? [];
+
+        $arr = static fn($v): array => is_array($v)
+            ? array_values(array_filter(array_map(static fn($x) => trim((string) $x), $v), static fn($x) => $x !== '' && mb_strlen($x) <= 100))
+            : [];
+        $str = static function ($v): ?string {
+            $v = is_string($v) ? trim($v) : '';
+            return ($v === '' || strtolower($v) === 'null') ? null : mb_substr($v, 0, 100);
+        };
+
+        return [
+            'styles'        => array_slice($arr($d['styles'] ?? null), 0, 10),
+            'categories'    => array_slice($arr($d['categories'] ?? null), 0, 15),
+            'gender'        => $str($d['gender'] ?? null),
+            'sizes'         => array_slice($arr($d['sizes'] ?? null), 0, 20),
+            'materials'     => array_slice($arr($d['materials'] ?? null), 0, 15),
+            'price_segment' => $str($d['price_segment'] ?? null),
+            'geo'           => $str($d['geo'] ?? null),
+        ];
+    }
+
     private function extractJson(string $response): ?array
     {
         // Убираем markdown-обёртку, если модель всё же её добавила

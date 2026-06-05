@@ -32,6 +32,10 @@ class BrandRagPipeline
     public const KW_FOUND     = 'found';
     public const KW_NOT_FOUND = 'not_found';
 
+    public const ATTR_DONE    = 'done';
+    public const ATTR_SKIPPED = 'skipped';
+    public const ATTR_FAILED  = 'failed';
+
     public const CRAWL_DONE    = 'done';
     public const CRAWL_SKIPPED = 'skipped'; // нет own_site — краулить нечего
     public const CRAWL_FAILED  = 'failed';
@@ -107,6 +111,13 @@ class BrandRagPipeline
 
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $crawledAt = null;
+
+    /** Исход извлечения атрибутов (стадия extract): null=не извлекали | done | skipped | failed. */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $attributesStatus = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $extractedAt = null;
 
     /** Исход генерации FAQ: null=не генерили | done | skipped (нет ключевиков) | failed. */
     #[ORM\Column(length: 12, nullable: true)]
@@ -320,6 +331,28 @@ class BrandRagPipeline
     public function setKeywordsCheckedAt(?\DateTimeInterface $at): self
     {
         $this->keywordsCheckedAt = $at;
+        return $this;
+    }
+
+    public function getAttributesStatus(): ?string
+    {
+        return $this->attributesStatus;
+    }
+
+    public function setAttributesStatus(?string $status): self
+    {
+        $this->attributesStatus = $status;
+        return $this;
+    }
+
+    public function getExtractedAt(): ?\DateTimeInterface
+    {
+        return $this->extractedAt;
+    }
+
+    public function setExtractedAt(?\DateTimeInterface $at): self
+    {
+        $this->extractedAt = $at;
         return $this;
     }
 

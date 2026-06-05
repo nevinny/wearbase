@@ -45,6 +45,7 @@ class RagDaemonCommand extends Command
         'embed'    => ['app:brand:embed',    ['30']],
         'generate' => ['app:brand:generate-content', ['10', '--grounded-only']], // без фактов не генерим: вода зацементировалась бы
         'faq'      => ['app:brand:faq', ['10']],   // GPU-набор: после generate (status=done)
+        'extract'  => ['app:brand:extract', ['10']],  // GPU-набор: атрибуты из краула
         'push'     => ['app:brand:push', ['20']],  // сетевой набор: доставка готовых на прод
         'keywords' => ['app:brand:keywords', ['90']], // СВОЙ демон (один!): квота Wordstat 100/час общая, 90×37с ≈ 56 мин/цикл
     ];

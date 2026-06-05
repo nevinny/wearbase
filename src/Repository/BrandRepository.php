@@ -292,6 +292,22 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Бренды на извлечение атрибутов: есть корпус (scraped+, source_count>0),
+     * атрибуты ещё не извлекали. Идёт после fetch (корпус накоплен крауля).
+     */
+    public function findForExtract(int $limit, int $shard = 0, int $total = 1): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.sourceCount > 0')
+            ->andWhere('p.attributesStatus IS NULL')
+            ->andWhere('p.status IN (:done)')
+            ->setParameter('done', [BrandRagPipeline::STATUS_SCRAPED, BrandRagPipeline::STATUS_EMBEDDED, BrandRagPipeline::STATUS_GENERATED, BrandRagPipeline::STATUS_DONE]);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /**
      * Бренды на краул сайта: discover отработал, краул ещё не делали.
      * Краул раскрывает own_site → own_page (ДО полного fetch). active+new
      * (очередь дрипа тоже готовим, как discover/keywords).
