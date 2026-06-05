@@ -86,7 +86,7 @@ class RagDashboardController extends AbstractController
             'faq skipped'         => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE faq_status='skipped'"),
             'grounded генерация'  => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE grounded=1"),
             'deferred (ждёт корпус)' => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='deferred'"),
-            'own_page (раскрыто краулом)' => $one("SELECT COUNT(*) FROM brand_source_url WHERE type='own_page'"),
+            'own_page (раскрыто краулом)' => $one("SELECT COUNT(*) FROM brand_source_url WHERE source_type='own_page'"),
             'брендов скраулено'   => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE crawl_status='done'"),
             'документов корпуса'  => $one("SELECT COUNT(*) FROM brand_source_document"),
         ];
