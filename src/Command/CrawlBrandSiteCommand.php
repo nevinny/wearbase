@@ -36,9 +36,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class CrawlBrandSiteCommand extends Command
 {
-    private const CAP_PAGES   = 30;   // ценных страниц на бренд в очередь
-    private const SITEMAP_CAP = 300;  // потолок кандидатов из sitemap (до фильтра ценности)
-    private const SLEEP_MS    = 500;  // вежливость к origin между брендами
+    private const CAP_PAGES    = 30;  // всего own-страниц на бренд в очередь
+    private const CAP_PRODUCT  = 8;   // из них карточек-семплов (свидетельство ассортимента для extract)
+    private const SITEMAP_CAP  = 300; // потолок кандидатов из sitemap (до классификации)
+    private const SLEEP_MS     = 500; // вежливость к origin между брендами
 
     private int $crawled = 0;   // брендов развёрнуто (≥1 own_page)
     private int $skipped = 0;   // нет own_site
@@ -146,51 +147,70 @@ class CrawlBrandSiteCommand extends Command
             $siteUrl = $ownSite->getUrl();
             $host    = strtolower((string) parse_url($siteUrl, PHP_URL_HOST));
 
-            // Развёртка: sitemap + ссылки с главной → ранжируем ценность → cap
+            // Развёртка: sitemap + ссылки с главной → классификация
             $candidates = $this->scraper->discoverSitePages($siteUrl, self::SITEMAP_CAP);
-            $valuable = [];   // приоритет 0
-            $ordinary = [];   // приоритет 1
+            $info = $category = $product = $ordinary = [];
             foreach ($candidates as $url) {
-                $rank = $this->crawlFilter->rank($url, $host);
-                if ($rank === 0) {
-                    $valuable[] = $url;
-                } elseif ($rank === 1) {
-                    $ordinary[] = $url;
+                switch ($this->crawlFilter->classify($url, $host)) {
+                    case CrawlUrlFilter::INFO:         $info[] = $url; break;
+                    case CrawlUrlFilter::CATEGORY:     $category[] = $url; break;
+                    case CrawlUrlFilter::PRODUCT_CARD: $product[] = $url; break;
+                    case CrawlUrlFilter::ORDINARY:     $ordinary[] = $url; break;
+                    // DROP — пропускаем
                 }
             }
-            $pages = array_slice(array_merge($valuable, $ordinary), 0, self::CAP_PAGES);
 
-            $new = 0;
-            foreach ($pages as $url) {
-                $url = mb_substr(rtrim($url, '/'), 0, 1024);
-                $hash = BrandSourceUrl::normalizeHash($url);
-                if ($this->urlRepo->findOneByBrandUrlHash($brand, $hash) !== null) {
-                    continue; // уже в очереди (own_site/own_page/др.) — дедуп
+            // Приоритет: INFO (вкл. размеры) → CATEGORY → семпл карточек ≤CAP_PRODUCT → ORDINARY до cap.
+            // Карточки — отдельным типом product_sample (низкий вес, чтобы не портить прозу о бренде).
+            $productSample = array_slice($product, 0, self::CAP_PRODUCT);
+            $ownPages = array_merge($info, $category, $ordinary);
+
+            $new = 0; $newProd = 0;
+            $budget = self::CAP_PAGES - count($productSample); // место под own_page после семпла
+            foreach (array_slice($ownPages, 0, max(0, $budget)) as $url) {
+                if ($this->enqueue($brand, $url, BrandSourceUrl::TYPE_OWN_PAGE, 0.85, $dryRun)) {
+                    $new++;
                 }
-                if (!$dryRun) {
-                    $this->em->persist((new BrandSourceUrl())
-                        ->setBrand($brand)
-                        ->setUrl($url)
-                        ->setSourceType(BrandSourceUrl::TYPE_OWN_PAGE)
-                        ->setTier(BrandSourceUrl::TIER_OWN_SITE)
-                        ->setRelevanceScore(0.85)   // own-контент — высокая релевантность
-                        ->setStatus(BrandSourceUrl::STATUS_PENDING));
+            }
+            foreach ($productSample as $url) {
+                if ($this->enqueue($brand, $url, BrandSourceUrl::TYPE_PRODUCT_SAMPLE, 0.40, $dryRun)) {
+                    $newProd++;
                 }
-                $new++;
             }
 
-            $io->text(sprintf('  → %s: +%d own_page (ценных %d / всего кандидатов %d)', $name, $new, count($valuable), count($candidates)));
-            $this->enqueued += $new;
-            $this->crawled += $new > 0 ? 1 : 0;
-
-            // Флаг краула + флаш own_page как pending — отдельная стадия, drain-gate
-            // fetch не задет (own_page легли ДО любого fetch own_site этого прохода).
+            $io->text(sprintf('  → %s: +%d own_page, +%d product_sample (info %d/cat %d/prod %d/ord %d из %d)',
+                $name, $new, $newProd, count($info), count($category), count($product), count($ordinary), count($candidates)));
+            $this->enqueued += $new + $newProd;
+            $this->crawled += ($new + $newProd) > 0 ? 1 : 0;
             $this->finish($brand, BrandRagPipeline::CRAWL_DONE, $dryRun);
+            return;
         } catch (\Throwable $e) {
             $io->warning(sprintf('    Ошибка «%s»: %s', $name, $e->getMessage()));
             $this->failed++;
             $this->recoverEm();
+            return;
         }
+    }
+
+    /** Дедуп по url_hash + persist pending. @return bool добавлено ли. */
+    private function enqueue(Brand $brand, string $url, string $type, float $relevance, bool $dryRun): bool
+    {
+        $url  = mb_substr(rtrim($url, '/'), 0, 1024);
+        $hash = BrandSourceUrl::normalizeHash($url);
+        if ($this->urlRepo->findOneByBrandUrlHash($brand, $hash) !== null) {
+            return false;
+        }
+        if (!$dryRun) {
+            $this->em->persist((new BrandSourceUrl())
+                ->setBrand($brand)
+                ->setUrl($url)
+                ->setSourceType($type)
+                ->setTier(BrandSourceUrl::TIER_OWN_SITE)
+                ->setRelevanceScore($relevance)
+                ->setStatus(BrandSourceUrl::STATUS_PENDING));
+        }
+
+        return true;
     }
 
     private function finish(Brand $brand, string $status, bool $dryRun): void
