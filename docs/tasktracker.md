@@ -632,7 +632,7 @@ php bin/console doctrine:migrations:migrate
 
 **ЮРИДИКА:** храним атрибуты УРОВНЯ БРЕНДА (категории/размерный ряд/сегмент/стили), per-SKU цены/позиции НЕ сохраняем; семпл-карточки = свидетельство для LLM, выбрасываются после extract. Product/ProductImport остаются owner-upload only. Копирования чужого каталога нет. OCR размерных картинок — вне скоупа (явный пробел).
 
-**План:** 1) CrawlUrlFilter.classify + TYPE_PRODUCT_SAMPLE + семплинг ≤8 в CrawlBrandSiteCommand; 2) table-preserving fetch (ЧИНИТ блокер размеров — verify: /sizes реального бренда даёт таблицу в тексте); 3) стадия extract (миграция brand_attribute+колонки, LlmService::extractBrandAttributes, app:brand:extract, маппинг+create-on-miss BrandSize); 4) краудсорс + extract в демон.
+**СДЕЛАНО 2026-06-05** (0baef2a,a582837→342bcfc): 1)✅ table-preserving fetch (блокер размеров); 2)✅ classify+product_sample семпл≤8 (12/12 unit); 3)✅ стадия app:brand:extract — TISVAL→15 атрибутов (категории/размеры/материал/сегмент/гео/стиль) в brand_attribute EAV, стадия в GPU-демон. Осталось: краудсорс target_type=brand_attribute, рендер атрибутов на showv2, промоушн в справочники после валидации.
 
 ## Архитектура: email-активация владельцев брендов (5 агентов: архитектор+маркетолог+devops+backend+frontend, 2026-06-05)
 
