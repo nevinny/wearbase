@@ -110,6 +110,9 @@ class BrandIngestService
             if (array_key_exists('links', $payload)) {
                 $this->replaceLinks($brand, (array) $payload['links']);
             }
+            if (array_key_exists('attributes', $payload)) {
+                $this->replaceAttributes($brand, (array) $payload['attributes']);
+            }
 
             // Свежие данные приехали → забракованные голосами точки считаем ре-обогащёнными:
             // state=active, голоса устарели (удаляем — sumWeights иначе воскресит счётчики).
@@ -192,6 +195,24 @@ class BrandIngestService
                 ->setQuestion(mb_substr($q, 0, 500))
                 ->setAnswer($a)
                 ->setPosition((int) ($row['position'] ?? $i)));
+        }
+    }
+
+    /** @param array<int,array<string,mixed>> $rows delete-and-replace (owner/crowd_confirmed сохраняются) */
+    private function replaceAttributes(Brand $brand, array $rows): void
+    {
+        // Атрибуты, подтверждённые/правленные на проде (голоса), не затираем ре-доставкой.
+        $this->em->getRepository(\App\Entity\BrandAttribute::class)->deleteEnrichmentForBrand($brand);
+        foreach (array_slice($rows, 0, 80) as $row) {
+            $name  = trim((string) ($row['name'] ?? ''));
+            $value = trim((string) ($row['value'] ?? ''));
+            if ($name === '' || $value === '') {
+                continue;
+            }
+            $this->em->persist((new \App\Entity\BrandAttribute())
+                ->setBrand($brand)
+                ->setName(mb_substr($name, 0, 40))
+                ->setValue(mb_substr($value, 0, 255)));
         }
     }
 

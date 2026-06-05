@@ -62,6 +62,12 @@ class BrandPayloadAssembler
         }
         $payload['links'] = $links;
 
+        // Извлечённые атрибуты (краул→extract) — характеристики на странице бренда.
+        $payload['attributes'] = array_map(static fn(\App\Entity\BrandAttribute $a) => [
+            'name'  => $a->getName(),
+            'value' => $a->getValue(),
+        ], $this->em->getRepository(\App\Entity\BrandAttribute::class)->findByBrand($brand));
+
         // Логотип: плоское хранение public_html/images/logos (см. vich_uploader.yaml)
         if ($brand->getLogo()) {
             $path = $this->projectDir . '/public_html/images/logos/' . $brand->getLogo();
