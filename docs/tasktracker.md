@@ -751,3 +751,6 @@ brand_source_url(id, brand_id, url VARCHAR(1024), url_hash CHAR(64), source_type
 **Риски:** SearXNG rate-limit→пустые тиры (idempotent re-run добирает); омоним-false-pos (deny-list+score+LLM tie-breaker+gate); рост таблицы (caps+TTL-prune); over-fetch маркетплейсов (cap 3+host-cap 4+tier-порядок); живой-но-не-тот домен (Фаза B demote); EM (resetManager как в монолите).
 
 Новые файлы: `src/Entity/BrandSourceUrl.php`, `src/Repository/BrandSourceUrlRepository.php`, `src/Command/DiscoverBrandSourcesCommand.php`, `src/Command/FetchBrandSourcesCommand.php`, `src/Service/Discovery/DiscoveredUrl.php`, `src/Service/Discovery/SourceTypeClassifier.php`, миграция `brand_source_url`.
+## ⚠️ Грабли деплоя (укусило дважды)
+- **rsync индивидуальных файлов на прод с --relative/неполным путём кладёт *Command.php в src/Service/** → Symfony autowire ищет класс App\Service\XxxCommand, не находит → весь сайт 500. Фикс: всегда ПОЛНЫЙ rsync `rsync -az --exclude .git --exclude var --exclude .env.local --exclude config/secrets ... ./ regru:wearbase.ru/` (без --delete, без --relative), потом `find src/{Service,Entity,Controller} -maxdepth 1 -name '*Command.php' -delete` для подчистки старых strays, затем cache:clear --no-debug.
+- После любого деплоя НОВЫХ команд на сервер/прод — обязателен `cache:clear --no-debug` (no-debug контейнер кэширует список команд отдельно).
