@@ -598,6 +598,26 @@ php bin/console doctrine:migrations:migrate
 
 **Риски:** ramp-дрейф→env-якорь PUBLISH_LAUNCH_DATE; TZ-баг→явный Europe/Moscow; полу-обновление→транзакция; replay→content_version+HMAC; галлюцинация FAQ→grounded-gate+skipped; CAP недостижим→n за тик.
 
+## Архитектура: полный краул сайтов брендов + ротация прокси + извлечение атрибутов (агент-архитектор, 2026-06-05)
+
+Цель: качать сайт бренда ЦЕЛИКОМ (не 1 стр.) → обогащать структурой (стили/размерная сетка/направление/материалы/ценовой сегмент/гео) — moat, которого нет у конкурентов-каталогов.
+
+**A. КРАУЛЕР:** wget -l5 ОТКЛОНЁН (не извлекает контент, не приоритизирует, взрыв на маркетплейсе). Решение: **sitemap-first + trafilatura focused_crawler** (УЖЕ установлена; CLI --sitemap/--crawl/--url-filter, уважает robots.txt). sitemap = детектор размера: 0-1 URL → одностраничник (Tilda), ≤50 → все ценные, >50 → только верхнеуровневые разделы. `CrawlUrlFilter` (отдельно от UrlFilter): keep about/delivery/sizes/catalog(1-2 ур.)/contacts/faq, drop cart/checkout/login/?sort/?filter/?page/search. Cap **CRAWL_MAX_PAGES=30/хост**. Дедуп URL→url_hash, контента→UNIQUE(brand_id,content_hash) (boilerplate схлопывается). JS-сайты: НЕ рендерить по умолчанию (Tilda/InSales server-rendered, отдают sitemap); пустой ответ (<MIN_TEXT_CHARS) → fallback Playwright (есть для E2E) только для таких.
+
+**B. РОТАЦИЯ ПРОКСИ — МИНА: общий HttpClientInterface!** SearxClient/WebScraper/Embedding/VectorStore инжектят ОДИН клиент → глобальный прокси погонит ollama/Qdrant/MySQL(192.168.2.43) через прокси. Решение: scoped `scraper.client` в framework.yaml с proxy=%env(SCRAPE_PROXY)% + **no_proxy=192.168.2.43,localhost,127.0.0.1** (только в WebScraper+Searx; Embedding/VectorStore на дефолтном LAN). trafilatura: прокси НЕ глобально, а в env подпроцесса Process(env:[http_proxy,https_proxy,no_proxy]). Тип: **rotating residential РФ** (datacenter дохнет против Яндекс/Cloudflare). Один endpoint в SCRAPE_PROXY = смена IP бесплатна. Прокси снимает первопричину банов → SearxUnavailable/canary/breaker остаются страховкой.
+
+**C. ХРАНЕНИЕ:** НЕ сырой HTML, НЕ скриншоты — только cleanText (rawText уже null). Переиспользуем brand_source_document, новый sourceType `own_page`. Объём: ~30стр×6000 = ~180k строк (~2ГБ TEXT), Qdrant ~1.5M точек (~6ГБ) — ок.
+
+**C2. ИЗВЛЕЧЕНИЕ АТРИБУТОВ (главная цель):** стадия `extract` — ollama qwen3.5:27b **structured output** (format=JSON-schema на /api/chat, подтверждено; fallback format:json+схема в промпте) по АГРЕГИРОВАННОМУ тексту бренда (не постранично). Схема: styles/categories/направление/gender/sizes/materials/price_segment/geo. Складывать ГИБРИДОМ: styles/sizes/categories → существующие BrandStyle/BrandSize/ProductCategory ManyToMany (нормализация по словарю); остальное → новая таблица `brand_attribute` (EAV: brand_id/name/value/provenance). Валидация — переиспользуем краудсорс: target_type='brand_attribute' в BrandDatapoint::FIELDS, голоса ✓/✗ работают без нового кода. Статус: attributes_status/extracted_at на BrandRagPipeline, findForExtract().
+
+**D. ПАЙПЛАЙН — НЕ отдельная стадия, а развёртка own_site В ОЧЕРЕДЬ:** fetch скачал own_site-сид → focused_crawler даёт внутренние URL → CrawlUrlFilter → enqueue обратно в brand_source_url типом `own_page` tier=1 → обычный fetch их дренит. Идемпотентность/докачка после обрыва — бесплатно (url_hash + reclaimStale). **2 ЛОВУШКИ:** (1) CAPS own_site=2 в двух слоях блокируют развёртку → own_page отдельный тип со своим cap, минует discover-CAPS; (2) finalizeIfDrained финализирует рано → own_page persist+flush как pending ДО пометки own_site-сида fetched (иначе бренд финализируется в середине краула — критично!). **ОТДЕЛЬНЫЙ СЕРВЕР НЕ НУЖЕН** — прокси снимает баны, скрейп остаётся на 192.168.2.43; параллелизм 4-8 воркеров (Messenger по дизайну очереди), до него — RagDaemon с --max-urls ломтями.
+
+**План:** MVP — 1) scoped scraper.client+прокси (verify: discover без CAPTCHA, Qdrant/ollama мимо прокси); 2) CrawlUrlFilter+sitemap-разворот в fetch+фикс persist-before-finalize. Фаза 2 — extract (миграция brand_attribute+колонки, LlmService::extractBrandAttributes structured, app:brand:extract, маппинг на словари) + краудсорс. Фаза 3 — extract в демон, шарды, Messenger.
+
+**Стоимость прокси:** rotating residential РФ ~$3-8/ГБ; ~30стр×100КБ×6000 ≈ 18ГБ = **~$54-145 за полный обход** базы. Datacenter $0.5-1/ГБ но не выдержит Яндекс — не для основного скрейпа.
+
+**Риски:** прокси-утечка LAN→scoped+no_proxy явно тестировать; краул маркетплейса→sitemap-детектор+cap30+drop-фасеты; drain рано→persist own_page до fetched; cap-рассинхрон→отдельный тип own_page; галлюцинация атрибутов→structured+grounded+краудсорс; ротация бьёт rate-limit→per-host пауза обязательна.
+
 ## Архитектура: email-активация владельцев брендов (5 агентов: архитектор+маркетолог+devops+backend+frontend, 2026-06-05)
 
 Воронка: публикация страницы → письмо владельцу → open → click → регистрация/claim → подписка. ТОЛЬКО ДИЗАЙН, реализация отдельно.
