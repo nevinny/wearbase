@@ -4,7 +4,6 @@ namespace App\Command;
 
 use App\Entity\Brand;
 use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Bridge\Twig\Mime\TemplatedEmail;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -12,29 +11,32 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
-use Symfony\Component\Mailer\MailerInterface;
-use Symfony\Component\Mime\Address;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Twig\Environment;
 
 /**
- * Тест outreach-письма: реальный шаблон/заголовки/SMTP, но НА УКАЗАННЫЙ адрес
- * (не владельцу бренда!) и с тестовым токеном — БД не трогается, трекинг
- * не считается. Для проверки рендера в Mail.ru/Яндекс/Gmail и SMTP-связки.
+ * Тест outreach-письма через RuSender REST API (тот же путь, что прод-warmup),
+ * но НА УКАЗАННЫЙ адрес (не владельцу!) с тестовым токеном — БД/трекинг не трогаются.
+ * Проверка рендера в Mail.ru/Яндекс/Gmail и связки с RuSender.
  *
- *   php bin/console app:outreach:test you@example.com --brand=1
+ *   php bin/console app:outreach:test you@example.com 1
  */
 #[AsCommand(
     name: 'app:outreach:test',
-    description: 'Outreach: тестовое письмо реальным шаблоном на указанный адрес',
+    description: 'Outreach: тестовое письмо реальным шаблоном на указанный адрес (RuSender REST)',
 )]
 class OutreachTestCommand extends Command
 {
     public function __construct(
         private readonly EntityManagerInterface $em,
-        private readonly MailerInterface $mailer,
+        private readonly HttpClientInterface $httpClient,
+        private readonly Environment $twig,
         #[Autowire('%env(default::OUTREACH_FROM)%')]
         private readonly ?string $from,
         #[Autowire('%env(default::OUTREACH_BASE_URL)%')]
         private readonly ?string $baseUrl,
+        #[Autowire('%env(default::RUSENDER_API_KEY)%')]
+        private readonly ?string $apiKey,
     ) {
         parent::__construct();
     }
@@ -56,28 +58,49 @@ class OutreachTestCommand extends Command
             return Command::FAILURE;
         }
 
+        if (trim((string) $this->apiKey) === '') {
+            $io->error('RUSENDER_API_KEY не задан');
+            return Command::FAILURE;
+        }
+
         $base  = rtrim((string) $this->baseUrl, '/');
         $token = 'test' . bin2hex(random_bytes(14)); // невалидный для БД — трекинг не запишется
+        $ctx = [
+            'brand'     => $brand,
+            'stores'    => $brand->getActiveStores()->slice(0, 2),
+            'click_url' => "{$base}/e/c/{$token}",
+            'pixel_url' => "{$base}/e/o/{$token}.gif",
+            'unsub_url' => "{$base}/e/u/{$token}",
+        ];
 
-        $msg = (new TemplatedEmail())
-            ->from(Address::create((string) $this->from))
-            ->to((string) $input->getArgument('to'))
-            ->replyTo('hello@wearbase.ru')
-            ->subject(sprintf('[ТЕСТ] %s — мы опубликовали страницу о вашем бренде на Wearbase', $brand->getTitle()))
-            ->htmlTemplate('email/outreach/brand_published.html.twig')
-            ->textTemplate('email/outreach/brand_published.txt.twig')
-            ->context([
-                'brand'     => $brand,
-                'stores'    => $brand->getActiveStores()->slice(0, 2),
-                'click_url' => "{$base}/e/c/{$token}",
-                'pixel_url' => "{$base}/e/o/{$token}.gif",
-                'unsub_url' => "{$base}/e/u/{$token}",
-            ]);
-        $msg->getHeaders()->addTextHeader('List-Unsubscribe', "<{$base}/e/u/{$token}>");
-        $msg->getHeaders()->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
+        $fromName = 'WEARBASE';
+        $fromEmail = (string) $this->from;
+        if (preg_match('~^(.*?)\s*<([^>]+)>$~', (string) $this->from, $m)) {
+            $fromName = trim($m[1]) ?: 'WEARBASE';
+            $fromEmail = trim($m[2]);
+        }
 
-        $this->mailer->send($msg);
-        $io->success(sprintf('Отправлено на %s (бренд: %s)', $input->getArgument('to'), $brand->getTitle()));
+        $resp = $this->httpClient->request('POST', 'https://api.beta.rusender.ru/api/v1/external-mails/send', [
+            'headers' => ['X-Api-Key' => (string) $this->apiKey, 'Content-Type' => 'application/json'],
+            'json'    => [
+                'idempotencyKey' => $token,
+                'mail' => [
+                    'to'      => ['email' => (string) $input->getArgument('to')],
+                    'from'    => ['email' => $fromEmail, 'name' => $fromName],
+                    'subject' => sprintf('[ТЕСТ] %s — мы опубликовали страницу о вашем бренде на Wearbase', $brand->getTitle()),
+                    'html'    => $this->twig->render('email/outreach/brand_published.html.twig', $ctx),
+                    'text'    => $this->twig->render('email/outreach/brand_published.txt.twig', $ctx),
+                ],
+            ],
+            'timeout' => 30,
+        ]);
+
+        $code = $resp->getStatusCode();
+        if ($code >= 300) {
+            $io->error(sprintf('RuSender HTTP %d: %s', $code, mb_substr($resp->getContent(false), 0, 300)));
+            return Command::FAILURE;
+        }
+        $io->success(sprintf('Отправлено на %s (бренд: %s, RuSender %d)', $input->getArgument('to'), $brand->getTitle(), $code));
 
         return Command::SUCCESS;
     }
