@@ -80,6 +80,7 @@ security:
         - { path: ^/payment/subscribe, roles: ROLE_BRAND_MANAGER }
         - { path: ^/invite/accept, roles: IS_AUTHENTICATED_REMEMBERED }
         - { path: ^/brand-data,   roles: PUBLIC_ACCESS } # голоса краудсорс-валидации (анонимы; ДО ^/brand — префикс!)
+        - { path: ^/e/,           roles: PUBLIC_ACCESS } # outreach-трекинг: пиксель/клик/отписка из писем
         - { path: ^/brand/login,  roles: PUBLIC_ACCESS }
         - { path: ^/brand-claim,  roles: ROLE_USER }
         - { path: ^/brand,        roles: ROLE_BRAND_MANAGER }

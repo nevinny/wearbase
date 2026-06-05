@@ -11,3 +11,9 @@ framework:
             policy: sliding_window
             limit: 20
             interval: '1 hour'
+
+        # Outreach-трекинг (/e/*): пиксель/клик/отписка из писем.
+        outreach_track:
+            policy: sliding_window
+            limit: 120
+            interval: '1 minute'

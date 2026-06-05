@@ -147,6 +147,91 @@ class BrandIngestController extends AbstractController
         ]);
     }
 
+    /**
+     * Вебхук SMTP-сервиса (RuSender): bounce/complaint/unsub. Токен в query
+     * (Authorization срезается). Маппинг устойчив к форматам; hard bounce →
+     * bounced_at (suppression), soft → last_error (retryable). Апдейты ПО EMAIL.
+     */
+    #[Route('/email/webhook', name: 'api_email_webhook', methods: ['POST'])]
+    public function emailWebhook(
+        Request $request,
+        EntityManagerInterface $em,
+        #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::OUTREACH_WEBHOOK_TOKEN)%')]
+        ?string $webhookToken,
+    ): JsonResponse {
+        if ($webhookToken === null || trim($webhookToken) === ''
+            || !hash_equals($webhookToken, (string) $request->query->get('token', ''))) {
+            return $this->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $p = json_decode((string) $request->getContent(), true);
+        if (!is_array($p)) {
+            return $this->json(['error' => 'invalid json'], Response::HTTP_BAD_REQUEST);
+        }
+        $events = isset($p['type']) || isset($p['event']) ? [$p] : ($p['events'] ?? $p['data'] ?? [$p]);
+
+        $db = $em->getConnection();
+        foreach ($events as $e) {
+            if (!is_array($e)) {
+                continue;
+            }
+            $type   = strtolower((string) ($e['type'] ?? $e['event'] ?? $e['eventType'] ?? ''));
+            $email  = (string) ($e['email'] ?? $e['recipient'] ?? $e['to'] ?? ($e['data']['email'] ?? ''));
+            $reason = mb_substr((string) ($e['reason'] ?? $e['description'] ?? $e['bounceType'] ?? ''), 0, 500);
+            if ($email === '') {
+                continue;
+            }
+
+            $isPermanent = str_contains($type, 'hard') || str_contains($reason, 'permanent') || preg_match('~\b5\.\d\.\d~', $reason);
+            if ((str_contains($type, 'bounce') && $isPermanent)
+                || in_array($type, ['failed', 'dropped', 'rejected', 'undeliverable'], true)) {
+                $db->executeStatement('UPDATE brand_outreach SET bounced_at = COALESCE(bounced_at, NOW()) WHERE email = :e', ['e' => $email]);
+            } elseif (str_contains($type, 'bounce') || str_contains($type, 'deferred')) {
+                $db->executeStatement('UPDATE brand_outreach SET last_error = :r WHERE email = :e', ['r' => 'soft bounce: ' . $reason, 'e' => $email]);
+            } elseif (str_contains($type, 'complain') || str_contains($type, 'spam') || str_contains($type, 'abuse')
+                || str_contains($type, 'unsub') || str_contains($type, 'optout')) {
+                $db->executeStatement('UPDATE brand_outreach SET unsubscribed_at = COALESCE(unsubscribed_at, NOW()) WHERE email = :e', ['e' => $email]);
+            }
+            // delivered/open/click — игнорируем: пиксель и /e/c надёжнее
+        }
+
+        return $this->json(['ok' => true]); // всегда 200 на валидный токен — иначе сервис ретраит
+    }
+
+    /** Воронка активации для dev-дашборда/отчёта: когорты отправки 7/14/30д (нарастающие окна). */
+    #[Route('/outreach-stats', name: 'api_outreach_stats', methods: ['GET'])]
+    public function outreachStats(
+        Request $request,
+        EntityManagerInterface $em,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter, checkSignature: false)) !== null) {
+            return $deny;
+        }
+
+        $rows = $em->getConnection()->fetchAllAssociative(<<<'SQL'
+            SELECT d.label,
+                   COUNT(*)                                        AS sent,
+                   SUM(o.first_opened_at  IS NOT NULL)             AS opened,
+                   SUM(o.first_clicked_at IS NOT NULL)             AS clicked,
+                   SUM(EXISTS(SELECT 1 FROM brand_claim c
+                              WHERE c.brand_id = o.brand_id AND c.created_at > o.sent_at)) AS claimed,
+                   SUM(EXISTS(SELECT 1 FROM subscription s
+                              WHERE s.brand_id = o.brand_id AND s.created_at > o.sent_at)) AS subscribed,
+                   SUM(o.unsubscribed_at IS NOT NULL)              AS unsubscribed,
+                   SUM(o.bounced_at IS NOT NULL)                   AS bounced
+            FROM (SELECT 7 AS days, '7d' AS label
+                  UNION ALL SELECT 14, '14d'
+                  UNION ALL SELECT 30, '30d') d
+            JOIN brand_outreach o
+              ON o.sent_at IS NOT NULL AND o.sent_at >= (NOW() - INTERVAL d.days DAY)
+            GROUP BY d.label, d.days
+            ORDER BY d.days
+        SQL);
+
+        return $this->json(['cohorts' => $rows, 'note' => 'окна нарастающие (7⊂14⊂30); KPI — клики, opens завышены']);
+    }
+
     #[Route('/brands/{slug}/status', name: 'api_brand_status', methods: ['GET'])]
     public function status(
         string $slug,

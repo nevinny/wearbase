@@ -1,0 +1,79 @@
+{# Activation-письмо (cold B2B, ФЗ-38: уведомление БЕЗ продажи — никаких цен/подписок!).
+   Табличная вёрстка ≤600px, инлайн-стили, текст-лого (картинки у холодных заблокированы). #}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;">
+{# Прехедер: виден в превью списка писем, скрыт в теле #}
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
+    Страница {{ brand.title }} уже в каталоге WEARBASE — проверьте данные&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;">
+<tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;">
+
+        {# Шапка: ТЕКСТ-лого #}
+        <tr><td style="padding:24px 32px 8px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+            <span style="font-size:20px;font-weight:800;letter-spacing:2px;color:#111827;">WEARBASE</span>
+            <span style="font-size:12px;color:#9ca3af;">&nbsp;·&nbsp;каталог российских брендов одежды</span>
+        </td></tr>
+
+        {# Заголовок + суть #}
+        <tr><td style="padding:16px 32px 0;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+            <h1 style="margin:0 0 12px;font-size:20px;line-height:1.35;color:#111827;">
+                Страница бренда «{{ brand.title }}» опубликована
+            </h1>
+            <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#374151;">
+                Мы составили страницу о бренде «{{ brand.title }}» по данным из открытых
+                источников и опубликовали её в каталоге. Её уже видят покупатели.
+            </p>
+        </td></tr>
+
+        {# Крючок-карточка ЕГО данных (показывается только если данные есть) #}
+        {% if stores|length > 0 or brand.city %}
+        <tr><td style="padding:0 32px 16px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:6px;">
+                <tr><td style="padding:14px 18px;font-size:14px;line-height:1.6;color:#374151;">
+                    <strong style="color:#111827;">Что у нас уже есть о вас:</strong><br>
+                    {% if brand.city %}&bull;&nbsp;{{ brand.city }}<br>{% endif %}
+                    {% for store in stores %}&bull;&nbsp;{{ store.address }}<br>{% endfor %}
+                    <span style="color:#6b7280;">Всё верно? Адреса и описание можно поправить на странице.</span>
+                </td></tr>
+            </table>
+        </td></tr>
+        {% endif %}
+
+        {# Одна CTA: bulletproof-кнопка #}
+        <tr><td align="center" style="padding:8px 32px 12px;">
+            <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr><td style="background:#111827;border-radius:6px;">
+                    <a href="{{ click_url }}" style="display:inline-block;padding:13px 36px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">
+                        Открыть страницу бренда →
+                    </a>
+                </td></tr>
+            </table>
+        </td></tr>
+        <tr><td align="center" style="padding:0 32px 24px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;color:#9ca3af;">
+            Не открывается? Ссылка: {{ click_url }}
+        </td></tr>
+
+        {# Подвал: кто/почему/отписка/юр #}
+        <tr><td style="padding:16px 32px 24px;border-top:1px solid #e5e7eb;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;line-height:1.6;color:#9ca3af;">
+            WEARBASE — открытый каталог российских брендов одежды.<br>
+            Вы получили это письмо, потому что мы добавили бренд «{{ brand.title }}» в каталог
+            и хотим передать страницу его владельцу.<br>
+            Не хотите, чтобы страница показывалась, или письма не нужны —
+            <a href="{{ unsub_url }}" style="color:#6b7280;">сообщите нам</a>.
+        </td></tr>
+    </table>
+</td></tr>
+</table>
+
+<img src="{{ pixel_url }}" width="1" height="1" alt="" style="display:none;">
+</body>
+</html>
