@@ -103,7 +103,45 @@ class RagDashboardController extends AbstractController
             'строк аналитики'   => $one("SELECT COUNT(*) FROM gsc_page_stats"),
         ];
 
-        return $this->render('admin/rag_dashboard.html.twig', $this->viewParams($brandStatuses, $pipeline, $urlQueue, $stages, $readiness, $gsc));
+        // --- Outreach (письма) — данные на ПРОДЕ, тянем через агент-API ---
+        $outreach = $this->prodOutreach();
+
+        return $this->render('admin/rag_dashboard.html.twig', $this->viewParams($brandStatuses, $pipeline, $urlQueue, $stages, $readiness, $gsc, $outreach));
+    }
+
+    /** Воронка писем с прода (brand_outreach живёт там). Fail-soft. @return array<string,mixed> */
+    private function prodOutreach(): array
+    {
+        if (trim((string) $this->prodApiUrl) === '' || trim((string) $this->agentToken) === '') {
+            return ['статус' => 'прод не настроен'];
+        }
+        try {
+            $data = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/outreach-stats', [
+                'headers' => ['X-Agent-Token' => (string) $this->agentToken],
+                'timeout' => 4,
+            ])->toArray(false);
+            // берём окно 30д как сводку
+            $c = [];
+            foreach (($data['cohorts'] ?? []) as $row) {
+                if (($row['label'] ?? '') === '30d') {
+                    $c = $row;
+                }
+            }
+            if ($c === []) {
+                return ['отправлено' => 0, 'примечание' => 'писем пока нет'];
+            }
+            return [
+                'отправлено (30д)' => (int) ($c['sent'] ?? 0),
+                'доставлено'       => (int) ($c['delivered'] ?? 0),
+                'открыто'          => (int) ($c['opened'] ?? 0),
+                'кликов'           => (int) ($c['clicked'] ?? 0),
+                'claim'            => (int) ($c['claimed'] ?? 0),
+                'подписок'         => (int) ($c['subscribed'] ?? 0),
+                'отписок/жалоб'    => (int) ($c['unsubscribed'] ?? 0) + (int) ($c['bounced'] ?? 0),
+            ];
+        } catch (\Throwable) {
+            return ['статус' => 'прод недоступен'];
+        }
     }
 
     /**
@@ -134,7 +172,7 @@ class RagDashboardController extends AbstractController
     }
 
     /** @return array<string,mixed> */
-    private function viewParams(array $brandStatuses, array $pipeline, array $urlQueue, array $stages, array $readiness, array $gsc): array
+    private function viewParams(array $brandStatuses, array $pipeline, array $urlQueue, array $stages, array $readiness, array $gsc, array $outreach = []): array
     {
         return [
             'brandStatuses' => $brandStatuses,
@@ -143,6 +181,7 @@ class RagDashboardController extends AbstractController
             'stages'        => $stages,
             'readiness'     => $readiness,
             'gsc'           => $gsc,
+            'outreach'      => $outreach,
         ];
     }
 }

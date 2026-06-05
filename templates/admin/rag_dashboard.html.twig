@@ -114,6 +114,17 @@
             {% endfor %}
         </table>
     </div>
+
+    <div class="rag-card">
+        <h3>Email-активация (письма)</h3>
+        <table>
+            {% for k, v in outreach %}
+                <tr><td>{{ k }}</td><td>{{ v }}</td></tr>
+            {% else %}
+                <tr><td colspan="2" style="opacity:.5">нет данных</td></tr>
+            {% endfor %}
+        </table>
+    </div>
 </div>
 
 <p class="rag-note">

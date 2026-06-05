@@ -58,17 +58,21 @@ class OutreachSendCommand extends Command
             return Command::FAILURE;
         }
 
-        // Когорта A: опубликован (active) + есть email + есть магазины (живой бизнес,
-        // персонализация письма) + письмо ещё не отправлялось и адрес не суппрессирован.
+        // Когорта: ОПУБЛИКОВАННЫЙ бренд (active — его страница реально живёт, об этом и
+        // письмо) + есть email + не отправляли + адрес не суппрессирован. Магазины НЕ
+        // требуем (на проде их нет, а крючок теперь каналы/ассортимент). Приоритет —
+        // у кого больше данных (магазины/категории = богаче письмо), потом свежие.
         $ids = $this->em->getConnection()->fetchFirstColumn(
             "SELECT b.id FROM brand b
              WHERE b.status = 'active'
                AND b.email IS NOT NULL AND b.email != ''
-               AND EXISTS (SELECT 1 FROM brand_store s WHERE s.brand_id = b.id AND s.status = 'active')
                AND NOT EXISTS (SELECT 1 FROM brand_outreach o WHERE o.brand_id = b.id AND o.sent_at IS NOT NULL)
                AND NOT EXISTS (SELECT 1 FROM brand_outreach o2 WHERE o2.email = b.email
                                AND (o2.unsubscribed_at IS NOT NULL OR o2.bounced_at IS NOT NULL))
-             ORDER BY b.id ASC
+             ORDER BY
+               (SELECT COUNT(*) FROM brand_store s WHERE s.brand_id = b.id) DESC,
+               (SELECT COUNT(*) FROM brand_attribute a WHERE a.brand_id = b.id) DESC,
+               b.id ASC
              LIMIT " . $limit,
         );
 
