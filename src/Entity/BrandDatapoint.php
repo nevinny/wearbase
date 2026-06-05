@@ -26,6 +26,7 @@ class BrandDatapoint
     public const TYPE_CONTACT = 'brand_contact'; // скаляры Brand: field=phone|email|address
     public const TYPE_LINK    = 'brand_link';    // field=url
     public const TYPE_STORE   = 'brand_store';   // field=address|phone|workhours
+    public const TYPE_ATTRIBUTE = 'brand_attribute'; // извлечённый атрибут, target_id=brand_attribute.id, field=value
 
     public const PROV_ENRICHMENT      = 'enrichment';
     public const PROV_OWNER           = 'owner';
@@ -38,9 +39,10 @@ class BrandDatapoint
 
     /** Допустимые field по типу (валидация vote-endpoint'а). */
     public const FIELDS = [
-        self::TYPE_CONTACT => ['phone', 'email', 'address'],
-        self::TYPE_LINK    => ['url'],
-        self::TYPE_STORE   => ['address', 'phone', 'workhours'],
+        self::TYPE_CONTACT   => ['phone', 'email', 'address'],
+        self::TYPE_LINK      => ['url'],
+        self::TYPE_STORE     => ['address', 'phone', 'workhours'],
+        self::TYPE_ATTRIBUTE => ['value'],
     ];
 
     #[ORM\Id]

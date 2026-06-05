@@ -262,6 +262,16 @@ class BrandsController extends AbstractController
             $hiddenDp[$dp->getTargetType() . ':' . ($dp->getTargetId() ?? 0) . ':' . $dp->getField()] = true;
         }
 
+        // Извлечённые атрибуты (краул→extract), сгруппированы по name для рендера.
+        // Скрытые голосами (brand_attribute:{id}:value в hiddenDp) отфильтрованы.
+        $attrGroups = [];
+        foreach ($brandRepo->getEntityManager()->getRepository(\App\Entity\BrandAttribute::class)->findByBrand($brand) as $attr) {
+            if (isset($hiddenDp['brand_attribute:' . $attr->getId() . ':value'])) {
+                continue;
+            }
+            $attrGroups[$attr->getName()][] = ['id' => $attr->getId(), 'value' => $attr->getValue()];
+        }
+
         return $this->render('tailwind/brand/showv2.html.twig', [
             'brand' => $brand,
             'products' => $demoProducts,
@@ -271,6 +281,7 @@ class BrandsController extends AbstractController
             'isMemberOfThisBrand' => $isMemberOfThisBrand,
             'faqs' => $faqs,
             'hiddenDp' => $hiddenDp,
+            'attrGroups' => $attrGroups,
         ]);
     }
 

@@ -132,10 +132,15 @@ class DatapointVoteService
             return;
         }
         if ($targetId === null) {
-            throw new \InvalidArgumentException('target_id обязателен для link/store');
+            throw new \InvalidArgumentException('target_id обязателен для link/store/attribute');
         }
 
-        $class = $targetType === BrandDatapoint::TYPE_LINK ? BrandLink::class : BrandStore::class;
+        $class = match ($targetType) {
+            BrandDatapoint::TYPE_LINK      => BrandLink::class,
+            BrandDatapoint::TYPE_STORE     => BrandStore::class,
+            BrandDatapoint::TYPE_ATTRIBUTE => \App\Entity\BrandAttribute::class,
+            default                        => throw new \InvalidArgumentException('неизвестный target_type'),
+        };
         $row = $this->em->find($class, $targetId);
         if ($row === null || $row->getBrand()?->getId() !== $brand->getId()) {
             throw new \InvalidArgumentException('target не принадлежит бренду');

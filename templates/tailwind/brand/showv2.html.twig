@@ -259,6 +259,32 @@
                     </script>
                 {% endif %}
 
+                {# --- Характеристики бренда (извлечены краулом, краудсорс-голоса) --- #}
+                {% if attrGroups is defined and attrGroups is not empty %}
+                    {% set _attr_labels = {'category': 'Ассортимент', 'size': 'Размеры', 'material': 'Материалы', 'style': 'Стиль', 'gender': 'Аудитория', 'price_segment': 'Сегмент', 'geo': 'Производство'} %}
+                    {% set _attr_order = ['category', 'size', 'material', 'style', 'gender', 'price_segment', 'geo'] %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">Характеристики {{ _bt }}</h2>
+                        <dl class="space-y-3">
+                            {% for key in _attr_order %}
+                                {% if attrGroups[key] is defined %}
+                                    <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                                        <dt class="text-sm text-gray-500 sm:w-36 shrink-0 pt-1">{{ _attr_labels[key] }}</dt>
+                                        <dd class="flex flex-wrap gap-2">
+                                            {% for a in attrGroups[key] %}
+                                                <span class="inline-flex items-center gap-1 bg-gray-100 rounded-full px-3 py-1 text-sm text-gray-800">
+                                                    {{ a.value }}
+                                                    <span class="dp-vote" data-nosnippet data-type="brand_attribute" data-target="{{ a.id }}" data-field="value"></span>
+                                                </span>
+                                            {% endfor %}
+                                        </dd>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        </dl>
+                    </section>
+                {% endif %}
+
                 {# --- Физические магазины (brand_store, из enrichment) --- #}
                 {% if brand.activeStores|length > 0 %}
                     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
