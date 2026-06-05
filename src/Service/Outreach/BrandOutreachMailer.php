@@ -50,6 +50,53 @@ class BrandOutreachMailer
     }
 
     /**
+     * Контекст письма: динамический крючок «что знаем» из реально доступного —
+     * каналы (ссылки, лейбл по хосту), категории-ассортимент (brand_attribute),
+     * город, магазины. Используется и warmup-отправкой, и тест-командой.
+     *
+     * @return array<string,mixed>
+     */
+    public function buildContext(Brand $brand, string $base, string $token): array
+    {
+        // Каналы: лейбл по хосту (link_type часто 'other' из enrichment).
+        $channels = [];
+        foreach ($brand->getLinks() as $link) {
+            $u = mb_strtolower((string) $link->getLinkUrl());
+            if ($u === '') {
+                continue;
+            }
+            $channels[] = match (true) {
+                str_contains($u, 'instagram.') => 'Instagram',
+                str_contains($u, 'vk.com'), str_contains($u, 'vkontakte') => 'VK',
+                str_contains($u, 't.me/'), str_contains($u, 'telegram.') => 'Telegram',
+                str_contains($u, 'youtube.'), str_contains($u, 'youtu.be') => 'YouTube',
+                str_contains($u, 'tiktok.') => 'TikTok',
+                default => 'сайт',
+            };
+        }
+        $channels = array_values(array_unique($channels));
+
+        // Ассортимент-категории из извлечённых атрибутов.
+        $categories = [];
+        foreach ($this->em->getRepository(\App\Entity\BrandAttribute::class)->findByBrand($brand) as $a) {
+            if ($a->getName() === \App\Entity\BrandAttribute::NAME_CATEGORY) {
+                $categories[] = $a->getValue();
+            }
+        }
+        $categories = array_slice(array_values(array_unique($categories)), 0, 5);
+
+        return [
+            'brand'      => $brand,
+            'channels'   => $channels,
+            'categories' => $categories,
+            'stores'     => $brand->getActiveStores()->slice(0, 2),
+            'click_url'  => $base . '/e/c/' . $token,
+            'pixel_url'  => $base . '/e/o/' . $token . '.gif',
+            'unsub_url'  => $base . '/e/u/' . $token,
+        ];
+    }
+
+    /**
      * @return bool true = письмо ушло в relay; false = пропущено (suppression/нет email/не настроен) или ошибка
      */
     public function sendFor(Brand $brand, bool $isRetry = false): bool
@@ -86,13 +133,7 @@ class BrandOutreachMailer
         $token = $outreach->getSendToken();
         $base  = rtrim((string) $this->trackBaseUrl, '/');
 
-        $ctx = [
-            'brand'     => $brand,
-            'stores'    => $brand->getActiveStores()->slice(0, 2),
-            'click_url' => $base . '/e/c/' . $token,
-            'pixel_url' => $base . '/e/o/' . $token . '.gif',
-            'unsub_url' => $base . '/e/u/' . $token,
-        ];
+        $ctx = $this->buildContext($brand, $base, $token);
         $html = $this->twig->render('email/outreach/brand_published.html.twig', $ctx);
         $text = $this->twig->render('email/outreach/brand_published.txt.twig', $ctx);
 
@@ -112,7 +153,7 @@ class BrandOutreachMailer
                     'mail' => [
                         'to'      => ['email' => $email],
                         'from'    => ['email' => $fromEmail, 'name' => $fromName],
-                        'subject' => sprintf('%s — мы опубликовали страницу о вашем бренде на Wearbase', $brand->getTitle()),
+                        'subject' => sprintf('«%s» уже в каталоге Wearbase — заберите управление страницей', $brand->getTitle()),
                         'html'    => $html,
                         'text'    => $text,
                         'headers' => ['List-Unsubscribe' => sprintf('<%s/e/u/%s>', $base, $token)],

@@ -31,6 +31,7 @@ class OutreachTestCommand extends Command
         private readonly EntityManagerInterface $em,
         private readonly HttpClientInterface $httpClient,
         private readonly Environment $twig,
+        private readonly \App\Service\Outreach\BrandOutreachMailer $mailer,
         #[Autowire('%env(default::OUTREACH_FROM)%')]
         private readonly ?string $from,
         #[Autowire('%env(default::OUTREACH_BASE_URL)%')]
@@ -65,13 +66,7 @@ class OutreachTestCommand extends Command
 
         $base  = rtrim((string) $this->baseUrl, '/');
         $token = 'test' . bin2hex(random_bytes(14)); // невалидный для БД — трекинг не запишется
-        $ctx = [
-            'brand'     => $brand,
-            'stores'    => $brand->getActiveStores()->slice(0, 2),
-            'click_url' => "{$base}/e/c/{$token}",
-            'pixel_url' => "{$base}/e/o/{$token}.gif",
-            'unsub_url' => "{$base}/e/u/{$token}",
-        ];
+        $ctx = $this->mailer->buildContext($brand, $base, $token);
 
         $fromName = 'WEARBASE';
         $fromEmail = (string) $this->from;
