@@ -215,8 +215,10 @@
                 {% if _bd %}
                     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
                         <h2 class="text-2xl font-semibold mb-4">О бренде {{ _bt }}</h2>
-                        <div class="prose max-w-none text-gray-700">
-                            {{ _bd|raw }}
+                        <div class="prose max-w-none text-gray-700 leading-relaxed">
+                            {# LLM отдаёт чистый текст с переносами — nl2br сохраняет абзацы
+                               (Twig split('\n') в кавычках берёт ЛИТЕРАЛ \n, не перенос — не работает). #}
+                            <p style="white-space: pre-line">{{ _bd }}</p>
                         </div>
                     </section>
                 {% endif %}

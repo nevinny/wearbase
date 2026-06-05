@@ -154,14 +154,26 @@ EOT;
     /**
      * Краткий анонс бренда (1–2 предложения, до 50 слов).
      */
-    public function generateBrandAnons(string $brandName, ?string $city = null): string
+    public function generateBrandAnons(string $brandName, ?string $city = null, ?string $description = null): string
     {
         $cityContext = $city ? " из города {$city}" : '';
 
         $systemPrompt = 'Ты — копирайтер. Пишешь только на русском языке. '
             . 'Отвечаешь исключительно текстом анонса, без кавычек и markdown.';
 
-        $prompt = <<<EOT
+        // Grounded: при наличии описания — выжимка из него (не выдумываем заново).
+        if ($description !== null && trim($description) !== '') {
+            $src = mb_substr(trim($description), 0, 2000);
+            $prompt = <<<EOT
+Вот описание бренда одежды «{$brandName}»{$cityContext}:
+
+{$src}
+
+Сожми его в краткий анонс: 1–2 предложения, максимум 45 слов, суть бренда.
+Только факты из описания, без кавычек и markdown. Формат: только текст.
+EOT;
+        } else {
+            $prompt = <<<EOT
 Напиши краткий анонс (1–2 предложения, максимум 50 слов) для бренда одежды «{$brandName}»{$cityContext}.
 
 Требования:
@@ -171,8 +183,9 @@ EOT;
 
 Формат: только текст.
 EOT;
+        }
 
-        return $this->generate($prompt, $systemPrompt, local: true, think: false);
+        return trim($this->generate($prompt, $systemPrompt, local: true, think: false));
     }
 
     /**

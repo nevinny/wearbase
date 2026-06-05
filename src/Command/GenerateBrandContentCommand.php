@@ -304,6 +304,18 @@ class GenerateBrandContentCommand extends Command
             return;
         }
 
+        // Анонс (краткая выжимка из описания) — если ещё нет.
+        if (trim((string) $brand->getAnons()) === '') {
+            try {
+                $anons = $this->llmService->generateBrandAnons($brandName, $city, $description);
+                if ($anons !== '') {
+                    $brand->setAnons(mb_substr($anons, 0, 500));
+                }
+            } catch (\Throwable) {
+                // анонс не критичен — пропускаем
+            }
+        }
+
         if (!$dryRun) {
             $brand->setDescription($description);
             $this->applyMeta($brand, $this->withWordstatKeywords($brand, $meta));
