@@ -40,6 +40,8 @@ class PipelineReportCommand extends Command
     protected function configure(): void
     {
         $this->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Не слать в Telegram, только вывести');
+        // throttle: крон может тикать чаще, но шлём не чаще раза в N минут (по файлу-метке).
+        $this->addOption('min-interval', null, InputOption::VALUE_REQUIRED, 'Мин. интервал между отправками в TG, мин', '180');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -135,7 +137,17 @@ class PipelineReportCommand extends Command
                 $io->warning('Telegram не настроен (ADMIN_TELEGRAM_CHAT_ID).');
                 return Command::SUCCESS; // fail-open
             }
+            // Throttle: расписание крона не меняется (его не правят из этого окружения),
+            // частоту регулируем тут — шлём не чаще раза в min-interval минут.
+            $minMin   = max(1, (int) $input->getOption('min-interval'));
+            $stateFile = getcwd() . '/var/report-pipeline-last';
+            $last = is_file($stateFile) ? (int) file_get_contents($stateFile) : 0;
+            if (time() - $last < $minMin * 60) {
+                $io->text(sprintf('Пропуск отправки: с прошлой прошло < %d мин.', $minMin));
+                return Command::SUCCESS;
+            }
             $this->notifier->send($msg);
+            @file_put_contents($stateFile, (string) time());
         }
 
         return Command::SUCCESS;
