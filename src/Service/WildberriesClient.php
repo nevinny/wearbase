@@ -150,9 +150,9 @@ class WildberriesClient
                 }
 
                 if ($statusCode !== 200) {
-                    $this->logger->warning("WB HTTP {$statusCode} на попытке {$attempt}: {$url}");
-                    $lastError = "HTTP {$statusCode}";
-                    continue;
+                    // не-429 4xx/5xx ретраями не лечится → fail-fast, не жжём прокси/IP
+                    $this->logger->warning("WB HTTP {$statusCode}: {$url}");
+                    throw new \RuntimeException("WB HTTP {$statusCode}");
                 }
 
                 return $response->toArray();
