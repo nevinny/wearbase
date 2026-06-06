@@ -31,6 +31,7 @@ class BrandSourceUrl
 
     public const TYPE_OWN_SITE       = 'own_site';
     public const TYPE_OWN_PAGE       = 'own_page';   // внутренняя страница own_site, найденная краулом (sitemap/links)
+    public const TYPE_PRODUCT_SAMPLE = 'product_sample'; // карточка товара (семпл) с own_site, найденная краулом — для извлечения атрибутов (keepTables при fetch)
     public const TYPE_MARKETPLACE    = 'marketplace';
     public const TYPE_CATALOG        = 'catalog';
     public const TYPE_ARTICLE_REVIEW = 'article_review';
