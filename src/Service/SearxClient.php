@@ -89,7 +89,7 @@ class SearxClient
         try {
             $response = $this->httpClient->request('GET', rtrim($this->searxUrl, '/') . '/search', [
                 'query'   => ['q' => $query, 'format' => 'json', 'language' => $language],
-                'timeout' => 20,
+                'timeout' => 35,
             ]);
             if ($response->getStatusCode() >= 400) {
                 throw new SearxUnavailableException("SearXNG HTTP {$response->getStatusCode()}");
