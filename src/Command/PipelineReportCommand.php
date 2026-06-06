@@ -10,6 +10,8 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Сводка RAG-конвейера в Telegram (по запросу владельца — раз в 3 часа кроном):
@@ -26,6 +28,11 @@ class PipelineReportCommand extends Command
     public function __construct(
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
+        private readonly HttpClientInterface $httpClient,
+        #[Autowire('%env(default::PROD_API_URL)%')]
+        private readonly ?string $prodApiUrl = null,
+        #[Autowire('%env(default::AGENT_API_TOKEN)%')]
+        private readonly ?string $agentToken = null,
     ) {
         parent::__construct();
     }
@@ -84,19 +91,41 @@ class PipelineReportCommand extends Command
             $eta = $urlPending === 0 ? 'очередь пуста' : '—';
         }
 
+        // --- Публикации на проде (TG с прода заблокирован → тянем сюда по агент-API) ---
+        $pubToday = $pubTotal = $pubWait = $pubLast = '—';
+        try {
+            if (trim((string) $this->prodApiUrl) !== '') {
+                $p = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/publish-stats', [
+                    'headers' => ['X-Agent-Token' => (string) $this->agentToken], 'timeout' => 6,
+                ])->toArray(false);
+                $pubToday = $p['published_today'] ?? '—';
+                $pubTotal = $p['published_total'] ?? '—';
+                $pubWait  = $p['queue_pending'] ?? '—';
+                $pubLast  = $p['last_published'] ?? '—';
+            }
+        } catch (\Throwable) {
+            // прод недоступен — оставляем «—»
+        }
+        $gscChecked = $one("SELECT COUNT(*) FROM gsc_index_status");
+        $gscIndexed = $one("SELECT COALESCE(SUM(indexed),0) FROM gsc_index_status");
+
         $msg = sprintf(
             "<b>Конвейер · %s</b>\n\n" .
             "<b>Парсинг:</b> discovered %d (+%d/ч) · URL: %d ждут / %d скачано (+%d/ч) · доков %d\n" .
             "<b>⏳ ETA осушения fetch:</b> %s\n" .
             "<b>Генерация:</b> done %d (+%d/ч), grounded %d · FAQ %d · в очереди %d · deferred %d\n" .
             "<b>Ключевики:</b> %d опрошено (+%d/ч)\n" .
-            "<b>Пуш:</b> готово %d · доставлено %d",
+            "<b>Пуш:</b> готово %d · доставлено %d\n" .
+            "<b>📢 Публикации (прод):</b> сегодня %s · всего %s · ждут %s (посл. %s)\n" .
+            "<b>GSC:</b> проверено %d · в индексе %d",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m H:i'),
             $discovered, $dHr, $urlPending, $urlFetched, $fHr, $docs,
             $eta,
             $done, $gHr, $grounded, $faqDone, $embedded, $deferred,
             $kwChecked, $kHr,
             $readyPush, $pushed,
+            $pubToday, $pubTotal, $pubWait, $pubLast,
+            $gscChecked, $gscIndexed,
         );
 
         $io->text(strip_tags($msg));
