@@ -75,14 +75,25 @@ class PipelineReportCommand extends Command
         $gHr = $rate('brand_rag_pipeline', 'generated_at');
         $kHr = $rate('brand_rag_pipeline', 'keywords_checked_at');
 
+        // ETA осушения очереди fetch: pending / темп скачивания. Прогноз грубый
+        // (crawl ещё может доливать), но даёт порядок. fHr=0 → нечем делить.
+        if ($fHr > 0 && $urlPending > 0) {
+            $etaMin = (int) round($urlPending / $fHr * 60);
+            $eta = $etaMin >= 60 ? sprintf('~%dч %02dм', intdiv($etaMin, 60), $etaMin % 60) : sprintf('~%dм', $etaMin);
+        } else {
+            $eta = $urlPending === 0 ? 'очередь пуста' : '—';
+        }
+
         $msg = sprintf(
             "<b>Конвейер · %s</b>\n\n" .
             "<b>Парсинг:</b> discovered %d (+%d/ч) · URL: %d ждут / %d скачано (+%d/ч) · доков %d\n" .
+            "<b>⏳ ETA осушения fetch:</b> %s\n" .
             "<b>Генерация:</b> done %d (+%d/ч), grounded %d · FAQ %d · в очереди %d · deferred %d\n" .
             "<b>Ключевики:</b> %d опрошено (+%d/ч)\n" .
             "<b>Пуш:</b> готово %d · доставлено %d",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m H:i'),
             $discovered, $dHr, $urlPending, $urlFetched, $fHr, $docs,
+            $eta,
             $done, $gHr, $grounded, $faqDone, $embedded, $deferred,
             $kwChecked, $kHr,
             $readyPush, $pushed,
