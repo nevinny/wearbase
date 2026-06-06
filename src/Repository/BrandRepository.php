@@ -308,6 +308,20 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Бренды на ингест Wildberries: wb_status IS NULL, статус active/new.
+     */
+    public function findForWbEnrich(int $limit, int $shard = 0, int $total = 1): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('b.status IN (:statuses)')
+            ->andWhere('p.id IS NULL OR p.wbStatus IS NULL')
+            ->setParameter('statuses', [Statuses::Active, Statuses::New]);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /**
      * Бренды на краул сайта: discover отработал, краул ещё не делали.
      * Краул раскрывает own_site → own_page (ДО полного fetch). active+new
      * (очередь дрипа тоже готовим, как discover/keywords).

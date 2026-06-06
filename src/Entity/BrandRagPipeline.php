@@ -105,6 +105,13 @@ class BrandRagPipeline
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $keywordsCheckedAt = null;
 
+    /** Исход ингеста Wildberries: null=не обрабатывали | done | no_products | error. */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $wbStatus = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $wbCheckedAt = null;
+
     /** Исход краула сайта: null=не краулили | done | skipped (нет own_site) | failed. */
     #[ORM\Column(length: 12, nullable: true)]
     private ?string $crawlStatus = null;
@@ -353,6 +360,28 @@ class BrandRagPipeline
     public function setExtractedAt(?\DateTimeInterface $at): self
     {
         $this->extractedAt = $at;
+        return $this;
+    }
+
+    public function getWbStatus(): ?string
+    {
+        return $this->wbStatus;
+    }
+
+    public function setWbStatus(?string $status): self
+    {
+        $this->wbStatus = $status;
+        return $this;
+    }
+
+    public function getWbCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->wbCheckedAt;
+    }
+
+    public function setWbCheckedAt(?\DateTimeInterface $at): self
+    {
+        $this->wbCheckedAt = $at;
         return $this;
     }
 
