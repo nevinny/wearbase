@@ -188,6 +188,12 @@ class CrawlBrandSiteCommand extends Command
             $io->warning(sprintf('    Ошибка «%s»: %s', $name, $e->getMessage()));
             $this->failed++;
             $this->recoverEm();
+            // crawl_status=failed: иначе бренд с битым/недоступным own_site переобходится
+            // КАЖДЫЙ цикл вечно (finder берёт crawl_status IS NULL). EM уже сброшен — берём свежий.
+            $fresh = $this->em->find(Brand::class, $brand->getId());
+            if ($fresh !== null) {
+                $this->finish($fresh, BrandRagPipeline::CRAWL_FAILED, $dryRun);
+            }
             return;
         }
     }
