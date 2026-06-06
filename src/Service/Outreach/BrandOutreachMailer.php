@@ -153,7 +153,7 @@ class BrandOutreachMailer
                     'mail' => [
                         'to'      => ['email' => $email],
                         'from'    => ['email' => $fromEmail, 'name' => $fromName],
-                        'subject' => sprintf('«%s» уже в каталоге Wearbase — заберите управление страницей', $brand->getTitle()),
+                        'subject' => sprintf('«%s» — ваша страница уже в каталоге Wearbase', $brand->getTitle()),
                         'html'    => $html,
                         'text'    => $text,
                         'headers' => ['List-Unsubscribe' => sprintf('<%s/e/u/%s>', $base, $token)],
