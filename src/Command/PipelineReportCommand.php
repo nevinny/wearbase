@@ -70,6 +70,7 @@ class PipelineReportCommand extends Command
         $grounded   = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE grounded=1");
         $deferred   = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='deferred'");
         $kwChecked  = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE keywords_status IS NOT NULL");
+        $kwLeft     = $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id WHERE b.status IN ('active','new') AND p.keywords_status IS NULL");
         $faqDone    = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE faq_status='done'");
         $readyPush  = $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
             WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3
@@ -116,7 +117,7 @@ class PipelineReportCommand extends Command
             "<b>Парсинг:</b> discovered %d (+%d/ч) · URL: %d ждут / %d скачано (+%d/ч) · доков %d\n" .
             "<b>⏳ ETA осушения fetch:</b> %s\n" .
             "<b>Генерация:</b> done %d (+%d/ч), grounded %d · FAQ %d · в очереди %d · deferred %d\n" .
-            "<b>Ключевики:</b> %d опрошено (+%d/ч)\n" .
+            "<b>Ключевики:</b> %d опрошено (+%d/ч) · осталось %d\n" .
             "<b>Пуш:</b> готово %d · доставлено %d\n" .
             "<b>📢 Публикации (прод):</b> сегодня %s · всего %s · ждут %s (посл. %s)\n" .
             "<b>GSC:</b> проверено %d · в индексе %d",
@@ -124,7 +125,7 @@ class PipelineReportCommand extends Command
             $discovered, $dHr, $urlPending, $urlFetched, $fHr, $docs,
             $eta,
             $done, $gHr, $grounded, $faqDone, $embedded, $deferred,
-            $kwChecked, $kHr,
+            $kwChecked, $kHr, $kwLeft,
             $readyPush, $pushed,
             $pubToday, $pubTotal, $pubWait, $pubLast,
             $gscChecked, $gscIndexed,
