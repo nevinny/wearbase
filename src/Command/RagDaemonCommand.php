@@ -43,6 +43,7 @@ class RagDaemonCommand extends Command
         'crawl'    => ['app:brand:crawl',    ['30']],  // разворот own_site → own_page в очередь (между discover и fetch)
         'fetch'    => ['app:brand:fetch',    ['--max-urls=250']], // ломоть на цикл, дренаж продолжается между циклами
         'embed'    => ['app:brand:embed',    ['30']],
+        'enrich'   => ['app:brand:enrich-contacts', ['10']], // извлечение магазинов/контактов из краула (перед generate/faq)
         'generate' => ['app:brand:generate-content', ['10', '--grounded-only']], // без фактов не генерим: вода зацементировалась бы
         'faq'      => ['app:brand:faq', ['10']],   // GPU-набор: после generate (status=done)
         'extract'  => ['app:brand:extract', ['10']],  // GPU-набор: атрибуты из краула
@@ -66,8 +67,8 @@ class RagDaemonCommand extends Command
     {
         $this
             ->addOption('stages', null, InputOption::VALUE_REQUIRED,
-                'Стадии цикла через запятую, опционально с лимитом: discover:30,fetch,embed:30,generate:10',
-                'discover,fetch,embed,generate')
+                'Стадии цикла через запятую, опционально с лимитом: discover:30,crawl:10,fetch,embed:30,enrich:10,generate:10,faq:10,extract:10,push:20',
+                'discover,crawl,fetch,embed,enrich,generate,faq,extract,push')
             ->addOption('sleep', null, InputOption::VALUE_REQUIRED, 'Пауза между циклами, сек', '60')
             ->addOption('once',  null, InputOption::VALUE_NONE,     'Один цикл и выход (для теста)')
         ;
@@ -124,6 +125,13 @@ class RagDaemonCommand extends Command
      */
     private function parseStages(string $spec, SymfonyStyle $io): ?array
     {
+        // Без --stages — полный цикл по умолчанию: все стадии КРОМЕ keywords (у того
+        // своя квота Wordstat 100/час и ~56 мин/цикл — отдельный демон, не блокирует общий).
+        // Одной командой `app:rag:daemon` (напр. после ребута) поднимается весь конвейер.
+        if (trim($spec) === '') {
+            return array_diff_key(self::STAGES, ['keywords' => null]);
+        }
+
         $stages = [];
         foreach (array_filter(array_map('trim', explode(',', $spec))) as $item) {
             [$name, $limit] = array_pad(explode(':', $item, 2), 2, null);
