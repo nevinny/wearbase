@@ -110,6 +110,13 @@ class BrandOutreachMailer
             return false;
         }
 
+        // Guard чужой сущности: email на брендовом домене ≠ own-site домена (инцидент
+        // Majestic — корпус/контакты от majestic.com при бренде majestic.store). Free-провайдеры
+        // (gmail/yandex/mail.ru) пропускаем — у мелких брендов это норма.
+        if ($this->emailDomainMismatch($brand, $email)) {
+            return false;
+        }
+
         /** @var BrandOutreachRepository $repo */
         $repo = $this->em->getRepository(BrandOutreach::class);
         if ($repo->isSuppressed($email)) {
@@ -179,5 +186,54 @@ class BrandOutreachMailer
         $this->em->flush();
 
         return true;
+    }
+
+    /** Free-провайдеры — у мелких брендов норма, домен бренда с ними не сравниваем. */
+    private const FREE_EMAIL_PROVIDERS = [
+        'gmail.com', 'yandex.ru', 'ya.ru', 'yandex.com', 'mail.ru', 'bk.ru', 'list.ru',
+        'inbox.ru', 'internet.ru', 'rambler.ru', 'icloud.com', 'me.com', 'outlook.com',
+        'hotmail.com', 'proton.me', 'protonmail.com',
+    ];
+
+    /**
+     * Email на «брендовом» домене, не совпадающем с own-site бренда → подозрение на чужую
+     * сущность (Majestic). True = НЕ слать. Free-провайдеры и отсутствие own-site → допускаем.
+     */
+    private function emailDomainMismatch(Brand $brand, string $email): bool
+    {
+        $emailDomain = $this->registrableDomain((string) strrchr($email, '@'));
+        if ($emailDomain === '' || in_array($emailDomain, self::FREE_EMAIL_PROVIDERS, true)) {
+            return false;
+        }
+
+        $siteDomain = '';
+        foreach ($brand->getLinks() as $link) {
+            if ($link->getLinkType() === 'website' && $link->getLinkUrl()) {
+                $siteDomain = $this->registrableDomain((string) parse_url($link->getLinkUrl(), PHP_URL_HOST));
+                break;
+            }
+        }
+        if ($siteDomain === '') {
+            return false; // нет own-site для сравнения — не блокируем
+        }
+
+        $mismatch = $emailDomain !== $siteDomain;
+        if ($mismatch) {
+            $this->logger->warning('outreach skipped: email domain ≠ brand site', [
+                'brand' => $brand->getId(), 'email_domain' => $emailDomain, 'site_domain' => $siteDomain,
+            ]);
+        }
+
+        return $mismatch;
+    }
+
+    /** Регистрируемый домен: последние 2 метки хоста, lowercase (mail.brand.ru → brand.ru). */
+    private function registrableDomain(string $host): string
+    {
+        $host = strtolower(trim(ltrim($host, '@')));
+        $host = preg_replace('~^www\.~', '', $host);
+        $parts = explode('.', $host);
+
+        return count($parts) >= 2 ? implode('.', array_slice($parts, -2)) : $host;
     }
 }
