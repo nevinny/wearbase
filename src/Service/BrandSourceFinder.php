@@ -65,6 +65,7 @@ class BrandSourceFinder
         private readonly UrlFilter $urlFilter,
         private readonly SourceTypeClassifier $classifier,
         private readonly ContactVerifier $verifier,
+        private readonly YandexSearchClient $yandex,
     ) {
     }
 
@@ -78,7 +79,24 @@ class BrandSourceFinder
     {
         usleep(self::QUERY_SLEEP_MS * 1000);
 
-        return $this->searx->search($query, self::PER_QUERY);
+        $results = $this->searx->search($query, self::PER_QUERY);
+
+        // Доп-источник: официальный Yandex Search API (если настроен) — закрывает
+        // яндекс-выдачу, которую SearXNG не тянет (parsing error + бот-детект). Merge с
+        // дедупом по URL; no-op пока YANDEX_SEARCH_API_KEY/FOLDER_ID не заданы.
+        if ($this->yandex->isConfigured()) {
+            $seen = [];
+            foreach ($results as $r) {
+                $seen[rtrim($r['url'], '/')] = true;
+            }
+            foreach ($this->yandex->search($query, self::PER_QUERY) as $r) {
+                if (!isset($seen[rtrim($r['url'], '/')])) {
+                    $results[] = $r;
+                }
+            }
+        }
+
+        return $results;
     }
 
     /**

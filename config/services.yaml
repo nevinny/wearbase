@@ -15,6 +15,10 @@ parameters:
     env(PAYMENT_SECRET_KEY): ''
     # Движки SearXNG для автоматики discover (толерантные к объёму с одного IP).
     env(SEARX_ENGINES): 'bing,mojeek'
+    # Официальный Yandex Search API v2 (доп-источник discover). Пусто = выключен.
+    # Нужен ОТДЕЛЬНЫЙ ключ Yandex Cloud (роль search-api.webSearch.user) + folderId.
+    env(YANDEX_SEARCH_API_KEY): ''
+    env(YANDEX_SEARCH_FOLDER_ID): ''
 
 services:
     # default configuration for services in *this* file
@@ -56,6 +60,11 @@ services:
     App\Service\UrlFilter:
         arguments:
             $extraExcludedDomains: '%env(SCRAPE_EXCLUDED_DOMAINS)%'
+
+    App\Service\YandexSearchClient:
+        arguments:
+            $apiKey: '%env(YANDEX_SEARCH_API_KEY)%'
+            $folderId: '%env(YANDEX_SEARCH_FOLDER_ID)%'
 
     App\Service\SearxClient:
         arguments:
