@@ -754,3 +754,25 @@ brand_source_url(id, brand_id, url VARCHAR(1024), url_hash CHAR(64), source_type
 ## ⚠️ Грабли деплоя (укусило дважды)
 - **rsync индивидуальных файлов на прод с --relative/неполным путём кладёт *Command.php в src/Service/** → Symfony autowire ищет класс App\Service\XxxCommand, не находит → весь сайт 500. Фикс: всегда ПОЛНЫЙ rsync `rsync -az --exclude .git --exclude var --exclude .env.local --exclude config/secrets ... ./ regru:wearbase.ru/` (без --delete, без --relative), потом `find src/{Service,Entity,Controller} -maxdepth 1 -name '*Command.php' -delete` для подчистки старых strays, затем cache:clear --no-debug.
 - После любого деплоя НОВЫХ команд на сервер/прод — обязателен `cache:clear --no-debug` (no-debug контейнер кэширует список команд отдельно).
+
+## Инцидент качества публикации + re-delivery (2026-06-08)
+
+**Триггер:** на проде опубликован Majestic с описанием-ОТКАЗОМ модели («невозможно составить описание… факты про majestic.com»). Корень: у бренда не было сайта-ссылки → discover угадал `majestic.com` (SEO-чекер беклинков) вместо `majestic.store`. Масштаб: **55** брендов на проде с refusal-описанием (текст-отказ проходил валидацию → done → публикация).
+
+### Сделано (коммиты a300cdc, 7a3496a)
+- **Refusal-гейт:** `ContentValidator::isRefusal()` (маркер `НЕДОСТАТОЧНО_ФАКТОВ` + anchored-паттерны, высокая точность, без ложных). `LlmService` промпт grounded-режима выводит маркер при отказе. `generate-content`: отказ → статус `review` (НЕ `done`), мусор не сохраняется, без retry.
+- **Статус `BrandRagPipeline::STATUS_REVIEW`** + админ-страница `/admin/rag/review` (меню «Верификация брендов»): список с описанием/ссылками/прод-линком + действия Переобогатить (reset→pending+requeue URL) / Скрыть (soft-disable локально + прод-unpublish).
+- **Прод-unpublish:** `POST /api/v1/brands/unpublish` (auth X-Agent-Token + HMAC X-Signature) → `BrandIngestService::unpublish` (status=Disabled + publish_pending=0, без delete). Admin «Скрыть» вызывает по HMAC, fail-soft.
+- **Re-delivery (version-delta):** `brand_rag_pipeline.content_changed_at` (миграция Version20260608) + предикат `findReadyToPush`: `pushedAt IS NULL OR contentChangedAt > pushedAt`. `markContentChanged()` + стампы в generate/extract/faq/enrich-contacts/contacts-refresh. **Чинит:** обогащение ПОСЛЕ первого пуша (атрибуты/магазины/контакты/faq/регенерация) раньше НЕ доезжало (push одноразовый `pushedAt IS NULL`); теперь авто-переотправляется.
+- **meta «| WEARBASE» двойной хвост:** showv3.html.twig дописывает хвост только если его нет; `LlmService` fallback без запечённого хвоста, cap title 60→48; БД-бэкфилл 67 строк (хвостов 0).
+- **Majestic:** own_site `majestic.store` (brand_link website), majestic.com → `SCRAPE_EXCLUDED_DOMAINS` (.env.local), загрязнённый корпус удалён (29 doc/32 url), pipeline сброшен в pending.
+- **app:brand:pipeline:reset-phantoms** — сброс фантомных pipeline-статусов (1151 «embedded» без векторов/доков).
+- **Прод-чистка:** 55 refusal-брендов на проде → `status='disabled'`+`publish_pending=0` (ssh regru, soft, обратимо). 55 локально сброшены в pending на пересбор.
+
+### ⚠️ Открытые follow-up
+1. **Ре-активация disabled→каталог.** 55 прод-брендов в `disabled`. После пересбора в хороший контент `upsert` НЕ флипает `disabled→active`/`new` — останутся скрыты. Нужно: действие «Вернуть» на /admin/rag/review ЛИБО авто-правило в `BrandIngestService::upsert` (бренд disabled + описание НЕ refusal → вернуть в `new`+publish_pending). **Без этого хорошо-переобработанные не вернутся в каталог.**
+2. **Деплой unpublish на прод.** Endpoint `/api/v1/brands/unpublish` есть только на dev (прод → 404). Задеплоить (полный rsync, см. «Грабли деплоя») + cache:clear, иначе «Скрыть» в админке работает только локально (fail-soft).
+3. **Запуск/рестарт RAG-демона** для пересбора 55 сброшенных. Долгоживущий демон — рестарт, чтобы подхватил `SCRAPE_EXCLUDED_DOMAINS=majestic.com` (env читается на старте процесса).
+4. **E: email-домен-guard** перед outreach — `Brand.email` может быть от чужой сущности (как majestic.com), нет проверки соответствия домену бренда.
+5. **GenerateBrandContentCommand:425** ещё режет metaTitle до 60 (безвреден — вход уже ≤48 из LlmService); при желании привести к 48.
+6. **Сольная WIP-ветка:** правки переплетены с незакоммиченным WIP (contacts:refresh: `findForContactRefresh`/`extractContactsFromContext`/`BrandRefreshContactsCommand`, prodOutreach-рефактор) — въехали в коммиты вместе (интерактивный `git add -p` в среде недоступен).
