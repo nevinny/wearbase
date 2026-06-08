@@ -13,6 +13,8 @@ parameters:
     env(BRAND_CLAIM_AUTOGRANT_EMAIL): '1'
     env(BRAND_CLAIM_AUTOGRANT_VK): '1'
     env(PAYMENT_SECRET_KEY): ''
+    # Движки SearXNG для автоматики discover (толерантные к объёму с одного IP).
+    env(SEARX_ENGINES): 'bing,mojeek'
 
 services:
     # default configuration for services in *this* file
@@ -58,6 +60,11 @@ services:
     App\Service\SearxClient:
         arguments:
             $searxUrl: '%env(SEARXNG_URL)%'
+            # Курируемый список движков для автоматики discover — толерантные к объёму
+            # с одного egress-IP. brave/yandex/google рейтлимятся/каптчатся под нагрузкой
+            # (Google режет бот-сигнатуру SearXNG, не IP), поэтому массово их НЕ дёргаем
+            # (остаются доступны в UI SearXNG). Дефолт в .env; пусто = все дефолтные движки.
+            $engines: '%env(SEARX_ENGINES)%'
 
     App\Service\Agent\BrandIngestService:
         arguments:

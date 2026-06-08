@@ -26,6 +26,8 @@ class SearxClient
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly string $searxUrl,
+        /** CSV толерантных движков для автоматики (пусто = дефолтные движки SearXNG). */
+        private readonly string $engines = '',
     ) {
     }
 
@@ -86,9 +88,16 @@ class SearxClient
      */
     private function doSearch(string $query, string $language = 'ru'): array
     {
+        $params = ['q' => $query, 'format' => 'json', 'language' => $language];
+        if (trim($this->engines) !== '') {
+            // Ограничиваем автоматику толерантными движками — brave/yandex/google не
+            // дёргаем массово (рейтлимит/CAPTCHA на бот-сигнатуру с одного egress-IP).
+            $params['engines'] = $this->engines;
+        }
+
         try {
             $response = $this->httpClient->request('GET', rtrim($this->searxUrl, '/') . '/search', [
-                'query'   => ['q' => $query, 'format' => 'json', 'language' => $language],
+                'query'   => $params,
                 'timeout' => 35,
             ]);
             if ($response->getStatusCode() >= 400) {
