@@ -65,6 +65,7 @@ class DashboardController extends AbstractDashboardController
     {
         yield MenuItem::linkToDashboard('Dashboard', 'fa fa-home');
         yield MenuItem::linkToRoute('RAG-конвейер', 'fas fa-cogs', 'admin_rag');
+        yield MenuItem::linkToRoute('Верификация брендов', 'fas fa-circle-exclamation', 'admin_rag_review');
          yield MenuItem::linkToCrud('Brands', 'fas fa-list', Brand::class);
 
         yield MenuItem::section('Dictionaries');

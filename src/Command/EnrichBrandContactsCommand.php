@@ -4,6 +4,7 @@ namespace App\Command;
 
 use App\Entity\Brand;
 use App\Entity\BrandLink;
+use App\Entity\BrandRagPipeline;
 use App\Entity\BrandStore;
 use App\Entity\BrandSourceDocument;
 use App\Repository\BrandRepository;
@@ -199,8 +200,9 @@ class EnrichBrandContactsCommand extends Command
             if ($status !== 'not_found') {
                 if ($dryRun) {
                     $this->previewContacts($data, $brand, $io);
-                } else {
-                    $this->applyContacts($brand, $data, $noVerify, $io);
+                } elseif ($this->applyContacts($brand, $data, $noVerify, $io)) {
+                    // Контакты/магазины/ссылки реально записаны → ре-доставка на прод.
+                    $this->em->getRepository(BrandRagPipeline::class)->markContentChanged($brand);
                 }
             } else {
                 $io->text('    ⊘ бренд не найден в интернете');
@@ -260,14 +262,17 @@ class EnrichBrandContactsCommand extends Command
     // Применение данных к бренду
     // =========================================================================
 
-    private function applyContacts(Brand $brand, array $data, bool $noVerify, SymfonyStyle $io): void
+    /** @return bool true = что-то реально записано (для пометки ре-доставки на прод) */
+    private function applyContacts(Brand $brand, array $data, bool $noVerify, SymfonyStyle $io): bool
     {
+        $changed = false;
         // ── Email ──────────────────────────────────────────────────────────────
         if ($data['email'] !== null
             && $this->contactVerifier->validateEmail($data['email'])
             && $brand->getEmail() === null   // не перезаписываем существующий
         ) {
             $brand->setEmail($data['email']);
+            $changed = true;
             $io->text("    ✓ email: {$data['email']}");
         } elseif ($brand->getEmail() !== null) {
             $io->text("    ⏭ email: уже есть ({$brand->getEmail()})");
@@ -279,6 +284,7 @@ class EnrichBrandContactsCommand extends Command
             && $brand->getPhone() === null
         ) {
             $brand->setPhone(mb_substr($data['phone'], 0, 20));
+            $changed = true;
             $io->text("    ✓ phone: {$data['phone']}");
         } elseif ($brand->getPhone() !== null) {
             $io->text("    ⏭ phone: уже есть ({$brand->getPhone()})");
@@ -317,6 +323,7 @@ class EnrichBrandContactsCommand extends Command
             // DefaultFields требует slug NOT NULL — генерируем из URL
             $link->setSlug(substr(md5($type . $normalizedUrl), 0, 24));
             $brand->addLink($link);
+            $changed = true;
             $io->text("    ✓ {$type}: {$normalizedUrl}");
         }
 
@@ -342,9 +349,12 @@ class EnrichBrandContactsCommand extends Command
                 }
 
                 $brand->addStore($store);
+                $changed = true;
                 $io->text("    ✓ store: {$address}");
             }
         }
+
+        return $changed;
     }
 
     private function previewContacts(array $data, Brand $brand, SymfonyStyle $io): void

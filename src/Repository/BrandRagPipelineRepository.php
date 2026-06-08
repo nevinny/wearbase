@@ -31,4 +31,15 @@ class BrandRagPipelineRepository extends ServiceEntityRepository
 
         return $pipeline;
     }
+
+    /**
+     * Помечает доставляемые данные бренда изменёнными → push переотправит их на прод
+     * (предикат contentChangedAt > pushedAt в BrandRepository::findReadyToPush).
+     * Вызывать ТОЛЬКО когда данные реально записаны (иначе ложный ре-пуш всей базы).
+     * НЕ делает flush — flush'ит вызывающая команда.
+     */
+    public function markContentChanged(Brand $brand): void
+    {
+        $this->getOrCreate($brand)->setContentChangedAt(new \DateTime());
+    }
 }

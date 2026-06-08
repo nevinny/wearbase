@@ -287,7 +287,11 @@ class GenerateBrandFaqCommand extends Command
             }
             /** @var BrandRagPipelineRepository $repo */
             $repo = $this->em->getRepository(BrandRagPipeline::class);
-            $repo->getOrCreate($brand)->setFaqStatus($status);
+            $pipeline = $repo->getOrCreate($brand)->setFaqStatus($status);
+            // FAQ реально создан → пометить для ре-доставки на прод.
+            if ($status === BrandRagPipeline::FAQ_DONE) {
+                $pipeline->setContentChangedAt(new \DateTime());
+            }
             $this->em->flush();
             $this->em->clear();
         } catch (\Throwable) {

@@ -40,6 +40,26 @@ class ContentValidator
         '/test data/i',
     ];
 
+    /** Детерминированный маркер отказа: модель обязана вывести его (и только его),
+     *  если фактов нет / они про другую сущность. См. LlmService prompt. */
+    public const REFUSAL_MARKER = 'НЕДОСТАТОЧНО_ФАКТОВ';
+
+    /**
+     * Фразы-отказы модели: LLM не смог написать описание (пустой/чужой корпус) и
+     * вернул мета-текст вместо контента. По объёму/плейсхолдерам он проходит, но это
+     * мусор — публиковать нельзя (инцидент Majestic: корпус про majestic.com, не .store).
+     * Высокоточные anchored-паттерны (привязка к задаче/бренду/чужой сущности), чтобы
+     * НЕ ловить легит-фразы вроде «отсутствует информация о размерах». Маркер выше —
+     * основной путь; эти паттерны — сеть для уже-сгенерированного и legacy.
+     */
+    private const REFUSAL_PATTERNS = [
+        '/невозможно\s+(?:составить|создать|сформировать|написать|подготовить|выполнить)/iu',
+        '/не\s+может\s+быть\s+(?:выполнен|составлен|подготовлен)/iu',
+        '/на основе предоставленных(?: проверенных)? фактов\s+(?:невозможно|нельзя|не\s)/iu',
+        '/(?:отсутству\p{L}+|не содержит|нет)\s+(?:никакой\s+|каких-либо\s+|достаточной\s+)?(?:информаци\p{L}+|сведени\p{L}+|данны\p{L}+)[^.]{0,45}(?:бренд|росси|fashion|одежд|производител|марк[еи])/iu',
+        '/(?:данные|факты|источники|материалы|сведения)[^.]{0,30}(?:относятся|описывают|касаются|посвящены)[^.]{0,30}(?:компани|сервис|другой|иностранн|маркетплейс|поисков)/iu',
+    ];
+
     public function validateDescription(string $description): array
     {
         $errors = [];
@@ -61,6 +81,17 @@ class ContentValidator
             }
         }
 
+        if (mb_stripos($description, self::REFUSAL_MARKER) !== false) {
+            $errors[] = 'Маркер отказа модели — фактов нет/чужой корпус';
+        } else {
+            foreach (self::REFUSAL_PATTERNS as $pattern) {
+                if (preg_match($pattern, $description)) {
+                    $errors[] = 'Текст-отказ модели (нет/чужой корпус) — не описание бренда';
+                    break;
+                }
+            }
+        }
+
         if (preg_match('/https?:\/\//', $description)) {
             $errors[] = 'Содержит URL';
         }
@@ -70,6 +101,21 @@ class ContentValidator
         }
 
         return $errors;
+    }
+
+    /** Описание — это отказ модели (маркер или anchored-фраза)? Для роутинга в review. */
+    public function isRefusal(string $description): bool
+    {
+        if (mb_stripos($description, self::REFUSAL_MARKER) !== false) {
+            return true;
+        }
+        foreach (self::REFUSAL_PATTERNS as $pattern) {
+            if (preg_match($pattern, $description)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function validateMeta(array $meta): array

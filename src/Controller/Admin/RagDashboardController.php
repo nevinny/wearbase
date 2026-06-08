@@ -113,39 +113,87 @@ class RagDashboardController extends AbstractController
         return $this->render('admin/rag_dashboard.html.twig', $this->viewParams($brandStatuses, $pipeline, $urlQueue, $stages, $readiness, $gsc, $outreach));
     }
 
-    /** Воронка писем с прода (brand_outreach живёт там). Fail-soft. @return array<string,mixed> */
+    /**
+     * Страница ручной верификации «подозрительных» брендов: контент-отказ модели
+     * (status='review' — факты не о бренде / недостаточны, инцидент Majestic).
+     * Владелец проходит список, сверяет данные и решает: переобогатить или скрыть.
+     */
+    #[Route('/review', name: '_review')]
+    public function review(): Response
+    {
+        $rows = $this->db->fetchAllAssociative(<<<'SQL'
+            SELECT b.id, b.title, b.slug, b.email, b.description, b.status AS brand_status,
+                   p.last_error,
+                   (SELECT l.link_url FROM brand_link l
+                      WHERE l.brand_id = b.id AND l.link_type = 'website' LIMIT 1) AS website
+            FROM brand b
+            JOIN brand_rag_pipeline p ON p.brand_id = b.id
+            WHERE p.status = 'review'
+            ORDER BY b.id
+        SQL);
+
+        return $this->render('admin/rag_review.html.twig', ['brands' => $rows]);
+    }
+
+    /** Действие из страницы ревью: requeue (переобогатить) | hide (скрыть из каталога). */
+    #[Route('/review/{id}/{action}', name: '_review_action', methods: ['POST'], requirements: ['id' => '\d+', 'action' => 'requeue|hide'])]
+    public function reviewAction(int $id, string $action, \Symfony\Component\HttpFoundation\Request $request): Response
+    {
+        if (!$this->isCsrfTokenValid('rag_review_' . $id, (string) $request->request->get('_token'))) {
+            $this->addFlash('danger', 'Неверный CSRF-токен');
+            return $this->redirectToRoute('admin_rag_review');
+        }
+
+        if ($action === 'requeue') {
+            // Сброс на пересбор корпуса: discover подхватит (discovered_at IS NULL),
+            // URL-очередь переоткрываем (fetched/failed → pending) для перечтения.
+            $this->db->executeStatement(
+                "UPDATE brand_rag_pipeline SET status='pending', discovered_at=NULL, scraped_at=NULL,
+                 embedded_at=NULL, generated_at=NULL, source_count=0, has_own_site=NULL, last_error=NULL
+                 WHERE brand_id = :id",
+                ['id' => $id],
+            );
+            $this->db->executeStatement(
+                "UPDATE brand_source_url SET status='pending' WHERE brand_id=:id AND status IN ('fetched','failed')",
+                ['id' => $id],
+            );
+            $this->addFlash('success', "Бренд #{$id} отправлен на переобогащение");
+        } else { // hide
+            // Soft-hide из каталога (политика soft-delete). Прод чистится отдельно (push/агент).
+            $this->db->executeStatement("UPDATE brand SET status='inactive' WHERE id=:id", ['id' => $id]);
+            $this->db->executeStatement("UPDATE brand_rag_pipeline SET last_error='review: скрыт вручную' WHERE brand_id=:id", ['id' => $id]);
+            $this->addFlash('success', "Бренд #{$id} скрыт из каталога");
+        }
+
+        return $this->redirectToRoute('admin_rag_review');
+    }
+
+    /** Воронка email-активации владельцев брендов — прямой запрос к local-DB. */
     private function prodOutreach(): array
     {
-        if (trim((string) $this->prodApiUrl) === '' || trim((string) $this->agentToken) === '') {
-            return ['статус' => 'прод не настроен'];
+        $row = $this->db->fetchAssociative(<<<'SQL'
+            SELECT
+                COUNT(*)                                        AS sent,
+                SUM(o.delivered_at IS NOT NULL)                 AS delivered,
+                SUM(o.first_opened_at  IS NOT NULL)             AS opened,
+                SUM(o.first_clicked_at IS NOT NULL)             AS clicked,
+                SUM(o.unsubscribed_at IS NOT NULL)              AS unsubscribed,
+                SUM(o.bounced_at IS NOT NULL)                   AS bounced
+            FROM brand_outreach o
+            WHERE o.sent_at IS NOT NULL AND o.sent_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        SQL) ?: [];
+
+        if ((int) ($row['sent'] ?? 0) === 0) {
+            return ['отправлено' => 0, 'примечание' => 'писем пока нет'];
         }
-        try {
-            $data = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/outreach-stats', [
-                'headers' => ['X-Agent-Token' => (string) $this->agentToken],
-                'timeout' => 4,
-            ])->toArray(false);
-            // берём окно 30д как сводку
-            $c = [];
-            foreach (($data['cohorts'] ?? []) as $row) {
-                if (($row['label'] ?? '') === '30d') {
-                    $c = $row;
-                }
-            }
-            if ($c === []) {
-                return ['отправлено' => 0, 'примечание' => 'писем пока нет'];
-            }
-            return [
-                'отправлено (30д)' => (int) ($c['sent'] ?? 0),
-                'доставлено'       => (int) ($c['delivered'] ?? 0),
-                'открыто'          => (int) ($c['opened'] ?? 0),
-                'кликов'           => (int) ($c['clicked'] ?? 0),
-                'claim'            => (int) ($c['claimed'] ?? 0),
-                'подписок'         => (int) ($c['subscribed'] ?? 0),
-                'отписок/жалоб'    => (int) ($c['unsubscribed'] ?? 0) + (int) ($c['bounced'] ?? 0),
-            ];
-        } catch (\Throwable) {
-            return ['статус' => 'прод недоступен'];
-        }
+
+        return [
+            'отправлено (30д)' => (int) ($row['sent'] ?? 0),
+            'доставлено'       => (int) ($row['delivered'] ?? 0),
+            'открыто'          => (int) ($row['opened'] ?? 0),
+            'кликов'           => (int) ($row['clicked'] ?? 0),
+            'отписок/жалоб'    => (int) ($row['unsubscribed'] ?? 0) + (int) ($row['bounced'] ?? 0),
+        ];
     }
 
     /**

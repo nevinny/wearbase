@@ -286,6 +286,24 @@ class GenerateBrandContentCommand extends Command
             keywords: $keywords,
         );
 
+        // Отказ модели (факты про другую сущность / недостаточны) — НЕ публикуем и НЕ
+        // ретраим (корпус не тот, повтор не поможет). Бренд → review для ручной
+        // верификации в админке; старое description не перезаписываем мусором.
+        if ($this->validator->isRefusal($description)) {
+            $io->warning(sprintf('Отказ модели для "%s" → review (ручная верификация)', $brandName));
+            if (!$dryRun) {
+                /** @var \App\Repository\BrandRagPipelineRepository $repo */
+                $repo = $this->em->getRepository(BrandRagPipeline::class);
+                $repo->getOrCreate($brand)
+                    ->setStatus(BrandRagPipeline::STATUS_REVIEW)
+                    ->setLastError('refusal: факты не о бренде / недостаточны');
+                $this->em->flush();
+                $this->em->clear();
+            }
+            $this->deferred++;
+            return;
+        }
+
         if (!$skipValidate) {
             $descErrors = $this->validator->validateDescription($description);
             if (!empty($descErrors)) {
@@ -349,7 +367,11 @@ class GenerateBrandContentCommand extends Command
             ->setStatus(\App\Entity\BrandRagPipeline::STATUS_DONE)
             ->setGeneratedAt(new \DateTime())
             ->setGrounded($rag['context'] !== null)
-            ->setTopRetrievalScore($rag['score'] ?? null);
+            ->setTopRetrievalScore($rag['score'] ?? null)
+            // Описание/meta записаны → пометить для (ре-)доставки на прод. На первой
+            // генерации pushedAt=NULL и так делает бренд eligible; при регенерации
+            // уже пушенного (рост корпуса, wb-enrich) — contentChangedAt > pushedAt.
+            ->setContentChangedAt(new \DateTime());
     }
 
     // -------------------------------------------------------------------------

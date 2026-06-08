@@ -28,6 +28,8 @@ class BrandRagPipeline
     public const STATUS_GENERATE_FAILED = 'generate_failed';
     /** Корпус не прошёл gate при --grounded-only: ждём дозревания (новые URL → fetch вернёт в scraped). */
     public const STATUS_DEFERRED        = 'deferred';
+    /** Контент — отказ модели (нет/чужой корпус): на ручную верификацию в админке, НЕ публикуем. */
+    public const STATUS_REVIEW          = 'review';
 
     public const KW_FOUND     = 'found';
     public const KW_NOT_FOUND = 'not_found';
@@ -133,6 +135,11 @@ class BrandRagPipeline
     /** Когда бренд доставлен на прод агентом-пушем (null = не доставлен). */
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $pushedAt = null;
+
+    /** Когда доставляемые данные менялись (обогащение после пуша). Триггер ре-доставки:
+     *  push берёт бренд, если contentChangedAt > pushedAt (см. findReadyToPush). */
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $contentChangedAt = null;
 
     #[ORM\Column(options: ['default' => 0])]
     private int $pushAttempts = 0;
@@ -426,6 +433,17 @@ class BrandRagPipeline
     public function setPushedAt(?\DateTimeInterface $at): self
     {
         $this->pushedAt = $at;
+        return $this;
+    }
+
+    public function getContentChangedAt(): ?\DateTimeInterface
+    {
+        return $this->contentChangedAt;
+    }
+
+    public function setContentChangedAt(?\DateTimeInterface $at): self
+    {
+        $this->contentChangedAt = $at;
         return $this;
     }
 

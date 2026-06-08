@@ -1,0 +1,71 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block page_title %}Верификация брендов{% endblock %}
+
+{% block main %}
+<style>
+    .rv-intro { font-size: 14px; opacity: .8; margin: 8px 0 20px; }
+    .rv-table { width: 100%; font-size: 14px; border-collapse: collapse; }
+    .rv-table th, .rv-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-color, #444); text-align: left; vertical-align: top; }
+    .rv-table th { font-size: 12px; text-transform: uppercase; opacity: .65; }
+    .rv-desc { max-width: 520px; font-size: 13px; opacity: .85; white-space: pre-line; }
+    .rv-meta a { margin-right: 12px; white-space: nowrap; }
+    .rv-actions form { display: inline; }
+    .rv-actions button { border: 1px solid var(--border-color, #888); background: transparent; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; margin-bottom: 4px; }
+    .rv-actions .req { color: var(--bs-warning, #b8860b); }
+    .rv-actions .hide { color: var(--bs-danger, #c0392b); }
+    .rv-empty { padding: 40px; text-align: center; opacity: .6; }
+</style>
+
+<h1>Верификация подозрительных брендов</h1>
+<p class="rv-intro">
+    Контент — отказ модели (факты не о бренде или их недостаточно, напр. собран корпус про чужую сущность).
+    Сверьте данные по ссылкам и решите: <b>переобогатить</b> (пересобрать корпус — например, после правки сайта бренда)
+    или <b>скрыть</b> из каталога. Удаление из прод-каталога выполняется отдельно (push/агент).
+</p>
+
+{% for label, msgs in app.flashes %}
+    {% for msg in msgs %}<div class="alert alert-{{ label }}">{{ msg }}</div>{% endfor %}
+{% endfor %}
+
+{% if brands is empty %}
+    <div class="rv-empty">✓ Брендов на верификации нет.</div>
+{% else %}
+<table class="rv-table">
+    <thead>
+        <tr><th>#</th><th>Бренд</th><th>Описание (отказ)</th><th>Проверить</th><th>Действие</th></tr>
+    </thead>
+    <tbody>
+    {% for b in brands %}
+        <tr>
+            <td>{{ b.id }}</td>
+            <td>
+                <b>{{ b.title }}</b><br>
+                <small style="opacity:.6">{{ b.slug }}</small>
+                {% if b.brand_status != 'active' and b.brand_status != 'new' %}<br><span class="badge bg-secondary">{{ b.brand_status }}</span>{% endif %}
+            </td>
+            <td class="rv-desc">{{ b.description|slice(0, 400) }}{% if b.description|length > 400 %}…{% endif %}</td>
+            <td class="rv-meta">
+                {% if b.website %}<a href="{{ b.website }}" target="_blank" rel="noopener">сайт ↗</a>{% endif %}
+                <a href="https://www.google.com/search?q={{ b.title|url_encode }}+бренд+одежды" target="_blank" rel="noopener">Google ↗</a>
+                <a href="https://wearbase.ru/ru/brands/{{ b.slug }}" target="_blank" rel="noopener">прод ↗</a>
+                {% if b.email %}<br><small>{{ b.email }}</small>{% endif %}
+            </td>
+            <td class="rv-actions">
+                {% set token = csrf_token('rag_review_' ~ b.id) %}
+                <form method="post" action="{{ path('admin_rag_review_action', {id: b.id, action: 'requeue'}) }}">
+                    <input type="hidden" name="_token" value="{{ token }}">
+                    <button type="submit" class="req" title="Пересобрать корпус">↻ Переобогатить</button>
+                </form>
+                <form method="post" action="{{ path('admin_rag_review_action', {id: b.id, action: 'hide'}) }}"
+                      onsubmit="return confirm('Скрыть бренд {{ b.title|e('js') }} из каталога?')">
+                    <input type="hidden" name="_token" value="{{ token }}">
+                    <button type="submit" class="hide" title="Скрыть из каталога">⊘ Скрыть</button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

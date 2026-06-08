@@ -126,6 +126,14 @@ class LlmService
             ? '- Опирайся ТОЛЬКО на «Проверенные факты» выше; не добавляй то, чего там нет'
             : '- Если данных о бренде нет — опиши российский streetwear-сегмент в целом';
 
+        // Детерминированный отказ: если факты про другую сущность/недостаточны — модель
+        // выводит маркер вместо «вежливого» абзаца-отказа (его ловит ContentValidator).
+        $refusalRule = $grounded
+            ? "\n- ВАЖНО: если «Проверенные факты» относятся к ДРУГОЙ компании/сервису (не к этому бренду одежды) "
+                . 'или их недостаточно для описания — выведи РОВНО одну строку «' . ContentValidator::REFUSAL_MARKER
+                . '» и больше НИЧЕГО. Не объясняй, не извиняйся, не выдумывай факты'
+            : '';
+
         // SEO (A): естественно вплести реальные поисковые запросы (Wordstat), БЕЗ переспама.
         $kwRule = ($keywords !== null && trim($keywords) !== '')
             ? "\n- SEO: естественно и органично вплети 2–4 из этих поисковых запросов (НЕ перечисляй списком, НЕ переспамь): {$keywords}"
@@ -143,7 +151,7 @@ class LlmService
 - Включи: нишу бренда, философию, особенности (при наличии данных)
 - НЕ используй слова: "инновационный", "уникальный", "передовой", "лидирующий", "новаторский", "выделяется", "отличается"
 - НЕ используй фразы: "мы стремимся", "наша миссия", "в современном мире"
-{$sourceRule}{$kwRule}
+{$sourceRule}{$refusalRule}{$kwRule}
 
 Формат: только текст, без заголовков и markdown-разметки.
 EOT;
@@ -365,6 +373,60 @@ EOT;
         }
 
         return $this->normalizeContactsResponse($parsed);
+    }
+
+    /**
+     * Структурное извлечение контактов из УЖЕ собранного RAG-контекста (строка,
+     * возвращённая BrandRagService::retrieve()). Промпт легче, чем
+     * extractBrandContactsFromText (там скрейп-текст может быть мусорным).
+     * Используется в app:contacts:refresh.
+     *
+     * @return array{email:?string,phone:?string,address:?string,social:list<string>}
+     */
+    public function extractContactsFromContext(string $brandName, string $context): array
+    {
+        $trimmed = mb_substr($context, 0, 8000);
+
+        $prompt = <<<EOT
+    Из РАЗНЫХ источников (факты о бренде одежды «{$brandName}») извлеки контактные данные.
+    Используй ТОЛЬКО то, что написано в фактах — НИЧЕГО не выдумывай.
+    Если каких-то данных нет — ставь null или пустой массив.
+
+    ФАКТЫ:
+    {$trimmed}
+
+    Верни ТОЛЬКО валидный JSON (без markdown, без пояснений):
+    {
+      "email":   "info@example.com или null",
+      "phone":   "+7XXXXXXXXXX или null",
+      "address": "полный адрес или null",
+      "social":  ["https://vk.com/...", "https://t.me/..."]
+    }
+
+    Правила:
+    - email: только если явно написано «@»; «@telodvigeniia» — это соцсеть, не email
+    - phone: только полные номера с кодом страны
+    - social: полные URL (https://...) или null-массив; упоминания @никнейм — не ссылка, не включай
+    - Поля, которых нет в фактах — null/null
+    EOT;
+
+        $response = $this->generate($prompt, local: true, think: false, timeout: 120);
+        $d = $this->extractJson($response) ?? [];
+
+        $social = [];
+        foreach (($d['social'] ?? []) as $s) {
+            $s = is_string($s) ? trim($s) : '';
+            if ($s !== '' && filter_var($s, FILTER_VALIDATE_URL)) {
+                $social[] = $s;
+            }
+        }
+
+        return [
+            'email'   => $this->nullableString($d['email'] ?? null),
+            'phone'   => $this->nullableString($d['phone'] ?? null),
+            'address' => $this->nullableString($d['address'] ?? null),
+            'social'  => $social,
+        ];
     }
 
     /**

@@ -6,6 +6,7 @@ use App\Entity\BrandKeyword;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use App\Entity\Brand;
 use App\Entity\BrandRagPipeline;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -222,6 +223,52 @@ class BrandRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * Приоритетная выборка брендов для app:contacts:refresh.
+     *
+     * Порядок: bounced → partial → stale (TTL) → never enriched → остальные.
+     *
+     * @param int  $limit   макс брендов
+     * @param int  $ttlDays через сколько дней после последнего обогащения считать устаревшим
+     * @param bool $force   все бренды без фильтра
+     * @return Brand[]
+     */
+    public function findForContactRefresh(int $limit, int $ttlDays = 180, bool $force = false): array
+    {
+        if ($force) {
+            return $this->findBy([], ['id' => 'ASC'], $limit);
+        }
+
+        $conn = $this->getEntityManager()->getConnection();
+        $ttl  = (new \DateTime())->modify("-{$ttlDays} days")->format('Y-m-d H:i:s');
+
+        $ids = $conn->fetchFirstColumn(
+            "SELECT b.id FROM brand b
+             LEFT JOIN brand_outreach o ON o.brand_id = b.id AND o.bounced_at IS NOT NULL
+             WHERE b.status IN ('active', 'new')
+             ORDER BY
+                 CASE
+                     WHEN o.bounced_at IS NOT NULL THEN 0
+                     WHEN b.contact_status = 'partial'             THEN 1
+                     WHEN b.contact_enriched_at IS NOT NULL
+                          AND b.contact_enriched_at < :ttl          THEN 2
+                     WHEN b.contact_enriched_at IS NULL             THEN 3
+                     ELSE 4
+                 END,
+                 b.contact_enriched_at IS NULL DESC,
+                 b.contact_enriched_at ASC
+             LIMIT :limit",
+            ['ttl' => $ttl, 'limit' => $limit],
+            ['ttl' => Types::STRING, 'limit' => \PDO::PARAM_INT],
+        );
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return $this->findBy(['id' => $ids], ['id' => 'ASC']);
+    }
+
     // =========================================================================
     // RAG pipeline stage finders (см. BrandRagPipeline). Каждый воркер берёт
     // бренды на своём этапе; шардинг MOD(b.id, total)=shard даёт непересекающиеся
@@ -357,30 +404,35 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
-     * Бренды, готовые к доставке на прод (isPublishReady, развёрнутый в SQL)
-     * и ещё не доставленные. Ретраи: push_attempts < maxAttempts.
+     * Бренды, готовые к доставке на прод (isPublishReady, развёрнутый в SQL):
+     * никогда не пушенные ИЛИ изменённые обогащением после пуша
+     * (contentChangedAt > pushedAt). --force (includePushed) берёт все.
+     * Ретраи: push_attempts < maxAttempts.
      */
-    public function findReadyToPush(int $limit, int $shard = 0, int $total = 1, int $maxAttempts = 3): array
+    public function findReadyToPush(int $limit, int $shard = 0, int $total = 1, int $maxAttempts = 3, bool $includePushed = false, bool $oldestFirst = false): array
     {
         $qb = $this->createQueryBuilder('b')
             ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
             ->where('p.status = :done')
-            ->andWhere('p.pushedAt IS NULL')
             ->andWhere('p.pushAttempts < :maxAttempts')
+            ->andWhere($includePushed ? '1=1' : '(p.pushedAt IS NULL OR p.contentChangedAt > p.pushedAt)')
             ->andWhere('p.faqStatus IN (:faqOk)')
             ->andWhere('p.keywordsStatus IN (:kwOk)')
             ->andWhere("b.description IS NOT NULL AND b.description != ''")
             ->andWhere("b.metaTitle IS NOT NULL AND b.metaTitle != ''")
             ->andWhere("b.metaDescription IS NOT NULL AND b.metaDescription != ''")
+            // Качество описания (refusal-текст) гейтит ContentValidator на этапе генерации
+            // (новые бренды) + app:brand:revalidate-content демотирует уже-done refusal'ы в
+            // deferred. Здесь хватает status=done — отдельный SQL-regexp хрупок и дублирует.
             ->setParameter('done', BrandRagPipeline::STATUS_DONE)
             ->setParameter('maxAttempts', $maxAttempts)
             ->setParameter('faqOk', [BrandRagPipeline::FAQ_DONE, BrandRagPipeline::FAQ_SKIPPED])
             ->setParameter('kwOk', [BrandRagPipeline::KW_FOUND, BrandRagPipeline::KW_NOT_FOUND]);
 
-        return $this->finishStageQuery($qb, $limit, $shard, $total);
+        return $this->finishStageQuery($qb, $limit, $shard, $total, $includePushed && $oldestFirst);
     }
 
-    private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total): array
+    private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total, bool $oldestFirst = false): array
     {
         if ($total > 1) {
             $qb->andWhere('MOD(b.id, :total) = :shard')
@@ -388,8 +440,16 @@ class BrandRepository extends ServiceEntityRepository
                 ->setParameter('shard', $shard);
         }
 
-        return $qb->orderBy('b.id', 'ASC')
-            ->setMaxResults($limit)
+        if ($oldestFirst) {
+            // NULLs first (никогда не пушились), потом самые старые по pushedAt
+            $qb->addOrderBy('CASE WHEN p.pushedAt IS NULL THEN 0 ELSE 1 END', 'ASC')
+                ->addOrderBy('p.pushedAt', 'ASC')
+                ->addOrderBy('b.id', 'ASC');
+        } else {
+            $qb->addOrderBy('b.id', 'ASC');
+        }
+
+        return $qb->setMaxResults($limit)
             ->getQuery()
             ->getResult();
     }
