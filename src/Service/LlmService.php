@@ -261,7 +261,7 @@ EOT;
     private function normalizeMeta(array $meta): array
     {
         return [
-            'title'       => $this->truncateAtWord($meta['title'] ?? '', 60),
+            'title'       => $this->truncateAtWord($meta['title'] ?? '', 48),
             'description' => $this->truncateAtWord($meta['description'] ?? '', 155),
             'keywords'    => mb_substr($meta['keywords'] ?? '', 0, 200),
         ];
@@ -583,7 +583,7 @@ EOT;
     private function fallbackMeta(string $brandName, ?string $description = null): array
     {
         return [
-            'title'       => "{$brandName} — бренд одежды | WEARBASE",
+            'title'       => "{$brandName} — бренд одежды",
             'description' => $description
                 ? mb_substr($description, 0, 155)
                 : "Каталог одежды бренда {$brandName} в WEARBASE",

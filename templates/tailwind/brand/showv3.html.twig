@@ -1,0 +1,589 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set _bt = brand_t(brand, 'title') %}
+{% set _ba = brand_t(brand, 'anons') %}
+{% set _bd = brand_t(brand, 'description') %}
+
+{# meta_* из БД — уникальные на бренд + хвост | WEARBASE #}
+{% set _mt_raw = brand_t(brand, 'metaTitle') ?: (_bt ~ ' — ' ~ (brand.city ? 'бренд из ' ~ brand.city : 'российский бренд')) %}
+{% set _bmt = 'WEARBASE' in _mt_raw ? _mt_raw : _mt_raw ~ ' | WEARBASE' %}
+{% set _bmd = brand_t(brand, 'metaDescription') ?: (_ba ? _ba|slice(0,155) : (_bd ? _bd|striptags|slice(0,155) : '')) %}
+
+{% block title %}{{ _bmt }}{% endblock %}
+{% block meta_description %}{{ _bmd }}{% endblock %}
+{% block meta_keywords %}{{ brand_t(brand, 'metaKeywords') ?: (_bt ~ ', бренд, одежда, купить ' ~ _bt) }}{% endblock %}
+{% block og_title %}{{ _bmt }}{% endblock %}
+{% block og_description %}{{ _bmd }}{% endblock %}
+
+{% block og_image %}{% if brand.logo %}{{ absolute_url(asset('images/logos/' ~ brand.logo)) }}{% else %}{{ absolute_url('/og-image.png') }}{% endif %}{% endblock %}
+
+{% block canonical_url %}{{ url('brand_show', {slug: brand.slug}) }}{% endblock %}
+
+{% block structured_data %}
+    {{ parent() }}
+    {% set _price_range = attrGroups['price_segment'] is defined ? attrGroups['price_segment']|first.value : '' %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "WebPage",
+                "@id": "{{ url('brand_show', {slug: brand.slug}) }}#webpage",
+                "url": "{{ url('brand_show', {slug: brand.slug}) }}",
+                "name": "{{ _bmt }}",
+                "description": "{{ _bmd|escape('js') }}",
+                "datePublished": "{{ brand.createdAt ? brand.createdAt|date('Y-m-d') : 'now'|date('Y-m-d') }}",
+                "dateModified": "{{ brand.updatedAt ? brand.updatedAt|date('Y-m-d') : 'now'|date('Y-m-d') }}",
+                "inLanguage": "{{ brand.locale|default('ru') }}",
+                "isPartOf": {"@id": "#website"},
+                "breadcrumb": {"@id": "{{ url('brand_show', {slug: brand.slug}) }}#breadcrumb"},
+                "mainEntity": {"@id": "{{ url('brand_show', {slug: brand.slug}) }}#brand"}
+            },
+            {
+                "@type": "BreadcrumbList",
+                "@id": "{{ url('brand_show', {slug: brand.slug}) }}#breadcrumb",
+                "itemListElement": [
+                    {
+                        "@type": "ListItem",
+                        "position": 1,
+                        "name": "Главная",
+                        "item": "{{ url('home_hub', {_locale: app.request.locale|default('ru')}) }}"
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 2,
+                        "name": "Бренды",
+                        "item": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}"
+                    },
+                    {
+                        "@type": "ListItem",
+                        "position": 3,
+                        "name": "{{ _bt }}",
+                        "item": "{{ url('brand_show', {slug: brand.slug}) }}"
+                    }
+                ]
+            },
+            {
+                "@type": "Organization",
+                "@id": "{{ url('brand_show', {slug: brand.slug}) }}#brand",
+                "name": "{{ _bt }}",
+                "description": "{{ (_ba ?: _bd ?: 'Российский бренд')|striptags|slice(0,500)|escape('js') }}",{% if _price_range %}
+                "priceRange": "{{ _price_range }}",{% endif %}
+                "url": "{{ brand.links|first.linkUrl ?? '' }}",
+                {% if brand.foundingYear %}
+                "foundingDate": "{{ brand.foundingYear }}",
+                {% endif %}
+                {% if brand.city %}
+                "foundingLocation": {
+                    "@type": "Place",
+                    "name": "{{ brand.city }}{% if brand.country %}, {{ brand.country }}{% endif %}"
+                },
+                {% endif %}
+                {% set _org_image = absolute_url(brand.logo ? asset('images/logos/' ~ brand.logo) : '/og-image.png') %}
+                {% if brand.activeStores|length > 0 %}
+                "location": [
+                    {% for store in brand.activeStores %}
+                    {
+                        "@type": "LocalBusiness",
+                        "name": "{{ store.address|escape('js') }}{% if store.city %}, {{ store.city|escape('js') }}{% endif %}",
+                        "image": "{{ _org_image }}",
+                        "address": {
+                            "@type": "PostalAddress",
+                            "streetAddress": "{{ store.address|escape('js') }}"
+                            {% if store.city %}, "addressLocality": "{{ store.city|escape('js') }}"{% endif %}
+                        }{% if store.phone %},
+                        "telephone": "{{ store.phone|escape('js') }}"{% endif %}
+                    }{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                {% endif %}
+                {% if brand.logo %}
+                "logo": {
+                    "@type": "ImageObject",
+                    "url": "{{ absolute_url(asset('images/logos/' ~ brand.logo)) }}"
+                },
+                {% endif %}
+                "image": "{{ _org_image }}",
+                "sameAs": {{ sameAsLinks|json_encode|raw }}
+            }
+            {# FAQPage — реальный из brand_faq или boilerplate #}
+            {% if faqs is defined and faqs|length > 0 %},
+            {
+                "@type": "FAQPage",
+                "mainEntity": [
+                    {% for faq in faqs %}
+                    {
+                        "@type": "Question",
+                        "name": "{{ faq.question|escape('js') }}",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "{{ faq.answer|escape('js') }}"
+                        }
+                    }{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ]
+            }
+            {% elseif faqs is not defined or faqs|length == 0 %},
+            {
+                "@type": "FAQPage",
+                "mainEntity": [
+                    {
+                        "@type": "Question",
+                        "name": "Где купить одежду бренда {{ _bt }}?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "Одежду бренда {{ _bt }} можно приобрести на официальном сайте бренда или в фирменных магазинах.{{ brand.city ? ' Бренд базируется в городе ' ~ brand.city ~ '.' : '' }}"
+                        }
+                    },
+                    {
+                        "@type": "Question",
+                        "name": "Какой стиль у бренда {{ _bt }}?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "{% if brand.styles|length > 0 %}{{ brand.styles|map(s => s.title)|join(', ') }}.{% else %}Бренд предлагает актуальную одежду в современном стиле.{% endif %}"
+                        }
+                    },
+                    {
+                        "@type": "Question",
+                        "name": "Доставляет ли {{ _bt }} заказы по России?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "Для получения актуальной информации о доставке рекомендуем посетить официальный сайт бренда."
+                        }
+                    },
+                    {
+                        "@type": "Question",
+                        "name": "Есть ли у бренда {{ _bt }} размеры для больших размеров?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": "{% if brand.sizes|length > 0 %}Доступные размеры: {{ brand.sizes|map(s => s.title)|join(', ') }}.{% else %}Информацию о размерах смотрите на сайте бренда.{% endif %}"
+                        }
+                    }
+                ]
+            }
+            {% endif %}
+        ]
+    }
+    </script>
+{% endblock %}
+
+{% block body %}
+    <div class="container mx-auto px-4 py-10">
+        {# Хлебные крошки для SEO #}
+        {% set show_locale = app.request.locale|default('ru') %}
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: show_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <a href="{{ path('brand_index', {_locale: show_locale}) }}" class="text-gray-500 hover:text-gray-900">Бренды</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">{{ _bt }}</span>
+        </nav>
+
+        {# --- Header бренда --- #}
+        <section class="w-full bg-gray-50 py-12 mb-16 border-b">
+            <div class="max-w-6xl mx-auto px-4">
+                <div class="flex flex-col lg:flex-row items-center gap-10 lg:gap-12">
+                    {% if brand.logo %}
+                        <div class="flex-shrink-0">
+                            <img src="{{ asset('images/logos/' ~ brand.logo) }}"
+                                 alt="Логотип бренда {{ _bt }}"
+                                 width="320"
+                                 height="200"
+                                 class="w-80 h-50 object-contain rounded-2xl bg-white p-8 shadow-2xl border border-gray-100"
+                                 loading="eager">
+                        </div>
+                    {% endif %}
+
+                    <div class="flex-1 text-center lg:text-left">
+                        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-gray-900">{{ _bt }}</h1>
+
+                        {% if _ba %}
+                            <p class="text-gray-700 text-xl lg:text-2xl leading-relaxed max-w-3xl mx-auto lg:mx-0 font-light">
+                                {{ _ba }}
+                            </p>
+                        {% endif %}
+
+                        {# CTA «Я владелец» #}
+                        <div class="mt-6">
+                            {% if app.user and isMemberOfThisBrand %}
+                                <a href="{{ path('brand_dashboard') }}"
+                                   class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition shadow-sm">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                                    </svg>
+                                    Кабинет бренда
+                                </a>
+                            {% else %}
+                                <a href="{{ path('brand_claim_new', {id: brand.id}) }}"
+                                   class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-800 hover:border-gray-900 hover:text-gray-900 transition shadow-sm">
+                                    <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                    </svg>
+                                    Я владелец бренда
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {% include 'tailwind/brand/images.html.twig' %}
+
+        {# --- Основная информация о бренде --- #}
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+            {# Контент бренда #}
+            <div class="lg:col-span-2">
+                {% if _bd %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">О бренде {{ _bt }}</h2>
+                        <div class="prose max-w-none text-gray-700 leading-relaxed">
+                            <p style="white-space: pre-line">{{ _bd }}</p>
+                        </div>
+                    </section>
+                {% endif %}
+
+                {# --- FAQ (grounded, из Wordstat) --- #}
+                {% if faqs is defined and faqs|length > 0 %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">Вопросы и ответы о {{ _bt }}</h2>
+                        <div class="divide-y divide-gray-100">
+                            {% for faq in faqs %}
+                                <details class="group py-3">
+                                    <summary class="flex items-center justify-between cursor-pointer list-none font-medium text-gray-900 hover:text-gray-600">
+                                        <span>{{ faq.question }}</span>
+                                        <svg class="w-5 h-5 text-gray-400 shrink-0 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                        </svg>
+                                    </summary>
+                                    <p class="mt-2 text-gray-700 leading-relaxed">{{ faq.answer }}</p>
+                                </details>
+                            {% endfor %}
+                        </div>
+                    </section>
+                {% endif %}
+
+                {# --- Характеристики бренда (краудсорс) --- #}
+                {% if attrGroups is defined and attrGroups is not empty %}
+                    {% set _attr_labels = {'category': 'Ассортимент', 'size': 'Размеры', 'material': 'Материалы', 'style': 'Стиль', 'gender': 'Аудитория', 'price_segment': 'Сегмент', 'geo': 'Производство'} %}
+                    {% set _attr_order = ['category', 'size', 'material', 'style', 'gender', 'price_segment', 'geo'] %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">Характеристики {{ _bt }}</h2>
+                        <dl class="space-y-3">
+                            {% for key in _attr_order %}
+                                {% if attrGroups[key] is defined %}
+                                    <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                                        <dt class="text-sm text-gray-500 sm:w-36 shrink-0 pt-1">{{ _attr_labels[key] }}</dt>
+                                        <dd class="flex flex-wrap gap-2">
+                                            {% for a in attrGroups[key] %}
+                                                <span class="inline-flex items-center gap-1 bg-gray-100 rounded-full px-3 py-1 text-sm text-gray-800">
+                                                    {{ a.value }}
+                                                    <span class="dp-vote" data-nosnippet data-type="brand_attribute" data-target="{{ a.id }}" data-field="value"></span>
+                                                </span>
+                                            {% endfor %}
+                                        </dd>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        </dl>
+                    </section>
+                {% endif %}
+
+                {# --- Физические магазины (brand_store) --- #}
+                {% if brand.activeStores|length > 0 %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">Магазины {{ _bt }}</h2>
+                        <ul class="space-y-4">
+                            {% for store in brand.activeStores %}
+                                {% if hiddenDp is not defined or ('brand_store:' ~ store.id ~ ':address') not in hiddenDp|keys %}
+                                <li class="flex items-start gap-3">
+                                    <svg class="w-5 h-5 text-gray-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    </svg>
+                                    <div class="flex-1">
+                                        <div class="font-medium text-gray-900">{{ store.address }}</div>
+                                        <div class="text-sm text-gray-500">
+                                            {{ store.city }}{% if store.workHours %} · {{ store.workHours }}{% endif %}{% if store.phone %} · <a href="tel:{{ store.phone }}" class="hover:text-gray-900">{{ store.phone }}</a>{% endif %}
+                                        </div>
+                                    </div>
+                                    <span class="dp-vote shrink-0" data-nosnippet data-type="brand_store" data-target="{{ store.id }}" data-field="address"></span>
+                                </li>
+                                {% endif %}
+                            {% endfor %}
+                        </ul>
+                    </section>
+                {% endif %}
+
+                {# --- Похожие бренды --- #}
+                {% if similarBrands is defined and similarBrands|length > 0 %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-6">Похожие бренды</h2>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            {% for similar in similarBrands %}
+                                <a href="{{ path('brand_show', {slug: similar.slug}) }}"
+                                   class="group bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition border">
+                                    {% if similar.logo %}
+                                        <img src="{{ asset('images/logos/' ~ similar.logo) }}"
+                                             alt="{{ similar.title }}"
+                                             class="w-full h-24 object-contain p-2 group-hover:scale-105 transition">
+                                    {% else %}
+                                        <div class="w-full h-24 bg-gray-200 flex items-center justify-center">
+                                            <span class="text-gray-400 text-sm">{{ similar.title }}</span>
+                                        </div>
+                                    {% endif %}
+                                    <div class="p-3 text-center">
+                                        <div class="font-medium text-sm truncate">{{ similar.title }}</div>
+                                        {% if similar.city %}
+                                            <div class="text-xs text-gray-500">{{ similar.city }}</div>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </section>
+                {% endif %}
+
+                {# --- Товары бренда --- #}
+                {% if products is defined and products|length > 0 %}
+                    <section class="bg-white rounded-xl shadow-sm p-6">
+                        <h2 class="text-2xl font-semibold mb-6">Товары бренда {{ _bt }}</h2>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {% for product in products %}
+                                <a class="bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition transform hover:-translate-y-1 border">
+                                    {% if product.image %}
+                                        <img src="{{ asset('uploads/products/' ~ product.image) }}"
+                                             alt="{{ product.title }} - {{ _bt }}"
+                                             width="300"
+                                             height="300"
+                                             loading="lazy"
+                                             class="w-full h-48 object-cover">
+                                    {% else %}
+                                        <div class="w-full h-48 bg-gray-200 flex items-center justify-center">
+                                            <span class="text-gray-400">Нет изображения</span>
+                                        </div>
+                                    {% endif %}
+                                    <div class="p-3">
+                                        <div class="font-medium truncate text-sm">{{ product.title }}</div>
+                                        {% if product.price %}
+                                            <div class="text-indigo-600 font-semibold mt-1">{{ price(product.price) }}</div>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </section>
+                {% endif %}
+            </div>
+
+            {# --- Сайдбар с контактами и ссылками --- #}
+            <div class="space-y-6">
+                {# Контактная информация #}
+                {% if brand.email or brand.phone or brand.address %}
+                    <section class="bg-white rounded-xl shadow-sm p-6">
+                        <h3 class="text-xl font-semibold mb-4">Контакты</h3>
+                        <div class="space-y-3">
+                            {% if brand.email and (hiddenDp is not defined or 'brand_contact:0:email' not in hiddenDp|keys) %}
+                                <div class="flex items-center gap-3">
+                                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
+                                        <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/>
+                                    </svg>
+                                    <a href="mailto:{{ brand.email }}" class="text-gray-700 hover:text-indigo-600 flex-1">
+                                        {{ brand.email }}
+                                    </a>
+                                    <span class="dp-vote shrink-0" data-nosnippet data-type="brand_contact" data-field="email"></span>
+                                </div>
+                            {% endif %}
+
+                            {% if brand.phone and (hiddenDp is not defined or 'brand_contact:0:phone' not in hiddenDp|keys) %}
+                                <div class="flex items-center gap-3">
+                                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
+                                    </svg>
+                                    <a href="tel:{{ brand.phone|replace({' ': '', '-': '', '(': '', ')': ''}) }}"
+                                       class="text-gray-700 hover:text-indigo-600 flex-1">
+                                        {{ brand.phone }}
+                                    </a>
+                                    <span class="dp-vote shrink-0" data-nosnippet data-type="brand_contact" data-field="phone"></span>
+                                </div>
+                            {% endif %}
+
+                            {% if brand.address %}
+                                <div class="flex items-start gap-3">
+                                    <svg class="w-5 h-5 text-gray-400 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
+                                    </svg>
+                                    <span class="text-gray-700">{{ brand.address }}</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </section>
+                {% endif %}
+
+                {# Социальные сети и ссылки #}
+                {% if brand.links|length > 0 %}
+                {% include 'tailwind/brand/links.html.twig' %}
+                {% endif %}
+
+                {# Мета-информация с микроразметкой #}
+                <section class="bg-gray-50 rounded-xl p-4 text-sm text-gray-600" itemscope itemtype="https://schema.org/WebPage">
+                    <meta itemprop="name" content="{{ _bt }}">
+                    <div class="space-y-1">
+                        {% if brand.createdAt %}
+                            <div>
+                                <span class="text-gray-500">Добавлен:</span>
+                                <time itemprop="datePublished" datetime="{{ brand.createdAt|date('Y-m-d') }}">{{ brand.createdAt|date('d.m.Y') }}</time>
+                            </div>
+                        {% endif %}
+                        {% if brand.updatedAt %}
+                            <div>
+                                <span class="text-gray-500">Обновлен:</span>
+                                <time itemprop="dateModified" datetime="{{ brand.updatedAt|date('Y-m-d') }}">{{ brand.updatedAt|date('d.m.Y') }}</time>
+                            </div>
+                        {% endif %}
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        {# --- SEO текст если нет описания и товаров --- #}
+        {% if not brand.description and (products is not defined or products|length == 0) %}
+            <section class="bg-white rounded-xl shadow-sm p-8 text-center">
+                <h2 class="text-2xl font-semibold mb-4">Бренд {{ _bt }}</h2>
+                <p class="text-gray-600 max-w-2xl mx-auto mb-6">
+                    Российский бренд {{ _bt }} предлагает актуальную уличную одежду и аксессуары.
+                    Следите за обновлениями коллекции на официальных страницах бренда.
+                </p>
+                {% if brand.links|length > 0 %}
+                    {% for link in brand.links|filter(l => l.linkUrl) %}
+                        {% if loop.first %}
+                            <a href="{{ link.linkUrl }}" target="_blank" rel="nofollow noopener"
+                               class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                                Перейти на сайт бренда
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                </svg>
+                            </a>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </section>
+        {% endif %}
+
+        {# --- FAQ блок (boilerplate) — только когда НЕТ реального brand_faq --- #}
+        {% if faqs is not defined or faqs|length == 0 %}
+        <section class="bg-white rounded-xl shadow-sm p-6">
+            <h2 class="text-2xl font-semibold mb-6">Часто задаваемые вопросы</h2>
+            <div class="space-y-4">
+                <details class="group" open>
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
+                        <span>Где купить одежду бренда {{ _bt }}?</span>
+                        <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </summary>
+                    <p class="text-gray-600 mt-2">Одежду бренда {{ _bt }} можно приобрести на официальном сайте бренда или в фирменных магазинах.{{ brand.city ? ' Бренд базируется в городе ' ~ brand.city ~ '.' : '' }}</p>
+                </details>
+                <details class="group">
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
+                        <span>Какой стиль у бренда {{ _bt }}?</span>
+                        <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </summary>
+                    <p class="text-gray-600 mt-2">{% if brand.styles|length > 0 %}{{ brand.styles|map(s => s.title)|join(', ') }}.{% else %}Бренд предлагает актуальную одежду в современном стиле.{% endif %}</p>
+                </details>
+                <details class="group">
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
+                        <span>Доставляет ли {{ _bt }} заказы по России?</span>
+                        <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </summary>
+                    <p class="text-gray-600 mt-2">Для получения актуальной информации о доставке рекомендуем посетить официальный сайт бренда.</p>
+                </details>
+                <details class="group">
+                    <summary class="flex justify-between items-center font-medium cursor-pointer list-none">
+                        <span>Есть ли у бренда {{ _bt }} размеры для больших размеров?</span>
+                        <svg class="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </summary>
+                    <p class="text-gray-600 mt-2">{% if brand.sizes|length > 0 %}Доступные размеры: {{ brand.sizes|map(s => s.title)|join(', ') }}.{% else %}Информацию о размерах смотрите на сайте бренда.{% endif %}</p>
+                </details>
+            </div>
+        </section>
+        {% endif %}
+
+        {# --- Блок "Другие стили" --- #}
+        {% if styles|length > 0 %}
+        <section class="bg-white rounded-xl shadow-sm p-6">
+            <h2 class="text-2xl font-semibold mb-6">Другие бренды стиля</h2>
+            <div class="flex flex-wrap gap-2">
+                {% for style in styles %}
+                    {% if style.slug %}
+                    <a href="{{ path('brand_index', {style: style.slug}) }}"
+                       class="px-4 py-2 bg-gray-100 rounded-full text-sm hover:bg-gray-200 transition">
+                        {{ style.title }}
+                    </a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {# --- Блок "Другие города" --- #}
+        {% if cities|length > 0 %}
+        <section class="bg-white rounded-xl shadow-sm p-6">
+            <h2 class="text-2xl font-semibold mb-6">Бренды из других городов</h2>
+            <div class="flex flex-wrap gap-2">
+                {% for city in cities %}
+                <a href="{{ path('brand_index', {city: city}) }}"
+                   class="px-4 py-2 bg-gray-100 rounded-full text-sm hover:bg-gray-200 transition">
+                    {{ city }}
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+    </div>
+
+    {# Краудсорс-валидация: кнопки ✓/✗/«исправить» #}
+    <script>
+    (function () {
+        var url = '{{ path('brand_datapoint_vote', {slug: brand.slug}) }}';
+        document.querySelectorAll('.dp-vote').forEach(function (el) {
+            el.innerHTML =
+                '<button type="button" data-v="confirm" title="Данные верны" class="text-gray-300 hover:text-green-600 px-1">✓</button>' +
+                '<button type="button" data-v="reject" title="Данные неверны" class="text-gray-300 hover:text-red-600 px-1">✗</button>' +
+                '<button type="button" data-v="fix" title="Предложить исправление" class="text-gray-300 hover:text-indigo-600 px-1">✎</button>';
+        });
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.dp-vote button');
+            if (!btn) return;
+            var el = btn.closest('.dp-vote');
+            var payload = {
+                target_type: el.dataset.type,
+                field: el.dataset.field,
+                vote: btn.dataset.v === 'fix' ? 'reject' : btn.dataset.v
+            };
+            if (el.dataset.target) payload.target_id = parseInt(el.dataset.target, 10);
+            if (btn.dataset.v === 'fix') {
+                var s = prompt('Как правильно? (необязательно)');
+                if (s === null) return;
+                if (s.trim() !== '') payload.suggestion = s.trim();
+            }
+            fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d.error) { el.innerHTML = '<span class="text-xs text-gray-400">' + (d.error === 'rate limited' ? 'слишком часто' : 'ошибка') + '</span>'; return; }
+                el.innerHTML = '<span class="text-xs text-gray-400">спасибо!</span>';
+            }).catch(function () { el.innerHTML = '<span class="text-xs text-gray-400">ошибка</span>'; });
+        });
+    })();
+    </script>
+{% endblock %}

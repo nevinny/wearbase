@@ -6,6 +6,7 @@ use App\Entity\Brand;
 use App\Entity\BrandFaq;
 use App\Entity\BrandKeyword;
 use App\Entity\BrandLink;
+use App\Entity\BrandStore;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 
@@ -113,6 +114,9 @@ class BrandIngestService
             if (array_key_exists('attributes', $payload)) {
                 $this->replaceAttributes($brand, (array) $payload['attributes']);
             }
+            if (array_key_exists('stores', $payload)) {
+                $this->replaceStores($brand, (array) $payload['stores']);
+            }
 
             // Свежие данные приехали → забракованные голосами точки считаем ре-обогащёнными:
             // state=active, голоса устарели (удаляем — sumWeights иначе воскресит счётчики).
@@ -131,6 +135,40 @@ class BrandIngestService
             $this->em->flush();
 
             return ['status' => $isNew ? 'created' : 'updated', 'brand_id' => $brand->getId()];
+        });
+    }
+
+    /**
+     * Снятие бренда с публикации (агент-API, point 1 чистки прода). Soft: статус
+     * в Disabled (каталог/sitemap фильтруют status IN ('active','new')) + снимаем
+     * publish_pending, чтобы дрип-крон не активировал заново. published_at —
+     * исторический след, не трогаем. Не физический delete (политика soft-delete).
+     * Резолв по slug (dev brand.id ≠ прод); brand_id — только fallback.
+     *
+     * @param array<string,mixed> $payload {"slug": "..."} | {"brand_id": N}
+     * @return array{status:string, brand_id:int|null} status: unpublished|not_found
+     */
+    public function unpublish(array $payload): array
+    {
+        $slug    = trim((string) ($payload['slug'] ?? ''));
+        $brandId = isset($payload['brand_id']) ? (int) $payload['brand_id'] : 0;
+        if ($slug === '' && $brandId <= 0) {
+            throw new \InvalidArgumentException('slug или brand_id обязателен');
+        }
+
+        return $this->em->wrapInTransaction(function () use ($slug, $brandId): array {
+            $repo = $this->em->getRepository(Brand::class);
+            /** @var Brand|null $brand */
+            $brand = $slug !== '' ? $repo->findOneBy(['slug' => $slug]) : $repo->find($brandId);
+            if ($brand === null) {
+                return ['status' => 'not_found', 'brand_id' => null];
+            }
+
+            $brand->setStatus(Statuses::Disabled)
+                ->setPublishPending(false);
+            $this->em->flush();
+
+            return ['status' => 'unpublished', 'brand_id' => $brand->getId()];
         });
     }
 
@@ -213,6 +251,29 @@ class BrandIngestService
                 ->setBrand($brand)
                 ->setName(mb_substr($name, 0, 40))
                 ->setValue(mb_substr($value, 0, 255)));
+        }
+    }
+
+    /** @param array<int,array<string,mixed>> $rows delete-and-replace (owner/manual сохраняются) */
+    private function replaceStores(Brand $brand, array $rows): void
+    {
+        // Удаляем только enrichment-магазины; owner/manual не трогаем.
+        $this->em->createQuery('DELETE FROM ' . BrandStore::class . ' s WHERE s.brand = :brand AND s.source = :source')
+            ->setParameter('brand', $brand)
+            ->setParameter('source', 'enrichment')
+            ->execute();
+        foreach (array_slice($rows, 0, 20) as $row) {
+            $address = trim((string) ($row['address'] ?? ''));
+            if ($address === '') {
+                continue;
+            }
+            $this->em->persist((new BrandStore())
+                ->setBrand($brand)
+                ->setAddress(mb_substr($address, 0, 500))
+                ->setCity(isset($row['city']) ? mb_substr((string) $row['city'], 0, 100) : null)
+                ->setPhone(isset($row['phone']) ? mb_substr((string) $row['phone'], 0, 30) : null)
+                ->setWorkHours(isset($row['workHours']) ? mb_substr((string) $row['workHours'], 0, 255) : null)
+                ->setSource('enrichment'));
         }
     }
 

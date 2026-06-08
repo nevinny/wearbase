@@ -34,6 +34,8 @@ use Symfony\Component\Routing\Attribute\Route;
  *   "keywords": [{"keyword": "...", "type": "origin|related", "monthly_shows": 120}],
  *   "faq": [{"question": "...", "answer": "...", "position": 0}],
  *   "links": [{"type": "website", "url": "https://..."}],
+ *   "attributes": [{"name": "Стиль", "value": "Кэжуал"}],
+ *   "stores": [{"address": "ул. Тверская, 1", "city": "Москва", "phone": "+7...", "workHours": "пн–пт 10–20"}],
  *   "logo": {"filename": "logo.png", "content_base64": "..."},
  *   "external_id": 6203,        // dev brand.id — только аудит/лог
  *   "content_version": 3        // ≤ текущей версии на проде → skipped
@@ -90,6 +92,51 @@ class BrandIngestController extends AbstractController
         $this->logger->info('agent-api upsert', [
             'slug' => $payload['slug'] ?? null,
             'external_id' => $payload['external_id'] ?? null,
+            'result' => $result['status'],
+        ]);
+
+        return $this->json($result);
+    }
+
+    /**
+     * Снятие бренда с публикации (point 1 чистки прода): админ-кнопка «⊘ Скрыть»
+     * в /admin/rag/review дёргает этот endpoint. Та же auth, что у upsert
+     * (X-Agent-Token + HMAC-подпись тела). Soft — статус в Disabled, не delete.
+     *
+     * Тело (application/json): {"slug": "..."} либо {"brand_id": N}.
+     * Ответ: {"status":"unpublished","brand_id":N} | {"status":"not_found","brand_id":null}.
+     */
+    #[Route('/brands/unpublish', name: 'api_brand_unpublish', methods: ['POST'])]
+    public function unpublish(
+        Request $request,
+        BrandIngestService $ingest,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
+            return $deny;
+        }
+
+        $payload = json_decode((string) $request->getContent(), true);
+        if (!is_array($payload)) {
+            return $this->json(['error' => 'invalid json'], Response::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $result = $ingest->unpublish($payload);
+        } catch (\InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (\Throwable $e) {
+            $this->logger->error('agent-api unpublish failed', [
+                'slug'     => $payload['slug'] ?? null,
+                'brand_id' => $payload['brand_id'] ?? null,
+                'error'    => $e->getMessage(),
+            ]);
+
+            return $this->json(['error' => 'internal error'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        $this->logger->info('agent-api unpublish', [
+            'slug'   => $payload['slug'] ?? null,
             'result' => $result['status'],
         ]);
 

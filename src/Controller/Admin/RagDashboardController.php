@@ -22,6 +22,8 @@ class RagDashboardController extends AbstractController
         private readonly ?string $prodApiUrl,
         #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::AGENT_API_TOKEN)%')]
         private readonly ?string $agentToken,
+        #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::AGENT_API_SECRET)%')]
+        private readonly ?string $agentSecret,
     ) {
     }
 
@@ -159,10 +161,15 @@ class RagDashboardController extends AbstractController
             );
             $this->addFlash('success', "Бренд #{$id} отправлен на переобогащение");
         } else { // hide
-            // Soft-hide из каталога (политика soft-delete). Прод чистится отдельно (push/агент).
+            // Soft-hide локально (политика soft-delete) + снятие с публикации на проде.
+            $slug = (string) $this->db->fetchOne("SELECT slug FROM brand WHERE id=:id", ['id' => $id]);
             $this->db->executeStatement("UPDATE brand SET status='inactive' WHERE id=:id", ['id' => $id]);
             $this->db->executeStatement("UPDATE brand_rag_pipeline SET last_error='review: скрыт вручную' WHERE brand_id=:id", ['id' => $id]);
             $this->addFlash('success', "Бренд #{$id} скрыт из каталога");
+
+            // Прод чистим отдельным каналом (агент-API): резолв по slug (dev id ≠ прод).
+            // Fail-soft: прод недоступен/не настроен → предупреждение, локальный hide уже применён.
+            $this->addFlash(...$this->unpublishOnProd($slug, $id));
         }
 
         return $this->redirectToRoute('admin_rag_review');
@@ -220,6 +227,45 @@ class RagDashboardController extends AbstractController
             ];
         } catch (\Throwable) {
             return ['done' => 0, 'lastHour' => 0, 'lastAt' => 'прод недоступен', 'left' => 0, 'waitsProd' => true];
+        }
+    }
+
+    /**
+     * Снятие бренда с публикации на проде через агент-API /api/v1/brands/unpublish
+     * (X-Agent-Token + HMAC-подпись тела, как PushBrandsCommand). Резолв по slug.
+     * Fail-soft: возвращает [тип-flash, сообщение] — прод недоступен/не настроен →
+     * предупреждение, локальный hide всё равно применён вызывающим кодом.
+     *
+     * @return array{0:string,1:string} [flashType, message]
+     */
+    private function unpublishOnProd(string $slug, int $id): array
+    {
+        if (trim((string) $this->prodApiUrl) === '' || trim((string) $this->agentToken) === '' || trim((string) $this->agentSecret) === '') {
+            return ['warning', "Прод-API не настроен — бренд #{$id} НЕ снят с прод-каталога (только локально)"];
+        }
+        if ($slug === '') {
+            return ['warning', "У бренда #{$id} нет slug — на прод снять не удалось (только локально)"];
+        }
+
+        try {
+            $body = json_encode(['slug' => $slug], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            $data = $this->httpClient->request('POST', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/brands/unpublish', [
+                'headers' => [
+                    'Content-Type'  => 'application/json',
+                    'X-Agent-Token' => (string) $this->agentToken,
+                    'X-Signature'   => hash_hmac('sha256', $body, (string) $this->agentSecret),
+                ],
+                'body'    => $body,
+                'timeout' => 8,
+            ])->toArray(false);
+
+            return match ($data['status'] ?? null) {
+                'unpublished' => ['success', "Бренд #{$id} снят с прод-каталога"],
+                'not_found'   => ['warning', "Бренд #{$id} не найден на проде (ещё не публиковался)"],
+                default       => ['warning', "Прод вернул неожиданный ответ — бренд #{$id} мог не сняться с прода"],
+            };
+        } catch (\Throwable $e) {
+            return ['warning', "Прод недоступен ({$e->getMessage()}) — бренд #{$id} НЕ снят с прод-каталога (только локально)"];
         }
     }
 
