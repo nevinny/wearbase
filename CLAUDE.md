@@ -177,23 +177,7 @@ php -d memory_limit=512M bin/console app:brand:keywords 6000 --no-debug
 
 ### Console commands
 
-| Command | Purpose |
-|---|---|
-| `app:currency:update-rates` | Fetch rates from CBR XML feed, upsert into `exchange_rate`, clear CurrencyConverter cache |
-| `app:brand:stats` | Brand statistics |
-| `app:fetch-lamoda-brands` | Scrape Lamoda brand list |
-| `app:brand:generate-content` | LLM-описания + SEO meta; RAG-grounded если бренд `embedded` (gate), иначе legacy |
-| `app:brand:enrich-contacts` | Обогащение контактами: из локального скрейпа (27b), fallback Perplexity Sonar |
-| `app:brand:discover` | RAG-этап 0: поиск URL-источников бренда (SearXNG, tiered) → очередь `brand_source_url` |
-| `app:brand:fetch` | RAG-этап 1: дренаж очереди URL (SKIP LOCKED) → trafilatura → `brand_source_document` |
-| `app:brand:scrape` | Монолит discover+fetch (legacy fallback по `--id`) |
-| `app:brand:embed` | RAG-этап 2: чанки → эмбеддинги (ollama qwen3-embedding) → Qdrant |
-| `app:brand:keywords` | Wordstat-ключевики → `brand_keyword` (квота 100/час, авто-пауза/резюм) |
-| `app:brand:faq` | SEO: FAQ из Wordstat-фраз, grounded-ответы 27b → `brand_faq` + FAQPage JSON-LD |
-| `app:brand:push` | Агент: доставка готовых брендов (isPublishReady) на прод `/api/v1/brands/upsert` |
-| `app:brand:publish-tick` | Дрип-публикация на проде (cron раз в час): ramp-up 5→28/день, окно 9–23 МСК |
-| `app:import-brands` | Bulk brand import |
-| `app:migrate-images-to-subdirs` | One-off migration of flat image storage to subdirectory layout |
+Полный справочник всех команд (зачем / как часто / где запускать + cron-сводка) — **[docs/commands.md](docs/commands.md)**.
 
 ### Brand contact enrichment
 
