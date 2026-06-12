@@ -84,10 +84,13 @@ test.describe('Locale Switching', () => {
 
   test('hreflang ссылки присутствуют на главной', async ({ page }) => {
     await page.goto('/ru/');
+    // Реальный контент только на ru (переводы пусты) — объявляем ru + x-default,
+    // en и прочие локали из hreflang убраны до появления реальных переводов
     const ruHreflang = page.locator('link[hreflang="ru"]');
-    const enHreflang = page.locator('link[hreflang="en"]');
+    const xDefault = page.locator('link[hreflang="x-default"]');
     await expect(ruHreflang).toHaveCount(1);
-    await expect(enHreflang).toHaveCount(1);
+    await expect(xDefault).toHaveCount(1);
+    await expect(page.locator('link[hreflang="en"]')).toHaveCount(0);
   });
 
 });

@@ -14,8 +14,6 @@
 
 {% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
 
-{% block canonical_url %}{{ url('brand_cities', {_locale: page_locale}) }}{% endblock %}
-
 {% block body %}
     <script type="application/ld+json">
     {

@@ -13,9 +13,16 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class SitemapController extends AbstractController
 {
     #[Route('/sitemap.xml', name: 'sitemap_xml', defaults: ['_format' => 'xml'])]
-    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Service\CitySlugger $citySlugger): Response
+    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Service\CitySlugger $citySlugger, UrlGeneratorInterface $urlGenerator): Response
     {
         $urls = [];
+
+        // <loc> всегда от канонического хоста (не от request): sitemap, запрошенный
+        // через www/dev-хост, не должен раздавать неканонические URL (дубль-хост в GSC).
+        $siteBase = parse_url((string) $this->getParameter('app.site_base_url'));
+        $context  = $urlGenerator->getContext();
+        $context->setScheme($siteBase['scheme'] ?? 'https');
+        $context->setHost($siteBase['host'] ?? 'wearbase.ru');
 
         $baseUrl = $request->getSchemeAndHttpHost();
 
@@ -23,40 +30,24 @@ class SitemapController extends AbstractController
             'loc' => $this->generateUrl('home_hub', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
             'changefreq' => 'daily',
             'priority' => '1.0',
-            'alternates' => [
-                ['locale' => 'ru', 'loc' => $this->generateUrl('home_hub', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL)],
-                ['locale' => 'en', 'loc' => $this->generateUrl('home_hub', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
-            ],
         ];
 
         $urls[] = [
             'loc' => $this->generateUrl('brand_index', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
             'changefreq' => 'daily',
             'priority' => '0.9',
-            'alternates' => [
-                ['locale' => 'ru', 'loc' => $this->generateUrl('brand_index', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL)],
-                ['locale' => 'en', 'loc' => $this->generateUrl('brand_index', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
-            ],
         ];
 
         $urls[] = [
             'loc' => $this->generateUrl('landing_no_marketplace', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
             'changefreq' => 'weekly',
             'priority' => '0.8',
-            'alternates' => [
-                ['locale' => 'ru', 'loc' => $this->generateUrl('landing_no_marketplace', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL)],
-                ['locale' => 'en', 'loc' => $this->generateUrl('landing_no_marketplace', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
-            ],
         ];
 
         $urls[] = [
             'loc' => $this->generateUrl('landing_for_brands', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
             'changefreq' => 'weekly',
             'priority' => '0.8',
-            'alternates' => [
-                ['locale' => 'ru', 'loc' => $this->generateUrl('landing_for_brands', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL)],
-                ['locale' => 'en', 'loc' => $this->generateUrl('landing_for_brands', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
-            ],
         ];
 
         // Лендинг комиссий 301-ит на статью блога, как только она опубликована — тогда из sitemap он уходит
@@ -128,10 +119,6 @@ class SitemapController extends AbstractController
                     'changefreq' => 'weekly',
                     'priority' => $brand->getDescription() ? '0.7' : '0.5',
                     'lastmod' => $brand->getUpdatedAt()?->format('Y-m-d'),
-                    'alternates' => [
-                        ['locale' => 'ru', 'loc' => $this->generateUrl('brand_show', ['_locale' => 'ru', 'slug' => $brand->getSlug()], UrlGeneratorInterface::ABSOLUTE_URL)],
-                        ['locale' => 'en', 'loc' => $this->generateUrl('brand_show', ['_locale' => 'en', 'slug' => $brand->getSlug()], UrlGeneratorInterface::ABSOLUTE_URL)],
-                    ],
                 ];
             }
         }

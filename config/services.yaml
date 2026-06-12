@@ -21,6 +21,9 @@ parameters:
     env(YANDEX_SEARCH_FOLDER_ID): ''
     # QA-гейт сгенерированного контента (article-qa-toolkit). '0' = выключить.
     env(ARTICLE_QA_ENABLED): '1'
+    # Канонический хост сайта для canonical/hreflang (не зависит от request-хоста)
+    env(SITE_BASE_URL): 'https://wearbase.ru'
+    app.site_base_url: '%env(SITE_BASE_URL)%'
 
 services:
     # default configuration for services in *this* file

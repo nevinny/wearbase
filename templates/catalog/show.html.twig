@@ -4,8 +4,6 @@
 
 {% block meta_description %}{{ product.metaDescription ?: product.anons ?: product.title ~ ' — купить от ' ~ product.brand.title }}{% endblock %}
 
-{% block canonical_url %}{{ url('product_show', {uuid: product.uuid}) }}{% endblock %}
-
 {% block body %}
 {% set mainImage = product.mainImage %}
 {% set minPrice = product.minPrice %}

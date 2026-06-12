@@ -6,15 +6,22 @@
     <meta name="theme-color" content="#ffffff">
 
     {% block hreflang %}
-    {% set current_locale = app.request.locale|default('ru') %}
-    {% set path_without_locale = app.request.getPathInfo()|replace({'/ru': '', '/en': ''})|trim('/') %}
+    {# brand_translation/product_translation пусты — все локали отдают один русский текст,
+       поэтому hreflang объявляем только ru + x-default, а canonical для не-ru локалей
+       указывает на ru-версию (дедуп дублей). Когда появятся реальные переводы —
+       вернуть соответствующие локали в hreflang и self-canonical. #}
     {% set supported_locales = ['ru', 'en', 'zh', 'ar', 'tr', 'de', 'fr', 'es', 'ko'] %}
-    {% set base_host = app.request.schemeAndHttpHost %}
-    {% for locale in supported_locales %}
-    <link rel="alternate" hreflang="{{ locale }}" href="{{ base_host }}/{{ locale }}/{{ path_without_locale }}">
-    {% endfor %}
-    <link rel="alternate" hreflang="x-default" href="{{ base_host }}/ru/{{ path_without_locale }}">
-    {% if block('canonical_url') is defined %}<link rel="canonical" href="{{ block('canonical_url') }}">{% else %}<link rel="canonical" href="{{ app.request.uri }}">{% endif %}
+    {% set path_segments = app.request.pathInfo|split('/') %}
+    {% if path_segments|length > 1 and path_segments[1] in supported_locales %}
+        {% set path_without_locale = path_segments|slice(2)|join('/') %}
+    {% else %}
+        {% set path_without_locale = path_segments|slice(1)|join('/') %}
+    {% endif %}
+    {# главная живёт на /ru/ (со слешем) — canonical обязан совпадать с sitemap/served URL #}
+    {% set ru_url = site_base_url ~ '/ru' ~ (path_without_locale ? '/' ~ path_without_locale : '/') %}
+    <link rel="alternate" hreflang="ru" href="{{ ru_url }}">
+    <link rel="alternate" hreflang="x-default" href="{{ ru_url }}">
+    {% if block('canonical_url') is defined %}<link rel="canonical" href="{{ block('canonical_url') }}">{% else %}<link rel="canonical" href="{{ ru_url }}">{% endif %}
     {% endblock %}
 
     {% if block('title') is defined %}<title>{{ block('title') }}</title>{% else %}<title>Российские бренды одежды | WEARBASE</title>{% endif %}

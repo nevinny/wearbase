@@ -4,6 +4,7 @@ twig:
         - '@PixelOpenCloudflareTurnstile/fields.html.twig'
     globals:
         telegram_bot_username: '%app.telegram_bot_username%'
+        site_base_url: '%app.site_base_url%'
 
 when@test:
     twig:
