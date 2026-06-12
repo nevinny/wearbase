@@ -101,28 +101,32 @@ class BrandRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
-    public function findFeaturedBrands(int $limit = 12): array
+    public function findFeaturedBrands(int $limit = 12, bool $withLogo = false): array
     {
         // Сначала пытаемся найти бренды с описанием (для лучшего UX)
-        $results = $this->createQueryBuilder('b')
+        $qb = $this->createQueryBuilder('b')
             ->where('b.status = :status')
             ->andWhere('b.description IS NOT NULL')
             ->andWhere('LENGTH(b.description) > 100')
             ->setParameter('status', Statuses::Active)
             ->orderBy('b.created_at', 'DESC')
-            ->setMaxResults($limit)
-            ->getQuery()
-            ->getResult();
+            ->setMaxResults($limit);
+        if ($withLogo) {
+            $qb->andWhere('b.logo IS NOT NULL');
+        }
+        $results = $qb->getQuery()->getResult();
 
         // Фолбэк: любые активные бренды (чтобы каталог не выглядел пустым)
         if (empty($results)) {
-            $results = $this->createQueryBuilder('b')
+            $qb = $this->createQueryBuilder('b')
                 ->where('b.status = :status')
                 ->setParameter('status', Statuses::Active)
                 ->orderBy('b.created_at', 'DESC')
-                ->setMaxResults($limit)
-                ->getQuery()
-                ->getResult();
+                ->setMaxResults($limit);
+            if ($withLogo) {
+                $qb->andWhere('b.logo IS NOT NULL');
+            }
+            $results = $qb->getQuery()->getResult();
         }
 
         return $results;

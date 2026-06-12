@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Repository\ArticleRepository;
 use App\Repository\BrandRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -12,7 +13,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class SitemapController extends AbstractController
 {
     #[Route('/sitemap.xml', name: 'sitemap_xml', defaults: ['_format' => 'xml'])]
-    public function sitemap(Request $request, BrandRepository $repo): Response
+    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo): Response
     {
         $urls = [];
 
@@ -37,6 +38,59 @@ class SitemapController extends AbstractController
                 ['locale' => 'en', 'loc' => $this->generateUrl('brand_index', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
             ],
         ];
+
+        $urls[] = [
+            'loc' => $this->generateUrl('landing_no_marketplace', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'weekly',
+            'priority' => '0.8',
+            'alternates' => [
+                ['locale' => 'ru', 'loc' => $this->generateUrl('landing_no_marketplace', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL)],
+                ['locale' => 'en', 'loc' => $this->generateUrl('landing_no_marketplace', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
+            ],
+        ];
+
+        $urls[] = [
+            'loc' => $this->generateUrl('landing_for_brands', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'weekly',
+            'priority' => '0.8',
+            'alternates' => [
+                ['locale' => 'ru', 'loc' => $this->generateUrl('landing_for_brands', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL)],
+                ['locale' => 'en', 'loc' => $this->generateUrl('landing_for_brands', ['_locale' => 'en'], UrlGeneratorInterface::ABSOLUTE_URL)],
+            ],
+        ];
+
+        // Лендинг комиссий 301-ит на статью блога, как только она опубликована — тогда из sitemap он уходит
+        if (!$articleRepo->findOnePublishedBySlug('komissii-marketpleysov-2026', 'ru')) {
+            $urls[] = [
+                'loc' => $this->generateUrl('landing_marketplace_fees', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'monthly',
+                'priority' => '0.7',
+            ];
+        }
+
+        $urls[] = [
+            'loc' => $this->generateUrl('blog_index', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'weekly',
+            'priority' => '0.8',
+        ];
+
+        $urls[] = [
+            'loc' => $this->generateUrl('brand_cities', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'weekly',
+            'priority' => '0.7',
+        ];
+
+        foreach ($articleRepo->findPublished('ru', 500) as $article) {
+            $urls[] = [
+                'loc' => $this->generateUrl('blog_show', [
+                    '_locale' => 'ru',
+                    'slug' => $article->getSlug(),
+                ], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'monthly',
+                'priority' => '0.7',
+                'lastmod' => $article->getUpdatedAt()?->format('Y-m-d'),
+            ];
+        }
 
         $brands = $repo->createQueryBuilder('b')
             ->where('b.status = :status')

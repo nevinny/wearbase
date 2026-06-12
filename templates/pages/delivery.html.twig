@@ -1,0 +1,127 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}Доставка — WEARBASE{% endblock %}
+
+{% block meta_description %}Условия доставки WEARBASE. СДЭК, Boxberry, Почта России, курьерская доставка по России и миру.{% endblock %}
+
+{% block body %}
+<div class="container mx-auto px-4 py-10 max-w-4xl">
+
+    <h1 class="text-3xl font-bold mb-2">Доставка</h1>
+    <p class="text-gray-500 mb-8">WEARBASE не является продавцом — каждый товар отправляется напрямую от бренда. Сроки и стоимость доставки рассчитываются индивидуально при оформлении заказа.</p>
+
+    {# Карточки перевозчиков #}
+    <h2 class="text-xl font-semibold mb-4">Способы доставки</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="text-2xl mb-2">📦</div>
+            <h3 class="font-semibold">СДЭК</h3>
+            <p class="text-sm text-gray-500 mt-1">Доставка до пункта выдачи или курьером. Расчёт стоимости автоматически через API СДЭК.</p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="text-2xl mb-2">📦</div>
+            <h3 class="font-semibold">Boxberry</h3>
+            <p class="text-sm text-gray-500 mt-1">Пункты выдачи Boxberry по всей России. Автоматический расчёт стоимости через API.</p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="text-2xl mb-2">✉️</div>
+            <h3 class="font-semibold">Почта России</h3>
+            <p class="text-sm text-gray-500 mt-1">Доставка почтовыми отправлениями по России и за рубеж. Доступен трекинг.</p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="text-2xl mb-2">🏍️</div>
+            <h3 class="font-semibold">Курьерская доставка</h3>
+            <p class="text-sm text-gray-500 mt-1">Доставка курьером до двери по указанному адресу.</p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="text-2xl mb-2">📍</div>
+            <h3 class="font-semibold">Самовывоз</h3>
+            <p class="text-sm text-gray-500 mt-1">Бесплатный самовывоз из пунктов выдачи заказов.</p>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="text-2xl mb-2">✈️</div>
+            <h3 class="font-semibold">Международная доставка</h3>
+            <p class="text-sm text-gray-500 mt-1">Доставка в страны СНГ, Европу, ОАЭ через DHL, FedEx и партнёров.</p>
+        </div>
+    </div>
+
+    {# Таблица правил доставки #}
+    {% if grouped|length > 0 %}
+    <h2 class="text-xl font-semibold mb-4">Тарифы по странам</h2>
+    <div class="space-y-6 mb-10">
+        {% for countryCode, rules in grouped %}
+        {% set country = rules|first.country %}
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div class="bg-gray-50 px-5 py-3 border-b border-gray-200">
+                <h3 class="font-semibold">{{ country.nameRu ?? countryCode }}</h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 text-xs uppercase tracking-wider border-b border-gray-100">
+                            <th class="px-5 py-3 font-medium">Способ</th>
+                            <th class="px-5 py-3 font-medium">Срок</th>
+                            <th class="px-5 py-3 font-medium">Стоимость</th>
+                            <th class="px-5 py-3 font-medium">Бесплатно от</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rule in rules %}
+                        <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
+                            <td class="px-5 py-3">
+                                <span class="font-medium">{{ carrierIcons[rule.carrier] ?? '' }} {{ rule.name }}</span>
+                            </td>
+                            <td class="px-5 py-3 text-gray-600">{{ rule.deliveryLabel }}</td>
+                            <td class="px-5 py-3 text-gray-600">{{ rule.priceRub|number_format(0, ',', ' ') }} ₽</td>
+                            <td class="px-5 py-3 text-gray-600">
+                                {% if rule.freeFromRub %}
+                                    от {{ rule.freeFromRub|number_format(0, ',', ' ') }} ₽
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# FAQ #}
+    <h2 class="text-xl font-semibold mb-4">Часто задаваемые вопросы</h2>
+    <div class="space-y-3 mb-10">
+        <details class="bg-white rounded-xl border border-gray-200 p-5 group" open>
+            <summary class="font-medium cursor-pointer list-none flex justify-between items-center">
+                <span>Сколько стоит доставка?</span>
+                <svg class="w-4 h-4 text-gray-400 group-open:rotate-180 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <p class="text-sm text-gray-600 mt-2">Каждый бренд устанавливает свои тарифы на доставку. Точная стоимость рассчитывается при оформлении заказа в корзине на основе веса товаров и адреса доставки. Для некоторых брендов доступна бесплатная доставка при заказе от определённой суммы.</p>
+        </details>
+        <details class="bg-white rounded-xl border border-gray-200 p-5 group">
+            <summary class="font-medium cursor-pointer list-none flex justify-between items-center">
+                <span>Как отследить заказ?</span>
+                <svg class="w-4 h-4 text-gray-400 group-open:rotate-180 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <p class="text-sm text-gray-600 mt-2">После отправки заказа бренд предоставит трекинг-номер. Вы можете отслеживать посылку на странице заказа в личном кабинете или напрямую на сайте перевозчика.</p>
+        </details>
+        <details class="bg-white rounded-xl border border-gray-200 p-5 group">
+            <summary class="font-medium cursor-pointer list-none flex justify-between items-center">
+                <span>Доставляете ли вы за рубеж?</span>
+                <svg class="w-4 h-4 text-gray-400 group-open:rotate-180 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <p class="text-sm text-gray-600 mt-2">Да, некоторые бренды осуществляют международную доставку. Доступные страны и тарифы отображаются при оформлении заказа. Стоимость международной доставки рассчитывается индивидуально.</p>
+        </details>
+        <details class="bg-white rounded-xl border border-gray-200 p-5 group">
+            <summary class="font-medium cursor-pointer list-none flex justify-between items-center">
+                <span>Можно ли вернуть товар?</span>
+                <svg class="w-4 h-4 text-gray-400 group-open:rotate-180 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <p class="text-sm text-gray-600 mt-2">Условия возврата устанавливаются каждым брендом индивидуально. Обратитесь к бренду напрямую для оформления возврата.</p>
+        </details>
+    </div>
+
+</div>
+{% endblock %}

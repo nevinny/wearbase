@@ -6,7 +6,9 @@ namespace App\Controller;
 
 use App\Entity\LandingLead;
 use App\Notification\EmailNotifier;
+use App\Repository\ArticleRepository;
 use App\Repository\BrandRepository;
+use App\Repository\PaymentProviderRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -25,7 +27,7 @@ class LandingController extends AbstractController
             ->getQuery()
             ->getSingleScalarResult();
 
-        $featuredBrands = $repo->findFeaturedBrands(8);
+        $featuredBrands = $repo->findFeaturedBrands(8, withLogo: true);
 
         return $this->render('tailwind/landing/no-marketplace.html.twig', [
             'totalBrands'   => (int) $totalBrands,
@@ -34,7 +36,7 @@ class LandingController extends AbstractController
     }
 
     #[Route('/{_locale}/for-brands', name: 'landing_for_brands', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
-    public function forBrands(BrandRepository $repo): Response
+    public function forBrands(BrandRepository $repo, PaymentProviderRepository $providers): Response
     {
         $totalBrands = $repo->createQueryBuilder('b')
             ->select('COUNT(b.id)')
@@ -44,6 +46,31 @@ class LandingController extends AbstractController
             ->getSingleScalarResult();
 
         return $this->render('tailwind/landing/for-brands.html.twig', [
+            'totalBrands'      => (int) $totalBrands,
+            'paymentProviders' => $providers->findActive(),
+        ]);
+    }
+
+    #[Route('/{_locale}/marketplace-commissions', name: 'landing_marketplace_fees', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
+    public function marketplaceFees(BrandRepository $repo, ArticleRepository $articles, Request $request): Response
+    {
+        // Контент переехал в блог; пока статья не опубликована (например, на проде), рендерим старый лендинг
+        $article = $articles->findOnePublishedBySlug('komissii-marketpleysov-2026', $request->getLocale());
+        if ($article) {
+            return $this->redirectToRoute('blog_show', [
+                '_locale' => $request->getLocale(),
+                'slug' => $article->getSlug(),
+            ], Response::HTTP_MOVED_PERMANENTLY);
+        }
+
+        $totalBrands = $repo->createQueryBuilder('b')
+            ->select('COUNT(b.id)')
+            ->where('b.status = :status')
+            ->setParameter('status', 'active')
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return $this->render('tailwind/landing/marketplace-fees.html.twig', [
             'totalBrands' => (int) $totalBrands,
         ]);
     }

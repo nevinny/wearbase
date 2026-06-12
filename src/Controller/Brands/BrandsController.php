@@ -119,8 +119,18 @@ class BrandsController extends AbstractController
                 ->setParameter('styleSlug', is_numeric($style) ? null : $style);
         }
 
+        // «Приоритет в выдаче» (обещание тарифов Basic/Premium): бренды с активной/триальной
+        // платной подпиской поднимаются выше, внутри групп — прежний порядок по новизне.
+        // GROUP BY b.id схлопывает возможные дубли от истории подписок (PK-зависимость
+        // колонок — легальна в MySQL с only_full_group_by).
         $brands = $brandsQb
-            ->orderBy('b.created_at', 'DESC')
+            ->leftJoin(\App\Entity\Subscription::class, 'sub', 'WITH', 'sub.brand = b AND sub.status IN (:subStatuses)')
+            ->leftJoin('sub.tariff', 'tar', 'WITH', 'tar.priceRub > 0')
+            ->setParameter('subStatuses', [\App\Entity\Subscription::STATUS_ACTIVE, \App\Entity\Subscription::STATUS_TRIAL])
+            ->addSelect('MAX(tar.priceRub) AS HIDDEN paidTariff')
+            ->groupBy('b.id')
+            ->orderBy('paidTariff', 'DESC')
+            ->addOrderBy('b.created_at', 'DESC')
             ->setFirstResult(($page - 1) * $perPage)
             ->setMaxResults($perPage)
             ->getQuery()
@@ -272,7 +282,18 @@ class BrandsController extends AbstractController
             $attrGroups[$attr->getName()][] = ['id' => $attr->getId(), 'value' => $attr->getValue()];
         }
 
-        return $this->render('tailwind/brand/showv2.html.twig', [
+        // sameAsLinks для JSON-LD Organization.sameAs
+        $sameAsLinks = [];
+        foreach ($brand->getLinks() as $link) {
+            if ($link->getLinkUrl()) {
+                $sameAsLinks[] = $link->getLinkUrl();
+            }
+        }
+
+        // Счётчик активных брендов для WEARBASE Organization.description
+        $totalBrands = $brandRepo->count(['status' => Statuses::Active]);
+
+        return $this->render('tailwind/brand/showv3.html.twig', [
             'brand' => $brand,
             'products' => $demoProducts,
             'similarBrands' => $similarBrands,
@@ -282,6 +303,8 @@ class BrandsController extends AbstractController
             'faqs' => $faqs,
             'hiddenDp' => $hiddenDp,
             'attrGroups' => $attrGroups,
+            'sameAsLinks' => $sameAsLinks,
+            'totalBrands' => $totalBrands,
         ]);
     }
 
@@ -345,6 +368,28 @@ class BrandsController extends AbstractController
             'locale' => $locale,
         ]);
     }
+    #[Route('/{_locale}/cities', name: 'brand_cities', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
+    public function cities(BrandRepository $repo, Request $request): Response
+    {
+        $cities = $repo->createQueryBuilder('b')
+            ->select('b.city, COUNT(b.id) as cnt')
+            ->where('b.status = :status')
+            ->andWhere('b.city IS NOT NULL')
+            ->andWhere('b.city != \'\'')
+            ->setParameter('status', Statuses::Active)
+            ->groupBy('b.city')
+            ->orderBy('cnt', 'DESC')
+            ->addOrderBy('b.city', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $this->render('tailwind/cities.html.twig', [
+            'cities' => $cities,
+            'totalBrands' => array_sum(array_column($cities, 'cnt')),
+            'locale' => $request->getLocale(),
+        ]);
+    }
+
     #[Route('/brands/a-z', name: 'brands_az')]
     public function brandsAlphabetical(Request $request, BrandRepository $brandRepository): Response
     {

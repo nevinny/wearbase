@@ -1,0 +1,203 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}0% комиссии вместо 34–52% — альтернатива маркетплейсам для брендов одежды | WEARBASE{% endblock %}
+
+{% block meta_description %}Комиссия на одежду: 34,5% на Wildberries, до 52% на Ozon — и это до логистики, возвратов и рекламы. На WEARBASE — 0% с продаж, фиксированная подписка от 1 500 ₽/мес. {{ totalBrands }}+ российских брендов уже продают на своих условиях.{% endblock %}
+
+{% block meta_keywords %}альтернатива маркетплейсам, альтернатива вайлдберриз, комиссия вайлдберриз для продавцов, продавать без маркетплейсов, продавать без комиссии, уйти с вайлдберриз, уйти с озона, каталог брендов, российские бренды одежды{% endblock %}
+
+{% block meta_robots %}<meta name="robots" content="index, follow">{% endblock %}
+
+{% block og_title %}Маркетплейсы забирают до 50–70% оборота. WEARBASE — 0%{% endblock %}
+{% block og_description %}0% комиссии с продаж, фиксированная подписка от 1 500 ₽/мес. {{ totalBrands }}+ российских брендов одежды уже продают напрямую.{% endblock %}
+
+{% block canonical_url %}{{ url('landing_no_marketplace', {_locale: app.request.locale|default('ru')}) }}{% endblock %}
+
+{% block body %}
+<div class="bg-gradient-to-br from-gray-50 via-white to-gray-100 min-h-screen">
+
+    {# Hero #}
+    <section class="container mx-auto px-4 pt-16 pb-20 text-center">
+        <span class="inline-block bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full mb-6">🚀 Альтернатива маркетплейсам</span>
+        <h1 class="text-5xl md:text-7xl font-black leading-tight mb-6">
+            Устали от комиссий<br>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-black to-gray-400">Wildberries и Ozon?</span>
+        </h1>
+        <p class="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto mb-4">
+            WEARBASE — <strong class="text-black">0% комиссии</strong> с продаж. Фиксированная подписка от 1 500 ₽/мес.
+        </p>
+        <p class="text-base text-gray-500 max-w-2xl mx-auto mb-10">
+            Ваш бренд. Ваши клиенты. Ваша прибыль. {{ totalBrands }}+ российских брендов уже работают на своих условиях.
+        </p>
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a href="#cta" class="bg-black text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-800 transition shadow-lg w-full sm:w-auto text-center">
+                Зарегистрировать бренд
+            </a>
+            <a href="{{ path('brand_index', {_locale: app.request.locale|default('ru')}) }}" class="text-gray-600 hover:text-black transition font-semibold px-6 py-4">
+                Смотреть каталог →
+            </a>
+        </div>
+    </section>
+
+    {# Сравнение #}
+    <section class="container mx-auto px-4 py-20">
+        <h2 class="text-3xl md:text-4xl font-black text-center mb-4">Маркетплейсы vs WEARBASE</h2>
+        <p class="text-gray-500 text-center mb-12 max-w-2xl mx-auto">За 2025 год комиссия Wildberries на одежду выросла с 24,5% до 34,5%, Ozon с апреля 2026 поднял до 46–52%. <a href="{{ path('blog_show', {_locale: 'ru', slug: 'komissii-marketpleysov-2026'}) }}" class="underline hover:text-black">Подробный разбор тарифов →</a></p>
+        <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div class="bg-white rounded-2xl p-8 shadow-sm border border-red-100">
+                <h3 class="text-xl font-bold text-red-600 mb-4">❌ Маркетплейсы (WB, Ozon)</h3>
+                <ul class="space-y-3 text-gray-700">
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-1">✕</span> Комиссия на одежду: 34,5% на WB, 46–52% на Ozon</li>
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-1">✕</span> Штрафы и блокировки без объяснения</li>
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-1">✕</span> Нет доступа к клиентской базе</li>
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-1">✕</span> Диктуют цены и условия</li>
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-1">✕</span> С логистикой, возвратами и рекламой — до 50–70% оборота</li>
+                </ul>
+            </div>
+            <div class="bg-black text-white rounded-2xl p-8 shadow-lg">
+                <h3 class="text-xl font-bold mb-4">✅ WEARBASE</h3>
+                <ul class="space-y-3">
+                    <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span> 0% комиссии — фиксированная подписка</li>
+                    <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span> Полный контроль: цены, условия, контент</li>
+                    <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span> Покупатели приходят к вам на сайт</li>
+                    <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span> Ваша айдентика, ваш бренд</li>
+                    <li class="flex items-start gap-2"><span class="text-green-400 mt-1">✓</span> Без логистики — доставка по выбору</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    {# Соцдок — бренды #}
+    <section class="container mx-auto px-4 py-16">
+        <h2 class="text-3xl md:text-4xl font-black text-center mb-4">Уже с нами</h2>
+        <p class="text-gray-500 text-center mb-10">{{ totalBrands }}+ российских брендов одежды</p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
+            {% for brand in featuredBrands %}
+            <a href="{{ path('brand_show', {slug: brand.slug}) }}" class="bg-white rounded-xl p-4 text-center shadow-sm hover:shadow-md transition border">
+                {% if brand.logo %}
+                <img src="{{ asset('images/logos/' ~ brand.logo) }}" alt="{{ brand.title }}" class="h-12 mx-auto mb-2 object-contain">
+                {% endif %}
+                <div class="text-sm font-semibold">{{ brand.title }}</div>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+
+    {# Тарифы #}
+    <section class="container mx-auto px-4 py-20">
+        <h2 class="text-3xl md:text-4xl font-black text-center mb-4">Прозрачные тарифы</h2>
+        <p class="text-gray-500 text-center mb-10">Никаких скрытых комиссий</p>
+        <div class="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            <div class="bg-white rounded-2xl p-6 shadow-sm border text-center">
+                <h3 class="font-bold text-lg mb-2">Free</h3>
+                <div class="text-3xl font-black mb-4">0 ₽</div>
+                <ul class="text-sm text-gray-600 space-y-2 mb-6">
+                    <li>Карточка бренда</li>
+                    <li>До 10 товаров</li>
+                    <li>5 изображений</li>
+                </ul>
+                <a href="{{ path('app_register') }}" class="block w-full py-2 border border-black rounded-full font-semibold text-sm hover:bg-gray-50 transition">Попробовать</a>
+            </div>
+            <div class="bg-black text-white rounded-2xl p-6 shadow-lg border-2 border-black text-center scale-105">
+                <span class="inline-block bg-yellow-400 text-black text-xs font-bold px-3 py-1 rounded-full mb-2">🔥 Выбор брендов</span>
+                <h3 class="font-bold text-lg mb-2">Basic</h3>
+                <div class="text-3xl font-black mb-4">1 500 ₽/мес</div>
+                <ul class="text-sm text-gray-300 space-y-2 mb-6">
+                    <li>До 50 товаров</li>
+                    <li>20 изображений</li>
+                    <li>Приоритет в выдаче</li>
+                </ul>
+                <a href="{{ path('app_register') }}" class="block w-full py-2 bg-white text-black rounded-full font-semibold text-sm hover:bg-gray-100 transition">Выбрать</a>
+            </div>
+            <div class="bg-white rounded-2xl p-6 shadow-sm border text-center">
+                <h3 class="font-bold text-lg mb-2">Premium</h3>
+                <div class="text-3xl font-black mb-4">3 000 ₽/мес</div>
+                <ul class="text-sm text-gray-600 space-y-2 mb-6">
+                    <li>Безлимит товаров</li>
+                    <li>Аналитика продаж</li>
+                    <li>Приоритетная поддержка</li>
+                </ul>
+                <a href="{{ path('app_register') }}" class="block w-full py-2 border border-black rounded-full font-semibold text-sm hover:bg-gray-50 transition">Выбрать</a>
+            </div>
+        </div>
+    </section>
+
+    {# FAQ #}
+    <section class="container mx-auto px-4 py-20">
+        <h2 class="text-3xl md:text-4xl font-black text-center mb-12">Частые вопросы об уходе с маркетплейсов</h2>
+        <div class="max-w-3xl mx-auto space-y-4">
+            <details class="bg-white rounded-2xl p-6 shadow-sm border group">
+                <summary class="font-bold cursor-pointer list-none flex justify-between items-center">Сколько стоит размещение на WEARBASE?<span class="text-gray-400 group-open:rotate-45 transition">＋</span></summary>
+                <p class="text-gray-600 mt-3">Тариф Free — 0 ₽ (до 10 товаров), Basic — 1 500 ₽/мес (до 50 товаров), Premium — 3 000 ₽/мес (безлимит). Комиссии с продаж нет ни на одном тарифе.</p>
+            </details>
+            <details class="bg-white rounded-2xl p-6 shadow-sm border group">
+                <summary class="font-bold cursor-pointer list-none flex justify-between items-center">Вы берёте комиссию с продаж?<span class="text-gray-400 group-open:rotate-45 transition">＋</span></summary>
+                <p class="text-gray-600 mt-3">Нет, 0%. Оплата заказов поступает напрямую на расчётный счёт вашего юридического лица через вашу платёжную систему — мы не проводим деньги через себя.</p>
+            </details>
+            <details class="bg-white rounded-2xl p-6 shadow-sm border group">
+                <summary class="font-bold cursor-pointer list-none flex justify-between items-center">Сколько сейчас забирают маркетплейсы у брендов одежды?<span class="text-gray-400 group-open:rotate-45 transition">＋</span></summary>
+                <p class="text-gray-600 mt-3">Базовая комиссия на одежду в 2026 году: 34,5% на Wildberries, 46–52% на Ozon. Вместе с логистикой, обратной доставкой возвратов и рекламой суммарные расходы продавца одежды достигают 50–70% оборота.</p>
+            </details>
+            <details class="bg-white rounded-2xl p-6 shadow-sm border group">
+                <summary class="font-bold cursor-pointer list-none flex justify-between items-center">Нужно ли полностью уходить с Wildberries и Ozon?<span class="text-gray-400 group-open:rotate-45 transition">＋</span></summary>
+                <p class="text-gray-600 mt-3">Нет. Большинство брендов работают параллельно: маркетплейсы дают оборот, а WEARBASE — прямые продажи без комиссии и собственную клиентскую базу.</p>
+            </details>
+            <details class="bg-white rounded-2xl p-6 shadow-sm border group">
+                <summary class="font-bold cursor-pointer list-none flex justify-between items-center">Как перенести товары на WEARBASE?<span class="text-gray-400 group-open:rotate-45 transition">＋</span></summary>
+                <p class="text-gray-600 mt-3">Поддерживается массовый импорт товаров из Excel и CSV. Карточку бренда поможем заполнить при регистрации — обычно это занимает один день.</p>
+            </details>
+        </div>
+    </section>
+
+    {# CTA #}
+    <section id="cta" class="container mx-auto px-4 py-20 text-center">
+        <div class="max-w-2xl mx-auto bg-gradient-to-br from-black to-gray-800 rounded-3xl p-12 shadow-2xl">
+            <h2 class="text-3xl md:text-4xl font-black text-white mb-4">Готовы уйти с маркетплейса?</h2>
+            <p class="text-gray-300 text-lg mb-8">Оставьте почту — мы пришлём приглашение и поможем с настройкой</p>
+            <form method="post" action="{{ path('landing_lead') }}" class="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+                <input type="email" name="email" required placeholder="your@brand.ru" class="flex-1 px-5 py-3 rounded-full text-sm border-0 outline-none focus:ring-2 focus:ring-yellow-400">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('landing_lead') }}">
+                <button type="submit" class="bg-yellow-400 text-black font-bold px-6 py-3 rounded-full hover:bg-yellow-300 transition text-sm whitespace-nowrap">
+                    Отправить
+                </button>
+            </form>
+            <p class="text-gray-500 text-xs mt-4">Нажимая кнопку, вы даёте <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="underline hover:text-gray-300">согласие на обработку персональных данных</a> в соответствии с <a href="{{ path('privacy_policy', {_locale: 'ru'}) }}" target="_blank" class="underline hover:text-gray-300">Политикой конфиденциальности</a></p>
+        </div>
+    </section>
+
+</div>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Сколько стоит размещение на WEARBASE?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Тариф Free — 0 ₽ (до 10 товаров), Basic — 1 500 ₽/мес (до 50 товаров), Premium — 3 000 ₽/мес (безлимит). Комиссии с продаж нет ни на одном тарифе."}
+    },
+    {
+      "@type": "Question",
+      "name": "Вы берёте комиссию с продаж?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Нет, 0%. Оплата заказов поступает напрямую на расчётный счёт вашего юридического лица через вашу платёжную систему — мы не проводим деньги через себя."}
+    },
+    {
+      "@type": "Question",
+      "name": "Сколько сейчас забирают маркетплейсы у брендов одежды?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Базовая комиссия на одежду в 2026 году: 34,5% на Wildberries, 46–52% на Ozon. Вместе с логистикой, обратной доставкой возвратов и рекламой суммарные расходы продавца одежды достигают 50–70% оборота."}
+    },
+    {
+      "@type": "Question",
+      "name": "Нужно ли полностью уходить с Wildberries и Ozon?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Нет. Большинство брендов работают параллельно: маркетплейсы дают оборот, а WEARBASE — прямые продажи без комиссии и собственную клиентскую базу."}
+    },
+    {
+      "@type": "Question",
+      "name": "Как перенести товары на WEARBASE?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Поддерживается массовый импорт товаров из Excel и CSV. Карточку бренда поможем заполнить при регистрации — обычно это занимает один день."}
+    }
+  ]
+}
+</script>
+{% endblock %}

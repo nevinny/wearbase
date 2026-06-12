@@ -1,0 +1,108 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}WEARBASE — разместить бренд одежды в каталоге{% endblock %}
+
+{% block meta_description %}Разместите свой бренд одежды в каталоге WEARBASE. Фиксированная подписка без комиссии. {{ totalBrands }}+ брендов уже в каталоге. Регистрация за 5 минут.{% endblock %}
+
+{% block meta_keywords %}разместить бренд, каталог брендов одежды, зарегистрировать бренд, продвижение бренда одежды{% endblock %}
+
+{% block meta_robots %}<meta name="robots" content="index, follow">{% endblock %}
+
+{% block og_title %}Разместите бренд в каталоге WEARBASE{% endblock %}
+{% block og_description %}Фиксированная подписка от 1 500 ₽/мес. Без комиссии. {{ totalBrands }}+ покупателей ежемесячно.{% endblock %}
+
+{% block canonical_url %}{{ url('landing_for_brands', {_locale: app.request.locale|default('ru')}) }}{% endblock %}
+
+{% block body %}
+<div class="bg-white">
+    <section class="container mx-auto px-4 pt-16 pb-20 text-center max-w-4xl">
+        <span class="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full mb-6">Для брендов одежды</span>
+        <h1 class="text-5xl md:text-6xl font-black leading-tight mb-6">
+            Ваш бренд —<br>
+            <span class="text-gray-500">ваши правила</span>
+        </h1>
+        <p class="text-xl text-gray-600 max-w-2xl mx-auto mb-10">
+            Разместите карточку бренда, загрузите товары и получайте заказы напрямую — без посредников и скрытых комиссий.
+        </p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-left mb-12">
+            <div class="p-4">
+                <div class="text-3xl mb-2">📸</div>
+                <h3 class="font-bold text-sm mb-1">Фотосет</h3>
+                <p class="text-xs text-gray-500">Загрузите до 50 фото товаров</p>
+            </div>
+            <div class="p-4">
+                <div class="text-3xl mb-2">📦</div>
+                <h3 class="font-bold text-sm mb-1">Товары</h3>
+                <p class="text-xs text-gray-500">До 50 товаров на Basic-тарифе</p>
+            </div>
+            <div class="p-4">
+                <div class="text-3xl mb-2">📊</div>
+                <h3 class="font-bold text-sm mb-1">Аналитика</h3>
+                <p class="text-xs text-gray-500">Просмотры, заказы, конверсия</p>
+            </div>
+            <div class="p-4">
+                <div class="text-3xl mb-2">🔗</div>
+                <h3 class="font-bold text-sm mb-1">Ваш сайт</h3>
+                <p class="text-xs text-gray-500">Трафик идёт к вам, не к нам</p>
+            </div>
+        </div>
+        <a href="{{ path('landing_for_brands', {_locale: app.request.locale|default('ru')}) }}#register" class="inline-block bg-black text-white px-10 py-4 rounded-full font-bold text-lg hover:bg-gray-800 transition shadow-lg">
+            Зарегистрировать бренд
+        </a>
+    </section>
+
+    <section class="border-t border-gray-100 py-20">
+        <div class="container mx-auto px-4 max-w-4xl text-center">
+            <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-6">Приём платежей</span>
+            <h2 class="text-3xl md:text-4xl font-black mb-4">Платформа приёма платежей — деньги сразу вам</h2>
+            <p class="text-lg text-gray-600 max-w-2xl mx-auto mb-10">
+                Подключите свою платёжку — оплата за заказы поступает <strong>напрямую на реквизиты вашего юр.лица</strong>.
+                Мы не проводим деньги через себя и <strong>не берём комиссию с продаж</strong>.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-left mb-12">
+                <div class="p-5 rounded-2xl bg-gray-50">
+                    <div class="text-3xl mb-2">🏦</div>
+                    <h3 class="font-bold mb-1">Выплаты напрямую</h3>
+                    <p class="text-sm text-gray-500">Деньги идут на ваш расчётный счёт, минуя площадку.</p>
+                </div>
+                <div class="p-5 rounded-2xl bg-gray-50">
+                    <div class="text-3xl mb-2">0%</div>
+                    <h3 class="font-bold mb-1">Без комиссии с продаж</h3>
+                    <p class="text-sm text-gray-500">Только фиксированная подписка — продажи целиком ваши.</p>
+                </div>
+                <div class="p-5 rounded-2xl bg-gray-50">
+                    <div class="text-3xl mb-2">🔌</div>
+                    <h3 class="font-bold mb-1">Выбор платёжки</h3>
+                    <p class="text-sm text-gray-500">Подключаете удобный вам сервис приёма оплаты.</p>
+                </div>
+            </div>
+
+            {% if paymentProviders is not empty %}
+                <p class="text-xs uppercase tracking-wide text-gray-400 mb-4">Подключённые платёжные сервисы</p>
+                <div class="flex flex-wrap justify-center gap-3">
+                    {% for p in paymentProviders %}
+                        <span class="inline-flex items-center bg-white border border-gray-200 rounded-full px-5 py-2 text-sm font-semibold shadow-sm">
+                            {{ p.name }}
+                        </span>
+                    {% endfor %}
+                </div>
+                <p class="text-xs text-gray-400 mt-4">Список постоянно пополняется.</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section id="register" class="bg-gray-50 py-20">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-3xl font-black mb-4">Начать легко</h2>
+            <p class="text-gray-500 mb-10">Оставьте почту — мы проведём регистрацию за 5 минут</p>
+            <form method="post" action="{{ path('landing_lead') }}" class="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+                <input type="email" name="email" required placeholder="your@brand.ru" class="flex-1 px-5 py-3 rounded-full text-sm border border-gray-300 outline-none focus:border-black">
+                <input type="hidden" name="source" value="for-brands">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('landing_lead') }}">
+                <button type="submit" class="bg-black text-white font-bold px-6 py-3 rounded-full hover:bg-gray-800 transition text-sm">Отправить</button>
+            </form>
+        </div>
+    </section>
+
+</div>
+{% endblock %}

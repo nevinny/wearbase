@@ -1,0 +1,97 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}Комиссия Wildberries и Ozon для продавцов одежды в 2026 — реальные расходы | WEARBASE{% endblock %}
+
+{% block meta_description %}Комиссия на одежду в 2026: Wildberries 34,5%, Ozon 46–52%. Разбор полной нагрузки на продавца: логистика, возвраты, эквайринг, реклама — суммарно до 50–70% оборота. Таблицы и цифры.{% endblock %}
+
+{% block meta_keywords %}комиссия вайлдберриз, комиссия вайлдберриз для продавцов, комиссия озон для продавцов, комиссия wildberries 2026, комиссия ozon 2026, расходы продавца на маркетплейсе{% endblock %}
+
+{% block meta_robots %}<meta name="robots" content="index, follow">{% endblock %}
+
+{% block og_title %}Комиссия Wildberries и Ozon для продавцов одежды в 2026{% endblock %}
+{% block og_description %}WB — 34,5%, Ozon — 46–52%. А с логистикой, возвратами и рекламой — до 50–70% оборота. Полный разбор расходов продавца одежды.{% endblock %}
+
+{% block canonical_url %}{{ url('landing_marketplace_fees', {_locale: app.request.locale|default('ru')}) }}{% endblock %}
+
+{% block body %}
+<div class="bg-white">
+
+    <article class="container mx-auto px-4 py-12 max-w-3xl">
+
+        {# Breadcrumbs #}
+        <nav class="text-sm text-gray-400 mb-8">
+            <a href="{{ path('home_hub', {_locale: app.request.locale|default('ru')}) }}" class="hover:text-black">Главная</a>
+            <span class="mx-2">/</span>
+            <span class="text-gray-600">Комиссии маркетплейсов 2026</span>
+        </nav>
+
+        <h1 class="text-4xl md:text-5xl font-black leading-tight mb-6">Комиссия Wildberries и Ozon для продавцов одежды в 2026 году</h1>
+        <p class="text-gray-400 text-sm mb-8">Обновлено: июнь 2026. Тарифы маркетплейсов меняются — точные значения по вашей категории проверяйте в личном кабинете селлера.</p>
+
+        <p class="text-lg text-gray-700 mb-10">Одежда — категория с самой высокой комиссией и самым высоким процентом возвратов. Ниже — актуальные базовые ставки и реальная суммарная нагрузка на продавца с учётом логистики, возвратов и рекламы.</p>
+
+        <h2 class="text-2xl md:text-3xl font-black mb-4">Комиссия Wildberries на одежду — 34,5%</h2>
+        <p class="text-gray-700 mb-4">За 2025 год Wildberries поднял комиссию на одежду дважды: с 24,5% до 29,5% летом и до <strong>34,5%</strong> с 31 октября 2025 года (схема FBW). Для продавцов с небольшим оборотом действует скидка до −7 процентных пунктов.</p>
+        <p class="text-gray-700 mb-4">Важно: в комиссию WB <strong>не входят</strong>:</p>
+        <ul class="list-disc pl-6 text-gray-700 space-y-2 mb-10">
+            <li>логистика до покупателя (от ~23–46 ₽ за литр);</li>
+            <li>хранение на складе и платная приёмка (коэффициенты до 1,2–1,8×);</li>
+            <li>обратная логистика возвратов — для одежды критично из-за примерок;</li>
+            <li>эквайринг — с 1 апреля 2026 выделен в отдельный тариф, расходы на приём платежей выросли примерно с 2% до 4%+;</li>
+            <li>внутренняя реклама и продвижение.</li>
+        </ul>
+
+        <h2 class="text-2xl md:text-3xl font-black mb-4">Комиссия Ozon на одежду — 46–52%</h2>
+        <p class="text-gray-700 mb-4">С 6 апреля 2026 года комиссия Ozon на одежду — <strong>46% по схеме FBO и 52% по FBS</strong>, с 1 июля 2026 (после отмены ценовых диапазонов) — до 48% и 54%. В отличие от WB, это «единый тариф»: логистика и эквайринг уже включены, поэтому сравнивать ставки площадок «в лоб» некорректно. Для одежды дешевле 500 ₽ действует льготная ставка 8%.</p>
+
+        <h2 class="text-2xl md:text-3xl font-black mb-4 mt-10">Сколько маркетплейс забирает на самом деле</h2>
+        <p class="text-gray-700 mb-4">Базовая комиссия — только часть расходов. Полная картина для продавца одежды:</p>
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b-2 border-black text-sm uppercase tracking-wide">
+                        <th class="py-3 pr-4">Статья расходов</th>
+                        <th class="py-3">Типичный размер</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-700">
+                    <tr class="border-b border-gray-100"><td class="py-3 pr-4">Базовая комиссия (одежда)</td><td class="py-3">WB 34,5% · Ozon 46–52%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-3 pr-4">Невыкуп и возвраты (примерки)</td><td class="py-3">30–55% заказов</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-3 pr-4">Обратная логистика возвратов</td><td class="py-3">5–15% выручки</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-3 pr-4">Реклама и продвижение</td><td class="py-3">10–30% выручки</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-3 pr-4">Эквайринг (WB, с 04.2026 отдельно)</td><td class="py-3">~4%</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-gray-700 mb-10">Итог, который сходится у независимых оценок 2026 года: суммарно маркетплейс забирает <strong>до 50–70% оборота</strong> продавца одежды. Производители в публикациях Forbes называют до 70%; расчёты аналитиков по типовой юнит-экономике — около 48–49%. Тема дошла до госуровня: Минпромторг потребовал от маркетплейсов ввести единую комиссию.</p>
+
+        {# CTA #}
+        <section class="bg-gradient-to-br from-black to-gray-800 rounded-3xl p-10 text-center mb-12">
+            <h2 class="text-2xl md:text-3xl font-black text-white mb-4">Что с этим делать</h2>
+            <p class="text-gray-300 mb-2">Продавайте напрямую. WEARBASE — каталог из {{ totalBrands }}+ российских брендов одежды: <strong class="text-white">0% комиссии с продаж</strong>, фиксированная подписка от 1 500 ₽/мес, деньги поступают сразу на ваш счёт.</p>
+            <p class="text-gray-400 text-sm mb-8">Уходить с маркетплейсов полностью не нужно — бренды работают параллельно.</p>
+            <form method="post" action="{{ path('landing_lead') }}" class="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+                <input type="email" name="email" required placeholder="your@brand.ru" class="flex-1 px-5 py-3 rounded-full text-sm border-0 outline-none focus:ring-2 focus:ring-yellow-400">
+                <input type="hidden" name="source" value="marketplace-fees">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('landing_lead') }}">
+                <button type="submit" class="bg-yellow-400 text-black font-bold px-6 py-3 rounded-full hover:bg-yellow-300 transition text-sm whitespace-nowrap">Отправить</button>
+            </form>
+            <p class="text-gray-500 text-xs mt-4">Нажимая кнопку, вы даёте <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="underline hover:text-gray-300">согласие на обработку персональных данных</a> в соответствии с <a href="{{ path('privacy_policy', {_locale: 'ru'}) }}" target="_blank" class="underline hover:text-gray-300">Политикой конфиденциальности</a></p>
+            <a href="{{ path('landing_no_marketplace', {_locale: app.request.locale|default('ru')}) }}" class="inline-block text-gray-300 hover:text-white underline text-sm mt-6">Как устроена альтернатива маркетплейсам →</a>
+        </section>
+
+    </article>
+
+</div>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: app.request.locale|default('ru')}) }}"},
+    {"@type": "ListItem", "position": 2, "name": "Комиссии маркетплейсов 2026", "item": "{{ url('landing_marketplace_fees', {_locale: app.request.locale|default('ru')}) }}"}
+  ]
+}
+</script>
+{% endblock %}
