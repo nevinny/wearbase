@@ -40,6 +40,10 @@ BASE_URL=http://localhost:8000 npx playwright test           # custom base URL
 
 ## Architecture
 
+### Прод и деплой
+
+Сервер, env-карта (SMTP/Turnstile/GSC/Telegram), процедура деплоя и известные прод-проблемы — **[docs/production.md](docs/production.md)**. Не лазить на прод за тем, что уже описано там.
+
 ### Public directory
 
 `public_html/` — not the default `public/`. Configured in `composer.json` (`"public-dir": "public_html"`).
