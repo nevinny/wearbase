@@ -59,6 +59,7 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
   - Ошибка `450 SMTP connection unavailable` при авторизации = в кабинете нет живого SMTP-подключения под эти креды (это текст Rusender про их сущность, а не про сеть). Фикс: вкладка SMTP → создать подключение → новый логин/пароль → обновить `MAILER_DSN` в прод `.env.local` → `mailer:test`.
 - **⚠️ Лимит тарифа: 100 писем/период** (на 2026-06-12 осталось 86, действует до 05.07.2026). Заказ = 2+ письма (бренд + покупатель), плюс verify-email и newsletter double opt-in. При реальном трафике квота кончится за дни — поднять тариф или ограничить email-канал критичными событиями.
 - Ошибки отправки видны в `var/log/prod.log` (`Email notification failed`, с 2026-06-12).
+- **Бесплатный обход SMTP: кастомный транспорт `rusender+api://`** (`src/Mailer/RusenderApiTransport.php`, фабрика зарегистрирована в services.yaml). Отправляет через HTTP API тем же API-ключом из вкладки «Ключ» (активен на бесплатном тарифе, SMTP-активация не нужна). DSN: `MAILER_DSN=rusender+api://<API_KEY>@default?key_id=4487`. Один получатель = один запрос к API; ошибки API кидаются как HttpTransportException и ловятся логированием EmailNotifier.
 
 ## Turnstile (Cloudflare captcha)
 

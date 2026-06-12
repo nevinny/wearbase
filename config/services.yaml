@@ -119,6 +119,9 @@ services:
 
     App\Service\Keyword\KeywordProviderInterface: '@App\Service\Keyword\WordstatClient'
 
+    App\Mailer\RusenderTransportFactory:
+        tags: ['mailer.transport_factory']
+
     App\Notification\TelegramNotifier:
         arguments:
             $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
