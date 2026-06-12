@@ -1,0 +1,101 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+
+{% block title %}Бренды одежды {{ city }} — {{ brands|length }} местных марок с сайтами и контактами | WEARBASE{% endblock %}
+
+{% block meta_description %}Местные бренды одежды из города {{ city }}: {{ brands|length }} марок с сайтами, соцсетями и контактами. Покупайте у производителей города {{ city }} напрямую, без наценки маркетплейсов.{% endblock %}
+
+{% block meta_keywords %}бренды одежды {{ city|lower }}, бренд одежды {{ city|lower }}, местные бренды одежды {{ city|lower }}, локальные бренды {{ city|lower }}, российские бренды одежды{% endblock %}
+
+{% block og_title %}Бренды одежды {{ city }} | WEARBASE{% endblock %}
+
+{% block og_description %}{{ brands|length }} местных брендов одежды из города {{ city }} — с сайтами и контактами.{% endblock %}
+
+{% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
+
+{% block canonical_url %}{{ url('brand_city', {_locale: page_locale, slug: slug}) }}{% endblock %}
+
+{% block body %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": "{{ url('brand_city', {_locale: page_locale, slug: slug}) }}#webpage",
+                "url": "{{ url('brand_city', {_locale: page_locale, slug: slug}) }}",
+                "name": "Бренды одежды {{ city }} | WEARBASE",
+                "breadcrumb": {"@id": "{{ url('brand_city', {_locale: page_locale, slug: slug}) }}#breadcrumb"}
+            },
+            {
+                "@type": "BreadcrumbList",
+                "@id": "{{ url('brand_city', {_locale: page_locale, slug: slug}) }}#breadcrumb",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 2, "name": "Города", "item": "{{ url('brand_cities', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 3, "name": {{ city|json_encode|raw }}, "item": "{{ url('brand_city', {_locale: page_locale, slug: slug}) }}"}
+                ]
+            },
+            {
+                "@type": "ItemList",
+                "itemListElement": [
+                    {% for brand in brands|slice(0, 30) %}
+                    {"@type": "ListItem", "position": {{ loop.index }}, "url": "{{ url('brand_show', {_locale: page_locale, slug: brand.slug}) }}", "name": {{ brand.title|json_encode|raw }}}{{ loop.last ? '' : ',' }}
+                    {% endfor %}
+                ]
+            }
+        ]
+    }
+    </script>
+
+    <div class="container mx-auto px-4 py-10">
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <a href="{{ path('brand_cities', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Города</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">{{ city }}</span>
+        </nav>
+
+        <h1 class="text-3xl md:text-4xl font-bold mb-3">Бренды одежды — {{ city }}</h1>
+        <p class="text-gray-600 max-w-2xl mb-10">{{ brands|length }} {{ brands|length == 1 ? 'местный бренд' : 'местных брендов' }} одежды из города {{ city }} в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей своего города напрямую: без комиссии маркетплейсов цена честнее, а в шоуруме можно примерить.</p>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {% for brand in brands %}
+                <article class="group bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                    <a href="{{ path('brand_show', {_locale: page_locale, slug: brand.slug}) }}" class="flex flex-col items-center p-4 text-center">
+                        <div class="w-24 h-24 flex items-center justify-center mb-3">
+                            {% if brand.logo %}
+                                <img src="{{ asset('images/logos/' ~ brand.logo) }}" alt="{{ brand.title }} — бренд одежды, {{ city }}" loading="lazy" width="96" height="96"
+                                     class="object-contain w-full h-full transition-transform group-hover:scale-105 duration-300">
+                            {% else %}
+                                <div class="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
+                                    {{ brand.title|slice(0, 1) }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <h2 class="text-sm font-semibold mb-1 truncate w-full">{{ brand.title }}</h2>
+                        {% if brand.anons %}
+                            <p class="text-xs text-gray-500 line-clamp-2">{{ brand.anons|slice(0, 80) }}</p>
+                        {% endif %}
+                    </a>
+                </article>
+            {% endfor %}
+        </div>
+
+        <div class="mt-12 p-6 bg-gray-50 rounded-xl text-center">
+            <p class="font-semibold mb-2">Знаете бренд из города {{ city }}, которого здесь нет?</p>
+            <p class="text-sm text-gray-600 mb-4">Размещение в каталоге — без комиссии с продаж, деньги за заказы идут напрямую бренду.</p>
+            <a href="{{ path('landing_for_brands', {_locale: page_locale}) }}"
+               class="inline-block px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition">
+                Добавить бренд
+            </a>
+        </div>
+
+        <div class="mt-8 flex gap-4 text-sm">
+            <a href="{{ path('brand_cities', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">← Все города</a>
+            <a href="{{ path('brand_index', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Все бренды</a>
+        </div>
+    </div>
+{% endblock %}

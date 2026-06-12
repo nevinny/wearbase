@@ -69,6 +69,14 @@ Rules:
 - The canonical brand page is `tailwind/brand/show.html.twig` (former `showv3`; v1/v2 deleted 2026-06-12 — do not resurrect).
 - Don't keep dead template versions around: superseded templates are deleted, history lives in git.
 
+### Blog & SEO landing pages (2026-06-12)
+
+- **Блог**: entity `Article` (трейты Status/Created, поля slug/locale/excerpt/content-HTML/publishedAt). Публично видна только `status=active` + `publishedAt <= now` (фильтрует `ArticleRepository`). Роуты `blog_index` (`/{_locale}/blog`, страницы >1 — noindex) и `blog_show` (`/{_locale}/blog/{slug}`). Админка: «Контент → Статьи блога»; поле content — **raw-HTML textarea, НЕ TextEditorField** (Trix вырезает таблицы). Статьи попадают в sitemap автоматически. Черновики и HTML-исходники — `_docs/blog-drafts/` (вне git).
+- **`/{_locale}/marketplace-commissions`** отдаёт 301 на статью `komissii-marketpleysov-2026`, **если она опубликована** (иначе рендерит старый лендинг — fail-safe для прода, где статью нужно один раз создать в БД).
+- **Городские посадочные**: `/{_locale}/cities` (`brand_cities`, список городов) и `/{_locale}/cities/{slug}` (`brand_city`, индексируемая страница города — таргетит «бренды одежды {город}»). Слаг строится транслитом на лету (`App\Service\CitySlugger`), обратное разрешение — перебором фактических городов; отдельной таблицы слагов нет. `brand_index?city=` остаётся noindex-фильтром. Города — в sitemap.
+- Лендинги (`tailwind/landing/*`) наследуют общий `tailwind/base.html.twig`; отдельного landing-base и `css/landing.css` больше нет.
+- Карта ключевиков (Wordstat) — `_docs/seo-keywords-2026-06.md`; сбор: POST `searchapi.api.cloud.yandex.net/v2/wordstat/topRequests` с `WORDSTAT_API_KEY`.
+
 ### Locale & routing
 
 All public pages use `/{_locale}/` as a route prefix with `requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko']`. The locale is resolved in this priority order by `LocaleListener` (priority 20, runs after RouterListener at 32):

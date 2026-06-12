@@ -13,7 +13,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class SitemapController extends AbstractController
 {
     #[Route('/sitemap.xml', name: 'sitemap_xml', defaults: ['_format' => 'xml'])]
-    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo): Response
+    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Service\CitySlugger $citySlugger): Response
     {
         $urls = [];
 
@@ -79,6 +79,26 @@ class SitemapController extends AbstractController
             'changefreq' => 'weekly',
             'priority' => '0.7',
         ];
+
+        $cityNames = $repo->createQueryBuilder('b')
+            ->select('DISTINCT b.city')
+            ->where('b.status = :status')
+            ->andWhere('b.city IS NOT NULL')
+            ->andWhere('b.city != \'\'')
+            ->setParameter('status', 'active')
+            ->getQuery()
+            ->getSingleColumnResult();
+
+        foreach ($cityNames as $cityName) {
+            $urls[] = [
+                'loc' => $this->generateUrl('brand_city', [
+                    '_locale' => 'ru',
+                    'slug' => $citySlugger->slugify($cityName),
+                ], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'weekly',
+                'priority' => '0.7',
+            ];
+        }
 
         foreach ($articleRepo->findPublished('ru', 500) as $article) {
             $urls[] = [

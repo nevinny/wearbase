@@ -321,7 +321,7 @@ class BrandsController extends AbstractController
     }
 
     #[Route('/{_locale}/', name: 'home_hub', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
-    public function homeHub(BrandRepository $repo, Request $request): Response
+    public function homeHub(BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger): Response
     {
         $locale = $request->getLocale();
 
@@ -339,6 +339,10 @@ class BrandsController extends AbstractController
             ->setMaxResults(10);
 
         $topCities = $qb->getQuery()->getResult();
+        foreach ($topCities as &$cityRow) {
+            $cityRow['slug'] = $slugger->slugify($cityRow['city']);
+        }
+        unset($cityRow);
 
         $styles = $repo->createQueryBuilder('b')
             ->select('s.id, s.title, COUNT(DISTINCT b.id) as cnt')
@@ -369,7 +373,7 @@ class BrandsController extends AbstractController
         ]);
     }
     #[Route('/{_locale}/cities', name: 'brand_cities', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
-    public function cities(BrandRepository $repo, Request $request): Response
+    public function cities(BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger): Response
     {
         $cities = $repo->createQueryBuilder('b')
             ->select('b.city, COUNT(b.id) as cnt')
@@ -383,9 +387,48 @@ class BrandsController extends AbstractController
             ->getQuery()
             ->getResult();
 
+        foreach ($cities as &$city) {
+            $city['slug'] = $slugger->slugify($city['city']);
+        }
+        unset($city);
+
         return $this->render('tailwind/cities.html.twig', [
             'cities' => $cities,
             'totalBrands' => array_sum(array_column($cities, 'cnt')),
+            'locale' => $request->getLocale(),
+        ]);
+    }
+
+    #[Route('/{_locale}/cities/{slug}', name: 'brand_city', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
+    public function cityShow(string $slug, BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger): Response
+    {
+        $allCities = $repo->createQueryBuilder('b')
+            ->select('DISTINCT b.city')
+            ->where('b.status = :status')
+            ->andWhere('b.city IS NOT NULL')
+            ->andWhere('b.city != \'\'')
+            ->setParameter('status', Statuses::Active)
+            ->getQuery()
+            ->getSingleColumnResult();
+
+        $city = $slugger->resolve($slug, $allCities);
+        if (!$city) {
+            throw $this->createNotFoundException('Город не найден');
+        }
+
+        $brands = $repo->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->andWhere('b.city = :city')
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('city', $city)
+            ->orderBy('b.title', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $this->render('tailwind/city.html.twig', [
+            'city' => $city,
+            'slug' => $slug,
+            'brands' => $brands,
             'locale' => $request->getLocale(),
         ]);
     }

@@ -776,3 +776,21 @@ brand_source_url(id, brand_id, url VARCHAR(1024), url_hash CHAR(64), source_type
 4. **E: email-домен-guard** перед outreach — `Brand.email` может быть от чужой сущности (как majestic.com), нет проверки соответствия домену бренда.
 5. **GenerateBrandContentCommand:425** ещё режет metaTitle до 60 (безвреден — вход уже ≤48 из LlmService); при желании привести к 48.
 6. **Сольная WIP-ветка:** правки переплетены с незакоммиченным WIP (contacts:refresh: `findForContactRefresh`/`extractContactsFromContext`/`BrandRefreshContactsCommand`, prodOutreach-рефактор) — въехали в коммиты вместе (интерактивный `git add -p` в среде недоступен).
+
+## SEO-контур: блог, городские посадочные, единый шаблон, мобильная шапка (2026-06-12)
+
+**Сделано:**
+- **Блог**: `Article` (+миграция `Version20260612_blog_articles`), `BlogController` (`/ru/blog`, `/ru/blog/{slug}`), шаблоны `tailwind/blog/*`, schema.org Article+Breadcrumb, sitemap, админка «Контент → Статьи блога» (content = raw-HTML textarea — Trix ломает таблицы). 4 статьи опубликованы (комиссии-2026, гид по российским брендам, исход с WB, покупка напрямую) — перелинкованы, исходники в `_docs/blog-drafts/`.
+- **301**: `/marketplace-commissions` → `/ru/blog/komissii-marketpleysov-2026` с fallback-рендером, пока статья не создана в БД (важно для прода: после деплоя вставить статьи, см. ниже).
+- **Городские посадочные**: `/ru/cities` + `/ru/cities/{slug}` (`CitySlugger`, транслит на лету, без таблицы слагов), таргет «бренды одежды москва» (1470/мес) и хвост; ссылки с главной (топ-городов), из шапки и подвала; все города в sitemap. Wordstat-карта — `_docs/seo-keywords-2026-06.md` («бренды из регионов» = 0 показов, формулировка из подвала убрана).
+- **Лендинги** переведены на общий `tailwind/base.html.twig` (сайтовые шапка+подвал); `tailwind/landing/base.html.twig` и `public_html/css/landing.css` удалены. В base добавлен рендер flash (нужен формам лидов).
+- **Подвал**: мёртвые якоря `#faq` убраны, форма подписки реально шлёт в `LandingLead` (source=footer-subscribe), добавлены ссылки Без маркетплейсов/Комиссии/Блог/Бренды по городам.
+- **Мобильная шапка**: бургер-меню (нав+авторизация+язык+валюта внутри), снаружи логотип+корзина+бургер. Проверено Playwright: было 481px на viewport 375 (горизонтальный скролл), стало 375px.
+
+**⚠️ Деплой-шаги для этого релиза (после полного rsync, см. «Грабли деплоя»):**
+1. `php bin/console doctrine:migrations:migrate --no-interaction` (создаст `article`).
+2. Вставить 4 статьи в прод-БД (HTML из `_docs/blog-drafts/*.html`, скрипт-инсерт через PDO; UTC-даты! MySQL NOW() в Москве, PHP в UTC — использовать UTC_TIMESTAMP()).
+3. `cache:clear --no-debug`.
+4. Смоук: /ru/blog, /ru/cities, /ru/cities/moskva, 301 у /ru/marketplace-commissions, бургер на мобильном.
+
+**Открыто:** падения PHPUnit (31) — предсуществующие (битые data providers «0 passed, 1 expected», БД-зависимые тесты), к этому релизу не относятся, чинить отдельно. Instagram-ссылка в подвале — решить про дисклеймер Meta.

@@ -106,7 +106,7 @@
                 <h2 class="text-xl font-semibold mb-4">Города</h2>
                 <div class="space-y-2">
                     {% for city in topCities %}
-                        <a href="{{ path('brand_index', {_locale: locale, city: city.city}) }}"
+                        <a href="{{ path('brand_city', {_locale: locale, slug: city.slug}) }}"
                            class="flex justify-between items-center p-2 rounded-lg hover:bg-gray-50 transition">
                             <span>{{ city.city }}</span>
                             <span class="text-sm text-gray-500">{{ city.cnt }}</span>
