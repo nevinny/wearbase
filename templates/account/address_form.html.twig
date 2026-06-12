@@ -2,77 +2,78 @@
 {% block title %}{{ title }} — WEARBASE{% endblock %}
 
 {% block account_content %}
-<div class="d-flex align-items-center gap-3 mb-4">
-    <a href="{{ path('account_addresses') }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-arrow-left me-1"></i>Назад
-    </a>
-    <h1 class="h5 fw-bold mb-0">{{ title }}</h1>
+{% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+{% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+
+<div class="mb-5 flex items-center gap-3">
+    <a href="{{ path('account_addresses') }}"
+       class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
+    <h1 class="text-lg font-bold">{{ title }}</h1>
 </div>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-body p-4">
-        {{ form_start(form) }}
+<div class="rounded-2xl bg-white p-6 shadow-sm">
+    {{ form_start(form) }}
 
-        <div class="row g-3">
-            <div class="col-12">
-                <label class="label-caps">Название адреса <span class="text-muted fw-normal">(необязательно)</span></label>
-                {{ form_widget(form.label, {'attr': {'class': 'form-control', 'placeholder': 'Например: Дом, Работа'}}) }}
-                {{ form_errors(form.label) }}
-            </div>
-
-            <div class="col-md-6">
-                <label class="label-caps">Получатель <span class="text-danger">*</span></label>
-                {{ form_widget(form.fullName, {'attr': {'class': 'form-control', 'placeholder': 'Имя Фамилия'}}) }}
-                {{ form_errors(form.fullName) }}
-            </div>
-            <div class="col-md-6">
-                <label class="label-caps">Телефон <span class="text-danger">*</span></label>
-                {{ form_widget(form.phone, {'attr': {'class': 'form-control', 'placeholder': '+7 999 000 00 00'}}) }}
-                {{ form_errors(form.phone) }}
-            </div>
-
-            <div class="col-md-8">
-                <label class="label-caps">Город <span class="text-danger">*</span></label>
-                {{ form_widget(form.city, {'attr': {'class': 'form-control', 'placeholder': 'Москва'}}) }}
-                {{ form_errors(form.city) }}
-            </div>
-            <div class="col-md-4">
-                <label class="label-caps">Индекс</label>
-                {{ form_widget(form.zip, {'attr': {'class': 'form-control', 'placeholder': '123456'}}) }}
-                {{ form_errors(form.zip) }}
-            </div>
-
-            <div class="col-12">
-                <label class="label-caps">Улица <span class="text-danger">*</span></label>
-                {{ form_widget(form.street, {'attr': {'class': 'form-control', 'placeholder': 'ул. Ленина'}}) }}
-                {{ form_errors(form.street) }}
-            </div>
-
-            <div class="col-4">
-                <label class="label-caps">Дом</label>
-                {{ form_widget(form.building, {'attr': {'class': 'form-control', 'placeholder': '42'}}) }}
-                {{ form_errors(form.building) }}
-            </div>
-            <div class="col-4">
-                <label class="label-caps">Квартира</label>
-                {{ form_widget(form.apartment, {'attr': {'class': 'form-control', 'placeholder': '15'}}) }}
-                {{ form_errors(form.apartment) }}
-            </div>
-
-            <div class="col-12">
-                <div class="form-check d-flex align-items-center gap-2" style="padding-left:0">
-                    {{ form_widget(form.isDefault, {'attr': {'class': 'form-check-input m-0', 'style': 'width:18px;height:18px'}}) }}
-                    <label class="form-check-label small">Использовать по умолчанию</label>
-                </div>
-            </div>
+    <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-12">
+            <label class="{{ tw_label }}">Название адреса <span class="font-normal normal-case text-gray-400">(необязательно)</span></label>
+            {{ form_widget(form.label, {'attr': {'class': tw_input, 'placeholder': 'Например: Дом, Работа'}}) }}
+            {{ form_errors(form.label) }}
         </div>
 
-        <div class="mt-4 d-flex gap-2">
-            <button type="submit" class="btn btn-dark px-4">Сохранить</button>
-            <a href="{{ path('account_addresses') }}" class="btn btn-outline-secondary">Отмена</a>
+        <div class="col-span-12 md:col-span-6">
+            <label class="{{ tw_label }}">Получатель <span class="text-red-600">*</span></label>
+            {{ form_widget(form.fullName, {'attr': {'class': tw_input, 'placeholder': 'Имя Фамилия'}}) }}
+            {{ form_errors(form.fullName) }}
+        </div>
+        <div class="col-span-12 md:col-span-6">
+            <label class="{{ tw_label }}">Телефон <span class="text-red-600">*</span></label>
+            {{ form_widget(form.phone, {'attr': {'class': tw_input, 'placeholder': '+7 999 000 00 00'}}) }}
+            {{ form_errors(form.phone) }}
         </div>
 
-        {{ form_end(form) }}
+        <div class="col-span-8">
+            <label class="{{ tw_label }}">Город <span class="text-red-600">*</span></label>
+            {{ form_widget(form.city, {'attr': {'class': tw_input, 'placeholder': 'Москва'}}) }}
+            {{ form_errors(form.city) }}
+        </div>
+        <div class="col-span-4">
+            <label class="{{ tw_label }}">Индекс</label>
+            {{ form_widget(form.zip, {'attr': {'class': tw_input, 'placeholder': '123456'}}) }}
+            {{ form_errors(form.zip) }}
+        </div>
+
+        <div class="col-span-12">
+            <label class="{{ tw_label }}">Улица <span class="text-red-600">*</span></label>
+            {{ form_widget(form.street, {'attr': {'class': tw_input, 'placeholder': 'ул. Ленина'}}) }}
+            {{ form_errors(form.street) }}
+        </div>
+
+        <div class="col-span-4">
+            <label class="{{ tw_label }}">Дом</label>
+            {{ form_widget(form.building, {'attr': {'class': tw_input, 'placeholder': '42'}}) }}
+            {{ form_errors(form.building) }}
+        </div>
+        <div class="col-span-4">
+            <label class="{{ tw_label }}">Квартира</label>
+            {{ form_widget(form.apartment, {'attr': {'class': tw_input, 'placeholder': '15'}}) }}
+            {{ form_errors(form.apartment) }}
+        </div>
+
+        <div class="col-span-12">
+            <label class="flex items-center gap-2 text-sm text-gray-600">
+                {{ form_widget(form.isDefault, {'attr': {'class': 'h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                Использовать по умолчанию
+            </label>
+        </div>
     </div>
+
+    <div class="mt-6 flex gap-2">
+        <button type="submit" class="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить</button>
+        <a href="{{ path('account_addresses') }}"
+           class="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Отмена</a>
+    </div>
+
+    {{ form_end(form) }}
 </div>
 {% endblock %}

@@ -2,59 +2,51 @@
 {% block title %}Адреса доставки — WEARBASE{% endblock %}
 
 {% block account_content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h4 fw-bold mb-0">Адреса доставки</h1>
-    <a href="{{ path('account_address_new') }}" class="btn btn-dark">
-        <i class="fas fa-plus me-1"></i>Добавить адрес
-    </a>
+<div class="mb-5 flex items-center justify-between">
+    <h1 class="text-lg font-bold">Адреса доставки</h1>
+    <a href="{{ path('account_address_new') }}"
+       class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black transition">+ Добавить адрес</a>
 </div>
 
 {% if addresses|length == 0 %}
-<div class="card border-0 shadow-sm">
-    <div class="card-body text-center py-5 text-muted">
-        <i class="fas fa-map-marker-alt fa-3x mb-3 opacity-25 d-block"></i>
-        <p>Нет сохранённых адресов</p>
-        <a href="{{ path('account_address_new') }}" class="btn btn-dark">Добавить адрес</a>
-    </div>
+<div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
+    <div class="mb-4 text-5xl opacity-30">📍</div>
+    <p class="mb-4">Нет сохранённых адресов</p>
+    <a href="{{ path('account_address_new') }}"
+       class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Добавить адрес</a>
 </div>
 {% else %}
-<div class="row g-3">
+<div class="grid gap-4 md:grid-cols-2">
     {% for address in addresses %}
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm h-100 {{ address.isDefault ? 'border-dark border' : '' }}">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        {% if address.label %}
-                            <div class="fw-bold">{{ address.label }}</div>
-                        {% endif %}
-                        <div class="fw-semibold {{ address.label ? '' : 'mb-0' }}">{{ address.fullName }}</div>
-                    </div>
-                    {% if address.isDefault %}
-                        <span class="badge bg-dark">По умолчанию</span>
-                    {% endif %}
-                </div>
-                <div class="text-muted small mb-1">{{ address.phone }}</div>
-                <div class="text-muted small">{{ address.fullAddress }}</div>
-
-                <div class="d-flex gap-2 mt-3">
-                    <a href="{{ path('account_address_edit', {id: address.id}) }}"
-                       class="btn btn-sm btn-outline-secondary">Изменить</a>
-                    {% if not address.isDefault %}
-                    <form method="post" action="{{ path('account_address_default', {id: address.id}) }}">
-                        <input type="hidden" name="_token" value="{{ csrf_token('set_default_address') }}">
-                        <button type="submit" class="btn btn-sm btn-outline-dark">По умолчанию</button>
-                    </form>
-                    <form method="post" action="{{ path('account_address_delete', {id: address.id}) }}"
-                          onsubmit="return confirm('Удалить адрес?')">
-                        <input type="hidden" name="_token" value="{{ csrf_token('delete_address') }}">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </form>
-                    {% endif %}
-                </div>
+    <div class="rounded-2xl bg-white p-5 shadow-sm {{ address.isDefault ? 'ring-1 ring-gray-900' : '' }}">
+        <div class="mb-2 flex items-start justify-between">
+            <div>
+                {% if address.label %}
+                    <div class="font-bold">{{ address.label }}</div>
+                {% endif %}
+                <div class="text-sm font-semibold">{{ address.fullName }}</div>
             </div>
+            {% if address.isDefault %}
+                <span class="rounded bg-gray-900 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">По умолчанию</span>
+            {% endif %}
+        </div>
+        <div class="mb-1 text-sm text-gray-500">{{ address.phone }}</div>
+        <div class="text-sm text-gray-500">{{ address.fullAddress }}</div>
+
+        <div class="mt-4 flex gap-2">
+            <a href="{{ path('account_address_edit', {id: address.id}) }}"
+               class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Изменить</a>
+            {% if not address.isDefault %}
+            <form method="post" action="{{ path('account_address_default', {id: address.id}) }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('set_default_address') }}">
+                <button type="submit" class="rounded-lg border border-gray-900 px-3 py-1.5 text-sm text-gray-900 hover:bg-gray-900 hover:text-white transition">По умолчанию</button>
+            </form>
+            <form method="post" action="{{ path('account_address_delete', {id: address.id}) }}"
+                  onsubmit="return confirm('Удалить адрес?')">
+                <input type="hidden" name="_token" value="{{ csrf_token('delete_address') }}">
+                <button type="submit" class="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition">🗑</button>
+            </form>
+            {% endif %}
         </div>
     </div>
     {% endfor %}

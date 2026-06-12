@@ -2,71 +2,69 @@
 {% block title %}Личный кабинет — WEARBASE{% endblock %}
 
 {% block account_content %}
-<h1 class="h4 fw-bold mb-4">Добро пожаловать, {{ app.user.firstName ?: app.user.email }}!</h1>
+<h1 class="mb-5 text-lg font-bold">Добро пожаловать, {{ app.user.firstName ?: app.user.email }}!</h1>
 
 {# Точка входа для брендов #}
 {% if is_granted('ROLE_BRAND_MANAGER') %}
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div>
-            <div class="fw-semibold">Кабинет бренда</div>
-            <div class="text-muted small">Управляйте товарами, заказами, командой и тарифом.</div>
-        </div>
-        <a href="{{ path('brand_dashboard') }}" class="btn btn-dark btn-sm">Перейти в ЛК бренда →</a>
+<div class="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white p-5 shadow-sm">
+    <div>
+        <div class="font-semibold">Кабинет бренда</div>
+        <div class="text-sm text-gray-500">Управляйте товарами, заказами, командой и тарифом.</div>
     </div>
+    <a href="{{ path('brand_dashboard') }}"
+       class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black transition">Перейти в ЛК бренда →</a>
 </div>
 {% else %}
-<div class="card border-0 shadow-sm mb-4 bg-light">
-    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div>
-            <div class="fw-semibold">Представляете бренд?</div>
-            <div class="text-muted small">Найдите свой бренд в каталоге и нажмите «Я владелец», чтобы заявить права и получить кабинет.</div>
-        </div>
-        <a href="{{ path('brand_index') }}" class="btn btn-outline-dark btn-sm">Найти свой бренд</a>
+<div class="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-gray-100 p-5">
+    <div>
+        <div class="font-semibold">Представляете бренд?</div>
+        <div class="text-sm text-gray-500">Найдите свой бренд в каталоге и нажмите «Я владелец», чтобы заявить права и получить кабинет.</div>
     </div>
+    <a href="{{ path('brand_index') }}"
+       class="rounded-xl border border-gray-900 px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-900 hover:text-white transition">Найти свой бренд</a>
 </div>
 {% endif %}
 
-<div class="row g-3 mb-4">
-    <div class="col-sm-4">
-        <div class="card border-0 shadow-sm text-center py-3">
-            <div class="display-6 fw-bold">{{ stats.totalOrders }}</div>
-            <div class="text-muted small">Всего заказов</div>
-        </div>
+<div class="mb-5 grid gap-4 sm:grid-cols-3">
+    <div class="rounded-2xl bg-white py-6 text-center shadow-sm">
+        <div class="text-3xl font-bold">{{ stats.totalOrders }}</div>
+        <div class="text-sm text-gray-500">Всего заказов</div>
     </div>
-    <div class="col-sm-4">
-        <div class="card border-0 shadow-sm text-center py-3">
-            <div class="display-6 fw-bold">{{ stats.activeOrders }}</div>
-            <div class="text-muted small">Активных</div>
-        </div>
+    <div class="rounded-2xl bg-white py-6 text-center shadow-sm">
+        <div class="text-3xl font-bold">{{ stats.activeOrders }}</div>
+        <div class="text-sm text-gray-500">Активных</div>
     </div>
-    <div class="col-sm-4">
-        <div class="card border-0 shadow-sm text-center py-3">
-            <div class="display-6 fw-bold">{{ price(stats.totalSpent) }}</div>
-            <div class="text-muted small">Потрачено</div>
-        </div>
+    <div class="rounded-2xl bg-white py-6 text-center shadow-sm">
+        <div class="text-3xl font-bold">{{ price(stats.totalSpent) }}</div>
+        <div class="text-sm text-gray-500">Потрачено</div>
     </div>
 </div>
 
 {% if recentOrders|length > 0 %}
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+<div class="overflow-hidden rounded-2xl bg-white shadow-sm">
+    <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3 text-sm font-semibold">
         Последние заказы
-        <a href="{{ path('account_orders') }}" class="btn btn-sm btn-outline-dark">Все заказы</a>
+        <a href="{{ path('account_orders') }}"
+           class="rounded-lg border border-gray-900 px-3 py-1.5 text-sm font-semibold text-gray-900 hover:bg-gray-900 hover:text-white transition">Все заказы</a>
     </div>
-    <div class="list-group list-group-flush">
+    <div class="divide-y divide-gray-100">
         {% for order in recentOrders %}
+        {% set statusClasses = {
+            'new': 'bg-gray-100 text-gray-700', 'shipped': 'bg-sky-100 text-sky-800',
+            'delivered': 'bg-green-100 text-green-800', 'completed': 'bg-green-100 text-green-800',
+            'cancelled': 'bg-red-100 text-red-800'
+        } %}
         <a href="{{ path('account_order_show', {number: order.orderNumber}) }}"
-           class="list-group-item list-group-item-action py-3">
-            <div class="d-flex justify-content-between align-items-start">
+           class="block px-5 py-4 hover:bg-gray-50 transition">
+            <div class="flex items-start justify-between">
                 <div>
-                    <div class="fw-semibold">#{{ order.orderNumber }}</div>
-                    <div class="text-muted small">{{ order.brand.title }} · {{ order.createdAt|date('d.m.Y') }}</div>
+                    <div class="text-sm font-semibold">#{{ order.orderNumber }}</div>
+                    <div class="text-xs text-gray-500">{{ order.brand.title }} · {{ order.createdAt|date('d.m.Y') }}</div>
                 </div>
-                <div class="text-end">
-                    <div class="fw-semibold">{{ price(order.totalAmount) }}</div>
+                <div class="text-right">
+                    <div class="text-sm font-semibold">{{ price(order.totalAmount) }}</div>
                     {% set statusLabels = order.getStatusLabels() %}
-                    <span class="badge bg-{{ order.status == 'new' ? 'secondary' : (order.status == 'shipped' ? 'info' : (order.status == 'delivered' or order.status == 'completed' ? 'success' : (order.status == 'cancelled' ? 'danger' : 'primary'))) }}">
+                    <span class="rounded px-2 py-0.5 text-xs font-semibold {{ statusClasses[order.status] ?? 'bg-indigo-100 text-indigo-800' }}">
                         {{ statusLabels[order.status] ?? order.status }}
                     </span>
                 </div>
@@ -76,12 +74,11 @@
     </div>
 </div>
 {% else %}
-<div class="card border-0 shadow-sm">
-    <div class="card-body text-center py-5 text-muted">
-        <i class="fas fa-box-open fa-3x mb-3 opacity-25 d-block"></i>
-        <p>У вас пока нет заказов</p>
-        <a href="{{ path('catalog_index') }}" class="btn btn-dark">Перейти в каталог</a>
-    </div>
+<div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
+    <div class="mb-4 text-5xl opacity-30">📦</div>
+    <p class="mb-4">У вас пока нет заказов</p>
+    <a href="{{ path('catalog_index') }}"
+       class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Перейти в каталог</a>
 </div>
 {% endif %}
 {% endblock %}

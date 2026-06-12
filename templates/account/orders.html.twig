@@ -2,67 +2,67 @@
 {% block title %}Мои заказы — WEARBASE{% endblock %}
 
 {% block account_content %}
-<h2 class="h5 fw-bold mb-4">Мои заказы</h2>
+<h2 class="mb-5 text-lg font-bold">Мои заказы</h2>
 
 {% if orders|length == 0 %}
-    <div class="card border-0 shadow-sm">
-        <div class="card-body text-center py-5 text-muted">
-            <i class="fas fa-box-open fa-3x mb-3 d-block opacity-25"></i>
-            <p>Заказов пока нет</p>
-            <a href="{{ path('catalog_index') }}" class="btn btn-dark">Перейти в каталог</a>
-        </div>
+    <div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
+        <div class="mb-4 text-5xl opacity-30">📦</div>
+        <p class="mb-4">Заказов пока нет</p>
+        <a href="{{ path('catalog_index') }}"
+           class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Перейти в каталог</a>
     </div>
 {% else %}
-<div class="d-flex flex-column gap-3">
+<div class="flex flex-col gap-4">
 {% for order in orders %}
     {% set steps = ['new', 'confirmed', 'processing', 'shipped', 'delivered', 'completed'] %}
     {% set currentStep = 0 %}
     {% for s in steps %}{% if s == order.status %}{% set currentStep = loop.index0 %}{% endif %}{% endfor %}
 
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    {% set statusClasses = {
+        'new': 'bg-gray-100 text-gray-700', 'confirmed': 'bg-indigo-100 text-indigo-800', 'processing': 'bg-indigo-100 text-indigo-800',
+        'shipped': 'bg-sky-100 text-sky-800', 'delivered': 'bg-green-100 text-green-800', 'completed': 'bg-green-100 text-green-800',
+        'cancelled': 'bg-red-100 text-red-800', 'returned': 'bg-amber-100 text-amber-800', 'refunded': 'bg-amber-100 text-amber-800'
+    } %}
+
+    <div class="overflow-hidden rounded-2xl bg-white shadow-sm">
+        <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3">
             <div>
-                <span class="fw-semibold">#{{ order.orderNumber }}</span>
-                <span class="text-muted ms-2 small">от {{ order.createdAt|date('d.m.Y') }}</span>
+                <span class="text-sm font-semibold">#{{ order.orderNumber }}</span>
+                <span class="ml-2 text-xs text-gray-500">от {{ order.createdAt|date('d.m.Y') }}</span>
             </div>
-            {% set statusColors = {
-                'new': 'secondary', 'confirmed': 'primary', 'processing': 'primary',
-                'shipped': 'info', 'delivered': 'success', 'completed': 'success',
-                'cancelled': 'danger', 'returned': 'warning', 'refunded': 'warning'
-            } %}
-            <span class="badge bg-{{ statusColors[order.status] ?? 'secondary' }}">
+            <span class="rounded px-2 py-1 text-xs font-semibold {{ statusClasses[order.status] ?? 'bg-gray-100 text-gray-700' }}">
                 {{ order.statusLabel ?? order.status }}
             </span>
         </div>
-        <div class="card-body">
+        <div class="p-5">
 
             {# Прогресс-бар #}
             {% if order.status not in ['cancelled', 'returned', 'refunded'] %}
-            <div class="d-flex mb-3 gap-1">
+            <div class="mb-4 flex gap-1">
                 {% for s in steps %}
-                <div class="flex-fill" style="height:3px;background:{{ loop.index0 <= currentStep ? '#111' : '#e8e8e8' }};border-radius:2px"></div>
+                <div class="h-[3px] flex-1 rounded-sm {{ loop.index0 <= currentStep ? 'bg-gray-900' : 'bg-gray-200' }}"></div>
                 {% endfor %}
             </div>
             {% endif %}
 
             {# Товары #}
-            <div class="small">
+            <div class="text-sm">
                 {% for item in order.orderItems %}
-                <div class="d-flex justify-content-between py-1 border-bottom">
-                    <span class="text-muted">
+                <div class="flex justify-between border-b border-gray-100 py-1.5">
+                    <span class="text-gray-500">
                         {{ item.productTitle }}
-                        {% if item.variantTitle %}<span class="text-muted">({{ item.variantTitle }})</span>{% endif %}
+                        {% if item.variantTitle %}({{ item.variantTitle }}){% endif %}
                         × {{ item.qty }}
                     </span>
-                    <span class="fw-semibold">{{ price(item.total) }}</span>
+                    <span class="font-semibold">{{ price(item.total) }}</span>
                 </div>
                 {% endfor %}
             </div>
 
-            <div class="d-flex justify-content-between align-items-center mt-3">
-                <div class="fw-bold small">Итого: {{ price(order.totalAmount) }}</div>
+            <div class="mt-4 flex items-center justify-between">
+                <div class="text-sm font-bold">Итого: {{ price(order.totalAmount) }}</div>
                 <a href="{{ path('account_order_show', {number: order.orderNumber}) }}"
-                   class="btn btn-sm btn-outline-secondary">Подробнее →</a>
+                   class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Подробнее →</a>
             </div>
         </div>
     </div>

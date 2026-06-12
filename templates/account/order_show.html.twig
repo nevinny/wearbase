@@ -2,11 +2,10 @@
 {% block title %}Заказ #{{ order.orderNumber }} — WEARBASE{% endblock %}
 
 {% block account_content %}
-<div class="d-flex align-items-center gap-3 mb-4">
-    <a href="{{ path('account_orders') }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-arrow-left me-1"></i>Назад
-    </a>
-    <h1 class="h4 fw-bold mb-0">Заказ #{{ order.orderNumber }}</h1>
+<div class="mb-5 flex items-center gap-3">
+    <a href="{{ path('account_orders') }}"
+       class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
+    <h1 class="text-lg font-bold">Заказ #{{ order.orderNumber }}</h1>
 </div>
 
 {# Прогресс статуса #}
@@ -15,54 +14,50 @@
 {% set currentIdx = 0 %}
 {% for s in statuses %}{% if s == order.status %}{% set currentIdx = loop.index0 %}{% endif %}{% endfor %}
 {% if order.status not in ['cancelled','returned','refunded'] %}
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-body py-3">
-        <div class="d-flex justify-content-between position-relative">
-            <div class="position-absolute top-50 start-0 end-0 border-top" style="z-index:0"></div>
-            {% for s in statuses %}
-            {% set isPast = loop.index0 <= currentIdx %}
-            {% set isActive = order.status == s %}
-            <div class="text-center position-relative" style="z-index:1;flex:1">
-                <div class="rounded-circle mx-auto mb-1 d-flex align-items-center justify-content-center
-                    {{ isPast ? 'bg-dark text-white' : 'bg-white border' }}"
-                    style="width:28px;height:28px;font-size:12px">
-                    {{ isPast ? '✓' : '' }}
-                </div>
-                <div class="small {{ isActive ? 'fw-semibold' : 'text-muted' }}" style="font-size:11px">
-                    {{ statusLabels[s] ?? s }}
-                </div>
+<div class="mb-5 rounded-2xl bg-white px-5 py-4 shadow-sm">
+    <div class="relative flex justify-between">
+        <div class="absolute inset-x-0 top-[14px] border-t border-gray-200"></div>
+        {% for s in statuses %}
+        {% set isPast = loop.index0 <= currentIdx %}
+        {% set isActive = order.status == s %}
+        <div class="relative z-10 flex-1 text-center">
+            <div class="mx-auto mb-1 flex h-7 w-7 items-center justify-center rounded-full text-xs
+                {{ isPast ? 'bg-gray-900 text-white' : 'border border-gray-200 bg-white' }}">
+                {{ isPast ? '✓' : '' }}
             </div>
-            {% endfor %}
+            <div class="text-[11px] {{ isActive ? 'font-semibold' : 'text-gray-500' }}">
+                {{ statusLabels[s] ?? s }}
+            </div>
         </div>
+        {% endfor %}
     </div>
 </div>
 {% else %}
-<div class="alert alert-{{ order.status == 'cancelled' ? 'danger' : 'warning' }} mb-4">
-    <i class="fas fa-{{ order.status == 'cancelled' ? 'times-circle' : 'undo' }} me-2"></i>
+<div class="mb-5 rounded-xl px-4 py-3 text-sm {{ order.status == 'cancelled' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700' }}">
     Статус заказа: <strong>{{ statusLabels[order.status] ?? order.status }}</strong>
 </div>
 {% endif %}
 
-<div class="row g-4">
-    <div class="col-lg-8">
+<div class="grid gap-6 lg:grid-cols-3">
+    <div class="space-y-4 lg:col-span-2">
 
         {# Товары #}
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Товары</div>
-            <div class="list-group list-group-flush">
+        <div class="overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div class="border-b border-gray-100 px-5 py-3 text-sm font-semibold">Товары</div>
+            <div class="divide-y divide-gray-100">
                 {% for item in order.orderItems %}
-                <div class="list-group-item py-3">
-                    <div class="d-flex justify-content-between">
+                <div class="px-5 py-4">
+                    <div class="flex justify-between">
                         <div>
-                            <div class="fw-semibold">{{ item.productTitle }}</div>
-                            <div class="text-muted small">{{ item.variantTitle }}</div>
+                            <div class="text-sm font-semibold">{{ item.productTitle }}</div>
+                            <div class="text-xs text-gray-500">{{ item.variantTitle }}</div>
                             {% if item.sku %}
-                                <div class="text-muted small">Арт.: {{ item.sku }}</div>
+                                <div class="text-xs text-gray-500">Арт.: {{ item.sku }}</div>
                             {% endif %}
                         </div>
-                        <div class="text-end">
-                            <div class="fw-semibold">{{ price(item.total) }}</div>
-                            <div class="text-muted small">{{ price(item.price) }} × {{ item.qty }}</div>
+                        <div class="text-right">
+                            <div class="text-sm font-semibold">{{ price(item.total) }}</div>
+                            <div class="text-xs text-gray-500">{{ price(item.price) }} × {{ item.qty }}</div>
                         </div>
                     </div>
                 </div>
@@ -72,12 +67,12 @@
 
         {# История статусов #}
         {% if order.statusHistory|length > 0 %}
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white fw-semibold">История статусов</div>
-            <div class="list-group list-group-flush">
+        <div class="overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div class="border-b border-gray-100 px-5 py-3 text-sm font-semibold">История статусов</div>
+            <div class="divide-y divide-gray-100">
                 {% for h in order.statusHistory|reverse %}
-                <div class="list-group-item py-2 small">
-                    <div class="d-flex justify-content-between">
+                <div class="px-5 py-2.5 text-sm">
+                    <div class="flex justify-between">
                         <span>
                             {% if h.fromStatus %}
                                 {{ statusLabels[h.fromStatus] ?? h.fromStatus }} →
@@ -85,7 +80,7 @@
                             <strong>{{ statusLabels[h.toStatus] ?? h.toStatus }}</strong>
                             {% if h.comment %} — {{ h.comment }}{% endif %}
                         </span>
-                        <span class="text-muted">{{ h.createdAt|date('d.m.Y H:i') }}</span>
+                        <span class="text-gray-400">{{ h.createdAt|date('d.m.Y H:i') }}</span>
                     </div>
                 </div>
                 {% endfor %}
@@ -95,74 +90,66 @@
 
     </div>
 
-    <div class="col-lg-4">
+    <div class="space-y-4">
 
         {# Итог #}
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-body">
-                <h6 class="fw-bold mb-3">Итого</h6>
-                <div class="d-flex justify-content-between mb-1">
-                    <span class="text-muted">Товары</span>
-                    <span>{{ price(order.subtotal) }}</span>
-                </div>
-                <div class="d-flex justify-content-between mb-2">
-                    <span class="text-muted">Доставка</span>
-                    <span>{{ order.shippingCost == '0' ? 'Бесплатно' : price(order.shippingCost) }}</span>
-                </div>
-                <hr>
-                <div class="d-flex justify-content-between fw-bold">
-                    <span>Итого</span>
-                    <span>{{ price(order.totalAmount) }}</span>
-                </div>
+        <div class="rounded-2xl bg-white p-5 shadow-sm">
+            <h6 class="mb-3 font-bold">Итого</h6>
+            <div class="mb-1 flex justify-between text-sm">
+                <span class="text-gray-500">Товары</span>
+                <span>{{ price(order.subtotal) }}</span>
+            </div>
+            <div class="mb-2 flex justify-between text-sm">
+                <span class="text-gray-500">Доставка</span>
+                <span>{{ order.shippingCost == '0' ? 'Бесплатно' : price(order.shippingCost) }}</span>
+            </div>
+            <hr class="my-3 border-gray-100">
+            <div class="flex justify-between font-bold">
+                <span>Итого</span>
+                <span>{{ price(order.totalAmount) }}</span>
             </div>
         </div>
 
         {# Доставка #}
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-body">
-                <h6 class="fw-bold mb-3">Доставка</h6>
-                {% set deliveryLabels = {
-                    'courier': 'Курьер',
-                    'cdek': 'СДЭК',
-                    'boxberry': 'Boxberry',
-                    'pochta': 'Почта России',
-                    'pickup': 'Самовывоз'
+        <div class="rounded-2xl bg-white p-5 shadow-sm">
+            <h6 class="mb-3 font-bold">Доставка</h6>
+            {% set deliveryLabels = {
+                'courier': 'Курьер',
+                'cdek': 'СДЭК',
+                'boxberry': 'Boxberry',
+                'pochta': 'Почта России',
+                'pickup': 'Самовывоз'
+            } %}
+            <div class="mb-2 text-sm">
+                🚚 {{ deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod }}
+            </div>
+            {% if order.trackingNumber %}
+            <div class="text-sm">
+                Трек: <code class="rounded bg-gray-100 px-1.5 py-0.5 text-xs">{{ order.trackingNumber }}</code>
+                {% set trackingUrls = {
+                    'cdek': 'https://www.cdek.ru/ru/tracking?order_id=%s',
+                    'boxberry': 'https://boxberry.ru/tracking/?tracking_id=%s',
+                    'pochta': 'https://www.pochta.ru/tracking#%s',
                 } %}
-                <div class="small mb-2">
-                    <i class="fas fa-truck me-1 text-muted"></i>
-                    {{ deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod }}
-                </div>
-                {% if order.trackingNumber %}
-                <div class="small">
-                    <i class="fas fa-barcode me-1 text-muted"></i>
-                    Трек: <code>{{ order.trackingNumber }}</code>
-                    {% set trackingUrls = {
-                        'cdek': 'https://www.cdek.ru/ru/tracking?order_id=%s',
-                        'boxberry': 'https://boxberry.ru/tracking/?tracking_id=%s',
-                        'pochta': 'https://www.pochta.ru/tracking#%s',
-                    } %}
-                    {% if trackingUrls[order.deliveryMethod] is defined %}
-                    · <a href="{{ trackingUrls[order.deliveryMethod]|replace({'%s': order.trackingNumber}) }}" target="_blank" class="text-decoration-underline">отследить</a>
-                    {% endif %}
-                </div>
+                {% if trackingUrls[order.deliveryMethod] is defined %}
+                · <a href="{{ trackingUrls[order.deliveryMethod]|replace({'%s': order.trackingNumber}) }}" target="_blank" class="underline">отследить</a>
                 {% endif %}
-                <hr class="my-2">
-                <div class="small">
-                    {% set addr = order.shippingAddress %}
-                    <div class="fw-semibold">{{ addr.fullName }}</div>
-                    <div class="text-muted">{{ addr.phone }}</div>
-                    <div class="text-muted">{{ addr.zip ? addr.zip ~ ', ' : '' }}{{ addr.city }}, {{ addr.street }}, д. {{ addr.building }}{{ addr.apartment ? ', кв. ' ~ addr.apartment : '' }}</div>
-                </div>
+            </div>
+            {% endif %}
+            <hr class="my-3 border-gray-100">
+            <div class="text-sm">
+                {% set addr = order.shippingAddress %}
+                <div class="font-semibold">{{ addr.fullName }}</div>
+                <div class="text-gray-500">{{ addr.phone }}</div>
+                <div class="text-gray-500">{{ addr.zip ? addr.zip ~ ', ' : '' }}{{ addr.city }}, {{ addr.street }}, д. {{ addr.building }}{{ addr.apartment ? ', кв. ' ~ addr.apartment : '' }}</div>
             </div>
         </div>
 
         {# Оплата #}
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-body small">
-                <h6 class="fw-bold mb-2">Оплата</h6>
-                {% set payLabels = {'card_online': 'Карта онлайн', 'sbp': 'СБП', 'upon_receipt': 'При получении'} %}
-                {{ payLabels[order.paymentMethod] ?? order.paymentMethod }}
-            </div>
+        <div class="rounded-2xl bg-white p-5 text-sm shadow-sm">
+            <h6 class="mb-2 font-bold">Оплата</h6>
+            {% set payLabels = {'card_online': 'Карта онлайн', 'sbp': 'СБП', 'upon_receipt': 'При получении'} %}
+            {{ payLabels[order.paymentMethod] ?? order.paymentMethod }}
         </div>
 
         {# Отмена #}
@@ -170,8 +157,9 @@
         <form method="post" action="{{ path('account_order_cancel', {number: order.orderNumber}) }}"
               onsubmit="return confirm('Отменить заказ?')">
             <input type="hidden" name="_token" value="{{ csrf_token('cancel_order') }}">
-            <button type="submit" class="btn btn-outline-danger w-100">
-                <i class="fas fa-times me-1"></i>Отменить заказ
+            <button type="submit"
+                    class="w-full rounded-xl border border-red-300 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 transition">
+                ✕ Отменить заказ
             </button>
         </form>
         {% endif %}

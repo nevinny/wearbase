@@ -3,12 +3,13 @@
 {% block title %}Избранное — WEARBASE{% endblock %}
 
 {% block account_content %}
-<h4 class="mb-3">Избранное</h4>
+<h4 class="mb-4 text-lg font-bold">Избранное</h4>
 
-<div class="text-center py-5 text-muted">
-    <i class="fas fa-heart fa-3x mb-3 d-block"></i>
+<div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
+    <div class="mb-4 text-5xl opacity-30">❤️</div>
     <p class="mb-1">У вас пока нет избранных товаров</p>
-    <p class="small">Отмечайте товары сердечком, чтобы сохранить их здесь</p>
-    <a href="{{ path('catalog_index') }}" class="btn btn-dark btn-sm mt-2">Перейти в каталог</a>
+    <p class="text-sm">Отмечайте товары сердечком, чтобы сохранить их здесь</p>
+    <a href="{{ path('catalog_index') }}"
+       class="mt-4 inline-block rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Перейти в каталог</a>
 </div>
 {% endblock %}

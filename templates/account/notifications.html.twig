@@ -3,38 +3,36 @@
 {% block title %}Уведомления — WEARBASE{% endblock %}
 
 {% block account_content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="mb-0">Уведомления</h4>
+<div class="mb-4 flex items-center justify-between">
+    <h4 class="text-lg font-bold">Уведомления</h4>
     {% if unreadCount > 0 %}
         <form method="post" action="{{ path('account_notification_mark_all_read') }}" class="m-0">
-            <button class="btn btn-outline-secondary btn-sm">Прочитать все</button>
+            <button class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Прочитать все</button>
         </form>
     {% endif %}
 </div>
 
 {% if notifications|length == 0 %}
-    <div class="text-center py-5 text-muted">
-        <i class="fas fa-bell-slash fa-3x mb-3 d-block"></i>
+    <div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
+        <div class="mb-4 text-5xl opacity-30">🔕</div>
         <p>У вас пока нет уведомлений</p>
     </div>
 {% else %}
-    <div class="list-group">
+    <div class="divide-y divide-gray-100 overflow-hidden rounded-2xl bg-white shadow-sm">
         {% for notification in notifications %}
-            <div class="list-group-item list-group-item-action d-flex gap-3 {{ not notification.isRead ? 'fw-semibold border-start border-3 border-primary' : '' }}">
-                <div class="flex-grow-1">
-                    <div class="d-flex justify-content-between">
-                        <span>{{ notification.title }}</span>
-                        <small class="text-muted">{{ notification.createdAt|date('d.m.Y H:i') }}</small>
+            <div class="flex gap-3 px-5 py-4 {{ not notification.isRead ? 'border-l-4 border-indigo-500 font-semibold' : '' }}">
+                <div class="flex-1">
+                    <div class="flex justify-between">
+                        <span class="text-sm">{{ notification.title }}</span>
+                        <small class="text-xs text-gray-400">{{ notification.createdAt|date('d.m.Y H:i') }}</small>
                     </div>
                     {% if notification.body %}
-                        <p class="mb-0 small text-muted mt-1">{{ notification.body }}</p>
+                        <p class="mb-0 mt-1 text-sm font-normal text-gray-500">{{ notification.body }}</p>
                     {% endif %}
                 </div>
                 {% if not notification.isRead %}
                     <a href="{{ path('account_notification_mark_read', {id: notification.id}) }}"
-                       class="text-nowrap small text-decoration-none" title="Отметить прочитанным">
-                        <i class="fas fa-check"></i>
-                    </a>
+                       class="whitespace-nowrap text-sm text-gray-400 hover:text-gray-700" title="Отметить прочитанным">✓</a>
                 {% endif %}
             </div>
         {% endfor %}

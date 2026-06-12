@@ -2,108 +2,101 @@
 {% block title %}Профиль — WEARBASE{% endblock %}
 
 {% block account_content %}
-<h1 class="h5 fw-bold mb-4">Профиль</h1>
+{% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+{% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% set section = 'block text-xs font-bold uppercase tracking-wider text-gray-500 mb-3' %}
 
-<div class="row g-4">
-    <div class="col-lg-8">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-4">
-                {{ form_start(form) }}
+<h1 class="mb-5 text-lg font-bold">Профиль</h1>
 
-                {# Аватар #}
-                <div class="d-flex align-items-center gap-3 mb-4 pb-4 border-bottom">
-                    {% set u = app.user %}
-                    {% if u.avatar %}
-                        <img src="{{ vich_uploader_asset(u, 'avatarFile') }}"
-                             class="rounded-circle flex-shrink-0" width="64" height="64"
-                             style="object-fit:cover" alt="">
-                    {% else %}
-                        <div class="rounded-circle bg-dark text-white d-flex align-items-center justify-content-center flex-shrink-0"
-                             style="width:64px;height:64px;font-size:24px">
-                            {{ (u.firstName ?: u.email)|first|upper }}
-                        </div>
-                    {% endif %}
-                    <div>
-                        <div class="fw-semibold small mb-1">Фото профиля</div>
-                        {{ form_widget(form.avatarFile) }}
-                        <div class="text-muted" style="font-size:.75rem">JPG, PNG — не более 2 МБ</div>
+<div class="grid gap-6 lg:grid-cols-3">
+    <div class="lg:col-span-2">
+        <div class="rounded-2xl bg-white p-6 shadow-sm">
+            {{ form_start(form) }}
+
+            {# Аватар #}
+            <div class="mb-6 flex items-center gap-4 border-b border-gray-100 pb-6">
+                {% set u = app.user %}
+                {% if u.avatar %}
+                    <img src="{{ vich_uploader_asset(u, 'avatarFile') }}"
+                         class="h-16 w-16 shrink-0 rounded-full object-cover" alt="">
+                {% else %}
+                    <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gray-900 text-2xl text-white">
+                        {{ (u.firstName ?: u.email)|first|upper }}
                     </div>
+                {% endif %}
+                <div>
+                    <div class="mb-1 text-sm font-semibold">Фото профиля</div>
+                    {{ form_widget(form.avatarFile, {'attr': {'class': 'text-sm'}}) }}
+                    <div class="text-xs text-gray-400">JPG, PNG — не более 2 МБ</div>
                 </div>
-
-                {# Личные данные #}
-                <span class="form-section-label">Личные данные</span>
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <label class="label-caps">Имя</label>
-                        {{ form_widget(form.firstName, {'attr': {'class': 'form-control', 'placeholder': 'Иван'}}) }}
-                        {{ form_errors(form.firstName) }}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="label-caps">Фамилия</label>
-                        {{ form_widget(form.lastName, {'attr': {'class': 'form-control', 'placeholder': 'Иванов'}}) }}
-                        {{ form_errors(form.lastName) }}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="label-caps">Email</label>
-                        {{ form_widget(form.email, {'attr': {'class': 'form-control'}}) }}
-                        {{ form_errors(form.email) }}
-                    </div>
-                    <div class="col-md-6">
-                        <label class="label-caps">Телефон</label>
-                        {{ form_widget(form.phone, {'attr': {'class': 'form-control', 'placeholder': '+7 999 000 00 00'}}) }}
-                        {{ form_errors(form.phone) }}
-                    </div>
-                </div>
-
-                {# Смена пароля #}
-                <span class="form-section-label border-top pt-4 mt-2">Смена пароля</span>
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <label class="label-caps">Новый пароль</label>
-                        {{ form_widget(form.newPassword, {'attr': {'class': 'form-control', 'placeholder': 'Оставьте пустым, чтобы не менять'}}) }}
-                        {{ form_errors(form.newPassword) }}
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-dark px-4">Сохранить изменения</button>
-
-                {{ form_end(form) }}
             </div>
+
+            {# Личные данные #}
+            <span class="{{ section }}">Личные данные</span>
+            <div class="mb-6 grid gap-4 md:grid-cols-2">
+                <div>
+                    <label class="{{ tw_label }}">Имя</label>
+                    {{ form_widget(form.firstName, {'attr': {'class': tw_input, 'placeholder': 'Иван'}}) }}
+                    {{ form_errors(form.firstName) }}
+                </div>
+                <div>
+                    <label class="{{ tw_label }}">Фамилия</label>
+                    {{ form_widget(form.lastName, {'attr': {'class': tw_input, 'placeholder': 'Иванов'}}) }}
+                    {{ form_errors(form.lastName) }}
+                </div>
+                <div>
+                    <label class="{{ tw_label }}">Email</label>
+                    {{ form_widget(form.email, {'attr': {'class': tw_input}}) }}
+                    {{ form_errors(form.email) }}
+                </div>
+                <div>
+                    <label class="{{ tw_label }}">Телефон</label>
+                    {{ form_widget(form.phone, {'attr': {'class': tw_input, 'placeholder': '+7 999 000 00 00'}}) }}
+                    {{ form_errors(form.phone) }}
+                </div>
+            </div>
+
+            {# Смена пароля #}
+            <span class="{{ section }} border-t border-gray-100 pt-6">Смена пароля</span>
+            <div class="mb-6 grid gap-4 md:grid-cols-2">
+                <div>
+                    <label class="{{ tw_label }}">Новый пароль</label>
+                    {{ form_widget(form.newPassword, {'attr': {'class': tw_input, 'placeholder': 'Оставьте пустым, чтобы не менять'}}) }}
+                    {{ form_errors(form.newPassword) }}
+                </div>
+            </div>
+
+            <button type="submit" class="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить изменения</button>
+
+            {{ form_end(form) }}
         </div>
     </div>
 
-    <div class="col-lg-4 d-flex flex-column gap-3">
+    <div class="flex flex-col gap-4">
 
         {# Telegram #}
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-4">
-                <span class="form-section-label mb-2">Telegram-уведомления</span>
-                {% if app.user.telegramChatId %}
-                    <div class="d-flex align-items-center gap-2 text-success small">
-                        <i class="fab fa-telegram fs-5"></i>
-                        <span class="fw-semibold">Подключён</span>
-                    </div>
-                {% else %}
-                    <p class="text-muted small mb-3">Получайте уведомления о заказах в Telegram.</p>
-                    <a href="https://t.me/wearbase_bot?start={{ app.user.id }}"
-                       class="btn btn-outline-secondary btn-sm w-100" target="_blank">
-                        <i class="fab fa-telegram me-1"></i>Подключить Telegram
-                    </a>
-                {% endif %}
-            </div>
+        <div class="rounded-2xl bg-white p-5 shadow-sm">
+            <span class="{{ section }} mb-2">Telegram-уведомления</span>
+            {% if app.user.telegramChatId %}
+                <div class="flex items-center gap-2 text-sm font-semibold text-green-600">
+                    ✈️ Подключён
+                </div>
+            {% else %}
+                <p class="mb-3 text-sm text-gray-500">Получайте уведомления о заказах в Telegram.</p>
+                <a href="https://t.me/wearbase_bot?start={{ app.user.id }}"
+                   class="block w-full rounded-xl border border-gray-300 py-2 text-center text-sm font-semibold text-gray-600 hover:bg-gray-50 transition" target="_blank">
+                    ✈️ Подключить Telegram
+                </a>
+            {% endif %}
         </div>
 
         {# Email статус #}
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-4">
-                <span class="form-section-label mb-2">Email</span>
-                <div class="text-muted small">{{ app.user.email }}</div>
-                {% if not app.user.emailVerifiedAt %}
-                    <div class="text-warning small mt-1">
-                        <i class="fas fa-exclamation-triangle me-1"></i>Не подтверждён
-                    </div>
-                {% endif %}
-            </div>
+        <div class="rounded-2xl bg-white p-5 shadow-sm">
+            <span class="{{ section }} mb-2">Email</span>
+            <div class="text-sm text-gray-500">{{ app.user.email }}</div>
+            {% if not app.user.emailVerifiedAt %}
+                <div class="mt-1 text-sm text-amber-600">⚠️ Не подтверждён</div>
+            {% endif %}
         </div>
 
     </div>
