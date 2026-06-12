@@ -154,6 +154,9 @@ class CartController extends AbstractController
         return $this->isCsrfTokenValid('cart', (string) $token);
     }
 
+    /** Ключ гостевой корзины в ДАННЫХ сессии: переживает session->migrate() при логине (session ID — нет) */
+    public const SESSION_TOKEN_KEY = 'cart_token';
+
     private function getOrCreateCart(
         CartRepository $repo,
         Request $request,
@@ -171,14 +174,29 @@ class CartController extends AbstractController
             return $cart ?? new Cart();
         }
 
-        // Гостевая корзина по session ID
-        $session   = $request->getSession();
-        $sessionId = $session->getId();
-        $cart      = $repo->findOneBy(['sessionId' => $sessionId]);
+        // Гостевая корзина по токену из данных сессии
+        $session = $request->getSession();
+        $token   = $session->get(self::SESSION_TOKEN_KEY);
+        $cart    = $token ? $repo->findOneBy(['sessionId' => $token, 'user' => null]) : null;
+
+        // Легаси-совместимость: корзины, созданные до токенов, привязаны к PHP session ID
+        if (!$cart && !$token) {
+            $cart = $repo->findOneBy(['sessionId' => $session->getId(), 'user' => null]);
+            if ($cart) {
+                $token = bin2hex(random_bytes(16));
+                $session->set(self::SESSION_TOKEN_KEY, $token);
+                $cart->setSessionId($token);
+                $em?->flush();
+            }
+        }
 
         if (!$cart && $em) {
+            if (!$token) {
+                $token = bin2hex(random_bytes(16));
+                $session->set(self::SESSION_TOKEN_KEY, $token);
+            }
             $cart = new Cart();
-            $cart->setSessionId($sessionId);
+            $cart->setSessionId($token);
             $em->persist($cart);
         }
 

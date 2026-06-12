@@ -11,9 +11,9 @@ test.describe('Cart Icon Visibility', () => {
     const icon = page.locator('#cart-icon-link');
     await expect(icon).toBeVisible();
 
-    // Badge should exist
+    // Badge exists in DOM (hidden until cart has items)
     const badge = page.locator('#header-cart-badge');
-    await expect(badge).toBeVisible();
+    await expect(badge).toBeAttached();
   });
 
   test('иконка корзины видна на главной', async ({ page }) => {
@@ -23,17 +23,12 @@ test.describe('Cart Icon Visibility', () => {
   });
 
   test('add-to-cart обновляет счётчик корзины', async ({ page }) => {
-    // Login first
-    const email = `e2e-carticon-${Date.now()}@wearbase.ru`;
-    const pass = 'e2e-carticon-pass';
-
-    await page.goto('/register');
-    await page.fill('input[name="registration_form[firstName]"]', 'E2E');
-    await page.fill('input[name="registration_form[email]"]', email);
-    await page.fill('input[name="registration_form[plainPassword][first]"]', pass);
-    await page.fill('input[name="registration_form[plainPassword][second]"]', pass);
-    await page.click('button[type="submit"]');
-    await page.waitForURL(/\/account/, { timeout: 15000 });
+    // Логин готовым пользователем: регистрация в e2e невозможна из-за Turnstile-капчи
+    await page.goto('/login');
+    await page.fill('input[name="_username"]', 'cart-test@example.com');
+    await page.fill('input[name="_password"]', 'Test12345!');
+    await Promise.all([page.waitForNavigation(), page.click('form button[type="submit"]')]);
+    expect(page.url()).not.toContain('/login');
 
     // Go to product page
     await page.goto(`/product/${PRODUCT_UUID}`);
