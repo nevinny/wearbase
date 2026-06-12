@@ -1,94 +1,108 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/app.html.twig' %}
 {% block title %}Оформление заказа — WEARBASE{% endblock %}
+{# Checkout: без навигации в шапке — ничего не должно уводить из оформления #}
+{% block header %}
+<header class="bg-white border-b border-gray-100">
+    <div class="container mx-auto px-4 py-3">
+        {% set nav_locale = app.request.locale|default('ru') %}
+        <a href="{{ path('home_hub', {_locale: nav_locale}) }}" class="text-lg font-bold tracking-tight">
+            <span class="text-gray-900">WEARBASE</span><span class="text-indigo-600">.{{ nav_locale == 'ru' ? 'ru' : 'com' }}</span>
+        </a>
+    </div>
+</header>
+{% endblock %}
 
-{% block content %}
-<div class="container py-4" style="max-width:1000px">
-    <h1 class="h4 fw-bold mb-4">Оформление заказа</h1>
+{% block body %}
+{% set card  = 'rounded-2xl bg-white shadow-sm overflow-hidden' %}
+{% set chead = 'border-b border-gray-100 px-5 py-3 text-sm font-semibold flex items-center gap-2' %}
+{% set badge = 'inline-flex h-5 w-5 items-center justify-center rounded bg-gray-900 text-[11px] font-semibold text-white' %}
+{% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+{% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% set opt_box  = 'rounded-xl border border-gray-200 p-4 has-[:checked]:border-gray-900 has-[:checked]:ring-1 has-[:checked]:ring-gray-900' %}
+
+<div class="container mx-auto max-w-[1000px] px-4 py-8">
+    <h1 class="mb-6 text-xl font-bold">Оформление заказа</h1>
 
     <form method="post" action="{{ path('checkout_confirm') }}">
         <input type="hidden" name="_token" value="{{ csrf_token('checkout_confirm') }}">
-        <div class="row g-4">
-            <div class="col-lg-7">
+        <div class="grid gap-6 lg:grid-cols-12">
+            <div class="space-y-4 lg:col-span-7">
 
                 {# 1. Адрес доставки #}
-                <div class="card border-0 shadow-sm mb-3">
-                    <div class="card-header bg-white fw-semibold">
-                        <span class="badge bg-dark me-2" style="font-size:.7rem;border-radius:.3rem">1</span>Адрес доставки
-                    </div>
-                    <div class="card-body p-4">
+                <div class="{{ card }}">
+                    <div class="{{ chead }}"><span class="{{ badge }}">1</span>Адрес доставки</div>
+                    <div class="p-5">
 
                         {% if addresses|length > 0 %}
-                        <div class="d-flex flex-column gap-2 mb-3">
+                        <div class="mb-4 flex flex-col gap-2">
                             {% for address in addresses %}
-                            <div class="form-check border p-3">
-                                <input class="form-check-input" type="radio"
+                            <label class="{{ opt_box }} flex cursor-pointer items-start gap-3">
+                                <input class="mt-1" type="radio"
                                        name="address_id" id="addr_{{ address.id }}"
                                        value="{{ address.id }}"
                                        {{ (default and default.id == address.id) or (not default and loop.first) ? 'checked' : '' }}>
-                                <label class="form-check-label w-100" for="addr_{{ address.id }}">
-                                    <div class="fw-semibold small">{{ address.label ?: address.fullName }}</div>
-                                    <div class="text-muted" style="font-size:.78rem">{{ address.fullAddress }}</div>
-                                </label>
-                            </div>
+                                <span>
+                                    <span class="block text-sm font-semibold">{{ address.label ?: address.fullName }}</span>
+                                    <span class="block text-xs text-gray-500">{{ address.fullAddress }}</span>
+                                </span>
+                            </label>
                             {% endfor %}
-                            <div class="form-check border p-3">
-                                <input class="form-check-input" type="radio" name="address_id" id="addr_new" value="">
-                                <label class="form-check-label small" for="addr_new">+ Другой адрес</label>
-                            </div>
+                            <label class="{{ opt_box }} flex cursor-pointer items-center gap-3 text-sm">
+                                <input type="radio" name="address_id" id="addr_new" value="">
+                                + Другой адрес
+                            </label>
                         </div>
                         {% endif %}
 
                         {# Поля нового адреса #}
-                        <div id="new-address-fields" class="{{ addresses|length > 0 ? 'd-none' : '' }}">
-                            <div class="row g-2">
-                                <div class="col-md-6">
-                                    <label class="label-caps">Получатель</label>
-                                    <input name="full_name" class="form-control" placeholder="Имя Фамилия"
+                        <div id="new-address-fields" class="{{ addresses|length > 0 ? 'hidden' : '' }}">
+                            <div class="grid grid-cols-12 gap-3">
+                                <div class="col-span-12 md:col-span-6">
+                                    <label class="{{ tw_label }}">Получатель</label>
+                                    <input name="full_name" class="{{ tw_input }}" placeholder="Имя Фамилия"
                                            value="{{ app.user.fullName ?? app.user.email ?? '' }}" required>
                                 </div>
-                                <div class="col-md-6">
-                                    <label class="label-caps">Телефон</label>
-                                    <input name="phone" type="tel" class="form-control" placeholder="+7 999 000 00 00" required>
+                                <div class="col-span-12 md:col-span-6">
+                                    <label class="{{ tw_label }}">Телефон</label>
+                                    <input name="phone" type="tel" class="{{ tw_input }}" placeholder="+7 999 000 00 00" required>
                                 </div>
-                                <div class="col-md-8">
-                                    <label class="label-caps">Город</label>
-                                    <input name="city" class="form-control" placeholder="Москва" required>
+                                <div class="col-span-8">
+                                    <label class="{{ tw_label }}">Город</label>
+                                    <input name="city" class="{{ tw_input }}" placeholder="Москва" required>
                                 </div>
-                                <div class="col-md-4">
-                                    <label class="label-caps">Индекс</label>
-                                    <input name="zip" class="form-control" placeholder="123456">
+                                <div class="col-span-4">
+                                    <label class="{{ tw_label }}">Индекс</label>
+                                    <input name="zip" class="{{ tw_input }}" placeholder="123456">
                                 </div>
-                                <div class="col-12">
-                                    <label class="label-caps">Email</label>
-                                    <input name="email" type="email" class="form-control"
+                                <div class="col-span-12">
+                                    <label class="{{ tw_label }}">Email</label>
+                                    <input name="email" type="email" class="{{ tw_input }}"
                                            value="{{ app.user.email ?? '' }}" placeholder="example@mail.ru" required>
                                 </div>
-                                <div class="col-12">
-                                    <label class="label-caps">Улица</label>
-                                    <input name="street" class="form-control" placeholder="ул. Ленина" required>
+                                <div class="col-span-12">
+                                    <label class="{{ tw_label }}">Улица</label>
+                                    <input name="street" class="{{ tw_input }}" placeholder="ул. Ленина" required>
                                 </div>
-                                <div class="col-4">
-                                    <label class="label-caps">Дом</label>
-                                    <input name="building" class="form-control" placeholder="42">
+                                <div class="col-span-4">
+                                    <label class="{{ tw_label }}">Дом</label>
+                                    <input name="building" class="{{ tw_input }}" placeholder="42">
                                 </div>
-                                <div class="col-4">
-                                    <label class="label-caps">Квартира</label>
-                                    <input name="apartment" class="form-control" placeholder="15">
+                                <div class="col-span-4">
+                                    <label class="{{ tw_label }}">Квартира</label>
+                                    <input name="apartment" class="{{ tw_input }}" placeholder="15">
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                        {# 2. Доставка #}
-                <div class="card border-0 shadow-sm mb-3">
-                    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-                        <span>
-                            <span class="badge bg-dark me-2" style="font-size:.7rem;border-radius:.3rem">2</span>Способ доставки
-                        </span>
+                {# 2. Доставка #}
+                <div class="{{ card }}">
+                    <div class="{{ chead }} justify-between">
+                        <span class="flex items-center gap-2"><span class="{{ badge }}">2</span>Способ доставки</span>
                         {# Выбор страны доставки #}
-                        <select id="shipping-country" name="country" class="form-select form-select-sm w-auto"
-                                style="max-width:180px;font-size:.8rem">
+                        <select id="shipping-country" name="country"
+                                class="max-w-[180px] rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900">
                             {% for country in countries %}
                                 <option value="{{ country.code }}" {{ country.code == 'RU' ? 'selected' : '' }}>
                                     {{ country.flagEmoji }} {{ country.nameRu }}
@@ -96,92 +110,83 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="card-body p-4">
+                    <div class="p-5">
                         <input type="hidden" name="shipping_rule_id" id="shipping-rule-id" value="">
                         <input type="hidden" id="cart-weight" value="{{ cartWeight is defined ? cartWeight : 0.5 }}">
-                        <div id="shipping-options" class="d-flex flex-column gap-2">
+                        <div id="shipping-options" class="flex flex-col gap-2">
                         {% for rule in shippingRules %}
-                        <div class="form-check border p-3">
-                            <input class="form-check-input shipping-radio" type="radio" name="delivery_method"
+                        <label class="{{ opt_box }} flex cursor-pointer items-start gap-3" for="del_{{ rule.id }}">
+                            <input class="shipping-radio mt-1" type="radio" name="delivery_method"
                                    id="del_{{ rule.id }}" value="{{ rule.carrier }}"
                                    data-price="{{ rule.priceRub }}"
                                    data-rule-id="{{ rule.id }}"
                                    data-free-from="{{ rule.freeFromRub }}"
                                    {{ loop.first ? 'checked' : '' }}>
-                            <label class="form-check-label d-flex justify-content-between w-100" for="del_{{ rule.id }}">
-                                <div>
-                                    <div class="fw-semibold small">{{ rule.name }}</div>
-                                    <div class="text-muted" style="font-size:.75rem">{{ rule.deliveryLabel }}
+                            <span class="flex w-full justify-between">
+                                <span>
+                                    <span class="block text-sm font-semibold">{{ rule.name }}</span>
+                                    <span class="block text-xs text-gray-500">{{ rule.deliveryLabel }}
                                         {% if rule.freeFromRub %}
-                                            · <span class="text-success">Бесплатно от {{ price(rule.freeFromRub) }}</span>
+                                            · <span class="text-green-600">Бесплатно от {{ price(rule.freeFromRub) }}</span>
                                         {% endif %}
-                                    </div>
-                                </div>
-                                <span class="fw-semibold small shipping-price-label">
+                                    </span>
+                                </span>
+                                <span class="shipping-price-label text-sm font-semibold">
                                     {{ rule.priceRub == '0.00' ? 'Бесплатно' : price(rule.priceRub) }}
                                 </span>
-                            </label>
-                        </div>
+                            </span>
+                        </label>
                         {% else %}
-                        <div class="text-muted small">Доставка в эту страну пока недоступна</div>
+                        <div class="text-sm text-gray-500">Доставка в эту страну пока недоступна</div>
                         {% endfor %}
                         </div>
                     </div>
                 </div>
 
                 {# 3. Оплата #}
-                <div class="card border-0 shadow-sm mb-3">
-                    <div class="card-header bg-white fw-semibold">
-                        <span class="badge bg-dark me-2" style="font-size:.7rem;border-radius:.3rem">3</span>Способ оплаты
-                    </div>
-                    <div class="card-body p-4">
-                        <div class="d-flex flex-column gap-2">
-                        <div class="form-check border p-3">
-                            <input class="form-check-input" type="radio" name="payment_method" id="pay_card" value="card_online" checked>
-                            <label class="form-check-label small" for="pay_card">
-                                <i class="fas fa-credit-card me-2 text-muted"></i><span class="fw-semibold">Карта онлайн</span>
+                <div class="{{ card }}">
+                    <div class="{{ chead }}"><span class="{{ badge }}">3</span>Способ оплаты</div>
+                    <div class="p-5">
+                        <div class="flex flex-col gap-2">
+                            <label class="{{ opt_box }} flex cursor-pointer items-center gap-3 text-sm">
+                                <input type="radio" name="payment_method" id="pay_card" value="card_online" checked>
+                                💳 <span class="font-semibold">Карта онлайн</span>
                             </label>
-                        </div>
-                        <div class="form-check border p-3">
-                            <input class="form-check-input" type="radio" name="payment_method" id="pay_sbp" value="sbp">
-                            <label class="form-check-label small" for="pay_sbp">
-                                <i class="fas fa-mobile-alt me-2 text-muted"></i><span class="fw-semibold">СБП</span>
-                                <span class="text-muted ms-1">— Система быстрых платежей</span>
+                            <label class="{{ opt_box }} flex cursor-pointer items-center gap-3 text-sm">
+                                <input type="radio" name="payment_method" id="pay_sbp" value="sbp">
+                                📱 <span class="font-semibold">СБП</span>
+                                <span class="text-gray-500">— Система быстрых платежей</span>
                             </label>
-                        </div>
-                        <div class="form-check border p-3">
-                            <input class="form-check-input" type="radio" name="payment_method" id="pay_receipt" value="upon_receipt">
-                            <label class="form-check-label small" for="pay_receipt">
-                                <i class="fas fa-money-bill me-2 text-muted"></i><span class="fw-semibold">При получении</span>
+                            <label class="{{ opt_box }} flex cursor-pointer items-center gap-3 text-sm">
+                                <input type="radio" name="payment_method" id="pay_receipt" value="upon_receipt">
+                                💵 <span class="font-semibold">При получении</span>
                             </label>
-                        </div>
                         </div>
                     </div>
                 </div>
 
                 {# Комментарий #}
-                <div class="mb-3">
-                    <label class="label-caps">Комментарий к заказу</label>
-                    <textarea name="note" class="form-control" rows="2"
-                              placeholder="Необязательно"></textarea>
+                <div>
+                    <label class="{{ tw_label }}">Комментарий к заказу</label>
+                    <textarea name="note" class="{{ tw_input }}" rows="2" placeholder="Необязательно"></textarea>
                 </div>
 
             </div>
 
             {# Итог #}
-            <div class="col-lg-5">
-                <div class="card border-0 shadow-sm sticky-top" style="top:1rem">
-                    <div class="card-header bg-white fw-semibold">Ваш заказ</div>
-                    <div class="card-body p-4">
+            <div class="lg:col-span-5">
+                <div class="{{ card }} sticky top-4">
+                    <div class="{{ chead }}">Ваш заказ</div>
+                    <div class="p-5">
                         {% for group in groups %}
-                            <span class="label-caps">{{ group.brand.title }}</span>
+                            <div class="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{{ group.brand.title }}</div>
                             {% for item in group.items %}
-                            <div class="d-flex justify-content-between small mb-1">
-                                <span class="text-muted">{{ item.variant.product.title }} × {{ item.qty }}</span>
+                            <div class="mb-1 flex justify-between text-sm">
+                                <span class="text-gray-500">{{ item.variant.product.title }} × {{ item.qty }}</span>
                                 <span>{{ price(item.subtotal) }}</span>
                             </div>
                             {% endfor %}
-                            {% if not loop.last %}<hr class="my-2">{% endif %}
+                            {% if not loop.last %}<hr class="my-3 border-gray-100">{% endif %}
                         {% endfor %}
 
                         {% set firstRule = shippingRules|first %}
@@ -192,26 +197,27 @@
                             {% set initShipCost = 350 %}
                         {% endif %}
 
-                        <hr class="my-3">
-                        <div class="d-flex justify-content-between small mb-1">
-                            <span class="text-muted">Товары</span>
+                        <hr class="my-4 border-gray-100">
+                        <div class="mb-1 flex justify-between text-sm">
+                            <span class="text-gray-500">Товары</span>
                             <span id="cart-subtotal">{{ price(cart.total) }}</span>
                         </div>
-                        <div class="d-flex justify-content-between small mb-3">
-                            <span class="text-muted">Доставка</span>
+                        <div class="mb-4 flex justify-between text-sm">
+                            <span class="text-gray-500">Доставка</span>
                             <span id="shipping-price">{{ initShipCost == 0 ? 'Бесплатно' : price(initShipCost) }}</span>
                         </div>
-                        <div class="d-flex justify-content-between fw-bold fs-6 mb-4">
+                        <div class="mb-5 flex justify-between text-base font-bold">
                             <span>Итого</span>
                             <span id="order-total">{{ price(cart.total + initShipCost) }}</span>
                         </div>
 
-                        <button type="submit" class="btn btn-dark w-100 btn-lg fw-semibold">
+                        <button type="submit"
+                                class="w-full rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white hover:bg-black transition">
                             Подтвердить заказ
                         </button>
-                        <p class="text-center text-muted mt-2 mb-0" style="font-size:.75rem">
+                        <p class="mb-0 mt-3 text-center text-xs text-gray-400">
                             Нажимая кнопку, вы соглашаетесь с условиями оферты и даёте
-                            <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="text-muted">согласие на обработку персональных данных</a>
+                            <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="underline">согласие на обработку персональных данных</a>
                         </p>
                     </div>
                 </div>
@@ -224,7 +230,7 @@
 // ── Адрес: показать/скрыть поля нового адреса ───────────────────────────────
 document.querySelectorAll('[name="address_id"]').forEach(r => {
     r.addEventListener('change', () => {
-        document.getElementById('new-address-fields').classList.toggle('d-none', r.value !== '');
+        document.getElementById('new-address-fields').classList.toggle('hidden', r.value !== '');
     });
 });
 
@@ -272,7 +278,9 @@ document.querySelectorAll('.shipping-radio').forEach(r => {
 document.getElementById('shipping-country')?.addEventListener('change', async function() {
     const countryCode  = this.value;
     const container    = document.getElementById('shipping-options');
-    container.innerHTML = '<div class="text-muted small py-2"><i class="fas fa-spinner fa-spin me-2"></i>Загрузка вариантов доставки…</div>';
+    container.innerHTML = '<div class="py-2 text-sm text-gray-500">⏳ Загрузка вариантов доставки…</div>';
+
+    const optBox = 'rounded-xl border border-gray-200 p-4 has-[:checked]:border-gray-900 has-[:checked]:ring-1 has-[:checked]:ring-gray-900 flex cursor-pointer items-start gap-3';
 
     try {
         const city   = document.querySelector('[name="city"]')?.value || 'Москва';
@@ -282,33 +290,33 @@ document.getElementById('shipping-country')?.addEventListener('change', async fu
         const rules = d.rules || [];
 
         if (rules.length === 0) {
-            container.innerHTML = '<div class="text-muted small">Доставка в эту страну пока недоступна</div>';
+            container.innerHTML = '<div class="text-sm text-gray-500">Доставка в эту страну пока недоступна</div>';
             document.getElementById('shipping-price').textContent = '—';
             document.getElementById('order-total').textContent = await formatPrice(cartTotalRub);
             return;
         }
 
         container.innerHTML = rules.map((rule, i) => `
-            <div class="form-check border p-3">
-                <input class="form-check-input shipping-radio" type="radio"
+            <label class="${optBox}" for="del_dyn_${rule.id}">
+                <input class="shipping-radio mt-1" type="radio"
                        name="delivery_method" id="del_dyn_${rule.id}"
                        value="${rule.carrier}"
                        data-price="${rule.priceRub}"
                        data-rule-id="${rule.id}"
                        data-free-from="${rule.freeFromRub ?? 0}"
                        ${i === 0 ? 'checked' : ''}>
-                <label class="form-check-label d-flex justify-content-between w-100" for="del_dyn_${rule.id}">
-                    <div>
-                        <div class="fw-semibold small">${rule.name}${rule.is_live ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">LIVE</span>' : ''}</div>
-                        <div class="text-muted" style="font-size:.75rem">${rule.label}
-                            ${rule.freeFromRub ? `· <span class="text-success">Бесплатно от ${new Intl.NumberFormat('ru-RU').format(rule.freeFromRub)} ₽</span>` : ''}
-                        </div>
-                    </div>
-                    <span class="fw-semibold small">
+                <span class="flex w-full justify-between">
+                    <span>
+                        <span class="block text-sm font-semibold">${rule.name}${rule.is_live ? ' <span class="rounded bg-sky-100 px-1 text-[10px] font-medium text-sky-800">LIVE</span>' : ''}</span>
+                        <span class="block text-xs text-gray-500">${rule.label}
+                            ${rule.freeFromRub ? `· <span class="text-green-600">Бесплатно от ${new Intl.NumberFormat('ru-RU').format(rule.freeFromRub)} ₽</span>` : ''}
+                        </span>
+                    </span>
+                    <span class="text-sm font-semibold">
                         ${rule.priceRub === 0 ? 'Бесплатно' : new Intl.NumberFormat('ru-RU').format(Math.round(rule.priceRub)) + ' ₽'}
                     </span>
-                </label>
-            </div>
+                </span>
+            </label>
         `).join('');
 
         // Переподвешиваем обработчики
@@ -317,7 +325,7 @@ document.getElementById('shipping-country')?.addEventListener('change', async fu
         });
         await updateTotals();
     } catch (e) {
-        container.innerHTML = '<div class="text-danger small">Ошибка загрузки доставки</div>';
+        container.innerHTML = '<div class="text-sm text-red-600">Ошибка загрузки доставки</div>';
     }
 });
 

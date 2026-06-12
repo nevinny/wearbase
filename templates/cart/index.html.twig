@@ -1,76 +1,65 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/app.html.twig' %}
 {% block title %}Корзина — WEARBASE{% endblock %}
 
-{% block content %}
-<div class="container py-4" style="max-width:960px">
-    <h1 class="h4 fw-bold mb-4">Корзина</h1>
+{% block body %}
+<div class="container mx-auto max-w-[960px] px-4 py-8">
+    <h1 class="text-xl font-bold mb-6">Корзина</h1>
 
     {% if cart.empty %}
-        <div class="card border-0 shadow-sm">
-            <div class="card-body text-center py-5 text-muted">
-                <i class="fas fa-shopping-cart fa-3x mb-3 d-block opacity-25"></i>
-                <p class="mb-3">В корзине пусто</p>
-                <a href="{{ path('catalog_index') }}" class="btn btn-dark px-4">Перейти в каталог</a>
-            </div>
+        <div class="rounded-2xl bg-white shadow-sm py-14 text-center text-gray-500">
+            <div class="text-5xl mb-4 opacity-30">🛒</div>
+            <p class="mb-5">В корзине пусто</p>
+            <a href="{{ path('catalog_index') }}"
+               class="inline-block rounded-xl bg-gray-900 px-6 py-3 text-sm font-semibold text-white hover:bg-black transition">Перейти в каталог</a>
         </div>
     {% else %}
-    <div class="row g-4">
+    <div class="grid gap-6 lg:grid-cols-3">
 
         {# Товары #}
-        <div class="col-lg-8">
+        <div class="lg:col-span-2 space-y-4">
             {% for group in groups %}
-            <div class="card border-0 shadow-sm mb-3">
-                <div class="card-header bg-white d-flex align-items-center gap-2">
-                    <i class="fas fa-store text-muted" style="font-size:.8rem"></i>
-                    <span class="fw-semibold small">{{ group.brand.title }}</span>
+            <div class="rounded-2xl bg-white shadow-sm overflow-hidden">
+                <div class="border-b border-gray-100 px-5 py-3 text-sm font-semibold">
+                    🏬 {{ group.brand.title }}
                 </div>
-                <div class="list-group list-group-flush">
+                <div class="divide-y divide-gray-100">
                 {% for item in group.items %}
-                <div class="list-group-item py-3 px-4" id="cart-item-{{ item.id }}">
-                    <div class="d-flex align-items-center gap-3">
+                <div class="px-5 py-4" id="cart-item-{{ item.id }}">
+                    <div class="flex items-center gap-4">
 
                         {# Фото #}
                         {% set img = item.variant.product.mainImage %}
                         {% if img and img.preview %}
                             <img src="{{ vich_uploader_asset(img, 'previewFile') }}"
-                                 class="rounded-3 flex-shrink-0"
-                                 style="width:68px;height:68px;object-fit:cover" alt="">
+                                 class="h-[68px] w-[68px] shrink-0 rounded-xl object-cover" alt="">
                         {% else %}
-                            <div class="bg-light rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
-                                 style="width:68px;height:68px">
-                                <i class="fas fa-image text-muted"></i>
-                            </div>
+                            <div class="flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-400">📷</div>
                         {% endif %}
 
                         {# Описание #}
-                        <div class="flex-grow-1 min-width-0">
-                            <div class="fw-semibold small text-truncate">{{ item.variant.product.title }}</div>
-                            <div class="text-muted" style="font-size:.78rem">{{ item.variant.title }}</div>
-                            <div class="fw-semibold small mt-1">{{ price(item.variant.price) }}</div>
+                        <div class="min-w-0 flex-1">
+                            <div class="truncate text-sm font-semibold">{{ item.variant.product.title }}</div>
+                            <div class="text-xs text-gray-500">{{ item.variant.title }}</div>
+                            <div class="mt-1 text-sm font-semibold">{{ price(item.variant.price) }}</div>
                         </div>
 
                         {# Количество #}
-                        <div class="d-flex align-items-center gap-1">
-                            <button class="btn btn-sm btn-outline-secondary qty-btn"
-                                    data-id="{{ item.id }}" data-delta="-1"
-                                    style="width:30px;height:30px;padding:0">−</button>
-                            <span class="fw-semibold text-center qty-val" data-id="{{ item.id }}"
-                                  style="min-width:28px">{{ item.qty }}</span>
-                            <button class="btn btn-sm btn-outline-secondary qty-btn"
-                                    data-id="{{ item.id }}" data-delta="1"
-                                    style="width:30px;height:30px;padding:0">+</button>
+                        <div class="flex items-center gap-1">
+                            <button class="qty-btn h-[30px] w-[30px] rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50"
+                                    data-id="{{ item.id }}" data-delta="-1">−</button>
+                            <span class="qty-val min-w-[28px] text-center text-sm font-semibold" data-id="{{ item.id }}">{{ item.qty }}</span>
+                            <button class="qty-btn h-[30px] w-[30px] rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50"
+                                    data-id="{{ item.id }}" data-delta="1">+</button>
                         </div>
 
                         {# Сумма + удаление #}
-                        <div class="text-end flex-shrink-0" style="min-width:90px">
-                            <div class="fw-bold small" id="item-total-{{ item.id }}">
+                        <div class="min-w-[90px] shrink-0 text-right">
+                            <div class="text-sm font-bold" id="item-total-{{ item.id }}">
                                 {{ price(item.subtotal) }}
                             </div>
                             <form method="post" action="{{ path('cart_remove', {itemId: item.id}) }}">
                                 <input type="hidden" name="_token" value="{{ csrf_token('cart') }}">
-                                <button class="btn btn-link text-muted p-0 mt-1" style="font-size:.75rem">
-                                    удалить
-                                </button>
+                                <button class="mt-1 text-xs text-gray-400 hover:text-gray-600 underline">удалить</button>
                             </form>
                         </div>
 
@@ -83,27 +72,26 @@
         </div>
 
         {# Итог #}
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm sticky-top" style="top:1rem">
-                <div class="card-body p-4">
-                    <h5 class="fw-bold mb-3 small text-uppercase" style="letter-spacing:.05em">Итого</h5>
-                    <div class="d-flex justify-content-between small mb-2">
-                        <span class="text-muted">Товары</span>
-                        <span id="cart-total" class="fw-semibold">{{ price(cart.total) }}</span>
-                    </div>
-                    {% if app_currency.code != 'RUB' %}
-                    <div class="text-muted mb-2" style="font-size:.75rem">
-                        ≈ {{ cart.total|number_format(0, '.', ' ') }} ₽
-                    </div>
-                    {% endif %}
-                    <div class="d-flex justify-content-between small mb-4 text-muted">
-                        <span>Доставка</span>
-                        <span>рассчитается при оформлении</span>
-                    </div>
-                    <a href="{{ path('checkout_index') }}" class="btn btn-dark w-100 btn-lg fw-semibold">
-                        Оформить заказ
-                    </a>
+        <div>
+            <div class="sticky top-4 rounded-2xl bg-white p-6 shadow-sm">
+                <h5 class="mb-4 text-xs font-bold uppercase tracking-wider text-gray-500">Итого</h5>
+                <div class="mb-2 flex justify-between text-sm">
+                    <span class="text-gray-500">Товары</span>
+                    <span id="cart-total" class="font-semibold">{{ price(cart.total) }}</span>
                 </div>
+                {% if app_currency.code != 'RUB' %}
+                <div class="mb-2 text-xs text-gray-400">
+                    ≈ {{ cart.total|number_format(0, '.', ' ') }} ₽
+                </div>
+                {% endif %}
+                <div class="mb-5 flex justify-between text-sm text-gray-500">
+                    <span>Доставка</span>
+                    <span>рассчитается при оформлении</span>
+                </div>
+                <a href="{{ path('checkout_index') }}"
+                   class="block w-full rounded-xl bg-gray-900 py-3.5 text-center text-sm font-semibold text-white hover:bg-black transition">
+                    Оформить заказ
+                </a>
             </div>
         </div>
 
