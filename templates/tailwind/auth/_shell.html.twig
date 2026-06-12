@@ -1,0 +1,26 @@
+{# Split-panel shell for auth pages, used via {% embed %}.
+   Blocks: eyebrow (small uppercase), heading (big headline), panel_extra
+   (optional text/list under the headline), form (right-side content). #}
+<div class="flex-1 flex">
+    {# ── Left panel — branding ── #}
+    <div class="hidden lg:flex w-[420px] shrink-0 flex-col justify-between p-10 text-white"
+         style="background:linear-gradient(160deg,#111 60%,#1c1c2e)">
+        <a href="/" class="text-2xl font-bold tracking-tight">WEARBASE</a>
+        <div>
+            <p class="text-xs uppercase tracking-[.15em] text-white/50 mb-2">{% block eyebrow %}{% endblock %}</p>
+            <h2 class="text-3xl font-bold leading-tight mb-4">{% block heading %}{% endblock %}</h2>
+            <div class="text-sm leading-relaxed text-white/50">{% block panel_extra %}{% endblock %}</div>
+        </div>
+        <p class="text-sm text-white/50">© {{ "now"|date("Y") }} WEARBASE</p>
+    </div>
+
+    {# ── Right panel — form ── #}
+    <div class="flex-1 flex items-center justify-center bg-white p-6">
+        <div class="w-full max-w-[420px]">
+            <div class="lg:hidden text-center mb-6">
+                <a href="/" class="text-2xl font-bold text-gray-900">WEARBASE</a>
+            </div>
+            {% block form %}{% endblock %}
+        </div>
+    </div>
+</div>

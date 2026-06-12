@@ -1,0 +1,64 @@
+{# App layout (Tailwind): auth, account, cart, checkout, brand LK.
+   Compact header, minimal footer, noindex by default — these are not public pages.
+   Public marketing/catalog pages use tailwind/base.html.twig instead. #}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="robots" content="{% block robots %}noindex, nofollow{% endblock %}">
+    <title>{% block title %}WEARBASE{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    {% block stylesheets %}{% endblock %}
+    {% include 'tailwind/_yandex_metrika.html.twig' %}
+</head>
+
+<body class="min-h-screen flex flex-col bg-gray-50 text-gray-900 antialiased">
+
+{% for type, messages in app.flashes %}
+    {% for message in messages %}
+        <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-lg text-sm font-semibold
+            {{ type == 'success' ? 'bg-green-600 text-white' : type == 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-white' }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endfor %}
+
+{% set nav_locale = app.request.locale|default('ru') %}
+
+{% block header %}
+<header class="bg-white border-b border-gray-100">
+    <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+        <a href="{{ path('home_hub', {_locale: nav_locale}) }}" class="text-lg font-bold tracking-tight">
+            <span class="text-gray-900">WEARBASE</span><span class="text-indigo-600">.{{ nav_locale == 'ru' ? 'ru' : 'com' }}</span>
+        </a>
+        <nav class="flex items-center gap-5 text-sm font-medium">
+            <a href="{{ path('catalog_index') }}" class="text-gray-600 hover:text-gray-900 transition">Каталог</a>
+            <a href="{{ path('cart_index') }}" class="text-gray-600 hover:text-gray-900 transition">Корзина</a>
+            {% if app.user %}
+                <a href="{{ path('account_dashboard') }}" class="text-gray-600 hover:text-gray-900 transition">Аккаунт</a>
+            {% else %}
+                <a href="{{ path('app_login') }}" class="text-gray-900 font-semibold hover:text-indigo-600 transition">Войти</a>
+            {% endif %}
+        </nav>
+    </div>
+</header>
+{% endblock %}
+
+<main class="flex-1 flex flex-col">
+    {% block body %}{% endblock %}
+</main>
+
+{% block footer %}
+<footer class="py-6 text-center text-xs text-gray-400">
+    © {{ "now"|date("Y") }} WEARBASE ·
+    <a href="{{ path('privacy_policy', {_locale: nav_locale}) }}" class="hover:text-gray-600">Конфиденциальность</a> ·
+    <a href="{{ path('terms_of_use', {_locale: nav_locale}) }}" class="hover:text-gray-600">Соглашение</a>
+</footer>
+{% endblock %}
+
+{% block javascripts %}{% endblock %}
+{% include 'components/cookie_banner.html.twig' %}
+</body>
+</html>

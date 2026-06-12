@@ -1,99 +1,79 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/app.html.twig' %}
 {% block title %}Регистрация — WEARBASE{% endblock %}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
 
 {% block body %}
-<div class="min-vh-100 d-flex">
+{% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+{% set tw_input = 'w-full rounded-xl bg-gray-100 px-4 py-3.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% embed 'tailwind/auth/_shell.html.twig' with {tw_label: tw_label, tw_input: tw_input} %}
+    {% block eyebrow %}Присоединяйтесь{% endblock %}
+    {% block heading %}Российские<br>бренды<br>в одном месте{% endblock %}
+    {% block panel_extra %}Находите локальную одежду,<br>следите за любимыми брендами,<br>делайте заказы напрямую.{% endblock %}
 
-    {# ── Левая панель — брендинг ── #}
-    <div class="d-none d-lg-flex flex-column justify-content-between text-white p-5"
-         style="width:420px;min-width:420px;background:linear-gradient(160deg,#111 60%,#1c1c2e)">
+    {% block form %}
+        <h1 class="text-xl font-bold mb-1">Создать аккаунт</h1>
+        <p class="text-sm text-gray-500 mb-6">
+            Уже есть аккаунт?
+            <a href="{{ path('app_login') }}" class="font-semibold text-gray-900 hover:underline">Войти</a>
+        </p>
 
-        <a href="/" class="text-white text-decoration-none fw-bold fs-4">
-            WEARBASE.ru
-        </a>
+        {% for message in app.flashes('error') %}
+            <div class="form-error mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{{ message }}</div>
+        {% endfor %}
 
-        <div>
-            <p class="text-white-50 mb-1 small text-uppercase" style="letter-spacing:.1em">Присоединяйтесь</p>
-            <h2 class="fw-bold lh-sm mb-3" style="font-size:2rem">Российские<br>бренды<br>в одном месте</h2>
-            <p class="text-white-50" style="font-size:.9rem;line-height:1.6">
-                Находите локальную одежду,<br>следите за любимыми брендами,<br>делайте заказы напрямую.
-            </p>
-        </div>
+        {{ form_start(form, {'attr': {'novalidate': 'novalidate'}}) }}
 
-        <p class="text-white-50 small mb-0">© {{ "now"|date("Y") }} WEARBASE</p>
-    </div>
-
-    {# ── Правая панель — форма ── #}
-    <div class="flex-grow-1 d-flex align-items-center justify-content-center bg-white p-4">
-        <div style="width:100%;max-width:400px">
-
-            <div class="d-lg-none text-center mb-4">
-                <a href="/" class="fw-bold fs-3 text-dark text-decoration-none">WEARBASE</a>
+            <div class="mb-4">
+                {{ form_label(form.firstName, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.firstName, {'attr': {'class': tw_input, 'placeholder': 'Ваше имя'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.firstName) }}</div>
             </div>
 
-            <h1 class="h4 fw-bold mb-1">Создать аккаунт</h1>
-            <p class="text-muted mb-4 small">
-                Уже есть аккаунт?
-                <a href="{{ path('app_login') }}" class="text-dark fw-semibold">Войти</a>
-            </p>
+            <div class="mb-4">
+                {{ form_label(form.email, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.email, {'attr': {'class': tw_input, 'placeholder': 'you@example.com'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.email) }}</div>
+            </div>
 
-            {% for message in app.flashes('error') %}
-                <div class="alert alert-danger py-2 small">{{ message }}</div>
-            {% endfor %}
+            <div class="mb-4">
+                {{ form_label(form.plainPassword.first, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.plainPassword.first, {'attr': {'class': tw_input, 'placeholder': '••••••••'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.plainPassword.first) }}</div>
+            </div>
 
-            {{ form_start(form, {'attr': {'novalidate': 'novalidate'}}) }}
+            <div class="mb-5">
+                {{ form_label(form.plainPassword.second, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.plainPassword.second, {'attr': {'class': tw_input, 'placeholder': '••••••••'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.plainPassword.second) }}</div>
+            </div>
 
-                <div class="mb-3">
-                    {{ form_label(form.firstName, null, {'label_attr': {'class': 'form-label small fw-semibold text-muted text-uppercase', 'style': 'letter-spacing:.05em;font-size:.75rem'}}) }}
-                    {{ form_widget(form.firstName, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': 'Ваше имя'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.firstName) }}</div>
-                </div>
+            <div class="mb-4">
+                <label class="flex items-start gap-2 text-sm text-gray-500" for="{{ form.agreeTerms.vars.id }}">
+                    {{ form_widget(form.agreeTerms, {'attr': {'class': 'mt-0.5 h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                    <span>
+                        Я принимаю <a href="{{ path('terms_of_use', {_locale: 'ru'}) }}" target="_blank" class="text-gray-900 underline">Пользовательское соглашение</a>
+                        и даю <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="text-gray-900 underline">согласие на обработку персональных данных</a>
+                    </span>
+                </label>
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.agreeTerms) }}</div>
+            </div>
 
-                <div class="mb-3">
-                    {{ form_label(form.email, null, {'label_attr': {'class': 'form-label small fw-semibold text-muted text-uppercase', 'style': 'letter-spacing:.05em;font-size:.75rem'}}) }}
-                    {{ form_widget(form.email, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': 'you@example.com'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.email) }}</div>
-                </div>
+            <div class="mb-5">
+                {{ form_widget(form.turnstile) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.turnstile) }}</div>
+            </div>
 
-                <div class="mb-3">
-                    {{ form_label(form.plainPassword.first, null, {'label_attr': {'class': 'form-label small fw-semibold text-muted text-uppercase', 'style': 'letter-spacing:.05em;font-size:.75rem'}}) }}
-                    {{ form_widget(form.plainPassword.first, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': '••••••••'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.plainPassword.first) }}</div>
-                </div>
+            <button type="submit" class="w-full rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white hover:bg-black transition">
+                Зарегистрироваться
+            </button>
 
-                <div class="mb-4">
-                    {{ form_label(form.plainPassword.second, null, {'label_attr': {'class': 'form-label small fw-semibold text-muted text-uppercase', 'style': 'letter-spacing:.05em;font-size:.75rem'}}) }}
-                    {{ form_widget(form.plainPassword.second, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': '••••••••'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.plainPassword.second) }}</div>
-                </div>
+        {{ form_end(form) }}
 
-                <div class="mb-3 form-check">
-                    {{ form_widget(form.agreeTerms, {'attr': {'class': 'form-check-input'}}) }}
-                    <label class="form-check-label small text-muted" for="{{ form.agreeTerms.vars.id }}">
-                        Я принимаю <a href="{{ path('terms_of_use', {_locale: 'ru'}) }}" target="_blank" class="text-dark">Пользовательское соглашение</a>
-                        и даю <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="text-dark">согласие на обработку персональных данных</a>
-                    </label>
-                    <div class="text-danger small mt-1">{{ form_errors(form.agreeTerms) }}</div>
-                </div>
-
-                <div class="mb-4">
-                    {{ form_widget(form.turnstile) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.turnstile) }}</div>
-                </div>
-
-                <button type="submit" class="btn btn-dark btn-lg w-100 fw-semibold rounded-3">
-                    Зарегистрироваться
-                </button>
-
-            {{ form_end(form) }}
-
-            <p class="text-center text-muted small mt-4">
-                Регистрируете бренд?
-                <a href="{{ path('app_register', {brand: 1}) }}" class="text-dark fw-semibold">Зарегистрировать бренд →</a>
-            </p>
-
-        </div>
-    </div>
-
-</div>
+        <p class="mt-6 text-center text-sm text-gray-500">
+            Регистрируете бренд?
+            <a href="{{ path('app_register', {brand: 1}) }}" class="font-semibold text-gray-900 hover:underline">Зарегистрировать бренд →</a>
+        </p>
+    {% endblock %}
+{% endembed %}
 {% endblock %}

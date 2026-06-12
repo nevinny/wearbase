@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-12 (этап 1 миграции на Tailwind)
+
+### Added
+- **`tailwind/app.html.twig`** — «приложенческий» layout Tailwind-стека для auth/ЛК/корзины/checkout: компактная шапка, минимальный футер, `noindex` по умолчанию.
+- **`tailwind/auth/_shell.html.twig`** — переиспользуемый split-panel (брендинг слева, форма справа) для auth-страниц через `{% embed %}`.
+
+### Changed
+- **Все 5 auth-страниц переведены с Bootstrap на Tailwind**: login, register, register_brand, forgot_password, reset_password. Дизайн сохранён (тёмная панель + форма), формы/CSRF/Turnstile без изменений. `AuthControllerTest`: селектор ошибки `.alert-danger` → семантический `.form-error`.
+
+
 ## 2026-06-12 (вечер)
 
 ### Fixed

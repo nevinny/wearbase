@@ -1,96 +1,68 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/app.html.twig' %}
 {% block title %}Вход — WEARBASE{% endblock %}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
 
 {% block body %}
-<div class="min-vh-100 d-flex">
+{% embed 'tailwind/auth/_shell.html.twig' %}
+    {% block eyebrow %}С возвращением{% endblock %}
+    {% block heading %}Войдите<br>в свой<br>аккаунт{% endblock %}
+    {% block panel_extra %}Ваши заказы, избранные бренды<br>и личный кабинет ждут вас.{% endblock %}
 
-    {# ── Левая панель — брендинг ── #}
-    <div class="d-none d-lg-flex flex-column justify-content-between text-white p-5"
-         style="width:420px;min-width:420px;background:linear-gradient(160deg,#111 60%,#1c1c2e)">
+    {% block form %}
+        <h1 class="text-xl font-bold mb-1">Вход</h1>
+        <p class="text-sm text-gray-500 mb-6">
+            Нет аккаунта?
+            <a href="{{ path('app_register') }}" class="font-semibold text-gray-900 hover:underline">Зарегистрироваться</a>
+        </p>
 
-        <a href="/" class="text-white text-decoration-none fw-bold fs-4">
-            WEARBASE
-        </a>
+        {% if error %}
+            <div class="form-error mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                {{ error.messageKey|trans(error.messageData, 'security') }}
+            </div>
+        {% endif %}
 
-        <div>
-            <p class="text-white-50 mb-1 small text-uppercase" style="letter-spacing:.1em">С возвращением</p>
-            <h2 class="fw-bold lh-sm mb-3" style="font-size:2rem">Войдите<br>в свой<br>аккаунт</h2>
-            <p class="text-white-50" style="font-size:.9rem;line-height:1.6">
-                Ваши заказы, избранные бренды<br>и личный кабинет ждут вас.
-            </p>
-        </div>
+        <form method="post" action="{{ path('app_login') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
 
-        <p class="text-white-50 small mb-0">© {{ "now"|date("Y") }} WEARBASE</p>
-    </div>
-
-    {# ── Правая панель — форма ── #}
-    <div class="flex-grow-1 d-flex align-items-center justify-content-center bg-white p-4">
-        <div style="width:100%;max-width:400px">
-
-            <div class="d-lg-none text-center mb-4">
-                <a href="/" class="fw-bold fs-3 text-dark text-decoration-none">WEARBASE</a>
+            <div class="mb-4">
+                <label for="email" class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Email</label>
+                <input type="email" id="email" name="_username"
+                       class="w-full rounded-xl bg-gray-100 px-4 py-3.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                       value="{{ last_username }}"
+                       placeholder="you@example.com"
+                       autocomplete="email" autofocus>
             </div>
 
-            <h1 class="h4 fw-bold mb-1">Вход</h1>
-            <p class="text-muted mb-4 small">
-                Нет аккаунта?
-                <a href="{{ path('app_register') }}" class="text-dark fw-semibold">Зарегистрироваться</a>
-            </p>
-
-            {% if error %}
-                <div class="alert alert-danger py-2 small">
-                    {{ error.messageKey|trans(error.messageData, 'security') }}
+            <div class="mb-4">
+                <div class="flex items-center justify-between mb-1">
+                    <label for="password" class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Пароль</label>
+                    <a href="{{ path('app_forgot_password_request') }}" class="text-xs text-gray-400 hover:text-gray-600">Забыли?</a>
                 </div>
-            {% endif %}
-
-            <form method="post" action="{{ path('app_login') }}">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
-
-                <div class="mb-3">
-                    <label for="email" class="form-label small fw-semibold text-muted text-uppercase"
-                           style="letter-spacing:.05em;font-size:.75rem">Email</label>
-                    <input type="email" id="email" name="_username"
-                           class="form-control form-control-lg border-0 rounded-3"
-                           value="{{ last_username }}"
-                           placeholder="you@example.com"
-                           autocomplete="email" autofocus>
-                </div>
-
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <label for="password" class="form-label small fw-semibold text-muted text-uppercase mb-0"
-                               style="letter-spacing:.05em;font-size:.75rem">Пароль</label>
-                        <a href="{{ path('app_forgot_password_request') }}"
-                           class="text-muted small text-decoration-none" style="font-size:.8rem">Забыли?</a>
-                    </div>
-                    <input type="password" id="password" name="_password"
-                           class="form-control form-control-lg border-0 rounded-3 mt-1"
-                           placeholder="••••••••"
-                           autocomplete="current-password">
-                </div>
-
-                <div class="mb-4 d-flex align-items-center gap-2">
-                    <input type="checkbox" class="form-check-input m-0" id="remember_me" name="_remember_me"
-                           style="width:18px;height:18px">
-                    <label class="form-check-label small text-muted" for="remember_me">Запомнить меня</label>
-                </div>
-
-                <button type="submit" class="btn btn-dark btn-lg w-100 fw-semibold rounded-3">
-                    Войти
-                </button>
-            </form>
-
-            <div class="d-flex align-items-center my-4">
-                <hr class="flex-grow-1"><span class="px-3 text-muted small">или</span><hr class="flex-grow-1">
+                <input type="password" id="password" name="_password"
+                       class="w-full rounded-xl bg-gray-100 px-4 py-3.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                       placeholder="••••••••"
+                       autocomplete="current-password">
             </div>
 
-            <p class="text-center text-muted small mb-0">
-                Вы бренд?
-                <a href="{{ path('app_register', {brand: 1}) }}" class="text-dark fw-semibold">Зарегистрировать бренд →</a>
-            </p>
+            <label class="mb-6 flex items-center gap-2 text-sm text-gray-500">
+                <input type="checkbox" name="_remember_me" class="h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900">
+                Запомнить меня
+            </label>
 
+            <button type="submit" class="w-full rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white hover:bg-black transition">
+                Войти
+            </button>
+        </form>
+
+        <div class="my-6 flex items-center gap-3 text-xs text-gray-400">
+            <hr class="flex-1 border-gray-200"><span>или</span><hr class="flex-1 border-gray-200">
         </div>
-    </div>
 
-</div>
+        <p class="text-center text-sm text-gray-500">
+            Вы бренд?
+            <a href="{{ path('app_register', {brand: 1}) }}" class="font-semibold text-gray-900 hover:underline">Зарегистрировать бренд →</a>
+        </p>
+    {% endblock %}
+{% endembed %}
 {% endblock %}

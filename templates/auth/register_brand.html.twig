@@ -1,112 +1,94 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/app.html.twig' %}
 {% block title %}Регистрация бренда — WEARBASE{% endblock %}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
 
 {% block body %}
-<div class="min-vh-100 d-flex">
+{% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+{% set tw_input = 'w-full rounded-xl bg-gray-100 px-4 py-3.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% embed 'tailwind/auth/_shell.html.twig' with {tw_label: tw_label, tw_input: tw_input} %}
+    {% block eyebrow %}Для брендов{% endblock %}
+    {% block heading %}Разместите<br>свой бренд<br>на платформе{% endblock %}
+    {% block panel_extra %}
+        <ul class="space-y-2">
+            <li>✓ Каталог для тысяч покупателей</li>
+            <li>✓ Управление товарами и заказами</li>
+            <li>✓ Команда и аналитика</li>
+            <li>✓ Telegram-уведомления о заказах</li>
+        </ul>
+    {% endblock %}
 
-    {# ── Левая панель — брендинг ── #}
-    <div class="d-none d-lg-flex flex-column justify-content-between text-white p-5"
-         style="width:420px;min-width:420px;background:linear-gradient(160deg,#111 60%,#1c1c2e)">
+    {% block form %}
+        <span class="inline-block rounded bg-gray-900 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-white mb-2">Для брендов</span>
+        <h1 class="text-xl font-bold mb-1">Зарегистрировать бренд</h1>
+        <p class="text-sm text-gray-500 mb-6">
+            Уже есть аккаунт?
+            <a href="{{ path('app_login') }}" class="font-semibold text-gray-900 hover:underline">Войти</a>
+        </p>
 
-        <a href="/" class="text-white text-decoration-none fw-bold fs-4">
-            WEARBASE
-        </a>
+        {% for message in app.flashes('error') %}
+            <div class="form-error mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{{ message }}</div>
+        {% endfor %}
 
-        <div>
-            <p class="text-white-50 mb-1 small text-uppercase" style="letter-spacing:.1em">Для брендов</p>
-            <h2 class="fw-bold lh-sm mb-3" style="font-size:2rem">Разместите<br>свой бренд<br>на платформе</h2>
-            <ul class="list-unstyled text-white-50 mb-0" style="font-size:.9rem;line-height:2">
-                <li><i class="fas fa-check me-2 text-white-25"></i>Каталог для тысяч покупателей</li>
-                <li><i class="fas fa-check me-2 text-white-25"></i>Управление товарами и заказами</li>
-                <li><i class="fas fa-check me-2 text-white-25"></i>Команда и аналитика</li>
-                <li><i class="fas fa-check me-2 text-white-25"></i>Telegram-уведомления о заказах</li>
-            </ul>
-        </div>
+        {{ form_start(form, {'attr': {'novalidate': 'novalidate'}}) }}
 
-        <p class="text-white-50 small mb-0">© {{ "now"|date("Y") }} WEARBASE</p>
-    </div>
-
-    {# ── Правая панель — форма ── #}
-    <div class="flex-grow-1 d-flex align-items-center justify-content-center bg-white p-4">
-        <div style="width:100%;max-width:420px">
-
-            <div class="d-lg-none text-center mb-4">
-                <a href="/" class="fw-bold fs-3 text-dark text-decoration-none">WEARBASE</a>
+            {# Название бренда — первым, самое важное #}
+            <div class="mb-4">
+                {{ form_label(form.brandTitle, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.brandTitle, {'attr': {'class': tw_input ~ ' uppercase tracking-wider', 'placeholder': 'BRAND NAME'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.brandTitle) }}</div>
             </div>
 
-            <div class="mb-1">
-                <span class="badge bg-dark fw-normal" style="font-size:.7rem;letter-spacing:.05em">ДЛЯ БРЕНДОВ</span>
+            <div class="mb-4">
+                {{ form_label(form.firstName, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.firstName, {'attr': {'class': tw_input, 'placeholder': 'Иван'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.firstName) }}</div>
             </div>
-            <h1 class="h4 fw-bold mb-1">Зарегистрировать бренд</h1>
-            <p class="text-muted mb-4 small">
-                Уже есть аккаунт?
-                <a href="{{ path('app_login') }}" class="text-dark fw-semibold">Войти</a>
-            </p>
 
-            {% for message in app.flashes('error') %}
-                <div class="alert alert-danger py-2 small">{{ message }}</div>
-            {% endfor %}
+            <div class="mb-4">
+                {{ form_label(form.email, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.email, {'attr': {'class': tw_input, 'placeholder': 'brand@example.com'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.email) }}</div>
+            </div>
 
-            {{ form_start(form, {'attr': {'novalidate': 'novalidate'}}) }}
+            <div class="mb-4">
+                {{ form_label(form.plainPassword.first, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.plainPassword.first, {'attr': {'class': tw_input, 'placeholder': '••••••••'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.plainPassword.first) }}</div>
+            </div>
 
-                {# Название бренда — первым, самое важное #}
-                <div class="mb-3">
-                    {{ form_label(form.brandTitle, null, {'label_attr': {'class': 'label-caps'}}) }}
-                    {{ form_widget(form.brandTitle, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': 'BRAND NAME', 'style': 'text-transform:uppercase;letter-spacing:.05em'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.brandTitle) }}</div>
-                </div>
+            <div class="mb-5">
+                {{ form_label(form.plainPassword.second, null, {'label_attr': {'class': tw_label}}) }}
+                {{ form_widget(form.plainPassword.second, {'attr': {'class': tw_input, 'placeholder': '••••••••'}}) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.plainPassword.second) }}</div>
+            </div>
 
-                <div class="mb-3">
-                    {{ form_label(form.firstName, null, {'label_attr': {'class': 'label-caps'}}) }}
-                    {{ form_widget(form.firstName, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': 'Иван'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.firstName) }}</div>
-                </div>
+            <div class="mb-4">
+                <label class="flex items-start gap-2 text-sm text-gray-500" for="{{ form.agreeTerms.vars.id }}">
+                    {{ form_widget(form.agreeTerms, {'attr': {'class': 'mt-0.5 h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                    <span>
+                        Я принимаю <a href="{{ path('terms_of_use', {_locale: 'ru'}) }}" target="_blank" class="text-gray-900 underline">Пользовательское соглашение</a>
+                        и даю <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="text-gray-900 underline">согласие на обработку персональных данных</a>
+                    </span>
+                </label>
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.agreeTerms) }}</div>
+            </div>
 
-                <div class="mb-3">
-                    {{ form_label(form.email, null, {'label_attr': {'class': 'label-caps'}}) }}
-                    {{ form_widget(form.email, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': 'brand@example.com'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.email) }}</div>
-                </div>
+            <div class="mb-5">
+                {{ form_widget(form.turnstile) }}
+                <div class="mt-1 text-sm text-red-600">{{ form_errors(form.turnstile) }}</div>
+            </div>
 
-                <div class="mb-3">
-                    {{ form_label(form.plainPassword.first, null, {'label_attr': {'class': 'label-caps'}}) }}
-                    {{ form_widget(form.plainPassword.first, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': '••••••••'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.plainPassword.first) }}</div>
-                </div>
+            <button type="submit" class="w-full rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white hover:bg-black transition">
+                Создать бренд →
+            </button>
 
-                <div class="mb-4">
-                    {{ form_label(form.plainPassword.second, null, {'label_attr': {'class': 'label-caps'}}) }}
-                    {{ form_widget(form.plainPassword.second, {'attr': {'class': 'form-control form-control-lg border-0 rounded-3', 'placeholder': '••••••••'}}) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.plainPassword.second) }}</div>
-                </div>
+        {{ form_end(form) }}
 
-                <div class="mb-3 form-check">
-                    {{ form_widget(form.agreeTerms, {'attr': {'class': 'form-check-input'}}) }}
-                    <label class="form-check-label small text-muted" for="{{ form.agreeTerms.vars.id }}">
-                        Я принимаю <a href="{{ path('terms_of_use', {_locale: 'ru'}) }}" target="_blank" class="text-dark">Пользовательское соглашение</a>
-                        и даю <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="text-dark">согласие на обработку персональных данных</a>
-                    </label>
-                    <div class="text-danger small mt-1">{{ form_errors(form.agreeTerms) }}</div>
-                </div>
-
-                <div class="mb-4">
-                    {{ form_widget(form.turnstile) }}
-                    <div class="text-danger small mt-1">{{ form_errors(form.turnstile) }}</div>
-                </div>
-
-                <button type="submit" class="btn btn-dark btn-lg w-100 fw-semibold rounded-3">
-                    Создать бренд →
-                </button>
-
-            {{ form_end(form) }}
-
-            <p class="text-center text-muted small mt-4">
-                Регистрируетесь как покупатель?
-                <a href="{{ path('app_register') }}" class="text-dark fw-semibold">Обычный аккаунт →</a>
-            </p>
-
-        </div>
-    </div>
-
-</div>
+        <p class="mt-6 text-center text-sm text-gray-500">
+            Регистрируетесь как покупатель?
+            <a href="{{ path('app_register') }}" class="font-semibold text-gray-900 hover:underline">Обычный аккаунт →</a>
+        </p>
+    {% endblock %}
+{% endembed %}
 {% endblock %}

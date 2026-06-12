@@ -82,7 +82,7 @@ class AuthControllerTest extends WebTestCase
         ]);
         $client->followRedirect();
 
-        $this->assertSelectorExists('.alert-danger');
+        $this->assertSelectorExists('.form-error');
     }
 
     public function testLoginPageHasForgotPasswordLink(): void
