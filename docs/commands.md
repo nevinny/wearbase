@@ -27,6 +27,7 @@
 | `app:report:pipeline` | `0 */3 * * *` (раз в 3ч) | 🖥/🍎 | сводка RAG-конвейера в TG |
 | `app:report:daily` | `17 9 * * *` (ежедневно) | 🍎 Mac | дайджест публикаций+GSC в TG |
 | `app:gsc:sync` | `0 6 * * *` (ежедневно) | 🖥 .43 | синк Google Search Console |
+| `app:google:index-ping` | `0 7 * * *` (ежедневно) | 🍎 Mac | пинг Google Indexing API (≤200/день) |
 | `app:currency:update-rates` | `0 12 * * *` (ежедневно) | ☁️ prod | курсы валют ЦБ РФ |
 | `app:subscription:expire` | ежедневно (рекоменд.) | ☁️ prod | истечение подписок |
 | `app:brand:enrich-contacts` | `*/10 * * * *` (легаси) | 🖥 .43 | обогащение контактами |
@@ -103,6 +104,7 @@
 |---|---|---|---|
 | `app:gsc:sync` | Search Analytics → `gsc_page_stats` + URL Inspection (cap 1500/день, приоритет свежим) → `gsc_index_status`. Fail-open. | ⏰ `0 6 * * *` | 🖥 .43 |
 | `app:gsc:auth` | **Разовый** OAuth (refresh_token) вместо запрещённого SA-ключа. | 1️⃣ при настройке | 🖥 |
+| `app:google:index-ping` | Google Indexing API: пинг карточек активных брендов (приоритет свежим, cooldown 14 дней) → `google_index_ping`. Единственный Google-канал (anti-trifecta: Яндекс/Bing — IndexNow). `--limit` (default 180, потолок 200), `--dry-run`. Fail-open: креды `GSC_CREDENTIALS_PATH` только на Mac. | ⏰ `0 7 * * *` | 🍎 Mac |
 
 ---
 

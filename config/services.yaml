@@ -106,6 +106,10 @@ services:
             $credentialsPath: '%env(default::GSC_CREDENTIALS_PATH)%'
             $siteUrl: '%env(default::GSC_SITE_URL)%'
 
+    App\Service\Gsc\GoogleIndexingClient:
+        arguments:
+            $credentialsPath: '%env(default::GSC_CREDENTIALS_PATH)%'
+
     App\Command\PushBrandsCommand:
         arguments:
             $prodApiUrl: '%env(default::PROD_API_URL)%'
