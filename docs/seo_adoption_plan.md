@@ -33,7 +33,7 @@
 
 ## План внедрения (в порядке отдачи)
 
-### 1. Фикс hreflang/canonical + 301 www→apex — СРОЧНО
+### 1. Фикс hreflang/canonical + 301 www→apex — ✅ сделано 2026-06-12 (ждёт деплоя)
 
 Мы воспроизводим их «эпидемию fake translations» (правило 6.5 / hreflang_gate G4.5):
 `brand_translation` и `product_translation` **пустые (0 строк)**, а `tailwind/base.html.twig:8-17`
@@ -46,9 +46,11 @@
 - hreflang и canonical строятся от `app.request.schemeAndHttpHost` → на www-хосте страница объявляет canonical/альтернативы на www (кормит дубль-хост).
 
 Действия:
-- [ ] hreflang: оставить только локали с реальными переводами (сейчас — ru; ru же x-default);
-- [ ] canonical/hreflang прибить к апекс-хосту константой, не от request;
-- [ ] 301 www→apex на хостинге (known issue из docs/production.md);
+- [x] hreflang только ru + x-default (base.html.twig); canonical не-ru → ru-версия (дедуп);
+- [x] canonical/hreflang/sitemap-loc от `SITE_BASE_URL` (twig-глобал `site_base_url`),
+  не от request; фикс substring-бага `path_without_locale`; canonical главной `/ru/`
+  (консистентность со слешем sitemap); 11 дублирующих canonical-оверрайдов удалены;
+- [x] 301 www→apex в `public_html/.htaccess` (проверить после деплоя: SSL на www);
 - [ ] при появлении переводов — поле `is_real` в translation-таблицах; hreflang только для `isReal=true`.
 
 ### 2. Перелинковка («латентные победы > новый контент») — ✅ жёсткий граф (2026-06-12)
@@ -90,12 +92,15 @@ fill 494 / style 36, **сирот 0** (min in-degree 2, max 19).
 Осталось:
 - [ ] hub-ссылки из городов/категорий на карточки (вторая шаблонная точка входа).
 
-### 3. IndexNow + один Google-канал (`seoloop/indexer.py`)
+### 3. IndexNow + один Google-канал — ✅ сделано 2026-06-12
 
-У нас нет пингов индексаторам вообще.
-- [ ] IndexNow (бесплатно, 32-hex ключ в `public_html/<key>.txt`) — мгновенно кормит **Яндекс** (главный рынок для русского каталога) и Bing;
-- [ ] Google Indexing API ≤200/день, 14-дн re-ping cooldown — как ЕДИНСТВЕННЫЙ Google-канал;
-- [ ] anti-trifecta: URL никогда не уходит во все каналы сразу — спам-паттерн.
+- [x] IndexNow уже был (`IndexNowPinger`, пинг из publish-tick) — Яндекс/Bing закрыты;
+- [x] Google Indexing API: `GoogleIndexingClient` (SA из GSC_CREDENTIALS_PATH, scope
+  indexing) + `app:google:index-ping` — cap 180/день (потолок 200), cooldown 14 дней
+  (`google_index_ping`), приоритет свежим публикациям, стоп на 429/403, --dry-run.
+  Креды только на Mac → cron `0 7 * * *` с Mac (после app:gsc:sync);
+- [x] anti-trifecta соблюдена: Google — ровно один канал (Indexing API), IndexNow
+  Google не трогает.
 
 ### 4. Пороги ramp в publish-tick
 
