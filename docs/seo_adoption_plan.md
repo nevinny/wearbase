@@ -78,9 +78,16 @@ fill 494 / style 36, **сирот 0** (min in-degree 2, max 19).
 Норматив пакета: 5–15 внутренних ссылок на 1000 слов (мин. 5 в тексте);
 «20–40» в пакете НЕТ. Карточка бренда: 5 рёбер графа + крошки + hub — в норме.
 
+- [x] OUT_DEGREE 5 → 12 (кратно сетке 2/3/4 колонок); локально 5256 рёбер (438×12);
+- [x] рёбра в payload агент-пуша: `related: [{slug, position, source}]`, приёмник
+  delete-and-replace, неизвестные slug'и скипает (`BrandIngestService::replaceRelated`);
+- [x] граф построен на проде (2026-06-12, SQL-fallback без Qdrant): 4440 рёбер
+  (370 активных × 12), city 2879 / fill 1471 / style 90, сирот 0; embedding-рёбра
+  доедут с ре-пушами брендов;
+- [x] Obsidian-визуализация: `../wearbase-graph-obsidian/` (вне репо) — 438 нод,
+  рёбра wikilinks, теги #hub/#popular/#normal по in-degree.
+
 Осталось:
-- [ ] донести граф до прода: либо `app:brand:build-link-graph` на проде (без Qdrant —
-  чистый fallback), либо включить рёбра в payload агент-пуша (`app:brand:push`);
 - [ ] hub-ссылки из городов/категорий на карточки (вторая шаблонная точка входа).
 
 ### 3. IndexNow + один Google-канал (`seoloop/indexer.py`)
