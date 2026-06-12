@@ -62,7 +62,7 @@
 
 | Команда | Зачем | Как часто | Где |
 |---|---|---|---|
-| `app:brand:push` | Доставка готовых брендов (`isPublishReady`) на прод через `/api/v1/brands/upsert` (HMAC). Приземляются как `new`+`publish_pending`. | 🔁 фон / 👆 ре-пуш с `--force` | 🖥 .43 |
+| `app:brand:push` | Доставка готовых брендов (`isPublishReady`) на прод через `/api/v1/brands/upsert` (HMAC). Приземляются как `new`+`publish_pending`. `--id=N --publish` — приоритетная публикация ручного бренда сразу (минуя дрип, `/api/v1/brands/publish` + IndexNow; `published_at` входит в дневной таргет ramp'а). | 🔁 фон / 👆 ре-пуш с `--force` | 🖥 .43 |
 | `app:brand:publish-tick` | Дрип-публикация: часовой тик с ramp-up (5→28/день), окно 9–23 МСК, случайный выбор. Имитирует ручной ввод (анти-SpamBrain). | ⏰ `0 * * * *` | ☁️ prod |
 
 ---

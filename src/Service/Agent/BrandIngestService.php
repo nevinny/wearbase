@@ -172,6 +172,46 @@ class BrandIngestService
         });
     }
 
+    /**
+     * Приоритетная публикация (агент-API): ручные/важные бренды активируются сразу,
+     * минуя случайную выборку дрип-крона. published_at ставим как у дрипа (МСК) —
+     * publish-tick считает published_today по нему, так что приоритетная публикация
+     * входит в дневной таргет ramp'а и не раздувает velocity. Идемпотентно.
+     *
+     * @param array<string,mixed> $payload {"slug": "..."} | {"brand_id": N}
+     * @return array{status:string, brand_id:int|null, url?:string}
+     *         status: published|already_published|not_found
+     */
+    public function publish(array $payload): array
+    {
+        $slug    = trim((string) ($payload['slug'] ?? ''));
+        $brandId = isset($payload['brand_id']) ? (int) $payload['brand_id'] : 0;
+        if ($slug === '' && $brandId <= 0) {
+            throw new \InvalidArgumentException('slug или brand_id обязателен');
+        }
+
+        return $this->em->wrapInTransaction(function () use ($slug, $brandId): array {
+            $repo = $this->em->getRepository(Brand::class);
+            /** @var Brand|null $brand */
+            $brand = $slug !== '' ? $repo->findOneBy(['slug' => $slug]) : $repo->find($brandId);
+            if ($brand === null) {
+                return ['status' => 'not_found', 'brand_id' => null];
+            }
+
+            $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
+            if ($brand->getStatus() === Statuses::Active) {
+                return ['status' => 'already_published', 'brand_id' => $brand->getId(), 'url' => $url];
+            }
+
+            $brand->setStatus(Statuses::Active)
+                ->setPublishPending(false)
+                ->setPublishedAt(new \DateTime('now', new \DateTimeZone('Europe/Moscow')));
+            $this->em->flush();
+
+            return ['status' => 'published', 'brand_id' => $brand->getId(), 'url' => $url];
+        });
+    }
+
     /** Лого хранятся плоско в public_html/images/logos (см. vich_uploader.yaml). */
     private function applyLogo(Brand $brand, string $filename, string $base64): void
     {

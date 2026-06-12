@@ -144,6 +144,57 @@ class BrandIngestController extends AbstractController
     }
 
     /**
+     * Приоритетная публикация (point: ручные/важные бренды). Активирует бренд сразу,
+     * минуя случайную выборку дрип-крона; published_at учитывается в дневном таргете
+     * ramp'а. Та же auth, что у upsert/unpublish (X-Agent-Token + HMAC-подпись тела).
+     *
+     * Тело (application/json): {"slug": "..."} либо {"brand_id": N}.
+     * Ответ: {"status":"published|already_published|not_found","brand_id":N,"url":"..."}.
+     */
+    #[Route('/brands/publish', name: 'api_brand_publish', methods: ['POST'])]
+    public function publish(
+        Request $request,
+        BrandIngestService $ingest,
+        RateLimiterFactory $agentApiLimiter,
+        \App\Service\IndexNowPinger $indexNow,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
+            return $deny;
+        }
+
+        $payload = json_decode((string) $request->getContent(), true);
+        if (!is_array($payload)) {
+            return $this->json(['error' => 'invalid json'], Response::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $result = $ingest->publish($payload);
+        } catch (\InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (\Throwable $e) {
+            $this->logger->error('agent-api publish failed', [
+                'slug'     => $payload['slug'] ?? null,
+                'brand_id' => $payload['brand_id'] ?? null,
+                'error'    => $e->getMessage(),
+            ]);
+
+            return $this->json(['error' => 'internal error'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        // IndexNow — как в дрип-тике: мгновенный пинг Яндексу/Bing о новом URL.
+        if ($result['status'] === 'published' && isset($result['url'])) {
+            $indexNow->ping([$result['url']]);
+        }
+
+        $this->logger->info('agent-api publish', [
+            'slug'   => $payload['slug'] ?? null,
+            'result' => $result['status'],
+        ]);
+
+        return $this->json($result);
+    }
+
+    /**
      * Обратный канал краудсорс-валидации (agent-pull: прод не достучится до LAN):
      * локальный агент поллит забракованные голосами точки и ре-обогащает их.
      */

@@ -25,8 +25,11 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * Трекинг доставки: pipeline.pushed_at (успех) / push_attempts+push_error (ретраи ≤3).
  * content_version инкрементируется на dev после успешной доставки.
  *
- *   php bin/console app:brand:push --id=42 --dry-run    # показать payload без отправки
+ *   php bin/console app:brand:push --id=42 --dry-run    # показать payload для одного
+ *   php bin/console app:brand:push --id=42,43,44         # несколько брендов по ID
  *   php bin/console app:brand:push 10 --no-debug        # сетевая стадия демона
+ *   php bin/console app:brand:push --force 5000          # ре-пуш 5000 брендов с троттлингом 500ms
+ *   php bin/console app:brand:push --force 5000 --throttle=200  # 200ms между запросами (быстрее)
  */
 #[AsCommand(
     name: 'app:brand:push',
@@ -58,10 +61,13 @@ class PushBrandsCommand extends Command
     {
         $this
             ->addArgument('limit', InputArgument::OPTIONAL, 'Максимум брендов за запуск', 50)
-            ->addOption('id',      null, InputOption::VALUE_REQUIRED, 'Один бренд по ID (без проверки готовности)')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Показать payload, не отправлять')
-            ->addOption('shard',   null, InputOption::VALUE_REQUIRED, 'Номер шарда (0..total-1)', '0')
-            ->addOption('total',   null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
+            ->addOption('id',       null, InputOption::VALUE_REQUIRED, 'Бренд(ы) по ID (через запятую, без проверки готовности)')
+            ->addOption('publish',  null, InputOption::VALUE_NONE,     'После доставки сразу опубликовать на проде (минуя дрип; только с --id)')
+            ->addOption('force',    null, InputOption::VALUE_NONE,     'Ре-пуш: игнорирует pushedAt, пересоздаёт датасет')
+            ->addOption('throttle', null, InputOption::VALUE_REQUIRED, 'Задержка мс между запросами', '500')
+            ->addOption('dry-run',  null, InputOption::VALUE_NONE,     'Показать payload, не отправлять')
+            ->addOption('shard',    null, InputOption::VALUE_REQUIRED, 'Номер шарда (0..total-1)', '0')
+            ->addOption('total',    null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
         ;
     }
 
@@ -70,6 +76,8 @@ class PushBrandsCommand extends Command
         $io      = new SymfonyStyle($input, $output);
         $limit   = (int) $input->getArgument('limit');
         $brandId = $input->getOption('id');
+        $force   = (bool) $input->getOption('force');
+        $throttle = max(0, (int) $input->getOption('throttle'));
         $dryRun  = (bool) $input->getOption('dry-run');
         $shard   = (int) $input->getOption('shard');
         $total   = max(1, (int) $input->getOption('total'));
@@ -84,13 +92,34 @@ class PushBrandsCommand extends Command
             $io->note('dry-run — без отправки');
         }
 
+        $publish = (bool) $input->getOption('publish');
+        if ($publish && $brandId === null) {
+            $io->error('--publish работает только вместе с --id (точечная приоритетная публикация).');
+            return Command::FAILURE;
+        }
+
         if ($brandId !== null) {
-            $brand = $this->em->find(Brand::class, (int) $brandId);
-            if (!$brand) {
-                $io->error("Бренд ID {$brandId} не найден.");
+            $ids = array_map('intval', array_filter(array_map('trim', explode(',', (string) $brandId)), static fn($v) => $v > 0));
+            if ($ids === []) {
+                $io->error('Неверный --id (ожидается число или числа через запятую).');
                 return Command::FAILURE;
             }
-            $this->processBrand($brand, $io, $dryRun);
+            $io->progressStart(count($ids));
+            foreach ($ids as $id) {
+                $brand = $this->em->find(Brand::class, $id);
+                if (!$brand) {
+                    $io->warning("Бренд ID {$id} не найден.");
+                    $this->failed++;
+                } else {
+                    $this->processBrand($brand, $io, $dryRun);
+                    if ($publish && !$dryRun) {
+                        $this->publishBrand($brand, $io);
+                    }
+                }
+                $io->progressAdvance();
+                if ($throttle > 0) usleep($throttle * 1000);
+            }
+            $io->progressFinish();
             $this->printResults($io);
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
         }
@@ -99,7 +128,7 @@ class PushBrandsCommand extends Command
         $repo = $this->em->getRepository(Brand::class);
         $brandIds = array_map(
             static fn(Brand $b) => $b->getId(),
-            $repo->findReadyToPush($limit, $shard, $total),
+            $repo->findReadyToPush($limit, $shard, $total, $force ? 999 : 3, $force, $force),
         );
 
         if ($brandIds === []) {
@@ -108,6 +137,9 @@ class PushBrandsCommand extends Command
         }
 
         $io->section(sprintf('Брендов к доставке: %d (shard %d/%d)', count($brandIds), $shard, $total));
+        if (!$dryRun && $throttle > 0) {
+            $io->text(sprintf('⏱ троттлинг %d мс между запросами', $throttle));
+        }
         $this->em->clear();
         $io->progressStart(count($brandIds));
 
@@ -117,6 +149,7 @@ class PushBrandsCommand extends Command
                 $this->processBrand($brand, $io, $dryRun);
             }
             $io->progressAdvance();
+            if ($throttle > 0 && !$dryRun) usleep($throttle * 1000);
             gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
         }
 
@@ -126,21 +159,59 @@ class PushBrandsCommand extends Command
         return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 
+    /** Дёргает /brands/publish (приоритетная публикация, минуя дрип) после успешного upsert. */
+    private function publishBrand(Brand $brand, SymfonyStyle $io): void
+    {
+        $name = $brand->getTitle() ?? "ID:{$brand->getId()}";
+        $body = json_encode(['slug' => $brand->getSlug()], JSON_UNESCAPED_UNICODE);
+
+        try {
+            $response = $this->httpClient->request('POST', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/brands/publish', [
+                'headers' => [
+                    'Content-Type'  => 'application/json',
+                    'X-Agent-Token' => (string) $this->apiToken,
+                    'X-Signature'   => hash_hmac('sha256', (string) $body, (string) $this->apiSecret),
+                ],
+                'body'    => $body,
+                'timeout' => self::TIMEOUT_SEC,
+            ]);
+
+            $data   = $response->getStatusCode() === 200 ? $response->toArray(false) : [];
+            $status = $data['status'] ?? 'error';
+            if (!in_array($status, ['published', 'already_published'], true)) {
+                throw new \RuntimeException(sprintf('HTTP %d: %s', $response->getStatusCode(), mb_substr($response->getContent(false), 0, 300)));
+            }
+            $io->text(sprintf('  🚀 %s: %s (%s)', $name, $status, $data['url'] ?? '—'));
+        } catch (\Throwable $e) {
+            $io->warning(sprintf('  publish не прошёл для "%s": %s (бренд доставлен, опубликует дрип)', $name, $e->getMessage()));
+        }
+    }
+
     private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun): void
     {
         $name = $brand->getTitle() ?? "ID:{$brand->getId()}";
+
+        // Если у бренда hard bounce — пропускаем (email невалидный, пусть contacts:refresh найдёт новый)
+        if ($this->hasBouncedEmail($brand)) {
+            $io->text(sprintf('  ⛔ %s: bounced, пропущен', $name));
+            $this->skipped++;
+            return;
+        }
 
         try {
             $payload = $this->assembler->assemble($brand);
 
             if ($dryRun) {
                 $io->text(sprintf(
-                    '  → %s: v%d, faq=%d, kw=%d, links=%d, logo=%s',
+                    '  → %s: v%d, email=%s, faq=%d, kw=%d, links=%d, attr=%d, stores=%d, logo=%s',
                     $name,
                     $payload['content_version'],
+                    $payload['contacts']['email'] ?? '—',
                     count($payload['faq']),
                     count($payload['keywords']),
                     count($payload['links']),
+                    count($payload['attributes'] ?? []),
+                    count($payload['stores'] ?? []),
                     isset($payload['logo']) ? 'да' : 'нет',
                 ));
                 return;
@@ -211,6 +282,18 @@ class PushBrandsCommand extends Command
             }
         } catch (\Throwable) {
             // батч продолжается
+        }
+    }
+
+    private function hasBouncedEmail(Brand $brand): bool
+    {
+        try {
+            return (bool) $this->em->getConnection()->fetchOne(
+                'SELECT 1 FROM brand_outreach WHERE brand_id = :id AND bounced_at IS NOT NULL LIMIT 1',
+                ['id' => $brand->getId()],
+            );
+        } catch (\Throwable) {
+            return false;
         }
     }
 
