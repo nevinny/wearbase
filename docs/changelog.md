@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-12 (вечер)
+
+### Fixed
+- **`/brand-claim/status/{id}` отдавал 500**: контроллер рендерит `brand_claim/status.html.twig`, а файл лежал под старым именем `pending.html.twig` — переименован.
+
+### Changed
+- **Шаблоны: Tailwind объявлен основным стеком** (CLAUDE.md обновлён). Канонический шаблон страницы бренда — `tailwind/brand/show.html.twig` (бывший `showv3`).
+
+### Removed
+- Мёртвые шаблоны: `tailwind/brand/show.html.twig` (v1), `showv2.html.twig`, `tailwind/index.html.twig` (главная — `hub`), `local-brands/index.html.twig` и `_brand-card.html.twig` (используются `az-index` + `-compact`), `sitemap/sitemap.xml.twig` (используется `xml.html.twig`); `file.html` (870KB) из корня репозитория.
+
+
 ## 2026-06-12
 
 ### Added

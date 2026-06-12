@@ -55,14 +55,19 @@ Never mix them. Admin routes use `admincore_login`/`admincore_logout`; front-end
 
 Role hierarchy: `ROLE_BRAND_OWNER > ROLE_BRAND_MANAGER > ROLE_USER > ROLE_CUSTOMER`.
 
-### Two template stacks
+### Two template stacks — Tailwind is primary
 
 | Stack | Base template | Used for |
 |---|---|---|
-| Bootstrap 5 | `templates/base.html.twig` | Auth, account, checkout, brand LK, cart |
-| Tailwind CSS | `templates/tailwind/base.html.twig` | Public pages: `/ru/`, `/ru/brands`, `/ru/brands/{slug}` |
+| **Tailwind CSS (primary)** | `templates/tailwind/base.html.twig` | All public pages: home hub, brands, catalog, blog, landings, legal pages |
+| Bootstrap 5 (legacy) | `templates/base.html.twig` | Auth, account, checkout, brand LK, cart — migrate to Tailwind when touching these pages substantially |
 
-**Do not mix them.** The Tailwind stack has its own language/currency dropdowns using inline JS; the Bootstrap stack uses `templates/components/header.html.twig`.
+**Do not mix them within a page.** The Tailwind stack has its own language/currency dropdowns using inline JS; the Bootstrap stack uses `templates/components/header.html.twig`.
+
+Rules:
+- New pages → Tailwind stack only.
+- The canonical brand page is `tailwind/brand/show.html.twig` (former `showv3`; v1/v2 deleted 2026-06-12 — do not resurrect).
+- Don't keep dead template versions around: superseded templates are deleted, history lives in git.
 
 ### Locale & routing
 

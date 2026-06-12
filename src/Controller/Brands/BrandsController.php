@@ -293,7 +293,7 @@ class BrandsController extends AbstractController
         // Счётчик активных брендов для WEARBASE Organization.description
         $totalBrands = $brandRepo->count(['status' => Statuses::Active]);
 
-        return $this->render('tailwind/brand/showv3.html.twig', [
+        return $this->render('tailwind/brand/show.html.twig', [
             'brand' => $brand,
             'products' => $demoProducts,
             'similarBrands' => $similarBrands,
