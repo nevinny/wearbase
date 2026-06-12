@@ -38,11 +38,11 @@
             <div class="col-md-3 mb-4">
                 <h6 class="text-uppercase fw-bold mb-3">Будьте в курсе</h6>
                 <p class="small">Подпишитесь на рассылку и получите 10% скидку на первый заказ</p>
-                <form class="mb-3" method="post" action="{{ path('landing_lead') }}">
+                <form class="mb-3" method="post" action="{{ path('newsletter_subscribe') }}">
                     <div class="input-group">
                         <input type="email" name="email" required class="form-control" placeholder="Ваш email" aria-label="Email">
                         <input type="hidden" name="source" value="newsletter-footer">
-                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('landing_lead') }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('newsletter_subscribe') }}">
                         <button class="btn btn-outline-light" type="submit">
                             <i class="fas fa-arrow-right"></i>
                         </button>

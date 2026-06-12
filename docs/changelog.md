@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-12
+
+### Added
+- **Подписка на новости (double opt-in)**: сущность `NewsletterSubscriber` + миграция `Version20260612_newsletter_subscriber`; `NewsletterController` (`POST /newsletter/subscribe`, `GET /newsletter/confirm/{token}`, `GET /newsletter/unsubscribe/{token}` — отписка soft-delete); письма `emails/newsletter_confirm` и `emails/newsletter_digest` (с обязательной ссылкой отписки); команда `app:newsletter:send-digest` (новые бренды + скидки, `--dry-run`, крон еженедельно). Формы в обоих футерах переведены с `landing_lead` на новый роут — раньше «подписка» складывала email в лиды без рассылки и без отписки.
+- **Публикация блога**: `app:blog:publish-drafts` — идемпотентная публикация статей из `_docs/blog-drafts/*.html` по манифесту (4 статьи; контент синхронизирован с локальной БД). Чинит 404 на `/ru/blog/komissii-marketpleysov-2026` на проде: статьи были опубликованы только локально.
+
+
 ## 2026-05-14
 
 ### Fixed

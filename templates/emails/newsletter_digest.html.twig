@@ -1,0 +1,31 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Новые бренды и скидки — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">Новое на WEARBASE</h2>
+
+{% if brands is not empty %}
+<p style="color:#555;line-height:1.6;"><strong>Новые бренды:</strong></p>
+<ul style="color:#555;line-height:1.8;padding-left:20px;">
+    {% for brand in brands %}
+        <li>
+            <a href="{{ url('brand_show', {_locale: 'ru', slug: brand.slug}) }}" style="color:#111;">{{ brand.title }}</a>
+            {%- if brand.description %}{% set d = brand.description|striptags %} — {{ d|length > 120 ? d|slice(0, 120) ~ '…' : d }}{% endif %}
+        </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{% if saleCount > 0 %}
+<p style="color:#555;line-height:1.6;">
+    Сейчас в каталоге <strong>{{ saleCount }}</strong> товаров со скидкой.
+</p>
+<p style="text-align:center;">
+    <a href="{{ url('catalog_index', {sale: 1}) }}" class="btn">Смотреть скидки</a>
+</p>
+{% endif %}
+
+<p style="color:#999;font-size:12px;line-height:1.6;margin-top:24px;">
+    Вы получили это письмо, потому что подтвердили подписку на новости WEARBASE.<br>
+    <a href="{{ url('newsletter_unsubscribe', {token: subscriber.unsubscribeToken}) }}" style="color:#999;">Отписаться от рассылки</a>
+</p>
+{% endblock %}

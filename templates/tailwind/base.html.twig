@@ -295,9 +295,9 @@
             <div>
                 <h6 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Будьте в курсе</h6>
                 <p class="text-sm text-gray-400 mb-3">Подпишитесь на новости: новые бренды и скидки</p>
-                <form method="post" action="{{ path('landing_lead') }}" class="mb-4">
+                <form method="post" action="{{ path('newsletter_subscribe') }}" class="mb-4">
                     <input type="hidden" name="source" value="footer-subscribe">
-                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('landing_lead') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('newsletter_subscribe') }}">
                     <div class="flex gap-2">
                         <input type="email" name="email" required placeholder="Ваш email"
                                class="flex-1 text-sm bg-gray-800 text-white border border-gray-700 rounded-lg px-3 py-2 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">

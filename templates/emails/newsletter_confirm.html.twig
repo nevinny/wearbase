@@ -1,0 +1,17 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Подтвердите подписку — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">Подтвердите подписку</h2>
+<p style="color:#555;line-height:1.6;">
+    Вы (или кто-то, указавший ваш email) подписались на новости WEARBASE:
+    новые российские бренды одежды и скидки.
+</p>
+<p style="text-align:center;">
+    <a href="{{ url('newsletter_confirm', {token: subscriber.confirmToken}) }}" class="btn">
+        Подтвердить подписку
+    </a>
+</p>
+<p style="color:#999;font-size:12px;line-height:1.6;">
+    Если это были не вы — просто проигнорируйте письмо, рассылка без подтверждения не приходит.
+</p>
+{% endblock %}
