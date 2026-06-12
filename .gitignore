@@ -77,3 +77,24 @@
 /public_html/images/brands
 /public_html/images/logos
 ###< symfony/framework-bundle ###
+
+# Секреты (Google OAuth/GSC service-account и пр.) — только локально
+/config/secrets/
+
+# Node / e2e артефакты
+/node_modules/
+/playwright-report/
+/test-results/
+
+# Локальные дампы БД и рабочие выгрузки
+/_sql/
+
+# Архив SEO-методологии (16M, zip/pdf) — рабочая копия тулкита живёт в tools/
+/_seo/
+
+# Локальный инструментарий ассистентов
+/.opencode/
+/.superpowers/
+
+# Случайные локальные загрузки
+/public/downloads/
