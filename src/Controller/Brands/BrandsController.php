@@ -225,7 +225,8 @@ class BrandsController extends AbstractController
         }
 
         $demoProducts = $this->createDemoProducts($brand);
-        $similarBrands = $brandRepo->findSimilarBrands($brand, 8);
+        // Жёсткий граф перелинковки; динамический подбор — только пока граф не построен
+        $similarBrands = $brandRepo->findRelatedHard($brand) ?: $brandRepo->findSimilarBrands($brand, 8);
 
         $brandStyles = $brand->getStyles()->toArray();
         $brandCity = $brand->getCity();

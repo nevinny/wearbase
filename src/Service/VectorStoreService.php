@@ -121,6 +121,31 @@ class VectorStoreService
         ]);
     }
 
+    /**
+     * Векторы чанков бренда (для среднего вектора в графе перелинковки).
+     * Один scroll без пагинации — limit покрывает типичный корпус бренда.
+     *
+     * @return array<int,float[]>
+     */
+    public function brandVectors(int $brandId, int $limit = 64): array
+    {
+        $res = $this->request('POST', "/collections/{$this->collection}/points/scroll", [
+            'filter'       => $this->brandFilter($brandId),
+            'limit'        => $limit,
+            'with_payload' => false,
+            'with_vector'  => true,
+        ]);
+
+        $vectors = [];
+        foreach ($res['body']['result']['points'] ?? [] as $point) {
+            if (isset($point['vector']) && is_array($point['vector'])) {
+                $vectors[] = $point['vector'];
+            }
+        }
+
+        return $vectors;
+    }
+
     public function countByBrand(int $brandId): int
     {
         $res = $this->request('POST', "/collections/{$this->collection}/points/count", [

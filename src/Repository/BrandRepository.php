@@ -73,6 +73,39 @@ class BrandRepository extends ServiceEntityRepository
     /**
      * Получить статистику по буквам
      */
+    /**
+     * Похожие бренды из жёсткого графа перелинковки (brand_related, app:brand:build-link-graph).
+     * Порядок — по position; неактивные target отфильтрованы (рёбра на них чинит
+     * BrandLinkGraphService::replaceDeadEdges, но между прогонами не показываем).
+     *
+     * @return Brand[]
+     */
+    public function findRelatedHard(Brand $brand): array
+    {
+        $ids = $this->getEntityManager()->getConnection()->fetchFirstColumn(
+            'SELECT related_brand_id FROM brand_related WHERE brand_id = :id ORDER BY position',
+            ['id' => $brand->getId()],
+        );
+        if ($ids === []) {
+            return [];
+        }
+
+        $brands = [];
+        foreach ($this->findBy(['id' => $ids, 'status' => Statuses::Active]) as $related) {
+            $brands[$related->getId()] = $related;
+        }
+
+        // восстановить порядок position
+        $ordered = [];
+        foreach ($ids as $id) {
+            if (isset($brands[(int) $id])) {
+                $ordered[] = $brands[(int) $id];
+            }
+        }
+
+        return $ordered;
+    }
+
     public function findSimilarBrands(Brand $brand, int $limit = 8): array
     {
         $qb = $this->createQueryBuilder('b')

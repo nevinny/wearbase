@@ -49,6 +49,7 @@ class PublishTickCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly \App\Service\IndexNowPinger $indexNow,
+        private readonly \App\Service\BrandLinkGraphService $linkGraph,
         private readonly \App\Notification\AdminNotifier $notifier,
         #[Autowire('%env(default::PUBLISH_LAUNCH_DATE)%')]
         private readonly ?string $launchDate,
@@ -159,6 +160,16 @@ class PublishTickCommand extends Command
                 // МСК, как и граница дня в published_today — иначе на UTC-проде счёт съезжает на 3ч
                 ->setPublishedAt(new \DateTime('now', $tz));
             $this->em->flush();
+
+            // Вплетение в жёсткий граф перелинковки: исходящие рёбра + гарантия
+            // входящих (страница не рождается сиротой). Fail-open: SQL-fallback
+            // источники (style/city/fill), эмбеддинг-рёбра доуточнит локальный
+            // app:brand:build-link-graph. Сбой графа публикацию не ломает.
+            try {
+                $this->linkGraph->weave($brand->getId());
+            } catch (\Throwable) {
+            }
+
             $io->text(sprintf('  ✓ опубликован: %s (id %d)', $brand->getTitle(), $brand->getId()));
             $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
             $newUrls[] = $url;
