@@ -3,8 +3,40 @@
 {% block title %}Уведомления — {{ brand.title }}{% endblock %}
 
 {% block brand_content %}
-<h1 class="mb-2 text-lg font-bold">Настройки уведомлений</h1>
-<p class="mb-5 text-sm text-gray-500">Выберите каналы, по которым вы хотите получать уведомления.</p>
+<div class="mb-4 flex items-center justify-between">
+    <h1 class="text-lg font-bold">Уведомления</h1>
+    {% if unreadCount > 0 %}
+        <form method="post" action="{{ path('brand_notification_read_all') }}" class="m-0">
+            <button class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Прочитать все ({{ unreadCount }})</button>
+        </form>
+    {% endif %}
+</div>
+
+{% if notifications|length == 0 %}
+    <div class="mb-8 rounded-2xl bg-white py-10 text-center text-gray-500 shadow-sm">
+        <div class="mb-3 text-4xl opacity-30">🔕</div>
+        <p class="text-sm">Уведомлений пока нет — здесь появятся новые заказы и события бренда</p>
+    </div>
+{% else %}
+    <div class="mb-8 divide-y divide-gray-100 overflow-hidden rounded-2xl bg-white shadow-sm">
+        {% for notification in notifications %}
+            <div class="flex gap-3 px-5 py-4 {{ not notification.isRead ? 'border-l-4 border-indigo-500' : '' }}">
+                <div class="flex-1">
+                    <div class="flex justify-between">
+                        <span class="text-sm {{ not notification.isRead ? 'font-semibold' : '' }}">{{ notification.title }}</span>
+                        <small class="text-xs text-gray-400">{{ notification.createdAt|date('d.m.Y H:i') }}</small>
+                    </div>
+                    {% if notification.body %}
+                        <p class="mb-0 mt-1 text-sm text-gray-500">{{ notification.body }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<h2 class="mb-2 text-lg font-bold">Настройки уведомлений</h2>
+<p class="mb-5 text-sm text-gray-500">Выберите каналы, по которым вы хотите получать уведомления. Пока настройки не сохранены, действуют значения по умолчанию: email и «в приложении» включены.</p>
 
 <form method="post">
     <div class="mb-5 overflow-hidden rounded-2xl bg-white shadow-sm">
@@ -16,7 +48,6 @@
                         <th class="px-5 py-3 text-center">Email</th>
                         <th class="px-5 py-3 text-center">Telegram</th>
                         <th class="px-5 py-3 text-center">В приложении</th>
-                        <th class="px-5 py-3 text-center">Push</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -25,7 +56,8 @@
                         <tr>
                             <td class="px-5 py-3">{{ label }}</td>
                             {% for channel in channels %}
-                                {% set checked = s ? attribute(s, 'channel' ~ channel|slice(7)) : false %}
+                                {# Дефолты без сохранённых настроек — как в NotificationDispatcher: email+inapp вкл, telegram выкл #}
+                                {% set checked = s ? attribute(s, 'channel' ~ channel|slice(7)) : (channel != 'channelTelegram') %}
                                 <td class="px-5 py-3 text-center">
                                     <input type="hidden" name="settings[{{ eventType }}][{{ channel }}]" value="0">
                                     <input class="h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900" type="checkbox"

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Notification;
 
 use App\Entity\User;
+use Psr\Log\LoggerInterface;
 use Symfony\Bridge\Twig\Mime\TemplatedEmail;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mailer\MailerInterface;
@@ -16,6 +17,7 @@ readonly class EmailNotifier
         private MailerInterface $mailer,
         #[Autowire('%env(ADMIN_EMAIL)%')]
         private string $adminEmail,
+        private LoggerInterface $logger,
     ) {}
 
     public function getAdminEmail(): string
@@ -43,6 +45,16 @@ readonly class EmailNotifier
             ->htmlTemplate("emails/{$template}.html.twig")
             ->context($context);
 
-        $this->mailer->send($email);
+        try {
+            $this->mailer->send($email);
+        } catch (\Throwable $e) {
+            // soft-fail: письмо не должно ронять заказ, но молчать об ошибке нельзя
+            $this->logger->error('Email notification failed', [
+                'to' => $to->getAddress(),
+                'subject' => $subject,
+                'template' => $template,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

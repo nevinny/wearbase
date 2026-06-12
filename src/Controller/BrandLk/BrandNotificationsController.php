@@ -27,7 +27,8 @@ class BrandNotificationsController extends BrandDashboardController
         Notification::TYPE_SYSTEM => 'Системные',
     ];
 
-    private const CHANNELS = ['channelEmail', 'channelTelegram', 'channelInapp', 'channelPush'];
+    /** channelPush в сущности нет (только схема в планах) — добавлять сюда нельзя, setChannelPush() уронит сохранение */
+    private const CHANNELS = ['channelEmail', 'channelTelegram', 'channelInapp'];
 
     #[Route('', name: '')]
     public function index(
@@ -74,6 +75,20 @@ class BrandNotificationsController extends BrandDashboardController
             'channels'       => self::CHANNELS,
             'settings'       => $indexed,
             'unreadCount'    => $notificationRepo->countUnread($user),
+            'notifications'  => $notificationRepo->findForUser($user),
         ]);
+    }
+
+    #[Route('/read-all', name: '_read_all', methods: ['POST'])]
+    public function readAll(EntityManagerInterface $em): Response
+    {
+        /** @var \App\Entity\User $user */
+        $user = $this->getUser();
+
+        $em->createQuery('UPDATE App\Entity\Notification n SET n.isRead = true WHERE n.user = :user AND n.isRead = false')
+            ->setParameter('user', $user)
+            ->execute();
+
+        return $this->redirectToRoute('brand_notification');
     }
 }

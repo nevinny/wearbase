@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notification;
 
+use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 readonly class TelegramNotifier
@@ -13,6 +14,7 @@ readonly class TelegramNotifier
     public function __construct(
         private HttpClientInterface $httpClient,
         private string $botToken,
+        private LoggerInterface $logger,
     ) {}
 
     public function send(string $chatId, string $text): bool
@@ -31,8 +33,12 @@ readonly class TelegramNotifier
             ]);
 
             $data = $response->toArray();
+            if (!($data['ok'] ?? false)) {
+                $this->logger->warning('Telegram notification rejected', ['chat_id' => $chatId, 'response' => $data]);
+            }
             return $data['ok'] ?? false;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            $this->logger->error('Telegram notification failed', ['chat_id' => $chatId, 'error' => $e->getMessage()]);
             return false;
         }
     }
