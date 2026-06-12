@@ -51,9 +51,14 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 
 ## Email (Rusender)
 
-- Отправитель: `hello@mail.wearbase.ru`, SMTP `smtp.rusender.ru:465`.
+- Отправитель: `hello@mail.wearbase.ru`, SMTP `smtp.rusender.ru:465` (SSL, не STARTTLS).
 - Проверка: `ssh regru 'cd wearbase.ru && php bin/console mailer:test nevinny@gmail.com'`.
-- **⚠️ Известная проблема (2026-06-12): SMTP-авторизация падает с `450 SMTP connection unavailable`** (LOGIN и PLAIN). Это причина «уведомления технически работают, по факту нет» для email-канала. Чинится в кабинете Rusender: проверить активацию SMTP-доступа, статус домена `mail.wearbase.ru`, лимиты/блокировку аккаунта. Код не виноват — с 2026-06-12 `EmailNotifier` логирует такие ошибки (`var/log/prod.log`, канал `app`, message `Email notification failed`).
+- **Устройство кабинета Rusender («Транзакционные отправки»): две раздельные сущности.**
+  - Вкладка «Ключ» — API-ключ (у нас `wearbase`, ID 4487) — для отправки через их HTTP API.
+  - Вкладка «SMTP» — SMTP-подключения со СВОИМ логином/паролем. **API-ключ ≠ SMTP-пароль.**
+  - Ошибка `450 SMTP connection unavailable` при авторизации = в кабинете нет живого SMTP-подключения под эти креды (это текст Rusender про их сущность, а не про сеть). Фикс: вкладка SMTP → создать подключение → новый логин/пароль → обновить `MAILER_DSN` в прод `.env.local` → `mailer:test`.
+- **⚠️ Лимит тарифа: 100 писем/период** (на 2026-06-12 осталось 86, действует до 05.07.2026). Заказ = 2+ письма (бренд + покупатель), плюс verify-email и newsletter double opt-in. При реальном трафике квота кончится за дни — поднять тариф или ограничить email-канал критичными событиями.
+- Ошибки отправки видны в `var/log/prod.log` (`Email notification failed`, с 2026-06-12).
 
 ## Turnstile (Cloudflare captcha)
 
