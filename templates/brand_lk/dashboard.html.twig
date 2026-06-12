@@ -3,95 +3,71 @@
 {% block title %}Дашборд — {{ brand.title }} — WEARBASE{% endblock %}
 
 {% block brand_content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="h4 fw-bold mb-0">Дашборд</h2>
-    <span class="text-muted small">{{ 'now'|date('d.m.Y') }}</span>
+<div class="mb-5 flex items-center justify-between">
+    <h1 class="text-lg font-bold">Дашборд</h1>
+    <span class="text-sm text-gray-500">{{ 'now'|date('d.m.Y') }}</span>
 </div>
 
 {# ── Готовность приёма оплаты ── #}
 {% if not payment_ready %}
-<div class="alert alert-warning d-flex justify-content-between align-items-center">
+<div class="mb-5 flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
     <div>
-        <i class="fas fa-triangle-exclamation me-1"></i>
+        ⚠️
         <strong>Онлайн-оплата заказов отключена.</strong>
         Пока не настроен основной счёт приёма, покупатели не смогут оплатить заказ картой.
     </div>
-    <a href="{{ path('brand_payment_index') }}" class="btn btn-dark btn-sm text-nowrap ms-3">Настроить</a>
+    <a href="{{ path('brand_payment_index') }}" class="ml-3 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black transition">Настроить</a>
 </div>
 {% endif %}
 
 {# ── Подписка (триал) ── #}
 {% if subscription is not null and subscription.isOnTrial %}
-<div class="alert alert-info py-2 small">
-    <i class="fas fa-circle-info me-1"></i>
+<div class="mb-5 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-800">
+    ℹ️
     Пробный период до {{ subscription.trialEndsAt|date('d.m.Y') }} · тариф «{{ subscription.tariff.name }}».
-    <a href="{{ path('brand_setting') }}" class="alert-link">Тарифы</a>
+    <a href="{{ path('brand_setting') }}" class="font-semibold underline hover:no-underline">Тарифы</a>
 </div>
 {% endif %}
 
 {# ── Метрики ── #}
-<div class="row g-3 mb-4">
-    <div class="col-sm-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted small mb-1">Выручка (оплачено)</div>
-                <div class="h3 fw-bold">{{ price(revenue) }}</div>
-            </div>
-        </div>
+<div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-2xl bg-white p-5 shadow-sm">
+        <div class="mb-1 text-sm text-gray-500">Выручка (оплачено)</div>
+        <div class="text-2xl font-bold">{{ price(revenue) }}</div>
     </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted small mb-1">Всего заказов</div>
-                <div class="h3 fw-bold">{{ orders_total }}</div>
-                <a href="{{ path('brand_orders') }}" class="stretched-link"></a>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted small mb-1">Новые заказы</div>
-                <div class="h3 fw-bold text-danger">{{ new_orders|length }}</div>
-                <a href="{{ path('brand_orders') }}?status=new" class="stretched-link"></a>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted small mb-1">Товары без остатка</div>
-                <div class="h3 fw-bold text-warning">{{ low_stock|length }}</div>
-                <a href="{{ path('brand_products') }}?filter=low_stock" class="stretched-link"></a>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-body">
-                <div class="text-muted small mb-1">Опубликовано товаров</div>
-                <div class="h3 fw-bold">{{ products_published }}</div>
-                <a href="{{ path('brand_products') }}" class="stretched-link"></a>
-            </div>
-        </div>
-    </div>
+    <a href="{{ path('brand_orders') }}" class="block rounded-2xl bg-white p-5 shadow-sm hover:shadow transition">
+        <div class="mb-1 text-sm text-gray-500">Всего заказов</div>
+        <div class="text-2xl font-bold">{{ orders_total }}</div>
+    </a>
+    <a href="{{ path('brand_orders') }}?status=new" class="block rounded-2xl bg-white p-5 shadow-sm hover:shadow transition">
+        <div class="mb-1 text-sm text-gray-500">Новые заказы</div>
+        <div class="text-2xl font-bold text-red-600">{{ new_orders|length }}</div>
+    </a>
+    <a href="{{ path('brand_products') }}?filter=low_stock" class="block rounded-2xl bg-white p-5 shadow-sm hover:shadow transition">
+        <div class="mb-1 text-sm text-gray-500">Товары без остатка</div>
+        <div class="text-2xl font-bold text-amber-500">{{ low_stock|length }}</div>
+    </a>
+    <a href="{{ path('brand_products') }}" class="block rounded-2xl bg-white p-5 shadow-sm hover:shadow transition">
+        <div class="mb-1 text-sm text-gray-500">Опубликовано товаров</div>
+        <div class="text-2xl font-bold">{{ products_published }}</div>
+    </a>
 </div>
 
 {# ── Новые заказы ── #}
 {% if new_orders|length > 0 %}
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-white fw-semibold">
+<div class="mb-6 overflow-hidden rounded-2xl bg-white shadow-sm">
+    <div class="border-b border-gray-100 px-5 py-3 text-sm font-semibold">
         🔴 Новые заказы ({{ new_orders|length }})
     </div>
-    <div class="list-group list-group-flush">
+    <div class="divide-y divide-gray-100">
         {% for order in new_orders %}
         <a href="{{ path('brand_order_show', {id: order.id}) }}"
-           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+           class="flex items-center justify-between px-5 py-3 text-sm hover:bg-gray-50 transition">
             <div>
-                <span class="fw-semibold">#{{ order.orderNumber }}</span>
-                <span class="text-muted ms-2 small">{{ order.createdAt|date('d.m H:i') }}</span>
+                <span class="font-semibold">#{{ order.orderNumber }}</span>
+                <span class="ml-2 text-xs text-gray-500">{{ order.createdAt|date('d.m H:i') }}</span>
             </div>
-            <span class="fw-semibold">{{ price(order.totalAmount) }}</span>
+            <span class="font-semibold">{{ price(order.totalAmount) }}</span>
         </a>
         {% endfor %}
     </div>
@@ -99,42 +75,42 @@
 {% endif %}
 
 {# ── Последние заказы ── #}
-<div class="card border-0 shadow-sm">
-    <div class="card-header bg-white fw-semibold d-flex justify-content-between">
+<div class="overflow-hidden rounded-2xl bg-white shadow-sm">
+    <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3 text-sm font-semibold">
         Последние заказы
-        <a href="{{ path('brand_orders') }}" class="text-dark small">Все →</a>
+        <a href="{{ path('brand_orders') }}" class="text-xs font-medium text-gray-600 hover:text-gray-900">Все →</a>
     </div>
     {% if recent_orders|length > 0 %}
-    <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead class="table-light">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                 <tr>
-                    <th>Номер</th>
-                    <th>Покупатель</th>
-                    <th>Сумма</th>
-                    <th>Статус</th>
-                    <th>Дата</th>
+                    <th class="px-5 py-3">Номер</th>
+                    <th class="px-5 py-3">Покупатель</th>
+                    <th class="px-5 py-3">Сумма</th>
+                    <th class="px-5 py-3">Статус</th>
+                    <th class="px-5 py-3">Дата</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="divide-y divide-gray-100">
             {% for order in recent_orders %}
-            <tr>
-                <td><a href="{{ path('brand_order_show', {id: order.id}) }}">#{{ order.orderNumber }}</a></td>
-                <td>{{ order.customer.fullName }}</td>
-                <td>{{ price(order.totalAmount) }}</td>
-                <td>
-                    <span class="badge bg-{{ order.status == 'new' ? 'danger' : (order.status == 'shipped' ? 'info' : 'secondary') }}">
+            <tr class="hover:bg-gray-50">
+                <td class="px-5 py-3"><a href="{{ path('brand_order_show', {id: order.id}) }}" class="font-semibold hover:underline">#{{ order.orderNumber }}</a></td>
+                <td class="px-5 py-3">{{ order.customer.fullName }}</td>
+                <td class="px-5 py-3">{{ price(order.totalAmount) }}</td>
+                <td class="px-5 py-3">
+                    <span class="rounded px-2 py-0.5 text-xs font-semibold {{ order.status == 'new' ? 'bg-red-100 text-red-800' : (order.status == 'shipped' ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700') }}">
                         {{ order.statusLabel }}
                     </span>
                 </td>
-                <td class="text-muted small">{{ order.createdAt|date('d.m.Y') }}</td>
+                <td class="px-5 py-3 text-xs text-gray-500">{{ order.createdAt|date('d.m.Y') }}</td>
             </tr>
             {% endfor %}
             </tbody>
         </table>
     </div>
     {% else %}
-        <div class="card-body text-muted text-center py-5">Заказов пока нет</div>
+        <div class="py-14 text-center text-gray-500">Заказов пока нет</div>
     {% endif %}
 </div>
 {% endblock %}

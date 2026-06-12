@@ -3,39 +3,43 @@
 {% block title %}Уведомления — {{ brand.title }}{% endblock %}
 
 {% block brand_content %}
-<h4 class="mb-3">Настройки уведомлений</h4>
-<p class="text-muted">Выберите каналы, по которым вы хотите получать уведомления.</p>
+<h1 class="mb-2 text-lg font-bold">Настройки уведомлений</h1>
+<p class="mb-5 text-sm text-gray-500">Выберите каналы, по которым вы хотите получать уведомления.</p>
 
-<form method="post" class="table-responsive">
-    <table class="table align-middle">
-        <thead class="table-light">
-            <tr>
-                <th style="width:30%">Событие</th>
-                <th class="text-center">Email</th>
-                <th class="text-center">Telegram</th>
-                <th class="text-center">В приложении</th>
-                <th class="text-center">Push</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for eventType, label in eventTypes %}
-                {% set s = settings[eventType] ?? null %}
-                <tr>
-                    <td>{{ label }}</td>
-                    {% for channel in channels %}
-                        {% set checked = s ? attribute(s, 'channel' ~ channel|slice(7)) : false %}
-                        <td class="text-center">
-                            <input type="hidden" name="settings[{{ eventType }}][{{ channel }}]" value="0">
-                            <input class="form-check-input" type="checkbox"
-                                   name="settings[{{ eventType }}][{{ channel }}]" value="1"
-                                   {{ checked ? 'checked' : '' }}>
-                        </td>
+<form method="post">
+    <div class="mb-5 overflow-hidden rounded-2xl bg-white shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <tr>
+                        <th class="w-[30%] px-5 py-3">Событие</th>
+                        <th class="px-5 py-3 text-center">Email</th>
+                        <th class="px-5 py-3 text-center">Telegram</th>
+                        <th class="px-5 py-3 text-center">В приложении</th>
+                        <th class="px-5 py-3 text-center">Push</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for eventType, label in eventTypes %}
+                        {% set s = settings[eventType] ?? null %}
+                        <tr>
+                            <td class="px-5 py-3">{{ label }}</td>
+                            {% for channel in channels %}
+                                {% set checked = s ? attribute(s, 'channel' ~ channel|slice(7)) : false %}
+                                <td class="px-5 py-3 text-center">
+                                    <input type="hidden" name="settings[{{ eventType }}][{{ channel }}]" value="0">
+                                    <input class="h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900" type="checkbox"
+                                           name="settings[{{ eventType }}][{{ channel }}]" value="1"
+                                           {{ checked ? 'checked' : '' }}>
+                                </td>
+                            {% endfor %}
+                        </tr>
                     {% endfor %}
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
-    <button type="submit" class="btn btn-dark">Сохранить настройки</button>
+    <button type="submit" class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить настройки</button>
 </form>
 {% endblock %}

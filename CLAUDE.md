@@ -55,27 +55,22 @@ Never mix them. Admin routes use `admincore_login`/`admincore_logout`; front-end
 
 Role hierarchy: `ROLE_BRAND_OWNER > ROLE_BRAND_MANAGER > ROLE_USER > ROLE_CUSTOMER`.
 
-### Two template stacks — Tailwind is primary
+### Templates: single Tailwind stack, two layouts
 
-| Stack | Base template | Used for |
-|---|---|---|
-| **Tailwind CSS (primary)** | `templates/tailwind/base.html.twig` | All public pages: home hub, brands, catalog, blog, landings, legal pages |
-| Bootstrap 5 (legacy) | `templates/base.html.twig` | Auth, account, checkout, brand LK, cart — migrate to Tailwind when touching these pages substantially |
+| Layout | Used for |
+|---|---|
+| `templates/tailwind/base.html.twig` | Public pages: home hub, brands, catalog, blog, landings, legal (SEO head, full footer) |
+| `templates/tailwind/app.html.twig` | Auth, account, cart, checkout, brand LK, brand claim (compact header, mini footer, `noindex`) |
 
-**Do not mix them within a page.** The Tailwind stack has its own language/currency dropdowns using inline JS; the Bootstrap stack uses `templates/components/header.html.twig`.
+Tailwind is loaded via CDN (`cdn.tailwindcss.com?plugins=typography`). Bootstrap was fully removed on 2026-06-12 (`templates/base.html.twig` and the bootstrap components are deleted — do not resurrect).
 
-Rules:
-- New pages → Tailwind stack only.
-- The canonical brand page is `tailwind/brand/show.html.twig` (former `showv3`; v1/v2 deleted 2026-06-12 — do not resurrect).
-- Don't keep dead template versions around: superseded templates are deleted, history lives in git.
-
-### Blog & SEO landing pages (2026-06-12)
-
-- **Блог**: entity `Article` (трейты Status/Created, поля slug/locale/excerpt/content-HTML/publishedAt). Публично видна только `status=active` + `publishedAt <= now` (фильтрует `ArticleRepository`). Роуты `blog_index` (`/{_locale}/blog`, страницы >1 — noindex) и `blog_show` (`/{_locale}/blog/{slug}`). Админка: «Контент → Статьи блога»; поле content — **raw-HTML textarea, НЕ TextEditorField** (Trix вырезает таблицы). Статьи попадают в sitemap автоматически. Черновики и HTML-исходники — `_docs/blog-drafts/` (вне git).
-- **`/{_locale}/marketplace-commissions`** отдаёт 301 на статью `komissii-marketpleysov-2026`, **если она опубликована** (иначе рендерит старый лендинг — fail-safe для прода, где статью нужно один раз создать в БД).
-- **Городские посадочные**: `/{_locale}/cities` (`brand_cities`, список городов) и `/{_locale}/cities/{slug}` (`brand_city`, индексируемая страница города — таргетит «бренды одежды {город}»). Слаг строится транслитом на лету (`App\Service\CitySlugger`), обратное разрешение — перебором фактических городов; отдельной таблицы слагов нет. `brand_index?city=` остаётся noindex-фильтром. Города — в sitemap.
-- Лендинги (`tailwind/landing/*`) наследуют общий `tailwind/base.html.twig`; отдельного landing-base и `css/landing.css` больше нет.
-- Карта ключевиков (Wordstat) — `_docs/seo-keywords-2026-06.md`; сбор: POST `searchapi.api.cloud.yandex.net/v2/wordstat/topRequests` с `WORDSTAT_API_KEY`.
+Conventions:
+- Auth pages use the split-panel shell `tailwind/auth/_shell.html.twig` via `{% embed %}`.
+- Account pages extend `account/layout.html.twig` (sidebar), brand LK pages extend `brand_lk/layout.html.twig` (dark sidebar); both extend `tailwind/app.html.twig`.
+- The canonical brand page is `tailwind/brand/show.html.twig` (former `showv3`; v1/v2 deleted).
+- Style tokens: card `rounded-2xl bg-white shadow-sm`; label `text-[11px] font-semibold uppercase tracking-wider text-gray-500`; input `rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:ring-2 focus:ring-gray-900`; primary button `rounded-xl bg-gray-900 text-white font-semibold hover:bg-black`.
+- Flash messages render globally in both layouts — don't add per-page flash loops.
+- Error blocks carry the semantic class `form-error` (tests assert on it).
 
 ### Locale & routing
 

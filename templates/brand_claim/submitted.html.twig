@@ -1,56 +1,54 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/app.html.twig' %}
 {% block title %}Заявка отправлена — {{ brand.title }}{% endblock %}
 
 {% block body %}
-<div class="container py-5 text-center" style="max-width:520px">
+<div class="mx-auto w-full max-w-[520px] px-4 py-12 text-center">
 
-    <div class="mb-4">
+    <div class="mb-6">
         {% if emailMatch %}
-            <div class="rounded-circle bg-success text-white d-inline-flex align-items-center justify-content-center mb-3"
-                 style="width:64px;height:64px;font-size:28px">
-                <i class="fas fa-check"></i>
+            <div class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-green-600 text-3xl text-white">
+                ✓
             </div>
-            <h1 class="h4 fw-bold mb-2">Заявка верифицирована!</h1>
-            <p class="text-muted">
+            <h1 class="mb-2 text-lg font-bold">Заявка верифицирована!</h1>
+            <p class="text-sm text-gray-500">
                 Домен вашего email совпал с доменом бренда —
                 заявка отмечена как верифицированная и будет рассмотрена в первую очередь.
             </p>
         {% else %}
-            <div class="rounded-circle bg-dark text-white d-inline-flex align-items-center justify-content-center mb-3"
-                 style="width:64px;height:64px;font-size:28px">
-                <i class="fas fa-paper-plane"></i>
+            <div class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-900 text-3xl text-white">
+                ✈️
             </div>
-            <h1 class="h4 fw-bold mb-2">Заявка отправлена</h1>
-            <p class="text-muted">
+            <h1 class="mb-2 text-lg font-bold">Заявка отправлена</h1>
+            <p class="text-sm text-gray-500">
                 Администрация WEARBASE проверит вашу заявку.
                 Обычно это занимает 1–2 рабочих дня.
             </p>
         {% endif %}
     </div>
 
-    <div class="card border-0 shadow-sm mb-4 text-start">
-        <div class="card-body p-4">
-            <div class="d-flex justify-content-between small mb-2">
-                <span class="text-muted">Бренд</span>
-                <span class="fw-semibold">{{ brand.title }}</span>
+    <div class="mb-6 rounded-2xl bg-white text-left shadow-sm">
+        <div class="p-6">
+            <div class="mb-2 flex justify-between text-sm">
+                <span class="text-gray-500">Бренд</span>
+                <span class="font-semibold">{{ brand.title }}</span>
             </div>
-            <div class="d-flex justify-content-between small mb-2">
-                <span class="text-muted">Статус</span>
-                <span class="badge {{ emailMatch ? 'bg-success' : 'bg-secondary' }}">
+            <div class="mb-2 flex justify-between text-sm">
+                <span class="text-gray-500">Статус</span>
+                <span class="rounded px-2 py-0.5 text-xs font-semibold {{ emailMatch ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">
                     {{ claim.statusLabel }}
                 </span>
             </div>
-            <div class="d-flex justify-content-between small">
-                <span class="text-muted">Результат</span>
-                <span class="text-muted">На email придёт уведомление</span>
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Результат</span>
+                <span class="text-gray-500">На email придёт уведомление</span>
             </div>
         </div>
     </div>
 
-    <div class="d-flex gap-2 justify-content-center">
+    <div class="flex justify-center gap-2">
         <a href="{{ path('brand_show', {slug: brand.slug, _locale: 'ru'}) }}"
-           class="btn btn-outline-secondary">← К бренду</a>
-        <a href="{{ path('account_dashboard') }}" class="btn btn-dark">Мой кабинет</a>
+           class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← К бренду</a>
+        <a href="{{ path('account_dashboard') }}" class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Мой кабинет</a>
     </div>
 
 </div>

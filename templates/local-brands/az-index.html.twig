@@ -1,105 +1,101 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/base.html.twig' %}
 
 {% block title %}Алфавитный указатель брендов | ASOS{% endblock %}
 
-{% block content %}
-    <div class="container-fluid py-4">
+{% block body %}
+    <div class="container mx-auto px-4 py-6">
         <!-- Хлебные крошки -->
         <nav aria-label="breadcrumb" class="mb-4">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="/">Главная</a></li>
-                <li class="breadcrumb-item"><a href="/brands">Бренды</a></li>
-                <li class="breadcrumb-item active">Алфавитный указатель</li>
+            <ol class="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                <li><a href="/" class="hover:text-gray-900 transition">Главная</a></li>
+                <li aria-hidden="true">/</li>
+                <li><a href="/brands" class="hover:text-gray-900 transition">Бренды</a></li>
+                <li aria-hidden="true">/</li>
+                <li class="text-gray-900">Алфавитный указатель</li>
             </ol>
         </nav>
 
         <!-- Заголовок -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h1 class="h2 mb-0">Алфавитный указатель брендов</h1>
-                    <span class="text-muted">{{ totalBrands }} брендов</span>
-                </div>
-                <p class="lead text-muted mb-0">
-                    Найдите любимые бренды по алфавиту или воспользуйтесь поиском
-                </p>
+        <div class="mb-6">
+            <div class="mb-3 flex items-center justify-between">
+                <h1 class="text-2xl font-bold">Алфавитный указатель брендов</h1>
+                <span class="text-gray-500">{{ totalBrands }} брендов</span>
             </div>
+            <p class="text-lg text-gray-500">
+                Найдите любимые бренды по алфавиту или воспользуйтесь поиском
+            </p>
         </div>
 
         <!-- Поиск -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <form method="get" class="row g-3 align-items-center">
-                            <div class="col-md-8">
-                                <div class="input-group">
-                                <span class="input-group-text bg-light border-end-0">
-                                    <i class="fas fa-search text-muted"></i>
+        <div class="mb-6">
+            <div class="rounded-2xl bg-white shadow-sm">
+                <div class="p-4 md:p-6">
+                    <form method="get" class="grid items-center gap-3 md:grid-cols-12">
+                        <div class="md:col-span-8">
+                            <div class="flex items-center rounded-lg border border-gray-300 bg-white focus-within:border-gray-900">
+                                <span class="flex items-center bg-gray-50 px-3 py-2.5 rounded-l-lg">
+                                    <i class="fas fa-search text-gray-500"></i>
                                 </span>
-                                    <input type="text"
-                                           name="search"
-                                           class="form-control border-start-0"
-                                           placeholder="Поиск брендов..."
-                                           value="{{ searchQuery }}"
-                                           aria-label="Поиск брендов">
-                                </div>
+                                <input type="text"
+                                       name="search"
+                                       class="w-full rounded-r-lg border-0 px-3 py-2.5 text-sm focus:outline-none"
+                                       placeholder="Поиск брендов..."
+                                       value="{{ searchQuery }}"
+                                       aria-label="Поиск брендов">
                             </div>
-                            <div class="col-md-2">
-                                <button type="submit" class="btn btn-dark w-100">
-                                    Найти
-                                </button>
-                            </div>
-                            <div class="col-md-2">
-                                <a href="{{ path('brands_az') }}" class="btn btn-outline-secondary w-100">
-                                    Сбросить
-                                </a>
-                            </div>
-                        </form>
-                    </div>
+                        </div>
+                        <div class="md:col-span-2">
+                            <button type="submit" class="w-full rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">
+                                Найти
+                            </button>
+                        </div>
+                        <div class="md:col-span-2">
+                            <a href="{{ path('brands_az') }}" class="block w-full text-center rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">
+                                Сбросить
+                            </a>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
 
         {% if searchQuery %}
             <!-- Результаты поиска -->
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h2 class="h4 mb-0">Результаты поиска "{{ searchQuery }}"</h2>
-                        <span class="text-muted">Найдено {{ brands|length }} брендов</span>
-                    </div>
-
-                    {% if brands is empty %}
-                        <div class="text-center py-5">
-                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                            <h3 class="h5">Бренды не найдены</h3>
-                            <p class="text-muted">Попробуйте изменить поисковый запрос или посмотрите все бренды по алфавиту</p>
-                            <a href="{{ path('brands_az') }}" class="btn btn-dark">Показать все бренды</a>
-                        </div>
-                    {% else %}
-                        <div class="row g-3">
-                            {% for brand in brands %}
-                                <div class="col-6 col-md-4 col-lg-3 col-xl-2">
-                                    {% include 'local-brands/_brand-card-compact.html.twig' with {brand: brand} %}
-                                </div>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+            <div class="mb-6">
+                <div class="mb-3 flex items-center justify-between">
+                    <h2 class="text-lg font-bold">Результаты поиска "{{ searchQuery }}"</h2>
+                    <span class="text-gray-500">Найдено {{ brands|length }} брендов</span>
                 </div>
+
+                {% if brands is empty %}
+                    <div class="py-12 text-center">
+                        <i class="fas fa-search fa-3x text-gray-500 mb-3"></i>
+                        <h3 class="text-lg font-bold">Бренды не найдены</h3>
+                        <p class="text-gray-500">Попробуйте изменить поисковый запрос или посмотрите все бренды по алфавиту</p>
+                        <a href="{{ path('brands_az') }}" class="inline-block mt-3 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Показать все бренды</a>
+                    </div>
+                {% else %}
+                    <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                        {% for brand in brands %}
+                            <div>
+                                {% include 'local-brands/_brand-card-compact.html.twig' with {brand: brand} %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
             </div>
         {% else %}
             <!-- Алфавитный указатель -->
-            <div class="row">
+            <div>
                 <!-- Навигация по буквам -->
-                <div class="col-12 mb-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h3 class="h6 mb-3">Быстрая навигация</h3>
-                            <div class="alphabet-nav">
+                <div class="mb-6">
+                    <div class="rounded-2xl bg-white shadow-sm">
+                        <div class="p-4 md:p-6">
+                            <h3 class="text-lg font-bold mb-3">Быстрая навигация</h3>
+                            <div class="alphabet-nav flex flex-wrap justify-center gap-1">
                                 {% for letter in alphabet %}
                                     <a href="{{ path('brands_az', {'letter': letter}) }}"
-                                       class="btn btn-sm {% if currentLetter == letter %}btn-dark{% else %}btn-outline-dark{% endif %} m-1 alphabet-letter">
+                                       class="alphabet-letter min-w-[45px] text-center font-semibold rounded-lg px-2.5 py-1 text-sm transition {% if currentLetter == letter %}bg-gray-900 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}">
                                         {{ letter }}
                                     </a>
                                 {% endfor %}
@@ -109,30 +105,30 @@
                 </div>
 
                 <!-- Список брендов по буквам -->
-                <div class="col-12">
+                <div>
                     {% if currentLetter %}
                         <!-- Текущая выбранная буква -->
-                        <div class="mb-4">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h2 class="h4 mb-0">Бренды на букву "{{ currentLetter }}"</h2>
-                                <span class="text-muted">{% if brandsByLetter is defined and currentLetter is defined and brandsByLetter[currentLetter] is defined %}
+                        <div class="mb-6">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h2 class="text-lg font-bold">Бренды на букву "{{ currentLetter }}"</h2>
+                                <span class="text-gray-500">{% if brandsByLetter is defined and currentLetter is defined and brandsByLetter[currentLetter] is defined %}
                                         {{ brandsByLetter[currentLetter]|length }}
                                     {% endif %} брендов</span>
                             </div>
 
                             {% if brandsByLetter[currentLetter] is defined and brandsByLetter[currentLetter] is not empty %}
-                                <div class="row g-3">
+                                <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                                     {% for brand in brandsByLetter[currentLetter] %}
-                                        <div class="col-6 col-md-4 col-lg-3 col-xl-2">
+                                        <div>
                                             {% include 'local-brands/_brand-card-compact.html.twig' with {brand: brand} %}
                                         </div>
                                     {% endfor %}
                                 </div>
                             {% else %}
-                                <div class="text-center py-5 bg-light rounded">
-                                    <i class="fas fa-font fa-3x text-muted mb-3"></i>
-                                    <h3 class="h5">Нет брендов на букву "{{ currentLetter }}"</h3>
-                                    <p class="text-muted">Выберите другую букву для просмотра брендов</p>
+                                <div class="rounded-2xl bg-gray-50 py-12 text-center">
+                                    <i class="fas fa-font fa-3x text-gray-500 mb-3"></i>
+                                    <h3 class="text-lg font-bold">Нет брендов на букву "{{ currentLetter }}"</h3>
+                                    <p class="text-gray-500">Выберите другую букву для просмотра брендов</p>
                                 </div>
                             {% endif %}
                         </div>
@@ -140,29 +136,29 @@
                         <!-- Полный алфавитный список -->
                         <div class="az-index-full">
                             {% for letter, letterBrands in brandsByLetter %}
-                                <div class="az-letter-section mb-5" id="letter-{{ letter }}">
-                                    <div class="d-flex align-items-center mb-3">
-                                        <h2 class="h3 me-3 mb-0">{{ letter }}</h2>
-                                        <span class="badge bg-secondary">{{ letterBrands|length }}</span>
+                                <div class="az-letter-section mb-10 scroll-mt-5" id="letter-{{ letter }}">
+                                    <div class="mb-3 flex items-center">
+                                        <h2 class="text-xl font-bold mr-3">{{ letter }}</h2>
+                                        <span class="rounded-lg bg-gray-100 px-2.5 py-0.5 text-sm text-gray-600">{{ letterBrands|length }}</span>
                                     </div>
 
-                                    <div class="row g-3">
+                                    <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                                         {% for brand in letterBrands %}
-                                            <div class="col-6 col-md-4 col-lg-3 col-xl-2">
+                                            <div>
                                                 {% include 'local-brands/_brand-card-compact.html.twig' with {brand: brand} %}
                                             </div>
                                         {% endfor %}
                                     </div>
 
                                     {% if loop.last == false %}
-                                        <hr class="my-4">
+                                        <hr class="my-6 border-gray-200">
                                     {% endif %}
                                 </div>
                             {% else %}
-                                <div class="text-center py-5">
-                                    <i class="fas fa-store fa-3x text-muted mb-3"></i>
-                                    <h3 class="h5">Бренды не найдены</h3>
-                                    <p class="text-muted">В каталоге пока нет брендов</p>
+                                <div class="py-12 text-center">
+                                    <i class="fas fa-store fa-3x text-gray-500 mb-3"></i>
+                                    <h3 class="text-lg font-bold">Бренды не найдены</h3>
+                                    <p class="text-gray-500">В каталоге пока нет брендов</p>
                                 </div>
                             {% endfor %}
                         </div>
@@ -172,74 +168,28 @@
         {% endif %}
 
         <!-- Дополнительная информация -->
-        <div class="row mt-5">
-            <div class="col-12">
-                <div class="bg-light p-4 rounded">
-                    <div class="row">
-                        <div class="col-md-4 text-center mb-3 mb-md-0">
-                            <i class="fas fa-globe fa-2x text-primary mb-2"></i>
-                            <h5 class="h6">Международные бренды</h5>
-                            <p class="small text-muted mb-0">Более 800 брендов со всего мира</p>
-                        </div>
-                        <div class="col-md-4 text-center mb-3 mb-md-0">
-                            <i class="fas fa-map-marker-alt fa-2x text-success mb-2"></i>
-                            <h5 class="h6">Локальные бренды</h5>
-                            <p class="small text-muted mb-0">Поддержите местных дизайнеров</p>
-                        </div>
-                        <div class="col-md-4 text-center">
-                            <i class="fas fa-leaf fa-2x text-info mb-2"></i>
-                            <h5 class="h6">Устойчивая мода</h5>
-                            <p class="small text-muted mb-0">Эко-дружественные бренды</p>
-                        </div>
+        <div class="mt-10">
+            <div class="rounded-2xl bg-gray-50 p-6">
+                <div class="grid gap-4 md:grid-cols-3">
+                    <div class="text-center">
+                        <i class="fas fa-globe fa-2x text-blue-600 mb-2"></i>
+                        <h5 class="text-lg font-bold">Международные бренды</h5>
+                        <p class="text-sm text-gray-500">Более 800 брендов со всего мира</p>
+                    </div>
+                    <div class="text-center">
+                        <i class="fas fa-map-marker-alt fa-2x text-green-600 mb-2"></i>
+                        <h5 class="text-lg font-bold">Локальные бренды</h5>
+                        <p class="text-sm text-gray-500">Поддержите местных дизайнеров</p>
+                    </div>
+                    <div class="text-center">
+                        <i class="fas fa-leaf fa-2x text-cyan-600 mb-2"></i>
+                        <h5 class="text-lg font-bold">Устойчивая мода</h5>
+                        <p class="text-sm text-gray-500">Эко-дружественные бренды</p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <style>
-        .alphabet-nav {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 0.25rem;
-        }
-
-        .alphabet-letter {
-            min-width: 45px;
-            text-align: center;
-            font-weight: 600;
-        }
-
-        .az-letter-section {
-            scroll-margin-top: 20px;
-        }
-
-        .brand-card-compact {
-            transition: all 0.3s ease;
-            border: none;
-            height: 100%;
-        }
-
-        .brand-card-compact:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-
-        .brand-logo-compact {
-            height: 80px;
-            object-fit: contain;
-            padding: 0.75rem;
-        }
-
-        @media (max-width: 768px) {
-            .alphabet-nav .btn-sm {
-                min-width: 40px;
-                padding: 0.25rem 0.5rem;
-                font-size: 0.8rem;
-            }
-        }
-    </style>
 
     <script>
         // Плавная прокрутка к буквам

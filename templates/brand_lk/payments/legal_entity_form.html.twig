@@ -3,29 +3,31 @@
 {% block title %}{{ entity.id ? 'Юр.лицо' : 'Новое юр.лицо' }} — {{ brand.title }}{% endblock %}
 
 {% block brand_content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="mb-0">{{ entity.id ? 'Редактирование юр.лица' : 'Новое юр.лицо' }}</h4>
-    <a href="{{ path('brand_payment_index') }}" class="btn btn-outline-secondary btn-sm">Назад</a>
+{% set input_class = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+
+<div class="mb-4 flex items-center justify-between">
+    <h1 class="text-lg font-bold">{{ entity.id ? 'Редактирование юр.лица' : 'Новое юр.лицо' }}</h1>
+    <a href="{{ path('brand_payment_index') }}" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Назад</a>
 </div>
 
-<div class="row">
-    <div class="col-lg-8">
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-4">
+<div class="grid lg:grid-cols-3">
+    <div class="lg:col-span-2">
+        <div class="rounded-2xl bg-white shadow-sm">
+            <div class="p-6">
                 {{ form_start(form, {'attr': {'novalidate': 'novalidate'}}) }}
-                <div class="row g-3">
-                    <div class="col-md-4">{{ form_row(form.legalForm, {'attr': {'class': 'form-select'}}) }}</div>
-                    <div class="col-md-8">{{ form_row(form.legalName, {'attr': {'class': 'form-control'}}) }}</div>
-                    <div class="col-md-4">{{ form_row(form.inn, {'attr': {'class': 'form-control'}}) }}</div>
-                    <div class="col-md-4">{{ form_row(form.kpp, {'attr': {'class': 'form-control'}}) }}</div>
-                    <div class="col-md-4">{{ form_row(form.ogrn, {'attr': {'class': 'form-control'}}) }}</div>
-                    <div class="col-12">{{ form_row(form.legalAddress, {'attr': {'class': 'form-control'}}) }}</div>
-                    <div class="col-md-4">{{ form_row(form.effectiveFrom, {'attr': {'class': 'form-control'}}) }}</div>
-                    <div class="col-md-4">{{ form_row(form.effectiveTo, {'attr': {'class': 'form-control'}}) }}</div>
-                    <div class="col-md-4">{{ form_row(form.status, {'attr': {'class': 'form-select'}}) }}</div>
+                <div class="grid grid-cols-12 gap-4">
+                    <div class="col-span-12 md:col-span-4">{{ form_row(form.legalForm, {'attr': {'class': input_class}}) }}</div>
+                    <div class="col-span-12 md:col-span-8">{{ form_row(form.legalName, {'attr': {'class': input_class}}) }}</div>
+                    <div class="col-span-12 md:col-span-4">{{ form_row(form.inn, {'attr': {'class': input_class}}) }}</div>
+                    <div class="col-span-12 md:col-span-4">{{ form_row(form.kpp, {'attr': {'class': input_class}}) }}</div>
+                    <div class="col-span-12 md:col-span-4">{{ form_row(form.ogrn, {'attr': {'class': input_class}}) }}</div>
+                    <div class="col-span-12">{{ form_row(form.legalAddress, {'attr': {'class': input_class}}) }}</div>
+                    <div class="col-span-12 md:col-span-4">{{ form_row(form.effectiveFrom, {'attr': {'class': input_class}}) }}</div>
+                    <div class="col-span-12 md:col-span-4">{{ form_row(form.effectiveTo, {'attr': {'class': input_class}}) }}</div>
+                    <div class="col-span-12 md:col-span-4">{{ form_row(form.status, {'attr': {'class': input_class}}) }}</div>
                 </div>
-                <div class="mt-4">
-                    <button class="btn btn-dark">Сохранить</button>
+                <div class="mt-5">
+                    <button class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить</button>
                 </div>
                 {{ form_end(form) }}
             </div>

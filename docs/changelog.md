@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-12 (этапы 2–4: Bootstrap полностью удалён)
+
+### Changed
+- **Весь сайт переведён на единый Tailwind-стек** (этапы 2–4): корзина и checkout (шапка без отвлекающих элементов, JS-контракт сохранён), кабинет покупателя (11 шаблонов, сайдбар), ЛК бренда (19 шаблонов, тёмный сайдбар), brand_claim (3), публичный A-Z индекс брендов. Bootstrap-зависимые `data-bs-*` компоненты заменены (dropdown → `<details>`), `d-none` → `hidden` в разметке и JS.
+
+### Fixed
+- **`/brands/a-z` был недоступен публично**: правило файрвола `^/brand` (ROLE_BRAND_MANAGER) перехватывало и `/brands/*` — добавлено `^/brands → PUBLIC_ACCESS` перед ним.
+
+### Removed
+- `templates/base.html.twig` (Bootstrap-база) и мёртвые компоненты: `components/header`, `footer`, `pagination`, `filters-sidebar`, `brand-list-item`, `promo-banner`. Bootstrap/FontAwesome больше нигде не грузятся.
+
+
 ## 2026-06-12 (этап 1 миграции на Tailwind)
 
 ### Added

@@ -2,57 +2,60 @@
 {% block title %}{{ title }} — {{ brand.title }} — WEARBASE{% endblock %}
 
 {% block brand_content %}
-<div class="d-flex align-items-center gap-3 mb-4">
-    <a href="{{ path('brand_products') }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-arrow-left me-1"></i>К товарам
+{% set input_class = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% set label_class = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+
+<div class="mb-5 flex items-center gap-3">
+    <a href="{{ path('brand_products') }}" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">
+        ← К товарам
     </a>
-    <h1 class="h4 fw-bold mb-0">{{ title }}</h1>
+    <h1 class="text-lg font-bold">{{ title }}</h1>
 </div>
 
 {{ form_start(form, {'attr': {'novalidate': 'novalidate'}}) }}
 
-<div class="row g-4">
+<div class="grid items-start gap-6 lg:grid-cols-3">
 
     {# Левая колонка — основные данные #}
-    <div class="col-lg-8">
+    <div class="lg:col-span-2">
 
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Основная информация</div>
-            <div class="card-body p-4">
+        <div class="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div class="border-b border-gray-100 px-5 py-3 text-sm font-semibold">Основная информация</div>
+            <div class="p-6">
 
-                <div class="mb-3">
-                    {{ form_label(form.title, null, {'label_attr': {'class': 'form-label fw-semibold'}}) }}
-                    {{ form_widget(form.title, {'attr': {'class': 'form-control form-control-lg'}}) }}
+                <div class="mb-4">
+                    {{ form_label(form.title, null, {'label_attr': {'class': label_class}}) }}
+                    {{ form_widget(form.title, {'attr': {'class': input_class}}) }}
                     {{ form_errors(form.title) }}
                 </div>
 
-                <div class="mb-3">
-                    {{ form_label(form.anons, null, {'label_attr': {'class': 'form-label fw-semibold'}}) }}
-                    {{ form_widget(form.anons, {'attr': {'class': 'form-control'}}) }}
+                <div class="mb-4">
+                    {{ form_label(form.anons, null, {'label_attr': {'class': label_class}}) }}
+                    {{ form_widget(form.anons, {'attr': {'class': input_class}}) }}
                     {{ form_errors(form.anons) }}
-                    <div class="form-text">Отображается в карточке товара в каталоге</div>
+                    <div class="mt-1 text-xs text-gray-500">Отображается в карточке товара в каталоге</div>
                 </div>
 
-                <div class="mb-3">
-                    {{ form_label(form.description, null, {'label_attr': {'class': 'form-label fw-semibold'}}) }}
-                    {{ form_widget(form.description, {'attr': {'class': 'form-control'}}) }}
+                <div class="mb-4">
+                    {{ form_label(form.description, null, {'label_attr': {'class': label_class}}) }}
+                    {{ form_widget(form.description, {'attr': {'class': input_class}}) }}
                     {{ form_errors(form.description) }}
                 </div>
 
             </div>
         </div>
 
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">SEO</div>
-            <div class="card-body p-4">
-                <div class="mb-3">
-                    {{ form_label(form.metaTitle, null, {'label_attr': {'class': 'form-label'}}) }}
-                    {{ form_widget(form.metaTitle, {'attr': {'class': 'form-control', 'placeholder': 'По умолчанию — название товара'}}) }}
+        <div class="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div class="border-b border-gray-100 px-5 py-3 text-sm font-semibold">SEO</div>
+            <div class="p-6">
+                <div class="mb-4">
+                    {{ form_label(form.metaTitle, null, {'label_attr': {'class': label_class}}) }}
+                    {{ form_widget(form.metaTitle, {'attr': {'class': input_class, 'placeholder': 'По умолчанию — название товара'}}) }}
                     {{ form_errors(form.metaTitle) }}
                 </div>
-                <div class="mb-0">
-                    {{ form_label(form.metaDescription, null, {'label_attr': {'class': 'form-label'}}) }}
-                    {{ form_widget(form.metaDescription, {'attr': {'class': 'form-control'}}) }}
+                <div>
+                    {{ form_label(form.metaDescription, null, {'label_attr': {'class': label_class}}) }}
+                    {{ form_widget(form.metaDescription, {'attr': {'class': input_class}}) }}
                     {{ form_errors(form.metaDescription) }}
                 </div>
             </div>
@@ -61,24 +64,24 @@
     </div>
 
     {# Правая колонка — атрибуты #}
-    <div class="col-lg-4">
+    <div>
 
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Классификация</div>
-            <div class="card-body p-4">
+        <div class="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div class="border-b border-gray-100 px-5 py-3 text-sm font-semibold">Классификация</div>
+            <div class="p-6">
 
-                <div class="mb-3">
-                    {{ form_label(form.category, null, {'label_attr': {'class': 'form-label fw-semibold'}}) }}
-                    {{ form_widget(form.category, {'attr': {'class': 'form-select'}}) }}
+                <div class="mb-4">
+                    {{ form_label(form.category, null, {'label_attr': {'class': label_class}}) }}
+                    {{ form_widget(form.category, {'attr': {'class': input_class}}) }}
                     {{ form_errors(form.category) }}
                 </div>
 
-                <div class="mb-0">
-                    <div class="form-label fw-semibold mb-2">Аудитория</div>
+                <div>
+                    <div class="{{ label_class }} mb-2">Аудитория</div>
                     {% for child in form.gender %}
-                    <div class="form-check">
-                        {{ form_widget(child, {'attr': {'class': 'form-check-input'}}) }}
-                        {{ form_label(child, null, {'label_attr': {'class': 'form-check-label'}}) }}
+                    <div class="mb-1 flex items-center gap-2">
+                        {{ form_widget(child, {'attr': {'class': 'h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                        {{ form_label(child, null, {'label_attr': {'class': 'text-sm'}}) }}
                     </div>
                     {% endfor %}
                     {{ form_errors(form.gender) }}
@@ -87,41 +90,41 @@
             </div>
         </div>
 
-        <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-semibold">Стили</div>
-            <div class="card-body p-4">
+        <div class="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div class="border-b border-gray-100 px-5 py-3 text-sm font-semibold">Стили</div>
+            <div class="p-6">
                 {% if form.styles|length > 0 %}
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="flex flex-wrap gap-2">
                     {% for child in form.styles %}
-                        <div class="form-check form-check-inline m-0">
-                            {{ form_widget(child, {'attr': {'class': 'form-check-input'}}) }}
-                            {{ form_label(child, null, {'label_attr': {'class': 'form-check-label border rounded px-2 py-1 small'}}) }}
+                        <div class="flex items-center gap-2 rounded-lg border border-gray-200 px-2 py-1">
+                            {{ form_widget(child, {'attr': {'class': 'h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                            {{ form_label(child, null, {'label_attr': {'class': 'text-sm'}}) }}
                         </div>
                     {% endfor %}
                     </div>
                 {% else %}
-                    <p class="text-muted small mb-0">Стили не добавлены в справочник</p>
+                    <p class="text-xs text-gray-500">Стили не добавлены в справочник</p>
                 {% endif %}
                 {{ form_errors(form.styles) }}
             </div>
         </div>
 
-        <div class="d-grid gap-2">
-            <button type="submit" class="btn btn-dark btn-lg">
-                <i class="fas fa-save me-1"></i>{{ product.id ? 'Сохранить изменения' : 'Создать товар' }}
+        <div class="grid gap-2">
+            <button type="submit" class="rounded-xl bg-gray-900 px-5 py-3 text-sm font-semibold text-white hover:bg-black transition">
+                💾 {{ product.id ? 'Сохранить изменения' : 'Создать товар' }}
             </button>
             {% if product.id %}
-            <a href="{{ path('brand_product_variants', {id: product.id}) }}" class="btn btn-outline-secondary">
-                <i class="fas fa-list me-1"></i>Варианты
+            <a href="{{ path('brand_product_variants', {id: product.id}) }}" class="rounded-lg border border-gray-300 px-3 py-2 text-center text-sm text-gray-600 hover:bg-gray-50 transition">
+                Варианты
             </a>
-            <a href="{{ path('brand_product_images', {id: product.id}) }}" class="btn btn-outline-secondary">
-                <i class="fas fa-images me-1"></i>Фотографии
+            <a href="{{ path('brand_product_images', {id: product.id}) }}" class="rounded-lg border border-gray-300 px-3 py-2 text-center text-sm text-gray-600 hover:bg-gray-50 transition">
+                Фотографии
             </a>
-            <a href="{{ path('brand_product_translations', {id: product.id}) }}" class="btn btn-outline-secondary">
-                <i class="fas fa-language me-1"></i>Переводы
+            <a href="{{ path('brand_product_translations', {id: product.id}) }}" class="rounded-lg border border-gray-300 px-3 py-2 text-center text-sm text-gray-600 hover:bg-gray-50 transition">
+                Переводы
             </a>
             {% endif %}
-            <a href="{{ path('brand_products') }}" class="btn btn-link text-muted">Отмена</a>
+            <a href="{{ path('brand_products') }}" class="py-1 text-center text-sm text-gray-500 hover:text-gray-700 hover:underline">Отмена</a>
         </div>
 
     </div>

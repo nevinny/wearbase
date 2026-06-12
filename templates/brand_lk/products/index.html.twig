@@ -2,104 +2,93 @@
 {% block title %}Товары — {{ brand.title }}{% endblock %}
 
 {% block brand_content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="h4 fw-bold mb-0">Товары</h2>
-    <div class="d-flex gap-2">
-        <a href="{{ path('brand_product_import') }}" class="btn btn-outline-secondary">
-            <i class="fas fa-file-upload me-1"></i>Импорт из файла
+<div class="mb-5 flex items-center justify-between">
+    <h1 class="text-lg font-bold">Товары</h1>
+    <div class="flex gap-2">
+        <a href="{{ path('brand_product_import') }}" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">
+            Импорт из файла
         </a>
-        <a href="{{ path('brand_product_new') }}" class="btn btn-dark">
-            <i class="fas fa-plus me-1"></i>Добавить товар
+        <a href="{{ path('brand_product_new') }}" class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">
+            + Добавить товар
         </a>
     </div>
 </div>
 
 {% if products|length == 0 %}
-    <div class="card border-0 shadow-sm">
-        <div class="card-body text-center py-5 text-muted">
-            <i class="fas fa-tshirt fa-3x mb-3 d-block opacity-25"></i>
-            <p>Товаров пока нет.</p>
-            <div class="d-flex gap-2 justify-content-center">
-                <a href="{{ path('brand_product_import') }}" class="btn btn-outline-secondary">
-                    <i class="fas fa-file-upload me-1"></i>Импортировать из файла
-                </a>
-                <a href="{{ path('brand_product_new') }}" class="btn btn-dark">Добавить вручную</a>
-            </div>
+    <div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
+        <div class="mb-4 text-5xl opacity-30">👕</div>
+        <p class="mb-4">Товаров пока нет.</p>
+        <div class="flex justify-center gap-2">
+            <a href="{{ path('brand_product_import') }}" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">
+                Импортировать из файла
+            </a>
+            <a href="{{ path('brand_product_new') }}" class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Добавить вручную</a>
         </div>
     </div>
 {% else %}
-<div class="card border-0 shadow-sm">
-    <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
+<div class="rounded-2xl bg-white shadow-sm">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                 <tr>
-                    <th style="width:70px"></th>
-                    <th>Название</th>
-                    <th>Категория</th>
-                    <th>Вариантов</th>
-                    <th>Мин. цена</th>
-                    <th>Статус</th>
-                    <th></th>
+                    <th class="w-[70px] px-5 py-3"></th>
+                    <th class="px-5 py-3">Название</th>
+                    <th class="px-5 py-3">Категория</th>
+                    <th class="px-5 py-3">Вариантов</th>
+                    <th class="px-5 py-3">Мин. цена</th>
+                    <th class="px-5 py-3">Статус</th>
+                    <th class="px-5 py-3"></th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="divide-y divide-gray-100">
             {% for product in products %}
-            <tr>
-                <td>
+            <tr class="hover:bg-gray-50">
+                <td class="px-5 py-3">
                     {% set mainImg = product.mainImage %}
                     {% if mainImg and mainImg.preview %}
                         <img src="{{ vich_uploader_asset(mainImg, 'previewFile') }}"
-                             style="width:56px;height:56px;object-fit:cover" class="rounded">
+                             class="h-14 w-14 rounded-lg object-cover">
                     {% else %}
-                        <div class="bg-light rounded d-flex align-items-center justify-content-center"
-                             style="width:56px;height:56px">
-                            <i class="fas fa-image text-muted"></i>
+                        <div class="flex h-14 w-14 items-center justify-center rounded-lg bg-gray-100 text-gray-400">
+                            🖼
                         </div>
                     {% endif %}
                 </td>
-                <td>
-                    <a href="{{ path('brand_product_edit', {id: product.id}) }}" class="fw-semibold text-dark">
+                <td class="px-5 py-3">
+                    <a href="{{ path('brand_product_edit', {id: product.id}) }}" class="font-semibold text-gray-900 hover:underline">
                         {{ product.title }}
                     </a>
                     {% if product.slug %}
-                        <div class="text-muted small">/{{ product.slug }}</div>
+                        <div class="text-xs text-gray-500">/{{ product.slug }}</div>
                     {% endif %}
                 </td>
-                <td class="text-muted small">{{ product.category ? product.category.title : '—' }}</td>
-                <td>{{ product.variants|length }}</td>
-                <td>
+                <td class="px-5 py-3 text-xs text-gray-500">{{ product.category ? product.category.title : '—' }}</td>
+                <td class="px-5 py-3">{{ product.variants|length }}</td>
+                <td class="px-5 py-3">
                     {% set minPrice = product.minPrice %}
                     {{ minPrice ? 'от ' ~ price(minPrice) : '—' }}
                 </td>
-                <td>
-                    <span class="badge bg-{{ product.status == 'active' ? 'success' : (product.status == 'draft' ? 'secondary' : 'warning') }}">
+                <td class="px-5 py-3">
+                    <span class="rounded px-2 py-0.5 text-xs font-semibold {{ product.status == 'active' ? 'bg-green-100 text-green-800' : (product.status == 'draft' ? 'bg-gray-100 text-gray-700' : 'bg-amber-100 text-amber-800') }}">
                         {{ product.status == 'active' ? 'Активен' : (product.status == 'draft' ? 'Черновик' : 'Архив') }}
                     </span>
                 </td>
-                <td class="text-end">
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                            <i class="fas fa-ellipsis-h"></i>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="{{ path('brand_product_edit', {id: product.id}) }}">
-                                <i class="fas fa-edit me-2"></i>Редактировать</a></li>
-                            <li><a class="dropdown-item" href="{{ path('brand_product_variants', {id: product.id}) }}">
-                                <i class="fas fa-layer-group me-2"></i>Варианты</a></li>
-                            <li><a class="dropdown-item" href="{{ path('brand_product_images', {id: product.id}) }}">
-                                <i class="fas fa-images me-2"></i>Фото</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li>
-                                <form method="post" action="{{ path('brand_product_publish', {id: product.id}) }}">
-                                    <input type="hidden" name="_token" value="{{ csrf_token('brand_product') }}">
-                                    <button class="dropdown-item text-{{ product.status == 'active' ? 'warning' : 'success' }}" type="submit">
-                                        <i class="fas fa-{{ product.status == 'active' ? 'eye-slash' : 'eye' }} me-2"></i>
-                                        {{ product.status == 'active' ? 'Снять с публикации' : 'Опубликовать' }}
-                                    </button>
-                                </form>
-                            </li>
-                        </ul>
-                    </div>
+                <td class="px-5 py-3 text-right">
+                    <details class="relative inline-block text-left">
+                        <summary class="cursor-pointer list-none rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition [&::-webkit-details-marker]:hidden">⋯</summary>
+                        <div class="mt-1 w-48 overflow-hidden rounded-xl border border-gray-100 bg-white py-1 text-left shadow-lg">
+                            <a class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" href="{{ path('brand_product_edit', {id: product.id}) }}">Редактировать</a>
+                            <a class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" href="{{ path('brand_product_variants', {id: product.id}) }}">Варианты</a>
+                            <a class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" href="{{ path('brand_product_images', {id: product.id}) }}">Фото</a>
+                            <hr class="my-1 border-gray-100">
+                            <form method="post" action="{{ path('brand_product_publish', {id: product.id}) }}">
+                                <input type="hidden" name="_token" value="{{ csrf_token('brand_product') }}">
+                                <button class="block w-full px-4 py-2 text-left text-sm hover:bg-gray-50 {{ product.status == 'active' ? 'text-amber-600' : 'text-green-600' }}" type="submit">
+                                    {{ product.status == 'active' ? 'Снять с публикации' : 'Опубликовать' }}
+                                </button>
+                            </form>
+                        </div>
+                    </details>
                 </td>
             </tr>
             {% endfor %}

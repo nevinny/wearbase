@@ -1,43 +1,35 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/app.html.twig' %}
 {% block title %}Подтверждение владения брендом — {{ brand.title }}{% endblock %}
 
 {% block body %}
-<div class="container py-5" style="max-width:620px">
+{% set input_class = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+
+<div class="mx-auto w-full max-w-[620px] px-4 py-12">
 
     <a href="{{ path('brand_show', {slug: brand.slug, _locale: 'ru'}) }}"
-       class="text-muted text-decoration-none small">
+       class="text-sm text-gray-500 hover:text-gray-900">
         ← {{ brand.title }}
     </a>
 
-    <div class="card border-0 shadow-sm mt-3">
-        <div class="card-body p-5">
+    <div class="mt-4 rounded-2xl bg-white shadow-sm">
+        <div class="p-6 md:p-10">
 
-            <div class="mb-4">
-                <h1 class="h4 fw-bold mb-1">Я владелец бренда «{{ brand.title }}»</h1>
-                <p class="text-muted small mb-0">
+            <div class="mb-6">
+                <h1 class="mb-1 text-lg font-bold">Я владелец бренда «{{ brand.title }}»</h1>
+                <p class="text-sm text-gray-500">
                     Подтвердите владение одним из способов ниже — получите доступ к кабинету бренда.
                 </p>
             </div>
 
-            {% for message in app.flashes('success') %}
-                <div class="alert alert-success border-0 small">{{ message }}</div>
-            {% endfor %}
-            {% for message in app.flashes('error') %}
-                <div class="alert alert-danger border-0 small">{{ message }}</div>
-            {% endfor %}
-            {% for message in app.flashes('info') %}
-                <div class="alert alert-info border-0 small">{{ message }}</div>
-            {% endfor %}
-
             {# ── Способ: VK-админ ── #}
             {% if 'vk_admin' in methods %}
-                <div class="border rounded-3 p-4 mb-3">
-                    <div class="fw-semibold mb-1"><i class="fab fa-vk me-2 text-primary"></i>Подтвердить через VK</div>
-                    <p class="text-muted small">
+                <div class="mb-4 rounded-xl border border-gray-200 p-5">
+                    <div class="mb-1 text-sm font-semibold">Подтвердить через VK</div>
+                    <p class="mb-3 text-sm text-gray-500">
                         Войдите через VK — если вы администратор официальной группы бренда,
                         доступ будет выдан автоматически.
                     </p>
-                    <a href="{{ path('brand_claim_vk_start', {id: brand.id}) }}" class="btn btn-outline-primary btn-sm">
+                    <a href="{{ path('brand_claim_vk_start', {id: brand.id}) }}" class="inline-block rounded-lg border border-indigo-300 px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 transition">
                         Войти через VK
                     </a>
                 </div>
@@ -45,62 +37,62 @@
 
             {# ── Способ: код на email бренда ── #}
             {% if 'email_code' in methods %}
-                <div class="border rounded-3 p-4 mb-3">
-                    <div class="fw-semibold mb-1"><i class="fas fa-envelope me-2 text-muted"></i>Код на email бренда</div>
-                    <p class="text-muted small">
+                <div class="mb-4 rounded-xl border border-gray-200 p-5">
+                    <div class="mb-1 text-sm font-semibold">✉️ Код на email бренда</div>
+                    <p class="mb-3 text-sm text-gray-500">
                         Отправим 6-значный код на официальный email бренда
                         {% if brandEmailHint %}<strong>{{ brandEmailHint }}</strong>{% endif %}.
                         Введите его — если у вас есть доступ к почте бренда.
                     </p>
 
                     {% if codePending %}
-                        <form method="post" action="{{ path('brand_claim_email_verify', {id: brand.id}) }}" class="d-flex gap-2">
+                        <form method="post" action="{{ path('brand_claim_email_verify', {id: brand.id}) }}" class="flex gap-2">
                             <input type="hidden" name="_token" value="{{ csrf_token('brand_claim_email') }}">
                             <input type="text" name="code" inputmode="numeric" pattern="[0-9]*" maxlength="6"
-                                   class="form-control" placeholder="000000" autocomplete="one-time-code" required>
-                            <button type="submit" class="btn btn-dark flex-shrink-0">Подтвердить</button>
+                                   class="{{ input_class }}" placeholder="000000" autocomplete="one-time-code" required>
+                            <button type="submit" class="shrink-0 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Подтвердить</button>
                         </form>
                         <form method="post" action="{{ path('brand_claim_email_send', {id: brand.id}) }}" class="mt-2">
                             <input type="hidden" name="_token" value="{{ csrf_token('brand_claim_email') }}">
-                            <button type="submit" class="btn btn-link btn-sm text-muted p-0">Отправить код ещё раз</button>
+                            <button type="submit" class="text-xs text-gray-500 underline hover:text-gray-700">Отправить код ещё раз</button>
                         </form>
                     {% else %}
                         <form method="post" action="{{ path('brand_claim_email_send', {id: brand.id}) }}">
                             <input type="hidden" name="_token" value="{{ csrf_token('brand_claim_email') }}">
-                            <button type="submit" class="btn btn-outline-dark btn-sm">Отправить код</button>
+                            <button type="submit" class="rounded-lg border border-gray-900 px-3 py-1.5 text-sm text-gray-900 hover:bg-gray-900 hover:text-white transition">Отправить код</button>
                         </form>
                     {% endif %}
                 </div>
             {% endif %}
 
             {# ── Способ: ручная проверка (для всех) ── #}
-            <div class="border rounded-3 p-4">
-                <div class="fw-semibold mb-1"><i class="fas fa-id-card me-2 text-muted"></i>Заявка с проверкой администратором</div>
+            <div class="rounded-xl border border-gray-200 p-5">
+                <div class="mb-1 text-sm font-semibold">🪪 Заявка с проверкой администратором</div>
                 {% if willAutoVerify %}
-                    <p class="text-success small mb-2">
-                        <i class="fas fa-check-circle me-1"></i>
+                    <p class="mb-2 text-sm text-green-600">
+                        ✅
                         Ваш email <strong>@{{ userDomain }}</strong> совпадает с доменом бренда — заявку рассмотрят в приоритете.
                     </p>
                 {% else %}
-                    <p class="text-muted small mb-2">
+                    <p class="mb-2 text-sm text-gray-500">
                         Укажите подтверждения: ссылки на соцсети бренда, документы (товарный знак, ИНН/ОГРН),
                         кабинет продавца на маркетплейсе.
                     </p>
                 {% endif %}
                 <form method="post" action="{{ path('brand_claim_manual', {id: brand.id}) }}">
                     <input type="hidden" name="_token" value="{{ csrf_token('brand_claim_manual') }}">
-                    <textarea name="comment" class="form-control mb-3" rows="3"
+                    <textarea name="comment" class="{{ input_class }} mb-4" rows="3"
                               placeholder="Ваш сайт, ссылки на соцсети бренда, ИНН, другие подтверждения..."></textarea>
-                    <button type="submit" class="btn btn-dark w-100 fw-semibold">Отправить заявку</button>
+                    <button type="submit" class="w-full rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Отправить заявку</button>
                 </form>
             </div>
 
         </div>
     </div>
 
-    <p class="text-center text-muted small mt-4">
+    <p class="mt-6 text-center text-sm text-gray-500">
         Вопросы? Напишите нам на
-        <a href="mailto:hello@wearbase.ru" class="text-dark">hello@wearbase.ru</a>
+        <a href="mailto:hello@wearbase.ru" class="font-medium text-gray-900 hover:underline">hello@wearbase.ru</a>
     </p>
 
 </div>

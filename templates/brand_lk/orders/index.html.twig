@@ -2,63 +2,64 @@
 {% block title %}Заказы — {{ brand.title }}{% endblock %}
 
 {% block brand_content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="h4 fw-bold mb-0">Заказы</h2>
+{% set filter_btn = 'rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition' %}
+{% set filter_btn_active = 'rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white' %}
+
+<div class="mb-5 flex items-center justify-between">
+    <h1 class="text-lg font-bold">Заказы</h1>
 </div>
 
 {# Фильтр по статусу #}
-<div class="mb-3 d-flex gap-2 flex-wrap">
+<div class="mb-4 flex flex-wrap gap-2">
     <a href="{{ path('brand_orders') }}"
-       class="btn btn-sm {{ not current_status ? 'btn-dark' : 'btn-outline-secondary' }}">Все</a>
+       class="{{ not current_status ? filter_btn_active : filter_btn }}">Все</a>
     {% for key, label in status_labels %}
     <a href="{{ path('brand_orders', {status: key}) }}"
-       class="btn btn-sm {{ current_status == key ? 'btn-dark' : 'btn-outline-secondary' }}">
+       class="{{ current_status == key ? filter_btn_active : filter_btn }}">
         {{ label }}
     </a>
     {% endfor %}
 </div>
 
 {% if orders|length == 0 %}
-    <div class="card border-0 shadow-sm">
-        <div class="card-body text-center py-5 text-muted">Заказов нет</div>
-    </div>
+    <div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">Заказов нет</div>
 {% else %}
-<div class="card border-0 shadow-sm">
-    <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
+<div class="overflow-hidden rounded-2xl bg-white shadow-sm">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                 <tr>
-                    <th>Номер</th>
-                    <th>Покупатель</th>
-                    <th>Товары</th>
-                    <th>Сумма</th>
-                    <th>Оплата</th>
-                    <th>Статус</th>
-                    <th>Дата</th>
+                    <th class="px-5 py-3">Номер</th>
+                    <th class="px-5 py-3">Покупатель</th>
+                    <th class="px-5 py-3">Товары</th>
+                    <th class="px-5 py-3">Сумма</th>
+                    <th class="px-5 py-3">Оплата</th>
+                    <th class="px-5 py-3">Статус</th>
+                    <th class="px-5 py-3">Дата</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody class="divide-y divide-gray-100">
             {% for order in orders %}
-            <tr>
-                <td>
-                    <a href="{{ path('brand_order_show', {id: order.id}) }}" class="fw-semibold text-dark">
+            <tr class="hover:bg-gray-50">
+                <td class="px-5 py-3">
+                    <a href="{{ path('brand_order_show', {id: order.id}) }}" class="font-semibold text-gray-900 hover:underline">
                         #{{ order.orderNumber }}
                     </a>
                 </td>
-                <td>{{ order.customer.fullName }}</td>
-                <td class="text-muted small">{{ order.orderItems|length }} поз.</td>
-                <td class="fw-semibold">{{ price(order.totalAmount) }}</td>
-                <td>
-                    <span class="badge bg-{{ order.paid ? 'success' : 'warning text-dark' }}">
+                <td class="px-5 py-3">{{ order.customer.fullName }}</td>
+                <td class="px-5 py-3 text-xs text-gray-500">{{ order.orderItems|length }} поз.</td>
+                <td class="px-5 py-3 font-semibold">{{ price(order.totalAmount) }}</td>
+                <td class="px-5 py-3">
+                    <span class="rounded px-2 py-0.5 text-xs font-semibold {{ order.paid ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800' }}">
                         {{ order.paid ? 'Оплачен' : 'Не оплачен' }}
                     </span>
                 </td>
-                <td>
-                    <span class="badge bg-{{ order.status == 'new' ? 'danger' : (order.status == 'shipped' ? 'info' : (order.status == 'completed' ? 'success' : 'secondary')) }}">
+                <td class="px-5 py-3">
+                    <span class="rounded px-2 py-0.5 text-xs font-semibold {{ order.status == 'new' ? 'bg-red-100 text-red-800' : (order.status == 'shipped' ? 'bg-sky-100 text-sky-800' : (order.status == 'completed' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700')) }}">
                         {{ status_labels[order.status] ?? order.status }}
                     </span>
                 </td>
-                <td class="text-muted small">{{ order.createdAt|date('d.m.Y H:i') }}</td>
+                <td class="px-5 py-3 text-xs text-gray-500">{{ order.createdAt|date('d.m.Y H:i') }}</td>
             </tr>
             {% endfor %}
             </tbody>

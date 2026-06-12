@@ -1,36 +1,35 @@
-{% extends 'base.html.twig' %}
+{% extends 'tailwind/app.html.twig' %}
 {% block title %}Заявка на рассмотрении — {{ brand.title }}{% endblock %}
 
 {% block body %}
-<div class="container py-5 text-center" style="max-width:480px">
+<div class="mx-auto w-full max-w-[480px] px-4 py-12 text-center">
 
-    <div class="rounded-circle bg-warning text-dark d-inline-flex align-items-center justify-content-center mb-3"
-         style="width:64px;height:64px;font-size:28px">
-        <i class="fas fa-hourglass-half"></i>
+    <div class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-3xl">
+        ⏳
     </div>
 
-    <h1 class="h4 fw-bold mb-2">Заявка уже подана</h1>
-    <p class="text-muted mb-4">
+    <h1 class="mb-2 text-lg font-bold">Заявка уже подана</h1>
+    <p class="mb-6 text-sm text-gray-500">
         Ваша заявка на владение брендом <strong>{{ brand.title }}</strong>
         находится на рассмотрении. Мы пришлём email когда будет решение.
     </p>
 
-    <div class="card border-0 shadow-sm mb-4 text-start">
-        <div class="card-body p-4">
-            <div class="d-flex justify-content-between small mb-2">
-                <span class="text-muted">Подана</span>
+    <div class="mb-6 rounded-2xl bg-white text-left shadow-sm">
+        <div class="p-6">
+            <div class="mb-2 flex justify-between text-sm">
+                <span class="text-gray-500">Подана</span>
                 <span>{{ claim.createdAt|date('d.m.Y') }}</span>
             </div>
-            <div class="d-flex justify-content-between small">
-                <span class="text-muted">Статус</span>
-                <span class="badge {{ claim.emailDomainMatch ? 'bg-success' : 'bg-secondary' }}">
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Статус</span>
+                <span class="rounded px-2 py-0.5 text-xs font-semibold {{ claim.emailDomainMatch ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' }}">
                     {{ claim.statusLabel }}
                 </span>
             </div>
         </div>
     </div>
 
-    <a href="{{ path('account_dashboard') }}" class="btn btn-dark">В мой кабинет</a>
+    <a href="{{ path('account_dashboard') }}" class="inline-block rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">В мой кабинет</a>
 
 </div>
 {% endblock %}
