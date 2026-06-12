@@ -68,6 +68,10 @@ class BrandSourceDocument
     #[ORM\Column(options: ['default' => false])]
     private bool $embedded = false;
 
+    /** Soft-delete: нерелевантный источник, убранный вручную из админ-панели (исключён из embed/retrieve). */
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $deletedAt = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -187,6 +191,17 @@ class BrandSourceDocument
     public function setEmbedded(bool $embedded): self
     {
         $this->embedded = $embedded;
+        return $this;
+    }
+
+    public function getDeletedAt(): ?\DateTimeInterface
+    {
+        return $this->deletedAt;
+    }
+
+    public function setDeletedAt(?\DateTimeInterface $at): self
+    {
+        $this->deletedAt = $at;
         return $this;
     }
 }

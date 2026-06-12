@@ -9,6 +9,7 @@ use App\Entity\Subscription;
 use App\Repository\BrandUserRepository;
 use App\Repository\OrderRepository;
 use App\Repository\ProductRepository;
+use App\Repository\SellerLegalEntityRepository;
 use App\Repository\SubscriptionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -25,8 +26,9 @@ class BrandDashboardController extends AbstractController
 
     #[Route('/dashboard', name: 'dashboard')]
     public function dashboard(
-        OrderRepository   $orderRepository,
-        ProductRepository $productRepository,
+        OrderRepository             $orderRepository,
+        ProductRepository           $productRepository,
+        SellerLegalEntityRepository $legalEntities,
     ): Response {
         $brand = $this->getActiveBrand();
 
@@ -34,11 +36,20 @@ class BrandDashboardController extends AbstractController
         $recentOrders  = $orderRepository->findBy(['brand' => $brand], ['createdAt' => 'DESC'], 10);
         $lowStockItems = $productRepository->findLowStockVariants($brand);
 
+        // Готовность приёма онлайн-оплаты — тот же предикат, что и в createOrderPayment
+        $activeLegalEntity = $legalEntities->findActiveForBrand($brand);
+        $paymentReady = $activeLegalEntity?->getReadyPrimaryAccount() !== null;
+
         return $this->render('brand_lk/dashboard.html.twig', [
-            'brand'         => $brand,
-            'new_orders'    => $newOrders,
-            'recent_orders' => $recentOrders,
-            'low_stock'     => $lowStockItems,
+            'brand'              => $brand,
+            'new_orders'         => $newOrders,
+            'recent_orders'      => $recentOrders,
+            'low_stock'          => $lowStockItems,
+            'payment_ready'      => $paymentReady,
+            'subscription'       => $this->getActiveSubscription(),
+            'revenue'            => $orderRepository->sumPaidRevenue($brand),
+            'orders_total'       => $orderRepository->countByBrand($brand),
+            'products_published' => $productRepository->countByBrandAndStatus($brand, 'active'),
         ]);
     }
 

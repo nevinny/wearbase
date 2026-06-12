@@ -12,6 +12,9 @@ use App\Entity\Subscription;
 use App\Entity\Tariff;
 use App\Notification\AdminNotifier;
 use App\Notification\NotificationDispatcher;
+use App\Payment\Gateway\PaymentGatewayRegistry;
+use App\Payment\Gateway\PaymentStatusResult;
+use App\Repository\SellerLegalEntityRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use YooKassa\Client;
@@ -20,8 +23,6 @@ use YooKassa\Model\Notification\NotificationFactory;
 
 readonly class PaymentService
 {
-    private Client $client;
-
     private const YOO_IPS = [
         '185.71.76.0/27',
         '185.71.77.0/27',
@@ -38,17 +39,23 @@ readonly class PaymentService
         private NotificationDispatcher $notifier,
         private AdminNotifier $admin,
         private LoggerInterface $logger,
+        private YooKassaClientFactory $clientFactory,
+        private PaymentGatewayRegistry $gateways,
+        private SellerLegalEntityRepository $legalEntities,
         private string $shopId,
         private string $secretKey,
-    ) {
-        $this->client = new Client();
-        $this->client->setAuth($shopId, $secretKey);
-    }
+    ) {}
 
-    /** Настроены ли реквизиты платёжного шлюза. */
+    /** Настроены ли платформенные реквизиты (для подписок). */
     public function isConfigured(): bool
     {
         return $this->shopId !== '' && $this->secretKey !== '';
+    }
+
+    /** Клиент платформы — для платежей подписок (доход платформы). */
+    private function platformClient(): Client
+    {
+        return $this->clientFactory->make($this->shopId, $this->secretKey);
     }
 
     public static function isYooIp(string $ip): bool
@@ -91,7 +98,7 @@ readonly class PaymentService
         return false;
     }
 
-    // ── Subscription payments ───────────────────────────────
+    // ── Subscription payments (платформенные креды) ─────────
 
     /**
      * Создаёт платёж за переход на выбранный (целевой) тариф.
@@ -110,7 +117,7 @@ readonly class PaymentService
 
         try {
             $idempotenceKey = sprintf('sub-%d-tariff-%d-%s', $subscription->getId(), $tariff->getId(), $subscription->getCurrentPeriodStart()->format('Y-m-d'));
-            $response = $this->client->createPayment([
+            $response = $this->platformClient()->createPayment([
                 'amount' => [
                     'value'    => $tariff->getPriceRub(),
                     'currency' => 'RUB',
@@ -135,25 +142,49 @@ readonly class PaymentService
 
             return $response->getConfirmation()->getConfirmationUrl();
         } catch (\Throwable $e) {
-            $this->logger->error('YooKassa: ошибка создания платежа', ['exception' => $e]);
+            $this->logger->error('YooKassa: ошибка создания платежа подписки', ['exception' => $e]);
             return null;
         }
     }
 
-    // ── Order payments ──────────────────────────────────────
+    // ── Order payments (через счёт бренда) ──────────────────
 
     /**
+     * Деньги за заказ уходят напрямую бренду — через его основной счёт приёма.
+     * Заказы одного чекаута должны быть одного бренда (один шлюз на платёж).
+     *
      * @param Order[] $orders
      */
     public function createOrderPayment(array $orders, string $returnUrl): ?string
     {
+        if ($orders === []) {
+            return null;
+        }
+
+        $brand = $orders[0]->getBrand();
+        foreach ($orders as $order) {
+            if ($order->getBrand()?->getId() !== $brand?->getId()) {
+                $this->logger->error('Оплата заказа: заказы разных брендов нельзя провести одним платежом');
+                return null;
+            }
+        }
+        if ($brand === null) {
+            return null;
+        }
+
+        $legalEntity = $this->legalEntities->findActiveForBrand($brand);
+        $account = $legalEntity?->getReadyPrimaryAccount();
+        if ($legalEntity === null || $account === null) {
+            $this->logger->warning('Оплата заказа: у бренда не настроен готовый счёт приёма оплаты', ['brand_id' => $brand->getId()]);
+            return null;
+        }
+
         $total = 0.0;
         $orderNumbers = [];
         foreach ($orders as $order) {
             $total += (float) $order->getTotalAmount();
             $orderNumbers[] = $order->getOrderNumber();
         }
-
         if ($total <= 0) {
             return null;
         }
@@ -165,36 +196,31 @@ readonly class PaymentService
         $payment->setCurrency('RUB');
 
         try {
-            $idempotenceKey = sprintf('orders-%s', $orderNumbersStr);
-            $response = $this->client->createPayment([
-                'amount' => [
-                    'value'    => number_format($total, 2, '.', ''),
-                    'currency' => 'RUB',
-                ],
-                'confirmation' => [
-                    'type'      => 'redirect',
-                    'return_url' => $returnUrl,
-                ],
-                'capture' => true,
-                'description' => sprintf('Заказы %s', $orderNumbersStr),
-                'metadata' => [
-                    'order_numbers' => $orderNumbersStr,
-                    'payment_type'  => 'order',
-                ],
-            ], $idempotenceKey);
+            $gateway = $this->gateways->get((string) $account->getProvider()?->getCode());
+            $result = $gateway->createRedirectPayment(
+                $account,
+                number_format($total, 2, '.', ''),
+                'RUB',
+                sprintf('Заказы %s', $orderNumbersStr),
+                $returnUrl,
+                ['order_numbers' => $orderNumbersStr, 'payment_type' => 'order'],
+                sprintf('orders-%s', $orderNumbersStr),
+            );
 
-            $gatewayId = $response->getId();
+            $gatewayId = $result->gatewayPaymentId;
             foreach ($orders as $order) {
                 $order->setGatewayPaymentId($gatewayId);
+                $order->setSellerLegalEntity($legalEntity);
+                $order->setSellerPaymentAccount($account);
             }
             $payment->setGatewayPaymentId($gatewayId);
             $payment->setPaymentMethod('card_online');
             $this->em->persist($payment);
             $this->em->flush();
 
-            return $response->getConfirmation()->getConfirmationUrl();
+            return $result->confirmationUrl;
         } catch (\Throwable $e) {
-            $this->logger->error('YooKassa: ошибка создания платежа', ['exception' => $e]);
+            $this->logger->error('Платёж заказа: ошибка создания', ['exception' => $e]);
             return null;
         }
     }
@@ -209,26 +235,24 @@ readonly class PaymentService
             $object = $notification->getObject();
             $bodyPaymentId = $object->getId();
 
-            // Перезапрашиваем авторитетный статус через API
-            $paymentInfo = $this->client->getPaymentInfo($bodyPaymentId);
-            $status = $paymentInfo->getStatus();
-            $confirmedAmount = $paymentInfo->getAmount();
-
             $event = $notification->getEvent();
             $metadata = $object->getMetadata() ?? [];
             $paymentType = $metadata['payment_type'] ?? null;
 
-            // Refund
+            // Refund — без обращения к API, по локальной записи Payment
             if ($event === NotificationEventType::PAYMENT_REFUNDED) {
                 return $this->handleRefund($bodyPaymentId);
             }
 
             if ($paymentType === 'subscription') {
-                return $this->handleSubscriptionPayment($bodyPaymentId, $status, $metadata, $confirmedAmount);
+                // Авторитетный статус — через платформенный клиент
+                $info = $this->platformClient()->getPaymentInfo($bodyPaymentId);
+                return $this->handleSubscriptionPayment($bodyPaymentId, $info->getStatus(), $metadata, $info->getAmount());
             }
 
             if ($paymentType === 'order') {
-                return $this->handleOrderPayment($bodyPaymentId, $status, $metadata, $confirmedAmount);
+                // Авторитетный статус — через клиент счёта бренда (см. handleOrderPayment)
+                return $this->handleOrderPayment($bodyPaymentId, $metadata);
             }
 
             return false;
@@ -312,7 +336,7 @@ readonly class PaymentService
         return true;
     }
 
-    private function handleOrderPayment(string $paymentId, string $status, array $metadata, object $confirmedAmount): bool
+    private function handleOrderPayment(string $paymentId, array $metadata): bool
     {
         $orderNumbersStr = $metadata['order_numbers'] ?? ($metadata['order_number'] ?? null);
         if (!$orderNumbersStr) {
@@ -330,13 +354,23 @@ readonly class PaymentService
             return false;
         }
 
+        // Авторитетный статус — через шлюз того счёта, на который шёл платёж.
+        // Снимок сделан при создании платежа; для legacy-заказов — платформенный клиент.
+        $account = $orders[0]->getSellerPaymentAccount();
+        if ($account !== null) {
+            $st = $this->gateways->get((string) $account->getProvider()?->getCode())->fetchStatus($account, $paymentId);
+        } else {
+            $info = $this->platformClient()->getPaymentInfo($paymentId);
+            $amount = $info->getAmount();
+            $st = new PaymentStatusResult($info->getStatus(), $amount->getValue(), (string) $amount->getCurrency());
+        }
+        $status = $st->status;
+
         // Проверяем сумму/валюту
-        $expectedAmount = $payment->getAmount();
-        $actualAmount = $confirmedAmount->getValue();
-        if ($actualAmount !== $expectedAmount) {
+        if ($st->amountValue !== $payment->getAmount()) {
             return false;
         }
-        if ((string) $confirmedAmount->getCurrency() !== (string) $payment->getCurrency()) {
+        if ($st->currency !== (string) $payment->getCurrency()) {
             return false;
         }
 
@@ -391,7 +425,7 @@ readonly class PaymentService
         if ($status === 'succeeded' && $payment->getStatus() === Payment::STATUS_PAID) {
             $this->admin->send(sprintf(
                 "💰 <b>Оплата заказа(ов)</b> %s\nСумма: %s ₽",
-                htmlspecialchars($orderNumbersStr, ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars((string) $orderNumbersStr, ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars($payment->getAmount(), ENT_QUOTES, 'UTF-8'),
             ));
         }

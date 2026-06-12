@@ -46,7 +46,7 @@
                                         <p class="text-xs text-gray-500 mb-1">{{ item.city }}</p>
                                     {% endif %}
                                     {% if item.price %}
-                                        <p class="text-sm font-medium text-gray-900">{{ item.price|number_format(0, '.', ' ') }} {{ item.currency ?? '₽' }}</p>
+                                        <p class="text-sm font-medium text-gray-900">{{ price(item.price) }}</p>
                                     {% endif %}
                                 </div>
                             </a>

@@ -1,0 +1,43 @@
+{% extends 'account/layout.html.twig' %}
+
+{% block title %}Уведомления — WEARBASE{% endblock %}
+
+{% block account_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Уведомления</h4>
+    {% if unreadCount > 0 %}
+        <form method="post" action="{{ path('account_notification_mark_all_read') }}" class="m-0">
+            <button class="btn btn-outline-secondary btn-sm">Прочитать все</button>
+        </form>
+    {% endif %}
+</div>
+
+{% if notifications|length == 0 %}
+    <div class="text-center py-5 text-muted">
+        <i class="fas fa-bell-slash fa-3x mb-3 d-block"></i>
+        <p>У вас пока нет уведомлений</p>
+    </div>
+{% else %}
+    <div class="list-group">
+        {% for notification in notifications %}
+            <div class="list-group-item list-group-item-action d-flex gap-3 {{ not notification.isRead ? 'fw-semibold border-start border-3 border-primary' : '' }}">
+                <div class="flex-grow-1">
+                    <div class="d-flex justify-content-between">
+                        <span>{{ notification.title }}</span>
+                        <small class="text-muted">{{ notification.createdAt|date('d.m.Y H:i') }}</small>
+                    </div>
+                    {% if notification.body %}
+                        <p class="mb-0 small text-muted mt-1">{{ notification.body }}</p>
+                    {% endif %}
+                </div>
+                {% if not notification.isRead %}
+                    <a href="{{ path('account_notification_mark_read', {id: notification.id}) }}"
+                       class="text-nowrap small text-decoration-none" title="Отметить прочитанным">
+                        <i class="fas fa-check"></i>
+                    </a>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

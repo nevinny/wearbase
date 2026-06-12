@@ -1,0 +1,17 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Новый заказ #{{ order.orderNumber }} — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">🛍 Новый заказ!</h2>
+<p style="color:#555;line-height:1.6;">
+    Поступил новый заказ <strong>#{{ order.orderNumber }}</strong>
+    на сумму <strong>{{ price(order.totalAmount) }}</strong>.
+</p>
+<p style="color:#555;line-height:1.6;">
+    Покупатель: {{ order.customer.fullName }}
+</p>
+<p style="text-align:center;">
+    <a href="{{ url('brand_order_show', {id: order.id}) }}" class="btn">
+        Посмотреть заказ
+    </a>
+</p>
+{% endblock %}

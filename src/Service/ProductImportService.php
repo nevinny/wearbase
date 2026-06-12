@@ -279,7 +279,7 @@ class ProductImportService
                     $product = new Product();
                     $product->setBrand($brand);
                     $product->setTitle($title);
-                    $product->setSlug($this->generateUniqueSlug($title));
+                    $product->setSlug($this->generateUniqueSlug($title, $brand));
                     $this->em->persist($product);
                 }
 
@@ -293,7 +293,7 @@ class ProductImportService
                 }
 
                 $gender = strtolower(trim($this->cell($row, self::COL_GENDER)));
-                if (in_array($gender, ['women', 'men', 'unisex'], true)) {
+                if (in_array($gender, ['women', 'men', 'unisex', 'kids'], true)) {
                     $product->setGender($gender);
                 }
 
@@ -431,13 +431,14 @@ class ProductImportService
         return (float) $cleaned;
     }
 
-    private function generateUniqueSlug(string $title): string
+    private function generateUniqueSlug(string $title, Brand $brand): string
     {
         $base = strtolower((string) $this->slugger->slug($title));
         $slug = $base;
         $i    = 1;
 
-        while ($this->productRepo->findOneBy(['slug' => $slug])) {
+        // Уникальность slug — в рамках бренда (constraint brand_id + slug)
+        while ($this->productRepo->findOneBy(['brand' => $brand, 'slug' => $slug])) {
             $slug = $base . '-' . $i++;
         }
 

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6dbfaf510f5a439edad364d79d0338d8",
+    "content-hash": "8f71d1288acfd4079b2017a95f5b1e7a",
     "packages": [
         {
             "name": "composer/semver",
@@ -2344,6 +2344,65 @@
                 "source": "https://github.com/phpstan/phpdoc-parser/tree/2.3.0"
             },
             "time": "2025-08-30T15:50:23+00:00"
+        },
+        {
+            "name": "pixelopen/cloudflare-turnstile-bundle",
+            "version": "0.5.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Pixel-Open/cloudflare-turnstile-bundle.git",
+                "reference": "c16de40d8bc998f1fcc6a6835721dfe1bfdfb9bd"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Pixel-Open/cloudflare-turnstile-bundle/zipball/c16de40d8bc998f1fcc6a6835721dfe1bfdfb9bd",
+                "reference": "c16de40d8bc998f1fcc6a6835721dfe1bfdfb9bd",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.2",
+                "symfony/form": "^5.0|^6.0|^7.0|^8.0",
+                "symfony/framework-bundle": "^5.0|^6.0|^7.0|^8.0",
+                "symfony/http-client": "^5.0|^6.0|^7.0|^8.0",
+                "symfony/twig-bundle": "^5.0|^6.0|^7.0|^8.0",
+                "symfony/validator": "^5.0|^6.0|^7.0|^8.0",
+                "symfony/yaml": "^5.0|^6.0|^7.0|^8.0"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "^2.0",
+                "phpstan/phpstan-symfony": "^2.0",
+                "phpunit/phpunit": "^10.0|^11.0",
+                "rector/rector": "^2.0",
+                "symplify/easy-coding-standard": "^12.0"
+            },
+            "type": "symfony-bundle",
+            "autoload": {
+                "psr-4": {
+                    "PixelOpen\\CloudflareTurnstileBundle\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Pixel Open Team",
+                    "homepage": "https://pixel-open.org/projects/symfony-bundle-cloudflare-turnstile/"
+                }
+            ],
+            "description": "A simple package to help integrate Cloudflare Turnstile on Symfony.",
+            "keywords": [
+                "Symfony Bundle",
+                "captcha",
+                "cloudflare-turnstile",
+                "form security"
+            ],
+            "support": {
+                "issues": "https://github.com/Pixel-Open/cloudflare-turnstile-bundle/issues",
+                "source": "https://github.com/Pixel-Open/cloudflare-turnstile-bundle/tree/0.5.0"
+            },
+            "time": "2026-03-08T19:47:59+00:00"
         },
         {
             "name": "psr/cache",

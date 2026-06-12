@@ -1,0 +1,165 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block page_title %}Заявки на владение брендом{% endblock %}
+
+{% block main %}
+
+{% for type, messages in app.flashes %}
+    {% for message in messages %}
+        <div class="alert alert-{{ type == 'error' ? 'danger' : type }} alert-dismissible">
+            {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    {% endfor %}
+{% endfor %}
+
+{# ── Pending ─────────────────────────────────────────────────────────────── #}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>На рассмотрении</strong>
+        <span class="badge bg-{{ pending|length > 0 ? 'danger' : 'secondary' }}">{{ pending|length }}</span>
+    </div>
+
+    {% if pending|length == 0 %}
+        <div class="card-body text-muted text-center py-4">Новых заявок нет</div>
+    {% else %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Пользователь</th>
+                    <th>Бренд</th>
+                    <th>Верификация</th>
+                    <th>Комментарий</th>
+                    <th>Дата</th>
+                    <th style="width:300px"></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for claim in pending %}
+                <tr>
+                    <td>
+                        <div class="fw-semibold small">{{ claim.user.email }}</div>
+                        <div class="text-muted" style="font-size:.78rem">{{ claim.user.fullName }}</div>
+                        {# Кнопка impersonation #}
+                        <form method="post"
+                              action="{{ path('admin_impersonate', {id: claim.user.id}) }}"
+                              class="mt-1">
+                            <button type="submit" class="btn btn-xs btn-outline-secondary py-0 px-2"
+                                    style="font-size:.72rem">
+                                <i class="fas fa-eye me-1"></i>Смотреть как этот пользователь
+                            </button>
+                        </form>
+                    </td>
+                    <td>
+                        <div class="fw-semibold small">{{ claim.brand.title }}</div>
+                        <div class="text-muted" style="font-size:.78rem">
+                            {% if claim.brand.email %}{{ claim.brand.email }}{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        {% if claim.emailDomainMatch %}
+                            <span class="badge bg-success">✅ Домен совпадает</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">⚠️ Ручная проверка</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="small text-muted">{{ claim.comment|default('—')|slice(0, 80) }}</span>
+                    </td>
+                    <td class="text-muted small">{{ claim.createdAt|date('d.m.Y H:i') }}</td>
+                    <td>
+                        <div class="d-flex gap-2 align-items-start">
+
+                            {# Одобрить #}
+                            <div class="d-flex flex-column gap-1">
+                                <form method="post" action="{{ path('admin_brand_claims_approve', {id: claim.id}) }}">
+                                    <input type="hidden" name="admin_note" value="">
+                                    <button type="submit" class="btn btn-sm btn-success"
+                                            onclick="return confirm('Одобрить заявку и назначить владельцем?')">
+                                        <i class="fas fa-check me-1"></i>Одобрить
+                                    </button>
+                                </form>
+                            </div>
+
+                            {# Отклонить #}
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#reject-modal-{{ claim.id }}">
+                                <i class="fas fa-times me-1"></i>Отклонить
+                            </button>
+                        </div>
+
+                        {# Modal отклонения #}
+                        <div class="modal fade" id="reject-modal-{{ claim.id }}" tabindex="-1">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <form method="post" action="{{ path('admin_brand_claims_reject', {id: claim.id}) }}">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Отклонить заявку</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <p class="small text-muted">
+                                                {{ claim.user.email }} → {{ claim.brand.title }}
+                                            </p>
+                                            <label class="form-label small fw-semibold">Причина (отправим пользователю)</label>
+                                            <textarea name="admin_note" class="form-control" rows="3"
+                                                      placeholder="Необязательно..."></textarea>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary btn-sm"
+                                                    data-bs-dismiss="modal">Отмена</button>
+                                            <button type="submit" class="btn btn-danger btn-sm">Отклонить</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+{# ── История ──────────────────────────────────────────────────────────────── #}
+<div class="card">
+    <div class="card-header"><strong>Последние решения</strong></div>
+    {% if recent|length == 0 %}
+        <div class="card-body text-muted text-center py-3">Нет обработанных заявок</div>
+    {% else %}
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Пользователь</th>
+                    <th>Бренд</th>
+                    <th>Статус</th>
+                    <th>Примечание</th>
+                    <th>Дата решения</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for claim in recent %}
+                <tr>
+                    <td class="small">{{ claim.user.email }}</td>
+                    <td class="small">{{ claim.brand.title }}</td>
+                    <td>
+                        <span class="badge bg-{{ claim.status == 'approved' ? 'success' : 'danger' }}">
+                            {{ claim.statusLabel }}
+                        </span>
+                    </td>
+                    <td class="small text-muted">{{ claim.adminNote|default('—') }}</td>
+                    <td class="small text-muted">{{ claim.reviewedAt ? claim.reviewedAt|date('d.m.Y') : '—' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

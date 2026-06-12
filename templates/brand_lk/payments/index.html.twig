@@ -1,0 +1,120 @@
+{% extends 'brand_lk/layout.html.twig' %}
+
+{% block title %}Реквизиты и оплата — {{ brand.title }}{% endblock %}
+
+{% block brand_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Реквизиты и оплата</h4>
+    <a href="{{ path('brand_payment_le_new') }}" class="btn btn-dark btn-sm">
+        <i class="fas fa-plus me-1"></i> Юр.лицо
+    </a>
+</div>
+
+<p class="text-muted small">
+    Деньги за заказы уходят напрямую вашему юр.лицу через выбранную платёжку — площадка их не удерживает.
+    Отметьте один счёт как <strong>основной</strong> — через него и принимается оплата.
+</p>
+
+{% if not cipher_ready %}
+    <div class="alert alert-warning">
+        <i class="fas fa-triangle-exclamation me-1"></i>
+        Шифрование секретов не настроено на сервере (<code>PAYMENT_SECRET_KEY</code>) — сохранить секретный ключ платёжки нельзя. Обратитесь в поддержку.
+    </div>
+{% endif %}
+
+{% if legal_entities is empty %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5 text-muted">
+            Пока нет ни одного юр.лица. Добавьте его, чтобы принимать оплату.
+        </div>
+    </div>
+{% endif %}
+
+{% for entity in legal_entities %}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+                <span class="fw-semibold">{{ entity.legalName }}</span>
+                <span class="badge bg-light text-dark ms-1">{{ entity.legalForm|upper }}</span>
+                {% if entity.status == 'active' %}
+                    <span class="badge bg-success">Активно</span>
+                {% else %}
+                    <span class="badge bg-secondary">В архиве</span>
+                {% endif %}
+                {% if entity.isIdentified %}<span class="badge bg-info text-dark">Идентифицировано</span>{% endif %}
+            </div>
+            <div class="d-flex gap-1">
+                <a href="{{ path('brand_payment_le_edit', {id: entity.id}) }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-pen"></i>
+                </a>
+                <form method="post" action="{{ path('brand_payment_le_delete', {id: entity.id}) }}"
+                      onsubmit="return confirm('Удалить юр.лицо и все его счета?');" class="d-inline">
+                    <input type="hidden" name="_token" value="{{ csrf_token('le_delete_' ~ entity.id) }}">
+                    <button class="btn btn-outline-danger btn-sm"><i class="fas fa-trash"></i></button>
+                </form>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="text-muted small mb-3">
+                {% if entity.inn %}ИНН {{ entity.inn }}{% endif %}
+                {% if entity.ogrn %} · ОГРН {{ entity.ogrn }}{% endif %}
+                {% if entity.legalAddress %}<br>{{ entity.legalAddress }}{% endif %}
+            </div>
+
+            <div class="fw-semibold small text-uppercase text-muted mb-2">Счета приёма оплаты</div>
+
+            {# Подключение платёжек: активные провайдеры, ещё не подключённые к этому юр.лицу #}
+            {% set connected_codes = entity.paymentAccounts|map(a => a.provider.code) %}
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                {% for p in available_providers %}
+                    {% if p.code not in connected_codes %}
+                        <a href="{{ path('brand_payment_acc_new', {entityId: entity.id, provider: p.code}) }}"
+                           class="btn btn-outline-dark btn-sm">
+                            <i class="fas fa-plug me-1"></i> Подключить {{ p.name }}
+                        </a>
+                    {% endif %}
+                {% endfor %}
+                {% if available_providers is empty %}
+                    <span class="text-muted small">Нет доступных платёжек — обратитесь в поддержку.</span>
+                {% endif %}
+            </div>
+
+            {% if entity.paymentAccounts is empty %}
+                <div class="text-muted small">Счетов нет — оплата заказов через это юр.лицо невозможна.</div>
+            {% else %}
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr class="text-muted small">
+                            <th>Платёжка</th><th>Схема</th><th>Идентификатор</th><th>Ключ</th><th></th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for acc in entity.paymentAccounts %}
+                        <tr>
+                            <td>{{ acc.provider.name }}</td>
+                            <td class="small">{{ acc.mode == 'direct' ? 'Прямой' : 'Сплит' }}</td>
+                            <td class="small">{{ acc.accountRef ?: '—' }}</td>
+                            <td class="small">{{ acc.secretEncrypted ? '••• задан' : '— не задан' }}</td>
+                            <td>
+                                {% if acc.primary %}<span class="badge bg-dark">основной</span>{% endif %}
+                                {% if acc.status == 'disabled' %}<span class="badge bg-secondary">отключён</span>{% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ path('brand_payment_acc_edit', {id: acc.id}) }}" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-pen"></i>
+                                </a>
+                                <form method="post" action="{{ path('brand_payment_acc_delete', {id: acc.id}) }}"
+                                      onsubmit="return confirm('Удалить счёт?');" class="d-inline">
+                                    <input type="hidden" name="_token" value="{{ csrf_token('acc_delete_' ~ acc.id) }}">
+                                    <button class="btn btn-outline-danger btn-sm"><i class="fas fa-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        </div>
+    </div>
+{% endfor %}
+{% endblock %}

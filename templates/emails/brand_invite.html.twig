@@ -1,0 +1,20 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Приглашение в команду — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">Приглашение в команду бренда</h2>
+<p style="color:#555;line-height:1.6;">Здравствуйте!</p>
+<p style="color:#555;line-height:1.6;">
+    {{ invitedBy.fullName }} приглашает вас в команду бренда
+    <strong>{{ brand.title }}</strong> на роль
+    <strong>{{ role == 'owner' ? 'владельца' : 'менеджера' }}</strong>.
+</p>
+<p style="text-align:center;">
+    <a href="{{ url('invite_accept', {token: token}) }}" class="btn">
+        Принять приглашение
+    </a>
+</p>
+<p style="color:#888;font-size:13px;">
+    Ссылка действительна в течение 7 дней.<br>
+    Если вы не ожидали этого приглашения, проигнорируйте письмо.
+</p>
+{% endblock %}

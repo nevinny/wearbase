@@ -16,6 +16,7 @@
         "nevinny/admin-core": "^1.0.4",
         "phpdocumentor/reflection-docblock": "^5.6",
         "phpstan/phpdoc-parser": "^2.3",
+        "pixelopen/cloudflare-turnstile-bundle": "*",
         "symfony/asset": "7.3.*",
         "symfony/asset-mapper": "7.3.*",
         "symfony/console": "7.3.*",

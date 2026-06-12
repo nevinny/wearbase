@@ -1,0 +1,35 @@
+{% extends 'base.html.twig' %}
+{% block title %}Заказ оформлен — WEARBASE{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5 text-center">
+
+            <div class="mb-4">
+                <div class="rounded-circle bg-dark text-white d-inline-flex align-items-center justify-content-center"
+                     style="width:72px;height:72px;font-size:28px">✓</div>
+            </div>
+
+            <h1 class="h3 fw-bold mb-2">Заказ оформлен!</h1>
+            {% if order_number %}
+                <p class="text-muted mb-1">Номер заказа: <strong>#{{ order_number }}</strong></p>
+            {% endif %}
+            <p class="text-muted mb-4" style="font-size:.9rem">
+                Мы отправили подтверждение на вашу почту.<br>
+                Бренд получил уведомление и скоро свяжется с вами.
+            </p>
+
+            <div class="d-flex flex-wrap gap-2 justify-content-center">
+                {% if order_number %}
+                <a href="{{ path('account_order_show', {number: order_number}) }}"
+                   class="btn btn-dark px-4">Следить за заказом</a>
+                {% endif %}
+                <a href="{{ path('account_orders') }}" class="btn btn-outline-secondary">Мои заказы</a>
+                <a href="{{ path('catalog_index') }}" class="btn btn-outline-secondary">Продолжить покупки</a>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

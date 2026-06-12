@@ -52,6 +52,18 @@ class ProductRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    public function countByBrandAndStatus(Brand $brand, string $status = 'active'): int
+    {
+        return (int) $this->createQueryBuilder('p')
+            ->select('COUNT(p.id)')
+            ->where('p.brand = :brand')
+            ->andWhere('p.status = :status')
+            ->setParameter('brand', $brand)
+            ->setParameter('status', $status)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
     /**
      * Каталог товаров с фильтрами и сортировкой.
      *

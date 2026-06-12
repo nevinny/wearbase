@@ -60,10 +60,12 @@
     </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 <script>
-const uploadUrl = '{{ path('brand_media_upload') }}';
-const deleteUrl = '/brand/media/delete/';
-const csrfToken = '{{ csrf_token('brand_media') }}';
+const uploadUrl  = '{{ path('brand_media_upload') }}';
+const deleteBase = '{{ path('brand_media_delete', {id: 0}) }}'.replace('/0', '/');
+const sortUrl    = '{{ path('brand_media_sort') }}';
+const csrfToken  = '{{ csrf_token('brand_media') }}';
 
 // Drag & drop
 const area = document.getElementById('upload-area');
@@ -94,12 +96,20 @@ function uploadFiles(files) {
     };
     xhr.onload = () => {
         if (xhr.status === 200) {
+            let data = {};
+            try { data = JSON.parse(xhr.responseText); } catch (e) {}
+            if (data.limit_reached) {
+                alert('Часть файлов не загружена — достигнут лимит изображений тарифа.');
+            }
             window.location.reload();
         } else {
-            alert('Ошибка загрузки');
+            let msg = 'Ошибка загрузки';
+            try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) {}
+            alert(msg);
             progress.classList.add('d-none');
         }
     };
+    xhr.onerror = () => { alert('Сеть недоступна, загрузка не выполнена'); progress.classList.add('d-none'); };
     xhr.open('POST', uploadUrl);
     xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
     xhr.setRequestHeader('X-CSRF-Token', csrfToken);
@@ -111,15 +121,36 @@ document.querySelectorAll('.delete-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (!confirm('Удалить изображение?')) return;
-        const id = btn.dataset.id;
-        const resp = await fetch(deleteUrl + id, {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': csrfToken }
-        });
-        if (resp.ok) {
-            btn.closest('[data-id]').remove();
+        try {
+            const resp = await fetch(deleteBase + btn.dataset.id, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': csrfToken }
+            });
+            if (resp.ok) {
+                btn.closest('[data-id]').remove();
+            } else {
+                alert('Не удалось удалить изображение');
+            }
+        } catch (err) {
+            alert('Сеть недоступна');
         }
     });
 });
+
+// Сортировка (drag & drop)
+const gallery = document.getElementById('gallery');
+if (gallery) {
+    Sortable.create(gallery, {
+        animation: 150,
+        onEnd: async () => {
+            const order = [...gallery.querySelectorAll('[data-id]')].map(el => +el.dataset.id);
+            await fetch(sortUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ order })
+            });
+        }
+    });
+}
 </script>
 {% endblock %}

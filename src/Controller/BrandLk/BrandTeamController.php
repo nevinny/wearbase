@@ -59,6 +59,21 @@ class BrandTeamController extends BrandDashboardController
             return $this->redirectToRoute('brand_team');
         }
 
+        // Уже состоит в команде этого бренда?
+        $existingUser = $em->getRepository(\App\Entity\User::class)->findOneBy(['email' => $email]);
+        if ($existingUser !== null && $brandUserRepo->findOneBy(['brand' => $brand, 'user' => $existingUser]) !== null) {
+            $this->addFlash('error', 'Этот пользователь уже в команде бренда');
+            return $this->redirectToRoute('brand_team');
+        }
+
+        // Уже есть активное (непринятое, не истёкшее) приглашение на этот email?
+        foreach ($em->getRepository(BrandInvite::class)->findBy(['brand' => $brand, 'email' => $email, 'acceptedAt' => null]) as $pending) {
+            if (!$pending->isExpired()) {
+                $this->addFlash('error', 'Приглашение на этот email уже отправлено');
+                return $this->redirectToRoute('brand_team');
+            }
+        }
+
         $invite = new BrandInvite();
         $invite->setBrand($brand);
         $invite->setEmail($email);

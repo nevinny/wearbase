@@ -128,6 +128,29 @@ class Order
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $adminNote = null;
 
+    // ── Юр.снимки: продавец-of-record, счёт приёма, редакция оферты ──────────
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(name: 'seller_legal_entity_id', nullable: true, onDelete: 'SET NULL')]
+    private ?SellerLegalEntity $sellerLegalEntity = null;
+
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(name: 'seller_payment_account_id', nullable: true, onDelete: 'SET NULL')]
+    private ?SellerPaymentAccount $sellerPaymentAccount = null;
+
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(name: 'accepted_offer_id', nullable: true, onDelete: 'SET NULL')]
+    private ?OfferDocument $acceptedOffer = null;
+
+    // ── ЗоЗПП: возврат предоплаты владельцем агрегатора (правило 10 дней) ─────
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $prepaymentRefundRequestedAt = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $sellerDeliveryConfirmedAt = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $refundConfirmationSentAt = null;
+
     /**
      * @var Collection<int, OrderItem>
      */
@@ -302,5 +325,42 @@ class Order
     public function canBeCancelledByCustomer(): bool
     {
         return in_array($this->status, [self::STATUS_NEW, self::STATUS_CONFIRMED], true);
+    }
+
+    public function getSellerLegalEntity(): ?SellerLegalEntity { return $this->sellerLegalEntity; }
+    public function setSellerLegalEntity(?SellerLegalEntity $sellerLegalEntity): static { $this->sellerLegalEntity = $sellerLegalEntity; return $this; }
+
+    public function getSellerPaymentAccount(): ?SellerPaymentAccount { return $this->sellerPaymentAccount; }
+    public function setSellerPaymentAccount(?SellerPaymentAccount $sellerPaymentAccount): static { $this->sellerPaymentAccount = $sellerPaymentAccount; return $this; }
+
+    public function getAcceptedOffer(): ?OfferDocument { return $this->acceptedOffer; }
+    public function setAcceptedOffer(?OfferDocument $acceptedOffer): static { $this->acceptedOffer = $acceptedOffer; return $this; }
+
+    public function getPrepaymentRefundRequestedAt(): ?\DateTimeImmutable { return $this->prepaymentRefundRequestedAt; }
+    public function setPrepaymentRefundRequestedAt(?\DateTimeImmutable $at): static { $this->prepaymentRefundRequestedAt = $at; return $this; }
+
+    public function getSellerDeliveryConfirmedAt(): ?\DateTimeImmutable { return $this->sellerDeliveryConfirmedAt; }
+    public function setSellerDeliveryConfirmedAt(?\DateTimeImmutable $at): static { $this->sellerDeliveryConfirmedAt = $at; return $this; }
+
+    public function getRefundConfirmationSentAt(): ?\DateTimeImmutable { return $this->refundConfirmationSentAt; }
+    public function setRefundConfirmationSentAt(?\DateTimeImmutable $at): static { $this->refundConfirmationSentAt = $at; return $this; }
+
+    /**
+     * ЗоЗПП: крайний срок (10 календарных дней с даты требования возврата),
+     * до которого нужно направить покупателю подтверждение от продавца,
+     * иначе предоплату придётся вернуть. NULL, если требования не было.
+     */
+    public function getRefundConfirmationDeadline(): ?\DateTimeImmutable
+    {
+        return $this->prepaymentRefundRequestedAt?->modify('+10 days');
+    }
+
+    /** Истёк ли срок направления подтверждения покупателю (без отправки). */
+    public function isRefundConfirmationOverdue(\DateTimeImmutable $now): bool
+    {
+        $deadline = $this->getRefundConfirmationDeadline();
+        return $deadline !== null
+            && $this->refundConfirmationSentAt === null
+            && $now > $deadline;
     }
 }

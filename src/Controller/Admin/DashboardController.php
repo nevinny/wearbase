@@ -2,6 +2,7 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\Article;
 use App\Entity\Brand;
 use App\Entity\BrandAudience;
 use App\Entity\BrandImage;
@@ -65,8 +66,12 @@ class DashboardController extends AbstractDashboardController
     {
         yield MenuItem::linkToDashboard('Dashboard', 'fa fa-home');
         yield MenuItem::linkToRoute('RAG-конвейер', 'fas fa-cogs', 'admin_rag');
+        yield MenuItem::linkToRoute('RAG: бренд вручную', 'fas fa-hand-pointer', 'admin_rag_brand');
         yield MenuItem::linkToRoute('Верификация брендов', 'fas fa-circle-exclamation', 'admin_rag_review');
          yield MenuItem::linkToCrud('Brands', 'fas fa-list', Brand::class);
+
+        yield MenuItem::section('Контент');
+        yield MenuItem::linkToCrud('Статьи блога', 'fas fa-newspaper', Article::class);
 
         yield MenuItem::section('Dictionaries');
         yield MenuItem::linkToCrud('Размеры', 'fas fa-list', BrandSize::class);

@@ -31,6 +31,7 @@ class BrandDatapoint
     public const PROV_ENRICHMENT      = 'enrichment';
     public const PROV_OWNER           = 'owner';
     public const PROV_CROWD_CONFIRMED = 'crowd_confirmed';
+    public const PROV_CONFIRMED       = 'confirmed';
 
     public const STATE_ACTIVE   = 'active';
     public const STATE_DOUBTFUL = 'doubtful';  // бейдж «данные уточняются», но показываем

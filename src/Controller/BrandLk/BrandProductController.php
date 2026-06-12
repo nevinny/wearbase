@@ -316,6 +316,10 @@ class BrandProductController extends BrandDashboardController
         $existing = $transRepo->findAllForProduct($product);
 
         if ($request->isMethod('POST')) {
+            if (!$this->isCsrfTokenValid('product_translations', (string) $request->request->get('_token'))) {
+                $this->addFlash('error', 'Недействительный токен');
+                return $this->redirectToRoute('brand_product_translations', ['id' => $id]);
+            }
             foreach ($locales as $lang) {
                 $locale = $lang->getCode();
                 if ($locale === 'ru') continue;
@@ -357,6 +361,10 @@ class BrandProductController extends BrandDashboardController
         $brand = $this->getActiveBrand();
 
         if ($request->isMethod('POST')) {
+            if (!$this->isCsrfTokenValid('product_import', (string) $request->request->get('_token'))) {
+                $this->addFlash('error', 'Недействительный токен');
+                return $this->redirectToRoute('brand_product_import');
+            }
             $file = $request->files->get('import_file');
 
             if (!$file) {

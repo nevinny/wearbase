@@ -232,6 +232,23 @@ class Product
 
     public function getProductImages(): Collection { return $this->productImages; }
 
+    public function addProductImage(ProductImage $image): static
+    {
+        if (!$this->productImages->contains($image)) {
+            $this->productImages->add($image);
+            $image->setProduct($this);
+        }
+        return $this;
+    }
+
+    public function removeProductImage(ProductImage $image): static
+    {
+        if ($this->productImages->removeElement($image) && $image->getProduct() === $this) {
+            $image->setProduct(null);
+        }
+        return $this;
+    }
+
     public function getMainImage(): ?ProductImage
     {
         foreach ($this->productImages as $image) {

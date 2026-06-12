@@ -21,6 +21,12 @@ class BrandLink
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $linkUrl = null;
 
+    /**
+     * Тип ссылки: 'website' | 'instagram' | 'vk' | 'telegram' | 'youtube' | 'tiktok' | 'other'
+     */
+    #[ORM\Column(length: 32, nullable: true)]
+    private ?string $linkType = null;
+
     #[ORM\ManyToOne(inversedBy: 'links')]
     #[ORM\JoinColumn(nullable: false)]
     private ?Brand $brand = null;
@@ -38,6 +44,18 @@ class BrandLink
     public function setLinkUrl(?string $linkUrl): static
     {
         $this->linkUrl = $linkUrl;
+
+        return $this;
+    }
+
+    public function getLinkType(): ?string
+    {
+        return $this->linkType;
+    }
+
+    public function setLinkType(?string $linkType): static
+    {
+        $this->linkType = $linkType;
 
         return $this;
     }

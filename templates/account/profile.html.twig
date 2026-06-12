@@ -1,0 +1,111 @@
+{% extends 'account/layout.html.twig' %}
+{% block title %}Профиль — WEARBASE{% endblock %}
+
+{% block account_content %}
+<h1 class="h5 fw-bold mb-4">Профиль</h1>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                {{ form_start(form) }}
+
+                {# Аватар #}
+                <div class="d-flex align-items-center gap-3 mb-4 pb-4 border-bottom">
+                    {% set u = app.user %}
+                    {% if u.avatar %}
+                        <img src="{{ vich_uploader_asset(u, 'avatarFile') }}"
+                             class="rounded-circle flex-shrink-0" width="64" height="64"
+                             style="object-fit:cover" alt="">
+                    {% else %}
+                        <div class="rounded-circle bg-dark text-white d-flex align-items-center justify-content-center flex-shrink-0"
+                             style="width:64px;height:64px;font-size:24px">
+                            {{ (u.firstName ?: u.email)|first|upper }}
+                        </div>
+                    {% endif %}
+                    <div>
+                        <div class="fw-semibold small mb-1">Фото профиля</div>
+                        {{ form_widget(form.avatarFile) }}
+                        <div class="text-muted" style="font-size:.75rem">JPG, PNG — не более 2 МБ</div>
+                    </div>
+                </div>
+
+                {# Личные данные #}
+                <span class="form-section-label">Личные данные</span>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="label-caps">Имя</label>
+                        {{ form_widget(form.firstName, {'attr': {'class': 'form-control', 'placeholder': 'Иван'}}) }}
+                        {{ form_errors(form.firstName) }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="label-caps">Фамилия</label>
+                        {{ form_widget(form.lastName, {'attr': {'class': 'form-control', 'placeholder': 'Иванов'}}) }}
+                        {{ form_errors(form.lastName) }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="label-caps">Email</label>
+                        {{ form_widget(form.email, {'attr': {'class': 'form-control'}}) }}
+                        {{ form_errors(form.email) }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="label-caps">Телефон</label>
+                        {{ form_widget(form.phone, {'attr': {'class': 'form-control', 'placeholder': '+7 999 000 00 00'}}) }}
+                        {{ form_errors(form.phone) }}
+                    </div>
+                </div>
+
+                {# Смена пароля #}
+                <span class="form-section-label border-top pt-4 mt-2">Смена пароля</span>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="label-caps">Новый пароль</label>
+                        {{ form_widget(form.newPassword, {'attr': {'class': 'form-control', 'placeholder': 'Оставьте пустым, чтобы не менять'}}) }}
+                        {{ form_errors(form.newPassword) }}
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-dark px-4">Сохранить изменения</button>
+
+                {{ form_end(form) }}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 d-flex flex-column gap-3">
+
+        {# Telegram #}
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <span class="form-section-label mb-2">Telegram-уведомления</span>
+                {% if app.user.telegramChatId %}
+                    <div class="d-flex align-items-center gap-2 text-success small">
+                        <i class="fab fa-telegram fs-5"></i>
+                        <span class="fw-semibold">Подключён</span>
+                    </div>
+                {% else %}
+                    <p class="text-muted small mb-3">Получайте уведомления о заказах в Telegram.</p>
+                    <a href="https://t.me/wearbase_bot?start={{ app.user.id }}"
+                       class="btn btn-outline-secondary btn-sm w-100" target="_blank">
+                        <i class="fab fa-telegram me-1"></i>Подключить Telegram
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+
+        {# Email статус #}
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <span class="form-section-label mb-2">Email</span>
+                <div class="text-muted small">{{ app.user.email }}</div>
+                {% if not app.user.emailVerifiedAt %}
+                    <div class="text-warning small mt-1">
+                        <i class="fas fa-exclamation-triangle me-1"></i>Не подтверждён
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

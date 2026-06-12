@@ -99,6 +99,22 @@ class Brand
     #[ORM\ManyToMany(targetEntity: BrandTier::class, mappedBy: 'brands')]
     private Collection $tiers;
 
+    #[ORM\Column(length: 4, nullable: true)]
+    private ?string $foundingYear = null;
+
+    #[ORM\Column(length: 100, nullable: true)]
+    private ?string $tagline = null;
+
+    #[ORM\Column(length: 50, nullable: true)]
+    private ?string $country = null;
+
+    /**
+     * @var Collection<int, Category>
+     */
+    #[ORM\JoinTable(name: 'brand_category')]
+    #[ORM\ManyToMany(targetEntity: Category::class, inversedBy: 'brands')]
+    private Collection $categories;
+
     #[ORM\Column(length: 5, nullable: true)]
     private ?string $firstLetter = null;
 
@@ -184,6 +200,7 @@ class Brand
         $this->images = new ArrayCollection();
         $this->subscriptions = new ArrayCollection();
         $this->stores = new ArrayCollection();
+        $this->categories = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -512,6 +529,64 @@ class Brand
             $tier->removeBrand($this);
         }
 
+        return $this;
+    }
+
+    public function getFoundingYear(): ?string
+    {
+        return $this->foundingYear;
+    }
+
+    public function setFoundingYear(?string $foundingYear): static
+    {
+        $this->foundingYear = $foundingYear;
+        return $this;
+    }
+
+    public function getTagline(): ?string
+    {
+        return $this->tagline;
+    }
+
+    public function setTagline(?string $tagline): static
+    {
+        $this->tagline = $tagline;
+        return $this;
+    }
+
+    public function getCountry(): ?string
+    {
+        return $this->country;
+    }
+
+    public function setCountry(?string $country): static
+    {
+        $this->country = $country;
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Category>
+     */
+    public function getCategories(): Collection
+    {
+        return $this->categories;
+    }
+
+    public function addCategory(Category $category): static
+    {
+        if (!$this->categories->contains($category)) {
+            $this->categories->add($category);
+            $category->addBrand($this);
+        }
+        return $this;
+    }
+
+    public function removeCategory(Category $category): static
+    {
+        if ($this->categories->removeElement($category)) {
+            $category->removeBrand($this);
+        }
         return $this;
     }
 

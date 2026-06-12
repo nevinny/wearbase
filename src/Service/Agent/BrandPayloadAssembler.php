@@ -5,6 +5,7 @@ namespace App\Service\Agent;
 use App\Entity\Brand;
 use App\Entity\BrandFaq;
 use App\Entity\BrandKeyword;
+use App\Entity\BrandStore;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -67,6 +68,15 @@ class BrandPayloadAssembler
             'name'  => $a->getName(),
             'value' => $a->getValue(),
         ], $this->em->getRepository(\App\Entity\BrandAttribute::class)->findByBrand($brand));
+
+        // Магазины бренда (brand_store) — извлечённые из краула или добавленные владельцем.
+        $payload['stores'] = array_map(static fn(BrandStore $s) => [
+            'address'   => $s->getAddress(),
+            'city'      => $s->getCity(),
+            'phone'     => $s->getPhone(),
+            'workHours' => $s->getWorkHours(),
+            'source'    => $s->getSource(),
+        ], $this->em->getRepository(BrandStore::class)->findBy(['brand' => $brand]));
 
         // Логотип: плоское хранение public_html/images/logos (см. vich_uploader.yaml)
         if ($brand->getLogo()) {

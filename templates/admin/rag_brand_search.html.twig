@@ -1,0 +1,46 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block page_title %}RAG: бренд вручную{% endblock %}
+
+{% block main %}
+<style>
+    .rb-search { margin: 16px 0 24px; }
+    .rb-search input[type=text] { padding: 8px 12px; font-size: 15px; width: 360px; max-width: 70%;
+        border: 1px solid var(--border-color, #888); border-radius: 6px; background: transparent; color: inherit; }
+    .rb-search button { padding: 8px 16px; font-size: 15px; border: 1px solid var(--border-color, #888);
+        border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+    .rb-table { width: 100%; font-size: 14px; border-collapse: collapse; }
+    .rb-table th, .rb-table td { padding: 9px 12px; border-bottom: 1px solid var(--border-color, #444); text-align: left; }
+    .rb-table th { font-size: 12px; text-transform: uppercase; opacity: .65; }
+    .rb-empty { padding: 30px; opacity: .6; }
+</style>
+
+<h1>Ручное управление конвейером бренда</h1>
+<p style="opacity:.8">Найдите бренд по ID, slug или названию, чтобы открыть панель этапов и подсказать факты/URL/название.</p>
+
+<form class="rb-search" method="get" action="{{ path('admin_rag_brand') }}">
+    <input type="text" name="q" value="{{ q }}" placeholder="ID, slug или название бренда" autofocus>
+    <button type="submit">Найти</button>
+</form>
+
+{% if q is not empty %}
+    {% if results is empty %}
+        <div class="rb-empty">Ничего не найдено по «{{ q }}».</div>
+    {% else %}
+    <table class="rb-table">
+        <thead><tr><th>ID</th><th>Название</th><th>Slug</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+        {% for r in results %}
+            <tr>
+                <td>{{ r.id }}</td>
+                <td>{{ r.title }}</td>
+                <td><small style="opacity:.6">{{ r.slug }}</small></td>
+                <td>{{ r.status }}</td>
+                <td><a href="{{ path('admin_rag_brand_panel', {id: r.id}) }}">панель →</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+{% endif %}
+{% endblock %}

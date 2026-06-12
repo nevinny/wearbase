@@ -1,0 +1,19 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Подтвердите email — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">Подтвердите email</h2>
+<p style="color:#555;line-height:1.6;">Здравствуйте{% if user.firstName %}, {{ user.firstName }}{% endif %}!</p>
+<p style="color:#555;line-height:1.6;">
+    Спасибо за регистрацию на WEARBASE. Чтобы начать пользоваться аккаунтом,
+    подтвердите ваш email, нажав на кнопку ниже:
+</p>
+<p style="text-align:center;">
+    <a href="{{ url('app_verify_email', {token: token}) }}" class="btn">
+        Подтвердить email
+    </a>
+</p>
+<p style="color:#888;font-size:13px;">
+    Ссылка действительна в течение 24 часов.<br>
+    Если вы не регистрировались на WEARBASE, просто проигнорируйте это письмо.
+</p>
+{% endblock %}

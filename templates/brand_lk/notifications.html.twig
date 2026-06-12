@@ -1,0 +1,41 @@
+{% extends 'brand_lk/layout.html.twig' %}
+
+{% block title %}Уведомления — {{ brand.title }}{% endblock %}
+
+{% block brand_content %}
+<h4 class="mb-3">Настройки уведомлений</h4>
+<p class="text-muted">Выберите каналы, по которым вы хотите получать уведомления.</p>
+
+<form method="post" class="table-responsive">
+    <table class="table align-middle">
+        <thead class="table-light">
+            <tr>
+                <th style="width:30%">Событие</th>
+                <th class="text-center">Email</th>
+                <th class="text-center">Telegram</th>
+                <th class="text-center">В приложении</th>
+                <th class="text-center">Push</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for eventType, label in eventTypes %}
+                {% set s = settings[eventType] ?? null %}
+                <tr>
+                    <td>{{ label }}</td>
+                    {% for channel in channels %}
+                        {% set checked = s ? attribute(s, 'channel' ~ channel|slice(7)) : false %}
+                        <td class="text-center">
+                            <input type="hidden" name="settings[{{ eventType }}][{{ channel }}]" value="0">
+                            <input class="form-check-input" type="checkbox"
+                                   name="settings[{{ eventType }}][{{ channel }}]" value="1"
+                                   {{ checked ? 'checked' : '' }}>
+                        </td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <button type="submit" class="btn btn-dark">Сохранить настройки</button>
+</form>
+{% endblock %}

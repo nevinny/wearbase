@@ -84,10 +84,40 @@ class VectorStoreService
         return $res['body']['result'] ?? [];
     }
 
+    /**
+     * Глобальный семантический поиск по всей коллекции — без фильтра по бренду.
+     * Для рекомендаций (app:brand:ask): один эмбеддинг запроса → топ-K чанков
+     * разных брендов. Payload каждого хита содержит brand_id для группировки.
+     *
+     * @param float[] $queryVector
+     * @return array<int,array{score:float,payload:array}>
+     */
+    public function search(array $queryVector, int $topK = 50): array
+    {
+        $res = $this->request('POST', "/collections/{$this->collection}/points/search", [
+            'vector'       => $queryVector,
+            'limit'        => $topK,
+            'with_payload' => true,
+        ]);
+
+        return $res['body']['result'] ?? [];
+    }
+
     public function deleteByBrand(int $brandId): void
     {
         $this->request('POST', "/collections/{$this->collection}/points/delete?wait=true", [
             'filter' => $this->brandFilter($brandId),
+        ]);
+    }
+
+    /** Удалить чанки одного документа (soft-delete источника в админке). brand_id индексирован — фильтр быстрый. */
+    public function deleteByDoc(int $brandId, int $docId): void
+    {
+        $this->request('POST', "/collections/{$this->collection}/points/delete?wait=true", [
+            'filter' => ['must' => [
+                ['key' => 'brand_id', 'match' => ['value' => $brandId]],
+                ['key' => 'doc_id',   'match' => ['value' => $docId]],
+            ]],
         ]);
     }
 

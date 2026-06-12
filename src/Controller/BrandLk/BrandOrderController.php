@@ -130,6 +130,92 @@ class BrandOrderController extends BrandDashboardController
         return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
     }
 
+    /** ЗоЗПП: бренд подтверждает, что покупатель получил товар. */
+    #[Route('/{id}/confirm-delivery', name: '_confirm_delivery', methods: ['POST'])]
+    public function confirmDelivery(Order $order, Request $request, EntityManagerInterface $em): Response
+    {
+        $this->denyUnlessOwns($order, $this->getActiveBrand());
+
+        if (!$this->isCsrfTokenValid('confirm_delivery', $request->request->get('_token'))) {
+            $this->addFlash('error', 'Недействительный токен');
+            return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+        }
+
+        $order->setSellerDeliveryConfirmedAt(new \DateTimeImmutable());
+        $em->flush();
+
+        $this->addFlash('success', 'Отмечено: покупатель получил товар');
+        return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+    }
+
+    /** ЗоЗПП: зафиксировать поступившее требование возврата предоплаты (старт 10 дней). */
+    #[Route('/{id}/refund/request', name: '_refund_request', methods: ['POST'])]
+    public function recordRefundRequest(Order $order, Request $request, EntityManagerInterface $em): Response
+    {
+        $this->denyUnlessOwns($order, $this->getActiveBrand());
+
+        if (!$this->isCsrfTokenValid('refund_request', $request->request->get('_token'))) {
+            $this->addFlash('error', 'Недействительный токен');
+            return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+        }
+
+        $dateStr = trim((string) $request->request->get('requested_at', ''));
+        try {
+            $requestedAt = $dateStr !== '' ? new \DateTimeImmutable($dateStr) : new \DateTimeImmutable();
+        } catch (\Exception) {
+            $this->addFlash('error', 'Некорректная дата требования');
+            return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+        }
+
+        $order->setPrepaymentRefundRequestedAt($requestedAt);
+        $em->flush();
+
+        $this->addFlash('success', 'Требование возврата зафиксировано');
+        return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+    }
+
+    /** ЗоЗПП: отметить, что покупателю направлено подтверждение от продавца (гасит требование). */
+    #[Route('/{id}/refund/confirmation-sent', name: '_refund_confirmation_sent', methods: ['POST'])]
+    public function markRefundConfirmationSent(Order $order, Request $request, EntityManagerInterface $em): Response
+    {
+        $this->denyUnlessOwns($order, $this->getActiveBrand());
+
+        if (!$this->isCsrfTokenValid('refund_confirmation_sent', $request->request->get('_token'))) {
+            $this->addFlash('error', 'Недействительный токен');
+            return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+        }
+
+        if ($order->getPrepaymentRefundRequestedAt() === null) {
+            $this->addFlash('error', 'Сначала зафиксируйте требование возврата');
+            return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+        }
+
+        $order->setRefundConfirmationSentAt(new \DateTimeImmutable());
+        $em->flush();
+
+        $this->addFlash('success', 'Отмечено: подтверждение направлено покупателю');
+        return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+    }
+
+    /** Сохранить внутреннюю заметку по заказу (не видна покупателю). */
+    #[Route('/{id}/note', name: '_note', methods: ['POST'])]
+    public function saveNote(Order $order, Request $request, EntityManagerInterface $em): Response
+    {
+        $this->denyUnlessOwns($order, $this->getActiveBrand());
+
+        if (!$this->isCsrfTokenValid('order_note', $request->request->get('_token'))) {
+            $this->addFlash('error', 'Недействительный токен');
+            return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+        }
+
+        $note = trim((string) $request->request->get('admin_note', ''));
+        $order->setAdminNote($note !== '' ? $note : null);
+        $em->flush();
+
+        $this->addFlash('success', 'Заметка сохранена');
+        return $this->redirectToRoute('brand_order_show', ['id' => $order->getId()]);
+    }
+
     private function sendOrderNotification(NotificationDispatcher $notifier, Order $order, string $newStatus): void
     {
         $notifier->dispatch(

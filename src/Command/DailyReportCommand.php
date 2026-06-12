@@ -74,19 +74,62 @@ class DailyReportCommand extends Command
             ? sprintf('%d/%d (%.0f%%)', $cohort['idx'], $cohort['checked'], 100 * $cohort['idx'] / max(1, (int) $cohort['checked']))
             : '— (нет когорты 14д+)';
 
+        // --- Контакты (локальная БД) ---
+        $contacts = $this->db->fetchAssociative(
+            "SELECT
+               COUNT(*)                                           AS total,
+               SUM(b.email IS NOT NULL AND b.email != '')         AS with_email,
+               SUM(b.phone IS NOT NULL AND b.phone != '')         AS with_phone,
+               SUM(b.contact_status = 'enriched')                 AS enriched,
+               SUM(b.contact_status = 'partial')                  AS partial,
+               SUM(b.contact_status = 'not_found')                AS not_found,
+               SUM(o.bounced_at IS NOT NULL)                      AS bounced,
+               SUM(b.contact_enriched_at IS NOT NULL
+                   AND b.contact_enriched_at < DATE_SUB(NOW(), INTERVAL 180 DAY)) AS stale
+             FROM brand b
+             LEFT JOIN brand_outreach o ON o.brand_id = b.id AND o.bounced_at IS NOT NULL
+             WHERE b.status IN ('active', 'new')"
+        ) ?: [];
+        $updated24h = (int) $this->db->fetchOne(
+            "SELECT COUNT(*) FROM brand WHERE contact_enriched_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"
+        );
+
+        $contactLine = '';
+        if (($contacts['total'] ?? 0) > 0) {
+            $t   = (int) $contacts['total'];
+            $em  = (int) $contacts['with_email'];
+            $ph  = (int) $contacts['with_phone'];
+            $en  = (int) $contacts['enriched'];
+            $pa  = (int) $contacts['partial'];
+            $nf  = (int) $contacts['not_found'];
+            $bo  = (int) $contacts['bounced'];
+            $st  = (int) $contacts['stale'];
+            $u24 = $updated24h;
+            $contactLine = sprintf(
+                "\n\n<b>📬 Контакты:</b> email %d/%d (%d%%) · тел. %d/%d (%d%%) · " .
+                "enr %d · part %d · nf %d · %s · stale %d · +%d/24ч",
+                $em, $t, $t > 0 ? round(100 * $em / $t) : 0,
+                $ph, $t, $t > 0 ? round(100 * $ph / $t) : 0,
+                $en, $pa, $nf,
+                $bo > 0 ? "⛔ bounced {$bo}" : 'bounced 0',
+                $st, $u24,
+            );
+        }
+
         $msg = sprintf(
             "<b>📅 Дайджест · %s</b>\n\n" .
             "<b>Публикации (прод):</b> сегодня %s · всего %s · ждут %s\n" .
             "Последняя: %s\n\n" .
             "<b>GSC:</b> проверено %d · в индексе %d\n" .
             "Когорта 14д+ в индексе: %s\n" .
-            "Последняя проверка: %s",
+            "Последняя проверка: %s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
             $pub['published_today'], $pub['published_total'], $pub['queue_pending'],
             $pub['last_published'],
             $gscChecked, $gscIndexed,
             $cohortTxt,
             $gscLast,
+            $contactLine,
         );
 
         $io->text(strip_tags($msg));

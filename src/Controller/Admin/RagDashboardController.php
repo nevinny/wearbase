@@ -2,8 +2,17 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\Brand;
+use App\Entity\BrandRagPipeline;
+use App\Entity\BrandSourceDocument;
+use App\Entity\BrandSourceUrl;
+use App\Service\VectorStoreService;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Option\EA;
+use EasyCorp\Bundle\EasyAdminBundle\Factory\AdminContextFactory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -17,6 +26,10 @@ class RagDashboardController extends AbstractController
 {
     public function __construct(
         private readonly Connection $db,
+        private readonly EntityManagerInterface $em,
+        private readonly VectorStoreService $vectors,
+        private readonly AdminContextFactory $adminContextFactory,
+        private readonly DashboardController $dashboard,
         private readonly \Symfony\Contracts\HttpClient\HttpClientInterface $httpClient,
         #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::PROD_API_URL)%')]
         private readonly ?string $prodApiUrl,
@@ -28,8 +41,9 @@ class RagDashboardController extends AbstractController
     }
 
     #[Route('', name: '')]
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $this->initAdminContext($request);
         $one = fn(string $sql, array $p = []) => (int) $this->db->fetchOne($sql, $p);
         $all = fn(string $sql) => $this->db->fetchAllKeyValue($sql);
 
@@ -93,21 +107,8 @@ class RagDashboardController extends AbstractController
             'документов корпуса'  => $one("SELECT COUNT(*) FROM brand_source_document"),
         ];
 
-        // --- GSC ---
-        $cohort = $this->db->fetchAssociative(
-            "SELECT COUNT(s.id) checked, COALESCE(SUM(s.indexed),0) idx FROM brand b
-             JOIN gsc_index_status s ON s.brand_id = b.id
-             WHERE b.published_at IS NOT NULL AND b.published_at <= DATE_SUB(NOW(), INTERVAL 14 DAY)",
-        ) ?: ['checked' => 0, 'idx' => 0];
-        $gsc = [
-            'проверено страниц' => $one("SELECT COUNT(*) FROM gsc_index_status"),
-            'в индексе Google'  => $one("SELECT COALESCE(SUM(indexed),0) FROM gsc_index_status"),
-            'когорта 14д+ в индексе' => (int) $cohort['checked'] > 0
-                ? sprintf('%d/%d (%.0f%%)', $cohort['idx'], $cohort['checked'], 100 * $cohort['idx'] / $cohort['checked'])
-                : '— (нет когорты)',
-            'последняя проверка' => $this->db->fetchOne("SELECT MAX(last_checked_at) FROM gsc_index_status") ?: '—',
-            'строк аналитики'   => $one("SELECT COUNT(*) FROM gsc_page_stats"),
-        ];
+        // --- GSC --- (таблицы gsc_* живут на проде; на dev их может не быть → fail-soft)
+        $gsc = $this->gscStats();
 
         // --- Outreach (письма) — данные на ПРОДЕ, тянем через агент-API ---
         $outreach = $this->prodOutreach();
@@ -121,8 +122,9 @@ class RagDashboardController extends AbstractController
      * Владелец проходит список, сверяет данные и решает: переобогатить или скрыть.
      */
     #[Route('/review', name: '_review')]
-    public function review(): Response
+    public function review(Request $request): Response
     {
+        $this->initAdminContext($request);
         $rows = $this->db->fetchAllAssociative(<<<'SQL'
             SELECT b.id, b.title, b.slug, b.email, b.description, b.status AS brand_status,
                    p.last_error,
@@ -173,6 +175,405 @@ class RagDashboardController extends AbstractController
         }
 
         return $this->redirectToRoute('admin_rag_review');
+    }
+
+    // =====================================================================
+    //  Панель управления конвейером по одному бренду («подсказывать вручную»)
+    // =====================================================================
+
+    /** Поиск бренда (id / slug / название) → редирект на его панель. */
+    #[Route('/brand', name: '_brand', methods: ['GET'])]
+    public function brandLookup(Request $request): Response
+    {
+        $this->initAdminContext($request);
+        $q = trim((string) $request->query->get('q', ''));
+        if ($q === '') {
+            return $this->render('admin/rag_brand_search.html.twig', ['q' => '', 'results' => []]);
+        }
+
+        if (ctype_digit($q)) {
+            if ($this->db->fetchOne('SELECT id FROM brand WHERE id = :id', ['id' => (int) $q])) {
+                return $this->redirectToRoute('admin_rag_brand_panel', ['id' => (int) $q]);
+            }
+        }
+
+        $results = $this->db->fetchAllAssociative(
+            'SELECT id, title, slug, status FROM brand WHERE slug = :q OR title LIKE :like ORDER BY (slug = :q) DESC, title ASC LIMIT 25',
+            ['q' => $q, 'like' => '%' . $q . '%'],
+        );
+
+        if (count($results) === 1) {
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => (int) $results[0]['id']]);
+        }
+
+        return $this->render('admin/rag_brand_search.html.twig', ['q' => $q, 'results' => $results]);
+    }
+
+    /** Панель бренда: статусы всех этапов, очередь URL, корпус, формы ручного ввода. */
+    #[Route('/brand/{id}', name: '_brand_panel', methods: ['GET'], requirements: ['id' => '\d+'])]
+    public function brandPanel(int $id, Request $request): Response
+    {
+        $this->initAdminContext($request);
+        $brand = $this->db->fetchAssociative(
+            'SELECT id, title, slug, status, city, email, description, meta_title, meta_description,
+                    contact_status, contact_attempts
+             FROM brand WHERE id = :id',
+            ['id' => $id],
+        );
+        if ($brand === false) {
+            throw $this->createNotFoundException("Бренд #{$id} не найден");
+        }
+
+        $pipeline = $this->db->fetchAssociative('SELECT * FROM brand_rag_pipeline WHERE brand_id = :id', ['id' => $id]) ?: null;
+
+        $urls = $this->db->fetchAllAssociative(
+            'SELECT id, status, source_type, tier, relevance_score, url, attempts, last_error, fetched_at
+             FROM brand_source_url WHERE brand_id = :id ORDER BY tier ASC, relevance_score DESC, id ASC',
+            ['id' => $id],
+        );
+
+        $docs = $this->db->fetchAllAssociative(
+            'SELECT id, source_type, relevance_score, char_count, embedded, http_status, url, created_at, deleted_at
+             FROM brand_source_document WHERE brand_id = :id ORDER BY id ASC',
+            ['id' => $id],
+        );
+
+        // Чанки в Qdrant — fail-soft (сервер может быть недоступен).
+        try {
+            $chunkCount = $this->vectors->countByBrand($id);
+        } catch (\Throwable) {
+            $chunkCount = null;
+        }
+
+        return $this->render('admin/rag_brand.html.twig', [
+            'brand'      => $brand,
+            'pipeline'   => $pipeline,
+            'urls'       => $urls,
+            'docs'       => $docs,
+            'chunkCount' => $chunkCount,
+            'urlTypes'   => [
+                BrandSourceUrl::TYPE_OWN_SITE, BrandSourceUrl::TYPE_MARKETPLACE,
+                BrandSourceUrl::TYPE_CATALOG, BrandSourceUrl::TYPE_ARTICLE_REVIEW,
+                BrandSourceUrl::TYPE_SOCIAL, BrandSourceUrl::TYPE_MENTION,
+            ],
+        ]);
+    }
+
+    /** Вставка готового факт-текста → brand_source_document (manual) → ставит на embed. */
+    #[Route('/brand/{id}/fact', name: '_brand_fact', methods: ['POST'], requirements: ['id' => '\d+'])]
+    public function brandAddFact(int $id, Request $request): Response
+    {
+        $brand = $this->requireBrandCsrf($id, $request);
+        if (!$brand instanceof Brand) {
+            return $brand; // redirect (ошибка CSRF/не найден)
+        }
+
+        $text = trim((string) $request->request->get('fact'));
+        if (mb_strlen($text) < 20) {
+            $this->addFlash('danger', 'Слишком короткий факт (нужно ≥20 символов).');
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        // Дедуп по (brand_id, content_hash): один и тот же текст не плодим.
+        $hash = hash('sha256', $text);
+        $dup = $this->db->fetchOne(
+            'SELECT id FROM brand_source_document WHERE brand_id = :id AND content_hash = :h',
+            ['id' => $id, 'h' => $hash],
+        );
+        if ($dup) {
+            $this->addFlash('warning', 'Такой факт уже есть в корпусе (#' . $dup . ').');
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        $doc = (new BrandSourceDocument())
+            ->setBrand($brand)
+            ->setUrl('manual://admin')
+            ->setSourceType(BrandSourceUrl::TYPE_OWN_SITE) // авторитетный источник: приоритет в retrieve
+            ->setRelevanceScore(1.0)
+            ->setCleanText($text)
+            ->setEmbedded(false);
+        $this->em->persist($doc);
+
+        // Ставим бренд на embed: pipeline → scraped (embed-стадия берёт status='scraped').
+        $p = $this->pipelineFor($brand);
+        $p->setStatus(BrandRagPipeline::STATUS_SCRAPED)
+          ->setEmbeddedAt(null)
+          ->setContentChangedAt(new \DateTime())
+          ->setLastError(null);
+
+        $this->em->flush();
+
+        $this->addFlash('success', 'Факт добавлен в корпус, бренд поставлен на embed → generate (демон, ближайший цикл).');
+        $this->addFlash('warning', 'Для grounded-генерации gate требует ≥3 чанков (~4000+ символов). Если суммарного текста мало — бренд уйдёт в deferred. Добавьте развёрнутый текст или ещё факты.');
+        return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+    }
+
+    /** Добавление URL-источника в очередь discover→fetch вручную. */
+    #[Route('/brand/{id}/url', name: '_brand_url', methods: ['POST'], requirements: ['id' => '\d+'])]
+    public function brandAddUrl(int $id, Request $request): Response
+    {
+        $brand = $this->requireBrandCsrf($id, $request);
+        if (!$brand instanceof Brand) {
+            return $brand;
+        }
+
+        $url  = trim((string) $request->request->get('url'));
+        $type = (string) $request->request->get('source_type', BrandSourceUrl::TYPE_OWN_SITE);
+
+        if (filter_var($url, FILTER_VALIDATE_URL) === false || !preg_match('#^https?://#i', $url)) {
+            $this->addFlash('danger', 'Некорректный URL (нужен http(s)://…).');
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        $allowed = [
+            BrandSourceUrl::TYPE_OWN_SITE, BrandSourceUrl::TYPE_MARKETPLACE,
+            BrandSourceUrl::TYPE_CATALOG, BrandSourceUrl::TYPE_ARTICLE_REVIEW,
+            BrandSourceUrl::TYPE_SOCIAL, BrandSourceUrl::TYPE_MENTION,
+        ];
+        if (!in_array($type, $allowed, true)) {
+            $type = BrandSourceUrl::TYPE_MENTION;
+        }
+
+        // Дедуп по (brand_id, url_hash) — как в discover.
+        $hash = BrandSourceUrl::normalizeHash($url);
+        if ($this->db->fetchOne('SELECT id FROM brand_source_url WHERE brand_id = :id AND url_hash = :h', ['id' => $id, 'h' => $hash])) {
+            $this->addFlash('warning', 'Такой URL уже в очереди источников.');
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        $u = (new BrandSourceUrl())
+            ->setBrand($brand)
+            ->setUrl($url)
+            ->setSourceType($type)
+            ->setTier($this->tierForType($type))
+            ->setRelevanceScore(0.9) // ручной ввод = доверенный
+            ->setStatus(BrandSourceUrl::STATUS_PENDING);
+        $this->em->persist($u);
+        $this->em->flush();
+
+        $this->addFlash('success', 'URL добавлен в очередь. Заберёт app:brand:fetch (демон), затем embed → generate.');
+        return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+    }
+
+    /** Правка названия/slug + сброс на повторный discover (фикс транслита и т.п.). */
+    #[Route('/brand/{id}/rename', name: '_brand_rename', methods: ['POST'], requirements: ['id' => '\d+'])]
+    public function brandRename(int $id, Request $request): Response
+    {
+        $brand = $this->requireBrandCsrf($id, $request);
+        if (!$brand instanceof Brand) {
+            return $brand;
+        }
+
+        $title = trim((string) $request->request->get('title'));
+        $slug  = trim((string) $request->request->get('slug'));
+        if ($title === '' || $slug === '') {
+            $this->addFlash('danger', 'Название и slug не могут быть пустыми.');
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        if ($slug !== $brand->getSlug()
+            && $this->db->fetchOne('SELECT id FROM brand WHERE slug = :s AND id <> :id', ['s' => $slug, 'id' => $id])) {
+            $this->addFlash('danger', "Slug «{$slug}» уже занят другим брендом.");
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        $brand->setTitle($title)->setSlug($slug);
+
+        // Сброс на повторный discover с исправленным именем.
+        $p = $this->pipelineFor($brand);
+        $p->setStatus(BrandRagPipeline::STATUS_PENDING)
+          ->setDiscoveredAt(null)
+          ->setHasOwnSite(null)
+          ->setLastError(null);
+
+        $this->em->flush();
+
+        $this->addFlash('success', 'Бренд переименован. Поставлен на повторный discover с новым названием.');
+        return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+    }
+
+    /** Перезапуск конкретного этапа: сбрасывает состояние, демон обработает заново. */
+    #[Route('/brand/{id}/rerun/{stage}', name: '_brand_rerun', methods: ['POST'], requirements: ['id' => '\d+', 'stage' => 'discover|fetch|embed|generate|contacts'])]
+    public function brandRerun(int $id, string $stage, Request $request): Response
+    {
+        $brand = $this->requireBrandCsrf($id, $request);
+        if (!$brand instanceof Brand) {
+            return $brand;
+        }
+
+        // Контакты — поля бренда, не pipeline. Демон зовёт enrich-contacts без --force,
+        // поэтому, чтобы он переобработал даже терминальный not_found, ставим бренд в
+        // его link-агностичную ветку finder'а (contactStatus='error' AND attempts<3).
+        if ($stage === 'contacts') {
+            $this->db->executeStatement(
+                "UPDATE brand SET contact_status='error', contact_attempts=0 WHERE id = :id",
+                ['id' => $id],
+            );
+            $this->addFlash('success', 'Контакты поставлены на переобогащение (демон, с обходом not_found). Статус временно «error», демон перепишет его.');
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        $p = $this->pipelineFor($brand);
+
+        switch ($stage) {
+            case 'discover':
+                $p->setStatus(BrandRagPipeline::STATUS_PENDING)->setDiscoveredAt(null)->setHasOwnSite(null)->setLastError(null);
+                break;
+            case 'fetch':
+                // Переоткрываем уже обработанные URL для повторного скрейпа.
+                $this->db->executeStatement(
+                    "UPDATE brand_source_url SET status='pending', attempts=0, last_error=NULL WHERE brand_id = :id AND status IN ('fetched','failed','skipped')",
+                    ['id' => $id],
+                );
+                break;
+            case 'embed':
+                // Полный пере-embed: помечаем документы неэмбеддженными + status=scraped.
+                $this->db->executeStatement('UPDATE brand_source_document SET embedded = 0 WHERE brand_id = :id', ['id' => $id]);
+                $p->setStatus(BrandRagPipeline::STATUS_SCRAPED)->setEmbeddedAt(null)->setLastError(null);
+                break;
+            case 'generate':
+                $p->setStatus(BrandRagPipeline::STATUS_EMBEDDED)->setGeneratedAt(null)->setLastError(null);
+                break;
+        }
+
+        $this->em->flush();
+
+        $this->addFlash('success', "Этап «{$stage}» сброшен — демон перезапустит его в ближайшем цикле.");
+        return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+    }
+
+    /** Soft-skip нерелевантного URL: статус skipped (не рефетчим; dedup не даст discover'у вернуть его). */
+    #[Route('/brand/{id}/url/{urlId}/skip', name: '_brand_url_skip', methods: ['POST'], requirements: ['id' => '\d+', 'urlId' => '\d+'])]
+    public function brandSkipUrl(int $id, int $urlId, Request $request): Response
+    {
+        $brand = $this->requireBrandCsrf($id, $request);
+        if (!$brand instanceof Brand) {
+            return $brand;
+        }
+
+        $affected = $this->db->executeStatement(
+            "UPDATE brand_source_url SET status='skipped', last_error='skipped вручную в админке' WHERE id = :uid AND brand_id = :bid",
+            ['uid' => $urlId, 'bid' => $id],
+        );
+        $this->addFlash($affected ? 'success' : 'warning', $affected ? "URL #{$urlId} помечен skipped." : "URL #{$urlId} не найден у бренда.");
+        return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+    }
+
+    /** Soft-delete нерелевантного документа: deleted_at + удаление его чанков из Qdrant + регенерация. */
+    #[Route('/brand/{id}/doc/{docId}/remove', name: '_brand_doc_remove', methods: ['POST'], requirements: ['id' => '\d+', 'docId' => '\d+'])]
+    public function brandRemoveDoc(int $id, int $docId, Request $request): Response
+    {
+        $brand = $this->requireBrandCsrf($id, $request);
+        if (!$brand instanceof Brand) {
+            return $brand;
+        }
+
+        $doc = $this->em->getRepository(BrandSourceDocument::class)->findOneBy(['id' => $docId, 'brand' => $brand]);
+        if ($doc === null || $doc->getDeletedAt() !== null) {
+            $this->addFlash('warning', "Документ #{$docId} не найден или уже удалён.");
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        $doc->setDeletedAt(new \DateTime());
+
+        // Чистим чанки документа из Qdrant (fail-soft: сервер мог быть недоступен).
+        try {
+            $this->vectors->deleteByDoc($id, $docId);
+        } catch (\Throwable $e) {
+            $this->addFlash('warning', 'Qdrant недоступен — чанки не удалены, повторите «↻ embed» позже: ' . $e->getMessage());
+        }
+
+        // Перегенерируем описание из оставшихся чанков.
+        $p = $this->pipelineFor($brand);
+        $p->setStatus(BrandRagPipeline::STATUS_EMBEDDED)
+          ->setGeneratedAt(null)
+          ->setContentChangedAt(new \DateTime());
+
+        $this->em->flush();
+
+        $this->addFlash('success', "Документ #{$docId} убран (soft-delete) + чанки удалены. Бренд поставлен на регенерацию.");
+        return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+    }
+
+    /** Проверка CSRF + загрузка Brand-сущности. Возвращает Brand или redirect-Response. */
+    private function requireBrandCsrf(int $id, Request $request): Brand|Response
+    {
+        if (!$this->isCsrfTokenValid('rag_brand_' . $id, (string) $request->request->get('_token'))) {
+            $this->addFlash('danger', 'Неверный CSRF-токен.');
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+        $brand = $this->em->getRepository(Brand::class)->find($id);
+        if ($brand === null) {
+            $this->addFlash('danger', "Бренд #{$id} не найден.");
+            return $this->redirectToRoute('admin_rag');
+        }
+        return $brand;
+    }
+
+    /** Находит строку пайплайна бренда или создаёт новую (статус pending). */
+    private function pipelineFor(Brand $brand): BrandRagPipeline
+    {
+        $p = $this->em->getRepository(BrandRagPipeline::class)->findOneBy(['brand' => $brand]);
+        if ($p === null) {
+            $p = (new BrandRagPipeline())->setBrand($brand);
+            $this->em->persist($p);
+        }
+        return $p;
+    }
+
+    /**
+     * Эти страницы — обычные #[Route]-контроллеры, а не EasyAdmin-CRUD, поэтому EA не
+     * создаёт AdminContext автоматически → Twig-функция ea() вернула бы null и layout
+     * упал бы на ea.i18n. Строим контекст вручную (как EA для лендинга дашборда:
+     * dashboard-контроллер + null CRUD) и кладём в атрибут запроса, откуда его читает
+     * AdminContextProvider.
+     */
+    private function initAdminContext(Request $request): void
+    {
+        if ($request->attributes->has(EA::CONTEXT_REQUEST_ATTRIBUTE)) {
+            return;
+        }
+        $context = $this->adminContextFactory->create($request, $this->dashboard, null);
+        $request->attributes->set(EA::CONTEXT_REQUEST_ATTRIBUTE, $context);
+    }
+
+    private function tierForType(string $type): int
+    {
+        return match ($type) {
+            BrandSourceUrl::TYPE_OWN_SITE => BrandSourceUrl::TIER_OWN_SITE,
+            BrandSourceUrl::TYPE_SOCIAL, BrandSourceUrl::TYPE_MENTION => BrandSourceUrl::TIER_MENTIONS,
+            default => BrandSourceUrl::TIER_CORPUS,
+        };
+    }
+
+    /**
+     * GSC-статистика (gsc_index_status / gsc_page_stats). Эти таблицы наполняются
+     * только на проде; на dev их может не быть → fail-soft (иначе вся страница 500).
+     *
+     * @return array<string,mixed>
+     */
+    private function gscStats(): array
+    {
+        try {
+            $one = fn(string $sql) => (int) $this->db->fetchOne($sql);
+            $cohort = $this->db->fetchAssociative(
+                "SELECT COUNT(s.id) checked, COALESCE(SUM(s.indexed),0) idx FROM brand b
+                 JOIN gsc_index_status s ON s.brand_id = b.id
+                 WHERE b.published_at IS NOT NULL AND b.published_at <= DATE_SUB(NOW(), INTERVAL 14 DAY)",
+            ) ?: ['checked' => 0, 'idx' => 0];
+
+            return [
+                'проверено страниц' => $one("SELECT COUNT(*) FROM gsc_index_status"),
+                'в индексе Google'  => $one("SELECT COALESCE(SUM(indexed),0) FROM gsc_index_status"),
+                'когорта 14д+ в индексе' => (int) $cohort['checked'] > 0
+                    ? sprintf('%d/%d (%.0f%%)', $cohort['idx'], $cohort['checked'], 100 * $cohort['idx'] / $cohort['checked'])
+                    : '— (нет когорты)',
+                'последняя проверка' => $this->db->fetchOne("SELECT MAX(last_checked_at) FROM gsc_index_status") ?: '—',
+                'строк аналитики'   => $one("SELECT COUNT(*) FROM gsc_page_stats"),
+            ];
+        } catch (\Throwable) {
+            return ['GSC' => 'таблицы недоступны (gsc_* наполняются на проде)'];
+        }
     }
 
     /** Воронка email-активации владельцев брендов — прямой запрос к local-DB. */

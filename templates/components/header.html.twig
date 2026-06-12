@@ -1,93 +1,230 @@
 <header class="sticky-top bg-white shadow-sm">
-    <!-- Верхняя панель -->
-    <div class="bg-dark text-white py-2">
-        <div class="container-fluid">
+    {# Верхняя панель #}
+    <div class="bg-dark text-white py-1">
+        <div class="container-fluid px-3">
             <div class="row align-items-center">
-                <div class="col-md-6">
-                    <small>Бесплатная доставка по всему миру | Возврат в течение 30 дней</small>
+                <div class="col-md-6 d-none d-md-block">
+                    <small>Локальные российские бренды · Доставка по всей России</small>
                 </div>
-                <div class="col-md-6 text-md-end">
-                    <small>
-                        <a href="#" class="text-white text-decoration-none me-3">
-                            <i class="fas fa-globe me-1"></i> Россия
-                        </a>
-                        <a href="#" class="text-white text-decoration-none me-3">
-                            <i class="fas fa-user me-1"></i> Мой аккаунт
-                        </a>
-                        <a href="#" class="text-white text-decoration-none">
-                            <i class="fas fa-heart me-1"></i> Избранное
-                        </a>
+                <div class="col-md-6 text-end">
+                    <small class="d-flex align-items-center justify-content-end gap-3">
+                        {% if app.user %}
+                            <a href="{{ path('account_dashboard') }}" class="text-white text-decoration-none">
+                                <i class="fas fa-user me-1"></i>{{ app.user.firstName ?: app.user.email }}
+                            </a>
+                            {% if app.user.isBrandManager() %}
+                                <a href="{{ path('brand_dashboard') }}" class="text-white-50 text-decoration-none">
+                                    <i class="fas fa-store me-1"></i>ЛК Бренда
+                                </a>
+                            {% endif %}
+                            <a href="{{ path('app_logout') }}" class="text-white-50 text-decoration-none">
+                                <i class="fas fa-sign-out-alt me-1"></i>Выйти
+                            </a>
+                        {% else %}
+                            <a href="{{ path('app_login') }}" class="text-white text-decoration-none">
+                                <i class="fas fa-user me-1"></i>Войти
+                            </a>
+                            <a href="{{ path('app_register') }}" class="text-white-50 text-decoration-none">Регистрация</a>
+                            <a href="{{ path('app_register', {brand: 1}) }}" class="text-white-50 text-decoration-none">
+                                <i class="fas fa-store me-1"></i>Я бренд
+                            </a>
+                        {% endif %}
                     </small>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Основной хедер -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white py-3">
-        <div class="container-fluid">
-            <!-- Лого -->
-            <a class="navbar-brand fw-bold fs-3" href="/">
-                WEARBASE
-            </a>
+    {# Основной хедер #}
+    <nav class="navbar navbar-expand-lg navbar-light bg-white py-2">
+        <div class="container-fluid px-3">
 
-            <!-- Поиск -->
-            <div class="mx-4 flex-grow-1">
-                <form class="d-flex">
+            <a class="navbar-brand fw-bold fs-3 me-4" href="/">WEARBASE</a>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#mainNav" aria-controls="mainNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="mainNav">
+                {# Поиск #}
+                <form class="d-flex flex-grow-1 mx-3" action="{{ path('catalog_index') }}" method="get">
                     <div class="input-group">
-                        <input type="text" class="form-control" placeholder="Поиск брендов, товаров..." aria-label="Search">
+                        <input type="text" name="q" class="form-control"
+                               placeholder="Поиск брендов и товаров..."
+                               value="{{ app.request.query.get('q') }}">
                         <button class="btn btn-dark" type="submit">
                             <i class="fas fa-search"></i>
                         </button>
                     </div>
                 </form>
-            </div>
 
-            <!-- Иконки действий -->
-            <div class="d-flex align-items-center">
-                <a href="#" class="text-dark me-3 position-relative">
-                    <i class="fas fa-user fa-lg"></i>
-                </a>
-                <a href="#" class="text-dark me-3 position-relative">
-                    <i class="fas fa-heart fa-lg"></i>
-                </a>
-                <a href="#" class="text-dark position-relative">
-                    <i class="fas fa-shopping-bag fa-lg"></i>
-                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                        0
-                    </span>
-                </a>
+                {# Иконки справа #}
+                <div class="d-flex align-items-center gap-3 ms-2">
+
+                    {# Аккаунт #}
+                    {% if app.user %}
+                        <a href="{{ path('account_dashboard') }}" class="text-dark text-decoration-none"
+                           title="{{ app.user.fullName }}">
+                            {% if app.user.avatar %}
+                                <img src="{{ vich_uploader_asset(app.user, 'avatarFile') }}"
+                                     class="rounded-circle" width="28" height="28"
+                                     style="object-fit:cover" alt="">
+                            {% else %}
+                                <span class="rounded-circle bg-dark text-white d-inline-flex align-items-center justify-content-center"
+                                      style="width:28px;height:28px;font-size:12px;flex-shrink:0">
+                                    {{ (app.user.firstName ?: app.user.email)|first|upper }}
+                                </span>
+                            {% endif %}
+                        </a>
+                    {% else %}
+                        <a href="{{ path('app_login') }}" class="text-dark" title="Войти">
+                            <i class="fas fa-user fa-lg"></i>
+                        </a>
+                    {% endif %}
+
+                    {# Избранное (TODO) #}
+                    <a href="#" class="text-dark" title="Избранное">
+                        <i class="fas fa-heart fa-lg"></i>
+                    </a>
+
+                    {# Выбор языка #}
+                    {% set current_locale = app.request.locale %}
+                    {% set locale_labels = {
+                        'ru': '🇷🇺 RU', 'en': '🇬🇧 EN', 'zh': '🇨🇳 ZH',
+                        'ar': '🇸🇦 AR', 'tr': '🇹🇷 TR', 'de': '🇩🇪 DE',
+                        'fr': '🇫🇷 FR', 'es': '🇪🇸 ES', 'ko': '🇰🇷 KO'
+                    } %}
+                    {% set locale_names = {
+                        'ru': 'Русский', 'en': 'English', 'zh': '中文',
+                        'ar': 'العربية', 'tr': 'Türkçe', 'de': 'Deutsch',
+                        'fr': 'Français', 'es': 'Español', 'ko': '한국어'
+                    } %}
+                    <div class="dropdown" id="locale-dropdown">
+                        <button class="btn btn-sm btn-outline-secondary border-0 px-2 py-1 d-flex align-items-center gap-1"
+                                type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                                title="Язык">
+                            <span class="fw-semibold" style="font-size:.8rem">
+                                {{ locale_labels[current_locale] ?? '🌐 ' ~ current_locale|upper }}
+                            </span>
+                            <i class="fas fa-chevron-down" style="font-size:.65rem;opacity:.6"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width:150px;font-size:.85rem">
+                            <li><h6 class="dropdown-header text-uppercase" style="font-size:.68rem;letter-spacing:.05em">Язык / Language</h6></li>
+                            {% for code, label in locale_labels %}
+                                <li>
+                                    <form method="post" action="{{ path('locale_switch') }}" class="d-inline">
+                                        <input type="hidden" name="locale" value="{{ code }}">
+                                        <button type="submit"
+                                                class="dropdown-item d-flex justify-content-between align-items-center
+                                                       {{ code == current_locale ? 'fw-semibold' : '' }}">
+                                            <span>{{ label }}</span>
+                                            <small class="text-muted ms-2" style="font-size:.75rem">{{ locale_names[code] }}</small>
+                                        </button>
+                                    </form>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    {# Выбор валюты #}
+                    <div class="dropdown" id="currency-dropdown">
+                        <button class="btn btn-sm btn-outline-secondary border-0 px-2 py-1 d-flex align-items-center gap-1"
+                                type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                                title="Валюта">
+                            <span class="fw-semibold" style="font-size:.8rem" id="currency-label">
+                                {{ app_currency.symbol }} {{ app_currency.code }}
+                            </span>
+                            <i class="fas fa-chevron-down" style="font-size:.65rem;opacity:.6"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width:140px;font-size:.85rem">
+                            <li><h6 class="dropdown-header text-uppercase" style="font-size:.68rem;letter-spacing:.05em">Валюта</h6></li>
+                            {% for cur in currencies_list ?? [] %}
+                                <li>
+                                    <form method="post" action="{{ path('currency_switch') }}" class="d-inline">
+                                        <input type="hidden" name="code" value="{{ cur.code }}">
+                                        <input type="hidden" name="redirect" value="{{ app.request.requestUri }}">
+                                        <button type="submit"
+                                                class="dropdown-item d-flex justify-content-between align-items-center
+                                                       {{ cur.code == app_currency.code ? 'fw-semibold' : '' }}">
+                                            <span>{{ cur.symbol }} {{ cur.code }}</span>
+                                            <small class="text-muted ms-2" style="font-size:.75rem">{{ cur.nameRu|slice(0, 12) }}</small>
+                                        </button>
+                                    </form>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    {# Корзина #}
+                    <a href="{{ path('cart_index') }}" class="text-dark position-relative" title="Корзина"
+                       id="cart-icon-link">
+                        <i class="fas fa-shopping-bag fa-lg"></i>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                              id="header-cart-badge" style="display:none">0</span>
+                    </a>
+
+                </div>
             </div>
         </div>
     </nav>
 
-    <!-- Навигация -->
+    {# Навигация #}
     <div class="border-top">
-        <div class="container-fluid">
-            <ul class="nav justify-content-center">
+        <div class="container-fluid px-3">
+            <ul class="nav justify-content-center py-1">
                 <li class="nav-item">
-                    <a class="nav-link text-dark fw-medium" href="/women">Женщины</a>
+                    <a class="nav-link text-dark fw-medium" href="{{ path('catalog_index', {gender: 'women'}) }}">Женщины</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark fw-medium" href="/men">Мужчины</a>
+                    <a class="nav-link text-dark fw-medium" href="{{ path('catalog_index', {gender: 'men'}) }}">Мужчины</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark fw-medium" href="{{ path('catalog_index', {gender: 'unisex'}) }}">Унисекс</a>
                 </li>
                 <li class="nav-item dropdown">
-                    <a class="nav-link text-dark fw-medium dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                        Бренды
-                    </a>
+                    <a class="nav-link text-dark fw-medium dropdown-toggle" href="#"
+                       role="button" data-bs-toggle="dropdown">Бренды</a>
                     <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="/brands/all">Все бренды</a></li>
-                        <li><a class="dropdown-item" href="/brands/local">Локальные бренды</a></li>
-                        <li><a class="dropdown-item" href="/brands/sustainable">Устойчивые бренды</a></li>
+                        <li><a class="dropdown-item" href="{{ path('brand_index', {_locale: app.request.locale|default('ru')}) }}">Все бренды А–Я</a></li>
+                        <li><a class="dropdown-item" href="{{ path('catalog_index') }}">Каталог товаров</a></li>
                     </ul>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark fw-medium" href="/new-in">Новинки</a>
+                    <a class="nav-link text-dark fw-medium" href="{{ path('catalog_index', {sort: 'new'}) }}">Новинки</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark fw-medium" href="/sale">Скидки</a>
+                    <a class="nav-link text-dark fw-medium" href="{{ path('catalog_index', {sale: 1}) }}">Скидки</a>
                 </li>
             </ul>
         </div>
     </div>
 </header>
+
+{# Обновляем счётчик корзины при загрузке (AJAX) #}
+<script>
+(function () {
+    fetch('/cart/count')
+        .then(r => r.json())
+        .then(data => {
+            const badge = document.getElementById('header-cart-badge');
+            if (badge && data.count > 0) {
+                badge.textContent = data.count;
+                badge.style.display = '';
+            }
+        })
+        .catch(() => {});
+})();
+
+// Глобальная функция для обновления бейджа после add-to-cart
+window.updateCartBadge = function(count) {
+    const badge = document.getElementById('header-cart-badge');
+    if (!badge) return;
+    if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+};
+</script>

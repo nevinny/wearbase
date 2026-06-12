@@ -158,7 +158,7 @@ VichUploader handles brand logos and brand/product images. Mappings are in `conf
 
 ### RAG pipeline (контент брендов из реальных фактов)
 
-Весь AI-стек на LLM-сервере 192.168.2.43 (ollama qwen3.5:27b + qwen3-embedding:0.6b, Qdrant :6333, SearXNG :8080, trafilatura). Env в `.env.local`: `LOCAL_LLM_URL/MODEL`, `LOCAL_EMBED_URL/MODEL`, `QDRANT_URL/API_KEY/COLLECTION`, `SEARXNG_URL`, `TRAFILATURA_BIN`, `WORDSTAT_API_KEY`. Флоу: `discover → fetch → embed → generate-content` (статус-машина `brand_rag_pipeline`); подробности и текущие cap'ы — `docs/tasktracker.md`.
+Весь AI-стек на LLM-сервере 192.168.2.43 (ollama qwen3.5:27b + qwen3-embedding:0.6b, Qdrant :6333, SearXNG :8080, trafilatura). Env в `.env.local`: `LOCAL_LLM_URL/MODEL`, `LOCAL_EMBED_URL/MODEL`, `QDRANT_URL/API_KEY/COLLECTION`, `SEARXNG_URL`, `TRAFILATURA_BIN`, `WORDSTAT_API_KEY`. Флоу: `discover → fetch → embed → generate-content` (статус-машина `brand_rag_pipeline`). **Полный технический reference конвейера (этапы, статус-машина, модель данных, gate качества, gotchas, ручное вмешательство) — [docs/rag_pipeline.md](docs/rag_pipeline.md).** Текущие cap'ы и история — `docs/tasktracker.md`.
 
 ⚠️ **Долгие батчи (сотни+ брендов) запускать с `--no-debug`**: в dev-режиме Doctrine-профайлер копит каждый SQL-запрос с backtrace в памяти (`BacktraceDebugDataHolder`) → OOM на ~750 брендах при 512M. `gc_collect_cycles()` не помогает — это живые ссылки профайлера.
 

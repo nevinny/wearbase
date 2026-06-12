@@ -1,0 +1,131 @@
+# English translations
+# Format: key: translation
+
+# ── Navigation ────────────────────────────────────────────────────────────────
+nav:
+  home:       'Home'
+  catalog:    'Catalog'
+  brands:     'Brands'
+  cart:       'Cart'
+  favorites:  'Wishlist'
+  account:    'My Account'
+  login:      'Sign In'
+  register:   'Sign Up'
+  logout:     'Sign Out'
+  search:     'Search'
+
+# ── Catalog ───────────────────────────────────────────────────────────────────
+catalog:
+  filters:    'Filters'
+  sort:       'Sort by'
+  no_results: 'No products found'
+  show_more:  'Load more'
+  new:        'New'
+  sale:       'Sale'
+  from:       'from'
+
+# ── Product ───────────────────────────────────────────────────────────────────
+product:
+  add_to_cart:    'Add to Cart'
+  add_to_fav:     'Add to Wishlist'
+  size:           'Size'
+  color:          'Color'
+  in_stock:       'In Stock'
+  out_of_stock:   'Out of Stock'
+  delivery:       'Delivery'
+  return_policy:  'Returns'
+  description:    'Description'
+  composition:    'Composition'
+  care:           'Care Instructions'
+
+# ── Cart ──────────────────────────────────────────────────────────────────────
+cart:
+  title:          'Shopping Cart'
+  empty:          'Your cart is empty'
+  continue:       'Continue Shopping'
+  checkout:       'Proceed to Checkout'
+  total:          'Total'
+  subtotal:       'Subtotal'
+  shipping:       'Shipping'
+  discount:       'Discount'
+  promo:          'Promo Code'
+  apply_promo:    'Apply'
+  quantity:       'Qty'
+  remove:         'Remove'
+  free_shipping:  'Free Shipping'
+
+# ── Checkout ──────────────────────────────────────────────────────────────────
+checkout:
+  title:          'Checkout'
+  contact:        'Contact Information'
+  delivery_info:  'Delivery'
+  payment:        'Payment'
+  confirm:        'Place Order'
+  name:           'Name'
+  email:          'Email'
+  phone:          'Phone'
+  address:        'Address'
+  city:           'City'
+  country:        'Country'
+  zip:            'ZIP / Postal Code'
+  comment:        'Order Comment'
+
+# ── Brands ────────────────────────────────────────────────────────────────────
+brand:
+  about:          'About'
+  collection:     'Collection'
+  products:       'Products'
+  contact:        'Contact'
+  website:        'Website'
+  social:         'Social Media'
+
+# ── Account ───────────────────────────────────────────────────────────────────
+account:
+  orders:         'My Orders'
+  order:          'Order'
+  profile:        'Profile'
+  addresses:      'Addresses'
+  favorites:      'Wishlist'
+  settings:       'Settings'
+  order_status:
+    pending:      'Pending'
+    confirmed:    'Confirmed'
+    shipping:     'Shipped'
+    delivered:    'Delivered'
+    cancelled:    'Cancelled'
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+auth:
+  login_title:    'Sign In'
+  register_title: 'Create Account'
+  email:          'Email'
+  password:       'Password'
+  confirm_pass:   'Confirm Password'
+  remember_me:    'Remember me'
+  forgot_pass:    'Forgot password?'
+  no_account:     "Don't have an account?"
+  has_account:    'Already have an account?'
+
+# ── Shipping ──────────────────────────────────────────────────────────────────
+shipping:
+  days:       '{1}%count% day|[2,]%count% days'
+  free:       'Free'
+  calculated: 'Calculated at checkout'
+  to:         'up to'
+
+# ── Common ────────────────────────────────────────────────────────────────────
+common:
+  save:     'Save'
+  cancel:   'Cancel'
+  delete:   'Delete'
+  edit:     'Edit'
+  back:     'Back'
+  close:    'Close'
+  yes:      'Yes'
+  no:       'No'
+  loading:  'Loading…'
+  error:    'Error'
+  success:  'Success'
+  search:   'Search'
+  all:      'All'
+  more:     'More'

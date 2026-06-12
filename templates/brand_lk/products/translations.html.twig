@@ -1,0 +1,61 @@
+{% extends 'brand_lk/layout.html.twig' %}
+{% block title %}Переводы — {{ product.title }}{% endblock %}
+
+{% block brand_content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ path('brand_products') }}">Товары</a></li>
+        <li class="breadcrumb-item"><a href="{{ path('brand_product_edit', {id: product.id}) }}">{{ product.title }}</a></li>
+        <li class="breadcrumb-item active">Переводы</li>
+    </ol>
+</nav>
+
+<form method="post">
+    <input type="hidden" name="_token" value="{{ csrf_token('product_translations') }}">
+    {% for lang in locales %}
+        {% if lang.code != 'ru' %}
+            {% set t = existing[lang.code] ?? null %}
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+                    <span class="flag">{{ lang.code == 'en' ? '🇬🇧' : (lang.code == 'zh' ? '🇨🇳' : (lang.code == 'ar' ? '🇸🇦' : (lang.code == 'de' ? '🇩🇪' : (lang.code == 'fr' ? '🇫🇷' : (lang.code == 'es' ? '🇪🇸' : (lang.code == 'tr' ? '🇹🇷' : (lang.code == 'ko' ? '🇰🇷' : '🌐'))))))) }}</span>
+                    {{ lang.nativeName }} ({{ lang.code }})
+                </div>
+                <div class="card-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Название</label>
+                        <input type="text" name="trans_{{ lang.code }}[title]"
+                               class="form-control" value="{{ t ? t.title : '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Анонс</label>
+                        <input type="text" name="trans_{{ lang.code }}[anons]"
+                               class="form-control" value="{{ t ? t.anons : '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Описание</label>
+                        <textarea name="trans_{{ lang.code }}[description]"
+                                  class="form-control" rows="4">{{ t ? t.description : '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Meta Title</label>
+                        <input type="text" name="trans_{{ lang.code }}[metaTitle]"
+                               class="form-control" value="{{ t ? t.metaTitle : '' }}">
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label">Meta Description</label>
+                        <textarea name="trans_{{ lang.code }}[metaDescription]"
+                                  class="form-control" rows="2">{{ t ? t.metaDescription : '' }}</textarea>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    {% endfor %}
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-dark">
+            <i class="fas fa-save me-1"></i>Сохранить переводы
+        </button>
+        <a href="{{ path('brand_product_edit', {id: product.id}) }}" class="btn btn-outline-secondary">Назад к товару</a>
+    </div>
+</form>
+{% endblock %}

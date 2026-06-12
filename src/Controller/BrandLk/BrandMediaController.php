@@ -39,12 +39,10 @@ class BrandMediaController extends BrandDashboardController
 
         $brand = $this->getActiveBrand();
 
-        $subscription = $this->getActiveSubscription();
-        if ($subscription !== null) {
-            $maxImages = $subscription->getTariff()?->getMaxImages();
-            if ($maxImages !== null && $brand->getImages()->count() >= $maxImages) {
-                return $this->json(['error' => 'Достигнут лимит изображений для вашего тарифа.'], 403);
-            }
+        $maxImages = $this->getActiveSubscription()?->getTariff()?->getMaxImages();
+        $current   = $brand->getImages()->count();
+        if ($maxImages !== null && $current >= $maxImages) {
+            return $this->json(['error' => 'Достигнут лимит изображений для вашего тарифа.'], 403);
         }
 
         $files = $request->files->get('images', []);
@@ -53,12 +51,19 @@ class BrandMediaController extends BrandDashboardController
             $files = [$files];
         }
 
-        $nextSort = $brand->getImages()->count();
+        $nextSort = $current;
 
         $uploaded = 0;
+        $limitReached = false;
         foreach ($files as $file) {
             if (!$file) {
                 continue;
+            }
+
+            // Лимит проверяем на каждый файл — иначе мультизагрузка обходит тариф
+            if ($maxImages !== null && $current + $uploaded >= $maxImages) {
+                $limitReached = true;
+                break;
             }
 
             $violations = $validator->validate($file, new Image([
@@ -80,7 +85,10 @@ class BrandMediaController extends BrandDashboardController
 
         $em->flush();
 
-        return $this->json(['uploaded' => $uploaded]);
+        return $this->json([
+            'uploaded'      => $uploaded,
+            'limit_reached' => $limitReached,
+        ]);
     }
 
     #[Route('/delete/{id}', name: '_delete', methods: ['POST'])]

@@ -49,6 +49,17 @@ class PipelineReportCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $one = fn(string $sql) => (int) $this->db->fetchOne($sql);
 
+        // Throttle: расписание крона не меняется (его не правят из этого окружения),
+        // частоту регулируем тут — шлём не чаще раза в min-interval минут.
+        $minMin   = max(1, (int) $input->getOption('min-interval'));
+        $stateFile = getcwd() . '/var/report-pipeline-last';
+        $last = is_file($stateFile) ? (int) file_get_contents($stateFile) : 0;
+        $next = (($last + $minMin * 60) - time()) / 60;
+        if (time() - $last < $minMin * 60) {
+            $io->text(sprintf('Пропуск отправки: с прошлой прошло < %d мин. Осталось %d мин', $minMin, $next));
+            return Command::SUCCESS;
+        }
+
         // Темп за час — от MAX(ts) самой стадии (TZ-независимо)
         $rate = function (string $table, string $col): int {
             $max = $this->db->fetchOne("SELECT MAX({$col}) FROM {$table}");
@@ -138,15 +149,7 @@ class PipelineReportCommand extends Command
                 $io->warning('Telegram не настроен (ADMIN_TELEGRAM_CHAT_ID).');
                 return Command::SUCCESS; // fail-open
             }
-            // Throttle: расписание крона не меняется (его не правят из этого окружения),
-            // частоту регулируем тут — шлём не чаще раза в min-interval минут.
-            $minMin   = max(1, (int) $input->getOption('min-interval'));
-            $stateFile = getcwd() . '/var/report-pipeline-last';
-            $last = is_file($stateFile) ? (int) file_get_contents($stateFile) : 0;
-            if (time() - $last < $minMin * 60) {
-                $io->text(sprintf('Пропуск отправки: с прошлой прошло < %d мин.', $minMin));
-                return Command::SUCCESS;
-            }
+
             $this->notifier->send($msg);
             @file_put_contents($stateFile, (string) time());
         }

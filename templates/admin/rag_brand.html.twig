@@ -1,0 +1,212 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block page_title %}RAG: {{ brand.title }}{% endblock %}
+
+{% block main %}
+<style>
+    .rb-head { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:6px; }
+    .rb-meta a { margin-right: 14px; white-space: nowrap; }
+    .rb-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap:14px; margin:18px 0; }
+    .rb-card { border:1px solid var(--border-color,#444); border-radius:8px; padding:12px 14px; }
+    .rb-card h3 { margin:0 0 6px; font-size:13px; text-transform:uppercase; opacity:.65; }
+    .rb-kv { font-size:13px; line-height:1.7; }
+    .rb-kv b { opacity:.6; font-weight:normal; }
+    .rb-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; border:1px solid var(--border-color,#888); }
+    .rb-ok { color:#2e9e5b; border-color:#2e9e5b; }
+    .rb-wait { color:#b8860b; border-color:#b8860b; }
+    .rb-bad { color:#c0392b; border-color:#c0392b; }
+    .rb-stage { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .rb-stage form { display:inline; margin:0; }
+    .rb-btn { border:1px solid var(--border-color,#888); background:transparent; color:inherit; border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px; }
+    .rb-forms { display:grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap:18px; margin:22px 0; }
+    .rb-form { border:1px solid var(--border-color,#444); border-radius:8px; padding:14px 16px; }
+    .rb-form h3 { margin:0 0 10px; font-size:14px; }
+    .rb-form textarea, .rb-form input[type=text], .rb-form select { width:100%; box-sizing:border-box; padding:7px 9px;
+        border:1px solid var(--border-color,#888); border-radius:6px; background:transparent; color:inherit; font-size:13px; margin-bottom:8px; }
+    .rb-form textarea { min-height:110px; resize:vertical; }
+    .rb-form button { padding:7px 16px; border:1px solid var(--border-color,#888); border-radius:6px; background:transparent; color:inherit; cursor:pointer; }
+    .rb-table { width:100%; font-size:13px; border-collapse:collapse; margin:8px 0 22px; }
+    .rb-table th, .rb-table td { padding:7px 10px; border-bottom:1px solid var(--border-color,#444); text-align:left; vertical-align:top; }
+    .rb-table th { font-size:11px; text-transform:uppercase; opacity:.6; }
+    .rb-url { max-width:380px; word-break:break-all; }
+    .rb-hint { font-size:12px; opacity:.7; margin-top:-4px; }
+</style>
+
+{% set token = csrf_token('rag_brand_' ~ brand.id) %}
+{% set p = pipeline %}
+
+{% for label, msgs in app.flashes %}
+    {% for msg in msgs %}<div class="alert alert-{{ label }}">{{ msg }}</div>{% endfor %}
+{% endfor %}
+
+<div class="rb-head">
+    <h1 style="margin:0">{{ brand.title }}</h1>
+    <span style="opacity:.5">#{{ brand.id }} · {{ brand.slug }}</span>
+    <span class="rb-badge">{{ brand.status }}</span>
+</div>
+<div class="rb-meta" style="margin-bottom:8px">
+    <a href="https://wearbase.ru/ru/brands/{{ brand.slug }}" target="_blank" rel="noopener">прод ↗</a>
+    <a href="https://www.google.com/search?q={{ brand.title|url_encode }}+бренд+одежды+официальный+сайт" target="_blank" rel="noopener">Google ↗</a>
+    {% if brand.city %}<span style="opacity:.6">{{ brand.city }}</span>{% endif %}
+    <a href="{{ path('admin_rag_brand') }}" style="opacity:.6">← другой бренд</a>
+</div>
+
+{# ---- Статусы этапов ---- #}
+<div class="rb-grid">
+    <div class="rb-card">
+        <h3>Пайплайн</h3>
+        <div class="rb-kv">
+            {% set pstatus = p ? p.status : null %}
+            <b>status:</b> <span class="rb-badge {{ pstatus == 'done' ? 'rb-ok' : (pstatus in ['review','deferred','scrape_failed','embed_failed','generate_failed'] ? 'rb-bad' : 'rb-wait') }}">{{ pstatus ?: '— нет строки' }}</span><br>
+            <b>источников:</b> {{ p ? p.source_count : 0 }} · <b>чанков (Qdrant):</b> {{ chunkCount is null ? 'н/д' : chunkCount }}<br>
+            <b>grounded:</b> {{ p and p.grounded ? 'да' : 'нет' }} · <b>top score:</b> {{ p and p.top_retrieval_score is not null ? p.top_retrieval_score|number_format(3) : '—' }}<br>
+            <b>own_site:</b> {{ p and p.has_own_site is not null ? (p.has_own_site ? 'да' : 'нет') : '?' }}
+            {% if p and p.last_error %}<br><span class="rb-bad" style="font-size:12px">{{ p.last_error|slice(0,200) }}</span>{% endif %}
+        </div>
+    </div>
+
+    {% set stages = [
+        {key:'discover', label:'1 · discover', at: p ? p.discovered_at : null},
+        {key:'fetch',    label:'2 · fetch',    at: p ? p.scraped_at : null},
+        {key:'embed',    label:'3 · embed',    at: p ? p.embedded_at : null},
+        {key:'generate', label:'4 · generate', at: p ? p.generated_at : null}
+    ] %}
+    {% for s in stages %}
+    <div class="rb-card">
+        <h3>{{ s.label }}</h3>
+        <div class="rb-stage">
+            <span class="rb-badge {{ s.at ? 'rb-ok' : 'rb-wait' }}">{{ s.at ? s.at : 'не пройдено' }}</span>
+            <form method="post" action="{{ path('admin_rag_brand_rerun', {id: brand.id, stage: s.key}) }}"
+                  onsubmit="return confirm('Перезапустить этап «{{ s.key }}» для бренда?')">
+                <input type="hidden" name="_token" value="{{ token }}">
+                <button type="submit" class="rb-btn">↻ заново</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="rb-card">
+        <h3>Контакты</h3>
+        <div class="rb-stage">
+            <span class="rb-badge {{ brand.contact_status == 'enriched' ? 'rb-ok' : (brand.contact_status == 'not_found' ? 'rb-bad' : 'rb-wait') }}">{{ brand.contact_status|default('—') }}</span>
+            <form method="post" action="{{ path('admin_rag_brand_rerun', {id: brand.id, stage: 'contacts'}) }}"
+                  onsubmit="return confirm('Переобогатить контакты бренда (обход not_found)?')">
+                <input type="hidden" name="_token" value="{{ token }}">
+                <button type="submit" class="rb-btn">↻ контакты (force)</button>
+            </form>
+        </div>
+        <div class="rb-kv" style="margin-top:6px">
+            <b>попыток:</b> {{ brand.contact_attempts|default(0) }} · <b>email:</b> {{ brand.email ?: '—' }}<br>
+            <b>описание:</b> {{ brand.description ? (brand.description|length ~ ' симв.') : 'нет' }} · <b>meta:</b> {{ brand.meta_title ? 'есть' : 'нет' }}
+        </div>
+    </div>
+</div>
+
+{# ---- Формы ручного ввода ---- #}
+<div class="rb-forms">
+    <div class="rb-form">
+        <h3>Вставить факт-текст</h3>
+        <p class="rb-hint">Готовый текст о бренде → корпус (manual, relevance 1.0) → embed → generate.
+        ⚠️ gate требует ≥3 чанков (~4000+ симв.): вставляйте развёрнутый текст в несколько абзацев
+        (или добавьте несколько фактов), иначе бренд уйдёт в <code>deferred</code> без генерации. Мин. 20 символов.</p>
+        <form method="post" action="{{ path('admin_rag_brand_fact', {id: brand.id}) }}">
+            <input type="hidden" name="_token" value="{{ token }}">
+            <textarea name="fact" placeholder="Бренд основан в… Производит… Ткани… Аудитория… Магазины…"></textarea>
+            <button type="submit">Добавить факт и поставить на embed</button>
+        </form>
+    </div>
+
+    <div class="rb-form">
+        <h3>Добавить URL-источник</h3>
+        <p class="rb-hint">Правильный сайт/страница, которую discover не нашёл → очередь fetch → embed → generate.</p>
+        <form method="post" action="{{ path('admin_rag_brand_url', {id: brand.id}) }}">
+            <input type="hidden" name="_token" value="{{ token }}">
+            <input type="text" name="url" placeholder="https://snqueen.ru">
+            <select name="source_type">
+                {% for t in urlTypes %}<option value="{{ t }}"{{ t == 'own_site' ? ' selected' : '' }}>{{ t }}</option>{% endfor %}
+            </select>
+            <button type="submit">Добавить URL в очередь</button>
+        </form>
+    </div>
+
+    <div class="rb-form">
+        <h3>Исправить название / slug</h3>
+        <p class="rb-hint">Фикс транслита (напр. «Snezhnaya Koroleva» → «Снежная Королева») + повторный discover с новым именем.</p>
+        <form method="post" action="{{ path('admin_rag_brand_rename', {id: brand.id}) }}"
+              onsubmit="return confirm('Переименовать и запустить discover заново?')">
+            <input type="hidden" name="_token" value="{{ token }}">
+            <input type="text" name="title" value="{{ brand.title }}" placeholder="Название">
+            <input type="text" name="slug" value="{{ brand.slug }}" placeholder="slug">
+            <button type="submit">Переименовать + re-discover</button>
+        </form>
+    </div>
+</div>
+
+{# ---- Очередь URL ---- #}
+<h2 style="font-size:16px">Очередь источников ({{ urls|length }})</h2>
+{% if urls is empty %}
+    <p style="opacity:.6">Пусто — discover ещё не наполнял очередь или ничего не нашёл.</p>
+{% else %}
+<table class="rb-table">
+    <thead><tr><th>статус</th><th>тип</th><th>tier</th><th>rel</th><th>URL</th><th>попыток</th><th>fetched</th><th></th></tr></thead>
+    <tbody>
+    {% for u in urls %}
+        <tr{{ u.status == 'skipped' ? ' style="opacity:.45"' : '' }}>
+            <td><span class="rb-badge {{ u.status == 'fetched' ? 'rb-ok' : (u.status == 'failed' ? 'rb-bad' : 'rb-wait') }}">{{ u.status }}</span></td>
+            <td>{{ u.source_type }}</td>
+            <td>{{ u.tier }}</td>
+            <td>{{ u.relevance_score|number_format(2) }}</td>
+            <td class="rb-url"><a href="{{ u.url }}" target="_blank" rel="noopener">{{ u.url }}</a>
+                {% if u.last_error %}<br><small class="rb-bad">{{ u.last_error|slice(0,120) }}</small>{% endif %}</td>
+            <td>{{ u.attempts }}</td>
+            <td>{{ u.fetched_at ?: '—' }}</td>
+            <td>
+                {% if u.status != 'skipped' %}
+                <form method="post" action="{{ path('admin_rag_brand_url_skip', {id: brand.id, urlId: u.id}) }}"
+                      onsubmit="return confirm('Пометить URL нерелевантным (skip)?')">
+                    <input type="hidden" name="_token" value="{{ token }}">
+                    <button type="submit" class="rb-btn">skip</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{# ---- Корпус документов ---- #}
+<h2 style="font-size:16px">Корпус документов ({{ docs|length }})</h2>
+{% if docs is empty %}
+    <p style="opacity:.6">Пусто — fetch ещё не скачал ни одной страницы. Подскажите URL или вставьте факт-текст выше.</p>
+{% else %}
+<table class="rb-table">
+    <thead><tr><th>#</th><th>тип</th><th>rel</th><th>симв.</th><th>embed</th><th>HTTP</th><th>URL</th><th>создан</th><th></th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+        <tr{{ d.deleted_at ? ' style="opacity:.4;text-decoration:line-through"' : '' }}>
+            <td>{{ d.id }}</td>
+            <td>{{ d.source_type }}</td>
+            <td>{{ d.relevance_score|number_format(2) }}</td>
+            <td>{{ d.char_count }}</td>
+            <td>{{ d.embedded ? '✓' : '—' }}</td>
+            <td>{{ d.http_status ?: '—' }}</td>
+            <td class="rb-url">{{ d.url }}</td>
+            <td>{{ d.created_at }}</td>
+            <td>
+                {% if d.deleted_at %}
+                    <span class="rb-badge rb-bad">удалён</span>
+                {% else %}
+                <form method="post" action="{{ path('admin_rag_brand_doc_remove', {id: brand.id, docId: d.id}) }}"
+                      onsubmit="return confirm('Убрать источник из корпуса (soft-delete + удалить чанки из Qdrant)?')">
+                    <input type="hidden" name="_token" value="{{ token }}">
+                    <button type="submit" class="rb-btn" style="border-color:#c0392b;color:#c0392b">удалить</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

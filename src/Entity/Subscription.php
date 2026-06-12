@@ -50,6 +50,11 @@ class Subscription
     #[ORM\Column(options: ['default' => true])]
     private bool $autoRenew = true;
 
+    /** Снимок: редакция оферты продавца, действовавшая для этой подписки. */
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(name: 'accepted_offer_id', nullable: true, onDelete: 'SET NULL')]
+    private ?OfferDocument $acceptedOffer = null;
+
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
@@ -102,6 +107,9 @@ class Subscription
 
     public function isAutoRenew(): bool { return $this->autoRenew; }
     public function setAutoRenew(bool $autoRenew): static { $this->autoRenew = $autoRenew; return $this; }
+
+    public function getAcceptedOffer(): ?OfferDocument { return $this->acceptedOffer; }
+    public function setAcceptedOffer(?OfferDocument $acceptedOffer): static { $this->acceptedOffer = $acceptedOffer; return $this; }
 
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }

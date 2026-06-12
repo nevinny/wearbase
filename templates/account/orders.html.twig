@@ -1,0 +1,72 @@
+{% extends 'account/layout.html.twig' %}
+{% block title %}Мои заказы — WEARBASE{% endblock %}
+
+{% block account_content %}
+<h2 class="h5 fw-bold mb-4">Мои заказы</h2>
+
+{% if orders|length == 0 %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5 text-muted">
+            <i class="fas fa-box-open fa-3x mb-3 d-block opacity-25"></i>
+            <p>Заказов пока нет</p>
+            <a href="{{ path('catalog_index') }}" class="btn btn-dark">Перейти в каталог</a>
+        </div>
+    </div>
+{% else %}
+<div class="d-flex flex-column gap-3">
+{% for order in orders %}
+    {% set steps = ['new', 'confirmed', 'processing', 'shipped', 'delivered', 'completed'] %}
+    {% set currentStep = 0 %}
+    {% for s in steps %}{% if s == order.status %}{% set currentStep = loop.index0 %}{% endif %}{% endfor %}
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+                <span class="fw-semibold">#{{ order.orderNumber }}</span>
+                <span class="text-muted ms-2 small">от {{ order.createdAt|date('d.m.Y') }}</span>
+            </div>
+            {% set statusColors = {
+                'new': 'secondary', 'confirmed': 'primary', 'processing': 'primary',
+                'shipped': 'info', 'delivered': 'success', 'completed': 'success',
+                'cancelled': 'danger', 'returned': 'warning', 'refunded': 'warning'
+            } %}
+            <span class="badge bg-{{ statusColors[order.status] ?? 'secondary' }}">
+                {{ order.statusLabel ?? order.status }}
+            </span>
+        </div>
+        <div class="card-body">
+
+            {# Прогресс-бар #}
+            {% if order.status not in ['cancelled', 'returned', 'refunded'] %}
+            <div class="d-flex mb-3 gap-1">
+                {% for s in steps %}
+                <div class="flex-fill" style="height:3px;background:{{ loop.index0 <= currentStep ? '#111' : '#e8e8e8' }};border-radius:2px"></div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {# Товары #}
+            <div class="small">
+                {% for item in order.orderItems %}
+                <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span class="text-muted">
+                        {{ item.productTitle }}
+                        {% if item.variantTitle %}<span class="text-muted">({{ item.variantTitle }})</span>{% endif %}
+                        × {{ item.qty }}
+                    </span>
+                    <span class="fw-semibold">{{ price(item.total) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <div class="fw-bold small">Итого: {{ price(order.totalAmount) }}</div>
+                <a href="{{ path('account_order_show', {number: order.orderNumber}) }}"
+                   class="btn btn-sm btn-outline-secondary">Подробнее →</a>
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

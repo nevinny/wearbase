@@ -1,0 +1,72 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+
+{% block title %}Бренды одежды по городам России — местные марки от Москвы до Владивостока | WEARBASE{% endblock %}
+
+{% block meta_description %}Местные бренды одежды по городам России: Москва, Санкт-Петербург, Екатеринбург и другие. {{ totalBrands }}+ локальных марок с контактами и сайтами — покупайте у производителей своего города напрямую.{% endblock %}
+
+{% block meta_keywords %}местные бренды одежды, локальные бренды одежды, бренды одежды москва, бренды одежды спб, бренды одежды екатеринбург, российские бренды по городам{% endblock %}
+
+{% block og_title %}Бренды одежды по городам России | WEARBASE{% endblock %}
+
+{% block og_description %}{{ totalBrands }}+ местных брендов одежды из городов России — с контактами и сайтами.{% endblock %}
+
+{% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
+
+{% block canonical_url %}{{ url('brand_cities', {_locale: page_locale}) }}{% endblock %}
+
+{% block body %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": "{{ url('brand_cities', {_locale: page_locale}) }}#webpage",
+                "url": "{{ url('brand_cities', {_locale: page_locale}) }}",
+                "name": "Бренды одежды по городам России | WEARBASE",
+                "breadcrumb": {"@id": "{{ url('brand_cities', {_locale: page_locale}) }}#breadcrumb"}
+            },
+            {
+                "@type": "BreadcrumbList",
+                "@id": "{{ url('brand_cities', {_locale: page_locale}) }}#breadcrumb",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 2, "name": "Города", "item": "{{ url('brand_cities', {_locale: page_locale}) }}"}
+                ]
+            }
+        ]
+    }
+    </script>
+
+    <div class="container mx-auto px-4 py-10">
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">Города</span>
+        </nav>
+
+        <h1 class="text-3xl md:text-4xl font-bold mb-3">Бренды одежды по городам России</h1>
+        <p class="text-gray-600 max-w-2xl mb-10">Локальные марки шьют рядом с вами: {{ totalBrands }}+ брендов из {{ cities|length }} городов — от Москвы и Петербурга до региональных производств. Выбирайте город, смотрите бренды и покупайте напрямую, без наценки маркетплейсов.</p>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {% for city in cities %}
+                <a href="{{ path('brand_index', {_locale: page_locale, city: city.city}) }}"
+                   class="flex items-center justify-between bg-white rounded-xl shadow-sm hover:shadow-md transition px-5 py-4">
+                    <span class="font-medium text-gray-900">{{ city.city }}</span>
+                    <span class="text-sm text-gray-400">{{ city.cnt }}</span>
+                </a>
+            {% endfor %}
+        </div>
+
+        <div class="mt-12 p-6 bg-gray-50 rounded-xl text-center">
+            <p class="font-semibold mb-2">Не нашли свой город?</p>
+            <p class="text-sm text-gray-600 mb-4">Каталог пополняется — смотрите все {{ totalBrands }}+ российских брендов одежды.</p>
+            <a href="{{ path('brand_index', {_locale: page_locale}) }}"
+               class="inline-block px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition">
+                Все бренды
+            </a>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Статус заказа #{{ order.orderNumber }} — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">Статус заказа обновлён</h2>
+<p style="color:#555;line-height:1.6;">Здравствуйте{% if user.firstName %}, {{ user.firstName }}{% endif %}!</p>
+<p style="color:#555;line-height:1.6;">
+    Статус вашего заказа <strong>#{{ order.orderNumber }}</strong> изменён на
+    <strong>{{ order.statusLabel }}</strong>.
+</p>
+{% if order.trackingNumber %}
+<p style="color:#555;line-height:1.6;">
+    Трекинг-номер: <strong>{{ order.trackingNumber }}</strong>
+</p>
+{% endif %}
+<p style="text-align:center;">
+    <a href="{{ url('account_order_show', {number: order.orderNumber}) }}" class="btn">
+        Перейти к заказу
+    </a>
+</p>
+{% endblock %}

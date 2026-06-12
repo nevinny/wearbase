@@ -17,8 +17,14 @@ class BrandSourceDocumentRepository extends ServiceEntityRepository
         parent::__construct($registry, BrandSourceDocument::class);
     }
 
-    /** @return BrandSourceDocument[] */
+    /** @return BrandSourceDocument[] (без soft-deleted) */
     public function findByBrand(Brand $brand): array
+    {
+        return $this->findBy(['brand' => $brand, 'deletedAt' => null], ['id' => 'ASC']);
+    }
+
+    /** @return BrandSourceDocument[] все документы бренда, включая soft-deleted (для админ-панели) */
+    public function findAllByBrandIncludingDeleted(Brand $brand): array
     {
         return $this->findBy(['brand' => $brand], ['id' => 'ASC']);
     }
@@ -35,15 +41,15 @@ class BrandSourceDocumentRepository extends ServiceEntityRepository
         return $this->findOneBy(['brand' => $brand, 'url' => $url], ['id' => 'DESC']);
     }
 
-    /** @return BrandSourceDocument[] документы бренда, ещё не залитые в Qdrant */
+    /** @return BrandSourceDocument[] документы бренда, ещё не залитые в Qdrant (без soft-deleted) */
     public function findUnembeddedByBrand(Brand $brand): array
     {
-        return $this->findBy(['brand' => $brand, 'embedded' => false], ['id' => 'ASC']);
+        return $this->findBy(['brand' => $brand, 'embedded' => false, 'deletedAt' => null], ['id' => 'ASC']);
     }
 
-    /** Объём очищенного текста по бренду (для решения retrieve: всё vs поиск). */
+    /** Объём очищенного текста по бренду (для решения retrieve: всё vs поиск). Без soft-deleted. */
     public function countByBrand(Brand $brand): int
     {
-        return $this->count(['brand' => $brand]);
+        return $this->count(['brand' => $brand, 'deletedAt' => null]);
     }
 }

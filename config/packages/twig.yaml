@@ -1,5 +1,9 @@
 twig:
     file_name_pattern: '*.twig'
+    form_themes:
+        - '@PixelOpenCloudflareTurnstile/fields.html.twig'
+    globals:
+        telegram_bot_username: '%app.telegram_bot_username%'
 
 when@test:
     twig:

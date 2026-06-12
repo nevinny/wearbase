@@ -1,5 +1,5 @@
-# SEO Rules — v2.2.0
-**Версия:** 2.2.0 | **Дата:** 2026-05-18
+# SEO Rules — v2.3.0
+**Версия:** 2.3.0 | **Дата:** 2026-05-26
 **Основано на:** SEO-PEDIA-2026, SpamBrain PDF, AVI PDF, Manual Actions, production-кейсах Key Group, external framework v2 (indexability / migrations / monitoring / parameters layer)
 
 ---
@@ -52,7 +52,7 @@ CSR не означает «невидимость», но означает **р
 - Один `<h1>`, основной текст контента
 - Breadcrumbs HTML + JSON-LD
 - `<link rel="canonical">`, `<link rel="alternate" hreflang>` (если multilingual)
-- JSON-LD schemas (Article / Organization / FAQPage)
+- JSON-LD schemas (Article / Organization) — FAQPage если на странице есть FAQ-секция
 - Внутренние ссылки на связанные страницы
 
 Допустимо загружать через JS: комментарии, интерактивные калькуляторы, рекомендательные виджеты, личный кабинет.
@@ -291,8 +291,10 @@ James Miller на 8614 статьях = ban. Нужны 3–5 реальных �
 ### 3.14 FRES 60–70, ARI ≤ 9 — машинно проверяемые пороги
 **[SHOULD · Content]** ARI ≥ 11 = переписывать. Коррелируют с bounce rate и scroll depth, которые SpamBrain учитывает как quality proxy.
 
-### 3.15 FAQPage schema с реальными Q/A, H2 как вопросы пользователя
+### 3.15 FAQPage schema — для GEO/AI Overviews, не для SERP rich results
 **[SHOULD · Dev/Content]** Fake FAQ без реального контента на странице = structured data violation.
+
+С 7 мая 2026 Google удалил FAQPage rich results (аккордеоны в SERP). Причина ставить schema сохраняется: ChatGPT / Claude / Gemini / Perplexity используют FAQPage JSON-LD для извлечения структурированных Q/A в synthesized answers (GEO). H2 в формате вопросов пользователя — для покрытия fan-out AI queries. Не ставить FAQPage schema ради SERP-оформления: этого эффекта больше нет.
 
 ### 3.16 Не >3–5 новых статей/день с одного домена
 **[MUST · Data/Dev]** Проверка: `SELECT COUNT(*) FROM articles WHERE published_at > NOW() - INTERVAL '24 hours' AND domain = ?` ≤ 5. Симптом: трафик падает через 2–4 недели без Manual Action.
@@ -443,6 +445,12 @@ seo_rules_{MAJOR}.{MINOR}.{PATCH}.md
 ### CHANGELOG
 
 ```
+## [2.3.0] — 2026-05-26
+### Changed
+- 3.15: переименовано и расширено — FAQPage schema больше не даёт SERP rich results (Google удалил с 07.05.2026); мотивация переключена на GEO/AI Overviews extractability (ChatGPT/Claude/Gemini citations); H2 как вопросы — для AI fan-out queries
+- 1.3: FAQPage убрана из обязательного перечня SSR-гейта → ставить только если на странице есть FAQ-секция
+- 12.1: FAQPage удалена из Weekly Enhancement reports — отчёт удалён в GSC в июне 2026
+
 ## [2.2.0] — 2026-05-18
 ### Added
 - Легенда (уровни строгости MUST/SHOULD/NICE + слои ответственности)
@@ -700,7 +708,8 @@ Canonical на страницу без UTM + `Disallow: /*?utm_` в robots.txt. 
 - Performance: clicks WoW → alert если падение > 20%
 
 **Еженедельный расширенный:**
-- Enhancement reports (Article / BreadcrumbList / FAQPage / Product) → 0 errors
+- Enhancement reports (Article / BreadcrumbList / Product) → 0 errors
+  *(FAQPage Enhancement report удалён Google в июне 2026 — больше не отслеживать)*
 - Core Web Vitals → mobile «Poor» < 5%
 - Coverage: все сегменты с аномальным ростом
 - Top queries: новые появления и выпадения из топ-20

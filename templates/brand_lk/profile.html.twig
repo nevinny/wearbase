@@ -1,0 +1,109 @@
+{% extends 'brand_lk/layout.html.twig' %}
+{% block title %}Профиль — {{ brand.title }} — WEARBASE{% endblock %}
+
+{% block brand_content %}
+<h2 class="h5 fw-bold mb-4">Профиль бренда</h2>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                {{ form_start(form, {'attr': {'enctype': 'multipart/form-data', 'novalidate': 'novalidate'}}) }}
+
+                {# Основное #}
+                <span class="form-section-label">Основное</span>
+                <div class="row g-3 mb-4">
+                    <div class="col-12">
+                        <label class="label-caps">Название бренда</label>
+                        {{ form_widget(form.title, {'attr': {'class': 'form-control'}}) }}
+                        {{ form_errors(form.title) }}
+                    </div>
+                    <div class="col-12">
+                        <label class="label-caps">Короткое описание</label>
+                        {{ form_widget(form.anons, {'attr': {'class': 'form-control', 'rows': 2}}) }}
+                        <div class="text-muted" style="font-size:.75rem;margin-top:.25rem">Отображается в карточке бренда в каталоге</div>
+                        {{ form_errors(form.anons) }}
+                    </div>
+                    <div class="col-12">
+                        <label class="label-caps">Полное описание</label>
+                        {{ form_widget(form.description, {'attr': {'class': 'form-control', 'rows': 4}}) }}
+                        {{ form_errors(form.description) }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="label-caps">Город</label>
+                        {{ form_widget(form.city, {'attr': {'class': 'form-control'}}) }}
+                        {{ form_errors(form.city) }}
+                    </div>
+                </div>
+
+                {# Логотип #}
+                <span class="form-section-label border-top pt-4 mt-2">Логотип</span>
+                <div class="mb-4">
+                    {{ form_widget(form.logoFile) }}
+                </div>
+
+                {# Контакты #}
+                <span class="form-section-label border-top pt-4 mt-2">Контакты</span>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="label-caps">Email</label>
+                        {{ form_widget(form.email, {'attr': {'class': 'form-control'}}) }}
+                        {{ form_errors(form.email) }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="label-caps">Телефон</label>
+                        {{ form_widget(form.phone, {'attr': {'class': 'form-control'}}) }}
+                        {{ form_errors(form.phone) }}
+                    </div>
+                    <div class="col-12">
+                        <label class="label-caps">Адрес</label>
+                        {{ form_widget(form.address, {'attr': {'class': 'form-control'}}) }}
+                        {{ form_errors(form.address) }}
+                    </div>
+                </div>
+
+                {# Стили #}
+                <span class="form-section-label border-top pt-4 mt-2">Стили</span>
+                <div class="mb-4 d-flex flex-wrap gap-2">
+                    {% for choice in form.styles %}
+                        <div class="form-check border px-3 py-2" style="border-radius:.45rem">
+                            {{ form_widget(choice, {'attr': {'class': 'form-check-input'}}) }}
+                            {{ form_label(choice, null, {'label_attr': {'class': 'form-check-label mb-0 small'}}) }}
+                        </div>
+                    {% endfor %}
+                </div>
+
+                {# Аудитория #}
+                <span class="form-section-label border-top pt-4 mt-2">Аудитория</span>
+                <div class="mb-4 d-flex flex-wrap gap-2">
+                    {% for choice in form.audiences %}
+                        <div class="form-check border px-3 py-2" style="border-radius:.45rem">
+                            {{ form_widget(choice, {'attr': {'class': 'form-check-input'}}) }}
+                            {{ form_label(choice, null, {'label_attr': {'class': 'form-check-label mb-0 small'}}) }}
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <button type="submit" class="btn btn-dark px-5">Сохранить</button>
+
+                {{ form_end(form) }}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 d-flex flex-column gap-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <span class="form-section-label mb-3">Публичная страница</span>
+                <div class="text-muted small mb-3">
+                    <code class="bg-light px-2 py-1 rounded" style="font-size:.78rem">wearbase.ru/brands/{{ brand.slug }}</code>
+                </div>
+                <a href="{{ path('brand_show', {slug: brand.slug}) }}" target="_blank"
+                   class="btn btn-outline-secondary btn-sm w-100">
+                    Посмотреть страницу ↗
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

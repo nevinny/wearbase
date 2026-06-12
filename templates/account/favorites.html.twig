@@ -1,0 +1,14 @@
+{% extends 'account/layout.html.twig' %}
+
+{% block title %}Избранное — WEARBASE{% endblock %}
+
+{% block account_content %}
+<h4 class="mb-3">Избранное</h4>
+
+<div class="text-center py-5 text-muted">
+    <i class="fas fa-heart fa-3x mb-3 d-block"></i>
+    <p class="mb-1">У вас пока нет избранных товаров</p>
+    <p class="small">Отмечайте товары сердечком, чтобы сохранить их здесь</p>
+    <a href="{{ path('catalog_index') }}" class="btn btn-dark btn-sm mt-2">Перейти в каталог</a>
+</div>
+{% endblock %}
