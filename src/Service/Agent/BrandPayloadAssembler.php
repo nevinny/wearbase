@@ -78,6 +78,16 @@ class BrandPayloadAssembler
             'source'    => $s->getSource(),
         ], $this->em->getRepository(BrandStore::class)->findBy(['brand' => $brand]));
 
+        // Жёсткий граф перелинковки: исходящие рёбра слагами (id dev ≠ прод).
+        // На проде приёмник скипнет slug'и, которых там ещё нет (доедут дрипом),
+        // недостающие позиции добьёт weave() в publish-tick.
+        $payload['related'] = $this->em->getConnection()->fetchAllAssociative(
+            'SELECT b2.slug, r.position, r.source FROM brand_related r
+             JOIN brand b2 ON b2.id = r.related_brand_id
+             WHERE r.brand_id = :id ORDER BY r.position',
+            ['id' => $brand->getId()],
+        );
+
         // Логотип: плоское хранение public_html/images/logos (см. vich_uploader.yaml)
         if ($brand->getLogo()) {
             $path = $this->projectDir . '/public_html/images/logos/' . $brand->getLogo();

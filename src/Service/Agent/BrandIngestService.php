@@ -117,6 +117,9 @@ class BrandIngestService
             if (array_key_exists('stores', $payload)) {
                 $this->replaceStores($brand, (array) $payload['stores']);
             }
+            if (array_key_exists('related', $payload)) {
+                $this->replaceRelated($brand, (array) $payload['related']);
+            }
 
             // Свежие данные приехали → забракованные голосами точки считаем ре-обогащёнными:
             // state=active, голоса устарели (удаляем — sumWeights иначе воскресит счётчики).
@@ -344,6 +347,42 @@ class BrandIngestService
             $link->setSlug(substr(md5($type . $url), 0, 24));
             $link->setStatus(Statuses::Active);
             $this->em->persist($link);
+        }
+    }
+
+    /**
+     * Жёсткий граф перелинковки: delete-and-replace исходящих рёбер бренда.
+     * Рёбра приходят слагами (id dev ≠ прод); slug'и, которых на проде ещё нет
+     * (бренд не доехал/не опубликован), пропускаем — позиции добьёт weave()
+     * в publish-tick. Системная операция — физический delete допустим.
+     *
+     * @param array<int,array<string,mixed>> $rows [{slug, position, source}]
+     */
+    private function replaceRelated(Brand $brand, array $rows): void
+    {
+        $db = $this->em->getConnection();
+        $db->executeStatement('DELETE FROM brand_related WHERE brand_id = :id', ['id' => $brand->getId()]);
+
+        foreach (array_slice($rows, 0, \App\Service\BrandLinkGraphService::OUT_DEGREE) as $row) {
+            $slug = trim((string) ($row['slug'] ?? ''));
+            $position = (int) ($row['position'] ?? 0);
+            if ($slug === '' || $slug === $brand->getSlug() || $position < 1) {
+                continue;
+            }
+            $targetId = $db->fetchOne('SELECT id FROM brand WHERE slug = :slug', ['slug' => $slug]);
+            if ($targetId === false) {
+                continue;
+            }
+            $db->executeStatement(
+                'INSERT IGNORE INTO brand_related (brand_id, related_brand_id, position, source)
+                 VALUES (:brand, :related, :pos, :source)',
+                [
+                    'brand'   => $brand->getId(),
+                    'related' => (int) $targetId,
+                    'pos'     => min($position, \App\Service\BrandLinkGraphService::OUT_DEGREE),
+                    'source'  => mb_substr((string) ($row['source'] ?? 'embedding'), 0, 20),
+                ],
+            );
         }
     }
 }

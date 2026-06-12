@@ -36,6 +36,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *   "links": [{"type": "website", "url": "https://..."}],
  *   "attributes": [{"name": "Стиль", "value": "Кэжуал"}],
  *   "stores": [{"address": "ул. Тверская, 1", "city": "Москва", "phone": "+7...", "workHours": "пн–пт 10–20"}],
+ *   "related": [{"slug": "12storeez", "position": 1, "source": "embedding"}],  // жёсткий граф перелинковки; неизвестные slug'и скипаются
  *   "logo": {"filename": "logo.png", "content_base64": "..."},
  *   "external_id": 6203,        // dev brand.id — только аудит/лог
  *   "content_version": 3        // ≤ текущей версии на проде → skipped
