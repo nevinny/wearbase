@@ -1,0 +1,74 @@
+# Cliché / filler phrases typical of LLM-generated text (English).
+# One phrase per line. Lines starting with # are ignored.
+# Matched as a lowercase substring (multi-word) or whole word (single token).
+
+in today's world
+in today's fast-paced world
+in the modern era
+in the digital age
+in this day and age
+in an ever-evolving
+ever-evolving
+ever-changing
+fast-paced world
+it's worth noting
+it is worth noting
+it is important to note
+it's important to note
+it is important to understand
+it is important to remember
+it should be noted
+needless to say
+when it comes to
+at the end of the day
+in conclusion
+in summary
+to sum up
+to summarize
+all in all
+last but not least
+moreover
+furthermore
+in essence
+in a nutshell
+a testament to
+plays a crucial role
+plays a vital role
+plays a key role
+plays a pivotal role
+delve into
+delve deeper
+let's dive in
+let's dive into
+dive into the world
+embark on a journey
+embark on this journey
+navigate the
+navigating the
+unlock the
+unlock the potential
+unleash the
+the world of
+the realm of
+realm
+tapestry
+landscape of
+in the realm of
+look no further
+rest assured
+game-changer
+game changer
+elevate your
+take it to the next level
+seamless
+seamlessly
+robust
+leverage
+harness the power
+cutting-edge
+state-of-the-art
+treasure trove
+it's no secret that
+whether you're a
+that being said
+with that said

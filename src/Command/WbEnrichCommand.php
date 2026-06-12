@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Entity\Brand;
+use App\Entity\BrandRagPipeline;
 use App\Entity\BrandSourceDocument;
 use App\Repository\BrandRagPipelineRepository;
 use App\Repository\BrandRepository;

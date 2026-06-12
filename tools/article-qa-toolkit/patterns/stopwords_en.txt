@@ -1,0 +1,10 @@
+# English stopwords (function words) — excluded from keyword frequency analysis.
+the a an and or but if then else of to in on at by for with from into onto
+is are was were be been being am do does did doing have has had having
+i you he she it we they me him her us them my your his its our their mine
+this that these those there here what which who whom whose when where why how
+as so than too very can could would should shall will may might must not no nor
+about above after again against all any because before below between both during
+each few more most other some such only own same off out over under up down
+again further once about not just also even still yet however therefore thus
+its it's i'm you're we're they're don't doesn't didn't isn't aren't wasn't

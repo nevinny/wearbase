@@ -1,0 +1,39 @@
+# Hedging / filler words that weaken claims and inflate length (English).
+# One word/phrase per line.
+
+perhaps
+maybe
+possibly
+probably
+arguably
+generally
+in general
+basically
+essentially
+in essence
+sort of
+kind of
+somewhat
+relatively
+fairly
+quite
+very
+really
+extremely
+incredibly
+literally
+actually
+in fact
+of course
+obviously
+clearly
+certainly
+undoubtedly
+needless to say
+to some extent
+more or less
+as we all know
+it goes without saying
+that said
+just
+simply

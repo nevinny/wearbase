@@ -19,6 +19,8 @@ parameters:
     # Нужен ОТДЕЛЬНЫЙ ключ Yandex Cloud (роль search-api.webSearch.user) + folderId.
     env(YANDEX_SEARCH_API_KEY): ''
     env(YANDEX_SEARCH_FOLDER_ID): ''
+    # QA-гейт сгенерированного контента (article-qa-toolkit). '0' = выключить.
+    env(ARTICLE_QA_ENABLED): '1'
 
 services:
     # default configuration for services in *this* file
@@ -60,6 +62,11 @@ services:
     App\Service\UrlFilter:
         arguments:
             $extraExcludedDomains: '%env(SCRAPE_EXCLUDED_DOMAINS)%'
+
+    App\Service\ArticleQaService:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $enabled: '%env(bool:ARTICLE_QA_ENABLED)%'
 
     App\Service\YandexSearchClient:
         arguments:

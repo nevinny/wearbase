@@ -46,6 +46,11 @@ class CrawlBrandSiteCommand extends Command
     private int $enqueued = 0;  // всего own_page в очередь
     private int $failed  = 0;
 
+    /** Хэши, persist-нутые в текущем (не flush-нутом) батче: repo их ещё не видит,
+     *  а два URL могут нормализоваться в один hash (`/page` vs `/page/`) →
+     *  без этого дубль в одном flush роняет uniq_bsu_brand_hash и весь батч. */
+    private array $pendingHashes = [];
+
     private EntityManagerInterface $em;
 
     public function __construct(
@@ -203,9 +208,14 @@ class CrawlBrandSiteCommand extends Command
     {
         $url  = mb_substr(rtrim($url, '/'), 0, 1024);
         $hash = BrandSourceUrl::normalizeHash($url);
+        $key  = $brand->getId() . ':' . $hash;
+        if (isset($this->pendingHashes[$key])) {
+            return false;
+        }
         if ($this->urlRepo->findOneByBrandUrlHash($brand, $hash) !== null) {
             return false;
         }
+        $this->pendingHashes[$key] = true;
         if (!$dryRun) {
             $this->em->persist((new BrandSourceUrl())
                 ->setBrand($brand)

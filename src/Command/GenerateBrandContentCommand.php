@@ -4,6 +4,7 @@ namespace App\Command;
 
 use App\Entity\Brand;
 use App\Entity\BrandRagPipeline;
+use App\Service\ArticleQaService;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
@@ -30,6 +31,7 @@ class GenerateBrandContentCommand extends Command
     private int $metaGenerated   = 0; // обработано только meta (была готовая description)
     private int $failed          = 0; // ошибка при обращении к LLM
     private int $validationFailed = 0; // не прошло валидацию
+    private int $qaFailed        = 0; // не прошло QA-гейт (article-qa-toolkit)
     private int $deferred        = 0; // grounded-only: корпус не прошёл gate, отложено
 
     /** EM не readonly — после DB-ошибки пересоздаём через ManagerRegistry (многодневный прогон). */
@@ -40,6 +42,7 @@ class GenerateBrandContentCommand extends Command
         private readonly LlmService $llmService,
         private readonly ContentValidator $validator,
         private readonly BrandRagService $rag,
+        private readonly ArticleQaService $articleQa,
     ) {
         parent::__construct();
         $this->em = $this->managerRegistry->getManager();
@@ -311,6 +314,26 @@ class GenerateBrandContentCommand extends Command
                 $this->validationFailed++;
                 return;
             }
+
+            // 1.5. QA-гейт текста (article-qa-toolkit): AI-почерк, переспам, повторы, вода.
+            // FAIL → не сохраняем и не тратим LLM-вызовы на meta; бренд останется без
+            // description и будет подобран следующим прогоном (новая генерация — новый шанс).
+            $qa = $this->articleQa->check($description);
+            if (!$qa['passed']) {
+                $io->warning(sprintf(
+                    'QA-гейт не прошёл для "%s" (overall %.1f, SB %s, HL %s): %s',
+                    $brandName,
+                    $qa['metrics']['overall'] ?? 0,
+                    $qa['metrics']['spambrain'] ?? '?',
+                    $qa['metrics']['human_likeness'] ?? '?',
+                    implode('; ', array_slice($qa['reasons'], 0, 4)),
+                ));
+                $this->qaFailed++;
+                return;
+            }
+            if ($qa['checked']) {
+                $io->text(sprintf('    QA: ok (overall %.1f)', $qa['metrics']['overall'] ?? 0));
+            }
         }
 
         // 2. Генерация meta на основе только что созданного description
@@ -447,6 +470,7 @@ class GenerateBrandContentCommand extends Command
         if (!$metaOnly) {
             $rows[] = ['Сгенерировано (description + meta)', $this->processed];
             $rows[] = ['Не прошло валидацию',               $this->validationFailed];
+            $rows[] = ['Не прошло QA-гейт',                  $this->qaFailed];
             $rows[] = ['Отложено (grounded-only)',           $this->deferred];
         }
 
