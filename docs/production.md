@@ -42,7 +42,7 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 | Переменная | Локально (Mac) | Прод | Примечание |
 |---|---|---|---|
 | `MAILER_DSN` | `null://null` — письма НЕ уходят | `smtp://hello@mail.wearbase.ru@smtp.rusender.ru:465` | Rusender. ⚠️ см. «Известные проблемы» |
-| `TURNSTILE_KEY/SECRET` | в `.env.local` БОЕВЫЕ ключи (0x4AAA…) | боевые (0x4AAA…) | в `.env` — тестовые Cloudflare (3x/1x, always-pass) |
+| `TURNSTILE_KEY/SECRET` | в `.env.local` тестовые Cloudflare (3x/1x, always-pass) | боевые (0x4AAA…) | в `.env` — те же тестовые дефолты |
 | `TELEGRAM_BOT_TOKEN` | `.env.local` | прод `.env.local` | |
 | `ADMIN_TELEGRAM_CHAT_ID` | `.env` | `.env` | админ-дайджесты |
 | `GSC_CREDENTIALS_PATH` | `config/secrets/gsc-sa.json` | пусто (GSC гоняем с Mac) | `app:gsc:sync`, `app:report:daily` |
@@ -63,7 +63,7 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 ## Turnstile (Cloudflare captcha)
 
 - Стоит на форме регистрации (`RegistrationFormType`, бандл pixelopen/cloudflare-turnstile-bundle).
-- **Локально в `.env.local` боевые ключи → headless e2e НЕ может пройти регистрацию.** Поэтому e2e-спеки логинятся готовым пользователем `cart-test@example.com / Test12345!` (создаётся в dev-БД, email verified). Если нужна e2e-регистрация — переключить локальные ключи на тестовые Cloudflare из `.env` (3x…/1x… — always pass).
+- **Локально в `.env.local` тестовые ключи Cloudflare (3x…/1x… — always pass), боевые (0x4AAA…) живут ТОЛЬКО на проде** (с 2026-06-12). Headless e2e может проходить регистрацию; готовый пользователь `cart-test@example.com / Test12345!` (dev-БД, email verified) остаётся для спеков, которым регистрация не нужна.
 
 ## Уведомления: как проверить цепочку
 
