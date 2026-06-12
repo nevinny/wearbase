@@ -8,19 +8,14 @@
     {% block hreflang %}
     {% set current_locale = app.request.locale|default('ru') %}
     {% set path_without_locale = app.request.getPathInfo()|replace({'/ru': '', '/en': ''})|trim('/') %}
+    {% set supported_locales = ['ru', 'en', 'zh', 'ar', 'tr', 'de', 'fr', 'es', 'ko'] %}
+    {% set base_host = app.request.schemeAndHttpHost %}
+    {% for locale in supported_locales %}
+    <link rel="alternate" hreflang="{{ locale }}" href="{{ base_host }}/{{ locale }}/{{ path_without_locale }}">
+    {% endfor %}
+    <link rel="alternate" hreflang="x-default" href="{{ base_host }}/ru/{{ path_without_locale }}">
     {% if block('canonical_url') is defined %}<link rel="canonical" href="{{ block('canonical_url') }}">{% else %}<link rel="canonical" href="{{ app.request.uri }}">{% endif %}
-    {% if path_without_locale %}
-    <link rel="alternate" hreflang="ru" href="{{ absolute_url('/ru/' ~ path_without_locale) }}">
-    <link rel="alternate" hreflang="en" href="{{ absolute_url('/en/' ~ path_without_locale) }}">
-    <link rel="alternate" hreflang="x-default" href="{{ absolute_url('/ru/' ~ path_without_locale) }}">
-    {% else %}
-    <link rel="alternate" hreflang="ru" href="{{ url('home_hub', {_locale: 'ru'}) }}">
-    <link rel="alternate" hreflang="en" href="{{ url('home_hub', {_locale: 'en'}) }}">
-    <link rel="alternate" hreflang="x-default" href="{{ url('home_hub', {_locale: 'ru'}) }}">
-    {% endif %}
     {% endblock %}
-
-    {% if block('canonical_url') is defined %}<link rel="canonical" href="{{ block('canonical_url') }}">{% else %}<link rel="canonical" href="{{ app.request.uri }}">{% endif %}
 
     {% if block('title') is defined %}<title>{{ block('title') }}</title>{% else %}<title>Российские бренды одежды | WEARBASE</title>{% endif %}
 
@@ -43,6 +38,7 @@
     {% if block('og_description') is defined %}<meta name="twitter:description" content="{{ block('og_description') }}">{% endif %}
     {% if block('og_image') is defined %}<meta name="twitter:image" content="{{ block('og_image') }}">{% endif %}
 
+    {% block structured_data %}
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
@@ -73,39 +69,183 @@
         ]
     }
     </script>
+    {% endblock %}
     <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
 
     {% block stylesheets %}{% endblock %}
-    <script type="text/javascript">
-        (function(m,e,t,r,i,k,a){
-            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-            m[i].l=1*new Date();
-            for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
-            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-        })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=105219484', 'ym');
-
-        ym(105219484, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
-    </script>
-    <noscript><div><img src="https://mc.yandex.ru/watch/105219484" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+    {% include 'tailwind/_yandex_metrika.html.twig' %}
 </head>
 
 <body class="min-h-screen flex flex-col bg-gray-50 text-gray-900 antialiased">
 
+{% for type, messages in app.flashes %}
+    {% for message in messages %}
+        <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-lg text-sm font-semibold
+            {{ type == 'success' ? 'bg-green-600 text-white' : type == 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-white' }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endfor %}
+
 <header class="bg-white shadow-sm sticky top-0 z-40">
     <div class="container mx-auto px-4 py-3 flex items-center justify-between">
-        <a href="{{ path('home_hub', {_locale: 'ru'}) }}" class="text-lg font-bold tracking-tight">
-            <span class="text-gray-900">WEARBASE</span><span class="text-indigo-600">.ru</span>
+        {% set nav_locale = app.request.locale|default('ru') %}
+        <a href="{{ path('home_hub', {_locale: nav_locale}) }}" class="text-lg font-bold tracking-tight">
+            <span class="text-gray-900">WEARBASE</span><span class="text-indigo-600">.{{ nav_locale == 'ru' ? 'ru' : 'com' }}</span>
         </a>
 
         <nav class="hidden md:flex items-center gap-6 text-sm font-medium">
-            <a href="{{ path('home_hub', {_locale: 'ru'}) }}" class="text-gray-700 hover:text-indigo-600 transition">Главная</a>
-            <a href="{{ path('brand_index', {_locale: 'ru'}) }}" class="text-gray-700 hover:text-indigo-600 transition">Бренды</a>
-            <a href="{{ path('home_hub', {_locale: 'ru'}) }}#cities" class="text-gray-700 hover:text-indigo-600 transition">Города</a>
-            <a href="{{ path('home_hub', {_locale: 'ru'}) }}#styles" class="text-gray-700 hover:text-indigo-600 transition">Стили</a>
+            <a href="{{ path('home_hub', {_locale: nav_locale}) }}" class="text-gray-700 hover:text-indigo-600 transition">Главная</a>
+            <a href="{{ path('brand_index', {_locale: nav_locale}) }}" class="text-gray-700 hover:text-indigo-600 transition">Бренды</a>
+            <a href="{{ path('catalog_index') }}" class="text-gray-700 hover:text-indigo-600 transition">Каталог</a>
+            <a href="{{ path('brand_cities', {_locale: nav_locale}) }}" class="text-gray-700 hover:text-indigo-600 transition">Города</a>
+            <a href="{{ path('home_hub', {_locale: nav_locale}) }}#styles" class="text-gray-700 hover:text-indigo-600 transition">Стили</a>
         </nav>
 
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+
+            {# ── Переключатель языка ───────────────────────────────────────── #}
+            {% set cur_locale = app.request.locale|default('ru') %}
+            {% set locale_map = {'ru':'🇷🇺 RU','en':'🇬🇧 EN','zh':'🇨🇳 ZH','ar':'🇸🇦 AR','tr':'🇹🇷 TR','de':'🇩🇪 DE','fr':'🇫🇷 FR','es':'🇪🇸 ES','ko':'🇰🇷 KO'} %}
+            {% set locale_names = {'ru':'Русский','en':'English','zh':'中文','ar':'العربية','tr':'Türkçe','de':'Deutsch','fr':'Français','es':'Español','ko':'한국어'} %}
+            <div class="relative hidden md:block" id="tw-locale-dropdown">
+                <button onclick="document.getElementById('tw-locale-menu').classList.toggle('hidden')"
+                        class="flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-indigo-600 px-2 py-1 rounded-md border border-gray-200 hover:border-indigo-300 transition">
+                    {{ locale_map[cur_locale] ?? '🌐 ' ~ cur_locale|upper }}
+                    <svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div id="tw-locale-menu" class="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-100 rounded-lg shadow-lg z-50 py-1">
+                    <p class="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">Язык</p>
+                    {% for code, label in locale_map %}
+                    <form method="post" action="{{ path('locale_switch') }}">
+                        <input type="hidden" name="locale" value="{{ code }}">
+                        <button type="submit"
+                                class="w-full text-left px-3 py-1.5 text-xs flex justify-between items-center hover:bg-gray-50 transition {{ code == cur_locale ? 'font-bold text-indigo-600' : 'text-gray-700' }}">
+                            <span>{{ label }}</span>
+                            <span class="text-gray-400 text-xs">{{ locale_names[code] }}</span>
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# ── Переключатель валюты ──────────────────────────────────────── #}
+            {% if app_currency %}
+            <div class="relative hidden md:block" id="tw-currency-dropdown">
+                <button onclick="document.getElementById('tw-currency-menu').classList.toggle('hidden')"
+                        class="flex items-center gap-1 text-xs font-semibold text-gray-600 hover:text-indigo-600 px-2 py-1 rounded-md border border-gray-200 hover:border-indigo-300 transition">
+                    {{ app_currency.symbol }} {{ app_currency.code }}
+                    <svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div id="tw-currency-menu" class="hidden absolute right-0 mt-1 w-40 bg-white border border-gray-100 rounded-lg shadow-lg z-50 py-1">
+                    <p class="px-3 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">Валюта</p>
+                    {% for cur in currencies_list ?? [] %}
+                    <form method="post" action="{{ path('currency_switch') }}">
+                        <input type="hidden" name="code" value="{{ cur.code }}">
+                        <input type="hidden" name="redirect" value="{{ app.request.requestUri }}">
+                        <button type="submit"
+                                class="w-full text-left px-3 py-1.5 text-xs flex justify-between items-center hover:bg-gray-50 transition {{ cur.code == app_currency.code ? 'font-bold text-indigo-600' : 'text-gray-700' }}">
+                            <span>{{ cur.symbol }} {{ cur.code }}</span>
+                            <span class="text-gray-400 text-xs">{{ cur.nameRu|slice(0,10) }}</span>
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {# ── Корзина ──────────────────────────────────────────────────── #}
+            <a href="{{ path('cart_index') }}" class="relative text-gray-700 hover:text-indigo-600 transition p-1" title="Корзина" id="cart-icon-link">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                </svg>
+                <span class="absolute -top-1 -right-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold text-white bg-red-500 rounded-full"
+                      id="header-cart-badge" style="display:none">0</span>
+            </a>
+
+            {# ── Пользователь (desktop) ───────────────────────────────────── #}
+            <div class="hidden md:flex items-center gap-2 ml-1">
+            {% if app.user %}
+                <span class="text-sm text-gray-700 hidden sm:inline">{{ app.user.firstName ?: app.user.email }}</span>
+                {% if is_granted('ROLE_BRAND_MANAGER') %}
+                    <a href="{{ path('brand_dashboard') }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition">ЛК Бренда</a>
+                {% endif %}
+                <a href="{{ path('account_dashboard') }}" class="text-sm font-medium text-gray-700 hover:text-indigo-600 transition">Кабинет</a>
+                <a href="{{ path('app_logout') }}" class="text-sm font-medium text-gray-500 hover:text-red-600 transition">Выйти</a>
+            {% else %}
+                <a href="{{ path('app_login') }}" class="text-sm font-medium text-gray-700 hover:text-indigo-600 transition">Войти</a>
+                <a href="{{ path('app_register') }}" class="text-sm font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 transition">Регистрация</a>
+                <a href="{{ path('app_register', {brand: 1}) }}" class="text-sm text-gray-500 hover:text-indigo-600 transition hidden sm:inline">Я бренд</a>
+            {% endif %}
+            </div>
+
+            {# ── Бургер (mobile) ──────────────────────────────────────────── #}
+            <button class="md:hidden p-2 -mr-1 text-gray-700 hover:text-indigo-600 transition" aria-label="Меню" aria-controls="tw-mobile-menu"
+                    onclick="document.getElementById('tw-mobile-menu').classList.toggle('hidden')">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
         </div>
+
+        {# Закрытие дропдаунов по клику вне #}
+        <script>
+        document.addEventListener('click', function(e) {
+            ['tw-locale-dropdown','tw-currency-dropdown'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el && !el.contains(e.target)) {
+                    var menu = el.querySelector('[id$="-menu"]');
+                    if (menu) menu.classList.add('hidden');
+                }
+            });
+        });
+        </script>
+    </div>
+
+    {# ── Мобильное меню ───────────────────────────────────────────────── #}
+    <div id="tw-mobile-menu" class="hidden md:hidden border-t border-gray-100 bg-white shadow-sm">
+        <nav class="container mx-auto px-4 py-3 flex flex-col text-sm font-medium">
+            <a href="{{ path('home_hub', {_locale: nav_locale}) }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Главная</a>
+            <a href="{{ path('brand_index', {_locale: nav_locale}) }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Бренды</a>
+            <a href="{{ path('catalog_index') }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Каталог</a>
+            <a href="{{ path('brand_cities', {_locale: nav_locale}) }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Города</a>
+            <a href="{{ path('home_hub', {_locale: nav_locale}) }}#styles" class="py-2 text-gray-700 hover:text-indigo-600 transition">Стили</a>
+
+            <div class="border-t border-gray-100 my-2"></div>
+            {% if app.user %}
+                <span class="py-2 text-gray-500">{{ app.user.firstName ?: app.user.email }}</span>
+                {% if is_granted('ROLE_BRAND_MANAGER') %}
+                    <a href="{{ path('brand_dashboard') }}" class="py-2 text-indigo-600 hover:text-indigo-800 transition">ЛК Бренда</a>
+                {% endif %}
+                <a href="{{ path('account_dashboard') }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Кабинет</a>
+                <a href="{{ path('app_logout') }}" class="py-2 text-gray-500 hover:text-red-600 transition">Выйти</a>
+            {% else %}
+                <a href="{{ path('app_login') }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Войти</a>
+                <a href="{{ path('app_register') }}" class="py-2 text-indigo-600 font-semibold hover:text-indigo-800 transition">Регистрация</a>
+                <a href="{{ path('app_register', {brand: 1}) }}" class="py-2 text-gray-500 hover:text-indigo-600 transition">Я бренд</a>
+            {% endif %}
+
+            <div class="border-t border-gray-100 my-2"></div>
+            <p class="py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">Язык</p>
+            <div class="flex flex-wrap gap-2 pb-2">
+                {% for code, label in locale_map %}
+                <form method="post" action="{{ path('locale_switch') }}">
+                    <input type="hidden" name="locale" value="{{ code }}">
+                    <button type="submit" class="px-2.5 py-1.5 text-xs rounded-md border transition {{ code == cur_locale ? 'border-indigo-600 text-indigo-600 font-bold' : 'border-gray-200 text-gray-600' }}">{{ label }}</button>
+                </form>
+                {% endfor %}
+            </div>
+            {% if app_currency %}
+            <p class="py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">Валюта</p>
+            <div class="flex flex-wrap gap-2 pb-3">
+                {% for cur in currencies_list ?? [] %}
+                <form method="post" action="{{ path('currency_switch') }}">
+                    <input type="hidden" name="code" value="{{ cur.code }}">
+                    <input type="hidden" name="redirect" value="{{ app.request.requestUri }}">
+                    <button type="submit" class="px-2.5 py-1.5 text-xs rounded-md border transition {{ cur.code == app_currency.code ? 'border-indigo-600 text-indigo-600 font-bold' : 'border-gray-200 text-gray-600' }}">{{ cur.symbol }} {{ cur.code }}</button>
+                </form>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </nav>
     </div>
 </header>
 
@@ -113,14 +253,112 @@
     {% block body %}{% endblock %}
 </main>
 
-<footer class="bg-white border-t mt-10">
-    <div class="container mx-auto px-4 py-6 text-center text-sm text-gray-500">
-        © {{ "now"|date("Y") }} WEARBASE.ru — список российских брендов.
-        <br>
-        <a href="#" class="hover:text-indigo-600">Политика конфиденциальности</a>
+<footer class="bg-gray-900 text-gray-300 mt-10">
+    <div class="container mx-auto px-4 py-12">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+
+            {# Помощь #}
+            <div>
+                <h6 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Помощь и поддержка</h6>
+                <ul class="space-y-2">
+                    <li><a href="{{ path('delivery_info', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Доставка</a></li>
+                    <li><a href="{{ path('blog_show', {_locale: 'ru', slug: 'kak-kupit-odezhdu-napryamuyu-ot-proizvoditelya'}) }}" class="text-sm text-gray-400 hover:text-white transition">Возврат и обмен</a></li>
+                    <li><a href="{{ path('account_orders') }}" class="text-sm text-gray-400 hover:text-white transition">Отследить заказ</a></li>
+                </ul>
+            </div>
+
+            {# О компании #}
+            <div>
+                <h6 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">О WEARBASE</h6>
+                <ul class="space-y-2">
+                    <li><a href="{{ path('home_hub', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">О нас</a></li>
+                    <li><a href="{{ path('brand_cities', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Бренды по городам</a></li>
+                    <li><a href="{{ path('landing_for_brands', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Для брендов</a></li>
+                    <li><a href="{{ path('landing_no_marketplace', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Без маркетплейсов</a></li>
+                    <li><a href="{{ path('blog_show', {_locale: 'ru', slug: 'komissii-marketpleysov-2026'}) }}" class="text-sm text-gray-400 hover:text-white transition">Комиссии маркетплейсов</a></li>
+                    <li><a href="{{ path('blog_index', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Блог</a></li>
+                </ul>
+            </div>
+
+            {# Бренды #}
+            <div>
+                <h6 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Каталог</h6>
+                <ul class="space-y-2">
+                    <li><a href="{{ path('brand_index', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Все бренды</a></li>
+                    <li><a href="{{ path('catalog_index') }}" class="text-sm text-gray-400 hover:text-white transition">Все товары</a></li>
+                    <li><a href="{{ path('catalog_index', {sale: 1}) }}" class="text-sm text-gray-400 hover:text-white transition">Скидки</a></li>
+                    <li><a href="{{ path('catalog_index', {sort: 'new'}) }}" class="text-sm text-gray-400 hover:text-white transition">Новинки</a></li>
+                </ul>
+            </div>
+
+            {# Подписка #}
+            <div>
+                <h6 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Будьте в курсе</h6>
+                <p class="text-sm text-gray-400 mb-3">Подпишитесь на новости: новые бренды и скидки</p>
+                <form method="post" action="{{ path('landing_lead') }}" class="mb-4">
+                    <input type="hidden" name="source" value="footer-subscribe">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('landing_lead') }}">
+                    <div class="flex gap-2">
+                        <input type="email" name="email" required placeholder="Ваш email"
+                               class="flex-1 text-sm bg-gray-800 text-white border border-gray-700 rounded-lg px-3 py-2 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button type="submit" class="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 transition text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                        </button>
+                    </div>
+                </form>
+                <div class="flex gap-3">
+                    <a href="https://t.me/wearbase" target="_blank" rel="noopener" class="text-gray-400 hover:text-white transition" title="Telegram">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                    </a>
+                    <a href="https://instagram.com/wearbase" target="_blank" rel="noopener" class="text-gray-400 hover:text-white transition" title="Instagram">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {# Нижняя часть #}
+        <div class="mt-10 pt-6 border-t border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p class="text-sm text-gray-500">&copy; {{ "now"|date("Y") }} WEARBASE. Все права защищены.</p>
+            <div class="flex flex-wrap justify-center gap-4 text-sm">
+                <a href="{{ path('home_hub', {_locale: nav_locale}) }}" class="text-gray-500 hover:text-white transition">О нас</a>
+                <a href="{{ path('landing_for_brands', {_locale: nav_locale}) }}" class="text-gray-500 hover:text-white transition">Для брендов</a>
+                <a href="{{ path('privacy_policy', {_locale: nav_locale}) }}" class="text-gray-500 hover:text-white transition">Конфиденциальность</a>
+                <a href="{{ path('terms_of_use', {_locale: nav_locale}) }}" class="text-gray-500 hover:text-white transition">Соглашение</a>
+                <a href="{{ path('personal_data_consent', {_locale: nav_locale}) }}" class="text-gray-500 hover:text-white transition">Обработка ПД</a>
+                <a href="{{ path('cookies_policy', {_locale: nav_locale}) }}" class="text-gray-500 hover:text-white transition">Cookie</a>
+            </div>
+        </div>
     </div>
 </footer>
 
+{# Обновляем счётчик корзины при загрузке (AJAX) #}
+<script>
+(function() {
+    fetch('/cart/count')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var badge = document.getElementById('header-cart-badge');
+            if (badge && data.count > 0) {
+                badge.textContent = data.count;
+                badge.style.display = '';
+            }
+        })
+        .catch(function() {});
+})();
+
+window.updateCartBadge = function(count) {
+    var badge = document.getElementById('header-cart-badge');
+    if (!badge) return;
+    if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+};
+</script>
 {% block javascripts %}{% endblock %}
+{% include 'components/cookie_banner.html.twig' %}
 </body>
 </html>

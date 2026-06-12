@@ -1,0 +1,24 @@
+{# Уведомление об использовании cookie (152-ФЗ: метаданные = ПД; согласие фиксируем в localStorage) #}
+<div id="cookie-banner" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:1080; background:#111; color:#e5e5e5; padding:12px 16px; font-size:13px; line-height:1.4;">
+    <div style="max-width:960px; margin:0 auto; display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center;">
+        <span>
+            Мы используем файлы cookie для работы сайта и аналитики. Продолжая пользоваться сайтом, вы соглашаетесь с
+            <a href="{{ path('cookies_policy', {_locale: app.request.locale|default('ru')}) }}" style="color:#fff; text-decoration:underline;">Политикой использования cookie</a>
+            и <a href="{{ path('privacy_policy', {_locale: app.request.locale|default('ru')}) }}" style="color:#fff; text-decoration:underline;">обработкой данных</a>.
+        </span>
+        <button id="cookie-banner-accept" type="button" style="background:#fff; color:#111; border:0; border-radius:999px; padding:6px 20px; font-weight:600; cursor:pointer; font-size:13px;">Хорошо</button>
+    </div>
+</div>
+<script>
+(function () {
+    try {
+        if (localStorage.getItem('cookieConsent') === '1') return;
+    } catch (e) { return; }
+    var b = document.getElementById('cookie-banner');
+    b.style.display = 'block';
+    document.getElementById('cookie-banner-accept').addEventListener('click', function () {
+        try { localStorage.setItem('cookieConsent', '1'); } catch (e) {}
+        b.style.display = 'none';
+    });
+})();
+</script>

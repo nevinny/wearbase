@@ -1,0 +1,96 @@
+{% extends 'base.html.twig' %}
+{% block title %}Вход — WEARBASE{% endblock %}
+
+{% block body %}
+<div class="min-vh-100 d-flex">
+
+    {# ── Левая панель — брендинг ── #}
+    <div class="d-none d-lg-flex flex-column justify-content-between text-white p-5"
+         style="width:420px;min-width:420px;background:linear-gradient(160deg,#111 60%,#1c1c2e)">
+
+        <a href="/" class="text-white text-decoration-none fw-bold fs-4">
+            WEARBASE
+        </a>
+
+        <div>
+            <p class="text-white-50 mb-1 small text-uppercase" style="letter-spacing:.1em">С возвращением</p>
+            <h2 class="fw-bold lh-sm mb-3" style="font-size:2rem">Войдите<br>в свой<br>аккаунт</h2>
+            <p class="text-white-50" style="font-size:.9rem;line-height:1.6">
+                Ваши заказы, избранные бренды<br>и личный кабинет ждут вас.
+            </p>
+        </div>
+
+        <p class="text-white-50 small mb-0">© {{ "now"|date("Y") }} WEARBASE</p>
+    </div>
+
+    {# ── Правая панель — форма ── #}
+    <div class="flex-grow-1 d-flex align-items-center justify-content-center bg-white p-4">
+        <div style="width:100%;max-width:400px">
+
+            <div class="d-lg-none text-center mb-4">
+                <a href="/" class="fw-bold fs-3 text-dark text-decoration-none">WEARBASE</a>
+            </div>
+
+            <h1 class="h4 fw-bold mb-1">Вход</h1>
+            <p class="text-muted mb-4 small">
+                Нет аккаунта?
+                <a href="{{ path('app_register') }}" class="text-dark fw-semibold">Зарегистрироваться</a>
+            </p>
+
+            {% if error %}
+                <div class="alert alert-danger py-2 small">
+                    {{ error.messageKey|trans(error.messageData, 'security') }}
+                </div>
+            {% endif %}
+
+            <form method="post" action="{{ path('app_login') }}">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
+
+                <div class="mb-3">
+                    <label for="email" class="form-label small fw-semibold text-muted text-uppercase"
+                           style="letter-spacing:.05em;font-size:.75rem">Email</label>
+                    <input type="email" id="email" name="_username"
+                           class="form-control form-control-lg border-0 rounded-3"
+                           value="{{ last_username }}"
+                           placeholder="you@example.com"
+                           autocomplete="email" autofocus>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label for="password" class="form-label small fw-semibold text-muted text-uppercase mb-0"
+                               style="letter-spacing:.05em;font-size:.75rem">Пароль</label>
+                        <a href="{{ path('app_forgot_password_request') }}"
+                           class="text-muted small text-decoration-none" style="font-size:.8rem">Забыли?</a>
+                    </div>
+                    <input type="password" id="password" name="_password"
+                           class="form-control form-control-lg border-0 rounded-3 mt-1"
+                           placeholder="••••••••"
+                           autocomplete="current-password">
+                </div>
+
+                <div class="mb-4 d-flex align-items-center gap-2">
+                    <input type="checkbox" class="form-check-input m-0" id="remember_me" name="_remember_me"
+                           style="width:18px;height:18px">
+                    <label class="form-check-label small text-muted" for="remember_me">Запомнить меня</label>
+                </div>
+
+                <button type="submit" class="btn btn-dark btn-lg w-100 fw-semibold rounded-3">
+                    Войти
+                </button>
+            </form>
+
+            <div class="d-flex align-items-center my-4">
+                <hr class="flex-grow-1"><span class="px-3 text-muted small">или</span><hr class="flex-grow-1">
+            </div>
+
+            <p class="text-center text-muted small mb-0">
+                Вы бренд?
+                <a href="{{ path('app_register', {brand: 1}) }}" class="text-dark fw-semibold">Зарегистрировать бренд →</a>
+            </p>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}
