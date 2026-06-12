@@ -30,7 +30,7 @@ class BuildLinkGraphCommand extends Command
 {
     // Сколько чанков бренда усредняем и сколько глобальных хитов берём на скоринг
     private const VECTORS_PER_BRAND = 64;
-    private const SEARCH_TOP_K      = 60;
+    private const SEARCH_TOP_K      = 120; // хитов-чанков; уникальных брендов после группировки ~втрое меньше — нужен запас на OUT_DEGREE=12
 
     public function __construct(
         private readonly Connection $db,

@@ -19,7 +19,7 @@ use Doctrine\DBAL\Connection;
  */
 class BrandLinkGraphService
 {
-    public const OUT_DEGREE = 5; // исходящих рёбер на бренд
+    public const OUT_DEGREE = 12; // исходящих рёбер на бренд (кратно сетке 2/3/4 колонок — ровные ряды на всех брейкпоинтах)
     public const MIN_IN     = 2; // гарантированный минимум входящих
 
     // Какие рёбра можно вытеснять при балансировке (слабые → сильные нельзя)
