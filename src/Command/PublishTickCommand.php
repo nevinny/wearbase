@@ -107,6 +107,16 @@ class PublishTickCommand extends Command
             $target = max(1, (int) floor($target * $health));
         }
 
+        // Hard index-guard (доктрина пакета _seo / LESSONS_FROM_HISTORY: index-guards
+        // indexed-ratio <5% → 0 new, <10% → cap 1): когорта показывает динамику свежих,
+        // а это — здоровье ВСЕГО домена. На слабом index-rate новые страницы лишь растят
+        // «discovered/crawled - not indexed». Жёсткий ПОТОЛОК (не множитель): 0 = полный
+        // стоп. Fail-open: нет GSC-данных / проверено мало → null, дрип не трогаем.
+        $indexCap = $this->indexHealthCap();
+        if ($indexCap !== null && $indexCap < $target) {
+            $target = $indexCap;
+        }
+
         $todayStart = (clone $now)->setTime(0, 0);
         $publishedToday = (int) $this->em->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM brand WHERE published_at >= :start',
@@ -118,10 +128,16 @@ class PublishTickCommand extends Command
         $p = $ticksLeft > 0 ? $remaining / $ticksLeft : 0.0;
         $n = (int) floor($p) + ((mt_rand() / mt_getrandmax()) < fmod($p, 1.0) ? 1 : 0);
 
+        $note = '';
+        if ($indexCap !== null) {
+            $note = sprintf(' (index-guard: потолок %d — индексация домена < %d%%)', $indexCap, $indexCap === 0 ? 5 : 10);
+        } elseif ($health < 1.0) {
+            $note = sprintf(' (заторможен ×%.2f: индексация когорты проседает)', $health);
+        }
+
         $io->text(sprintf(
             '[%s МСК] неделя %d · таргет %d/день%s · опубликовано сегодня %d · тиков осталось %d · p=%.2f → n=%d',
-            $now->format('H:i'), $week, $target,
-            $health < 1.0 ? sprintf(' (заторможен ×%.2f: индексация когорты проседает)', $health) : '',
+            $now->format('H:i'), $week, $target, $note,
             $publishedToday, $ticksLeft, $p, $n,
         ));
 
@@ -232,6 +248,45 @@ class PublishTickCommand extends Command
             $ratio < 0.10 => 0.25,
             $ratio < 0.30 => 0.5,
             default       => 1.0,
+        };
+    }
+
+    /**
+     * Жёсткий потолок дрипа по здоровью индексации ВСЕГО домена (доктрина пакета _seo,
+     * index-guards): доля active-брендов в индексе среди проверенных GSC.
+     *   < 5%  → 0 (полный стоп новых), < 10% → 1/день, иначе — без ограничения (null).
+     *
+     * Отличие от dripHealthMultiplier: тот смотрит динамику когорты 7-21д (множитель
+     * темпа), этот — общий index-rate домена (жёсткий потолок). Применяются совместно.
+     *
+     * Fail-open: нет таблиц GSC / проверено < 20 → null (дрип не ограничиваем).
+     * ⚠️ На проде gsc_index_status сейчас пуст (GSC синкается на Mac/.43) → guard
+     * inert до появления данных на проде. См. docs/seo_adoption_plan.md п.4.
+     */
+    private function indexHealthCap(): ?int
+    {
+        try {
+            $row = $this->em->getConnection()->fetchAssociative(
+                "SELECT COUNT(s.id) checked, COALESCE(SUM(s.indexed),0) idx
+                 FROM brand b
+                 JOIN gsc_index_status s ON s.brand_id = b.id
+                 WHERE b.status = 'active'",
+            );
+        } catch (\Throwable) {
+            return null; // таблиц GSC нет / БД-сбой — не ограничиваем
+        }
+
+        $checked = (int) ($row['checked'] ?? 0);
+        if ($checked < 20) {
+            return null; // мало данных по домену — выводов не делаем
+        }
+
+        $ratio = (int) $row['idx'] / $checked;
+
+        return match (true) {
+            $ratio < 0.05 => 0,
+            $ratio < 0.10 => 1,
+            default       => null,
         };
     }
 }
