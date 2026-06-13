@@ -42,6 +42,12 @@ class PageController extends AbstractController
         ]);
     }
 
+    #[Route('/{_locale}/returns', name: 'return_policy', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
+    public function returns(): Response
+    {
+        return $this->render('pages/returns.html.twig');
+    }
+
     #[Route('/{_locale}/privacy', name: 'privacy_policy', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
     public function privacy(): Response
     {
