@@ -102,29 +102,59 @@ fill 494 / style 36, **сирот 0** (min in-degree 2, max 19).
 - [x] anti-trifecta соблюдена: Google — ровно один канал (Indexing API), IndexNow
   Google не трогает.
 
-### 4. Пороги ramp в publish-tick
+### 4. Пороги ramp в publish-tick — ✅ сделано 2026-06-13
 
 Их index-guards жёстче нашего drip-health (×0.25/×0.5):
-- **indexed-ratio <5% → 0 новых; <10% → cap 1/день**;
-- ramp UP только после 14-дн index-rate ≥0.6–0.7 И стабильных позиций;
-- young-домен: потолок 3–4 новых/неделю.
+- **indexed-ratio <5% → 0 новых; <10% → cap 1/день**.
 
-У нас общий ratio 5.3% → по их доктрине дрип должен стоять почти на нуле.
-- [ ] перенять пороги в publish-tick, СОХРАНИВ наш fail-open (нет GSC-данных = множитель 1.0);
-- [ ] точный матч GSC-статусов: `'indexed' in s and 'not indexed' not in s` (наш GscClient судит по verdict PASS — ок).
+- [x] `PublishTickCommand::indexHealthCap()` — жёсткий ПОТОЛОК дрипа по общей доле
+  индексации домена (доля active в индексе среди проверенных GSC): <5% → 0,
+  <10% → 1/день, иначе без ограничения. Применяется СОВМЕСТНО с когортным
+  `dripHealthMultiplier` (тот — множитель темпа по динамике когорты 7-21д; этот —
+  потолок по здоровью всего домена). Fail-open сохранён (нет данных / <20 проверено → null).
+- [x] точный матч GSC-статусов — наш `GscClient` судит по verdict PASS (`indexed=$verdict==='PASS'`),
+  substring-ловушки `'indexed' in 'not indexed'` нет.
 
-### 5. CTR-оптимизация позиций 5–20 (приоритет №1 их доктрины)
+⚠️ **Операционный разрыв:** на ПРОДЕ `gsc_index_status` пуст (GSC синкается на Mac/.43,
+не на прод) → и `indexHealthCap`, и существующий `dripHealthMultiplier` сейчас inert
+на проде (fail-open → потолка нет). Guard станет действующим, когда индекс-данные GSC
+попадут на прод (push в рамках агент-API или отдельный sync-таргет). Логика верная и
+готовая — ждёт данных. Локально (где есть GSC) guard срабатывает: 5.3% → потолок 1/день.
 
-Оптимизировать существующее, не минтить новое. Кандидаты уже есть:
-wahhid (поз. 8, 2 клика), barka (5.2), ostrovimenitebya (8.3), neverlate (10.6).
-- [ ] title/meta-правка 23 индексированных страниц под CTR (title ≤60, meta 150–158, `_fit` по границам слов).
+### 5. CTR-оптимизация позиций 5–20 (приоритет №1 их доктрины) — ✅ сделано 2026-06-13
 
-### 6. article-qa-toolkit как гейт RAG-генерации
+Оптимизировать существующее, не минтить новое. `_fit` по границам слов (доктрина
+«ремонт длины/структуры вместо реджекта»).
 
-Наш `ContentValidator` проверяет только стоп-фразы и word count. Их гейт:
-- SB≥7, RV≥7, HL≥8, AVI≥70;
-- near-dup: title Jaccard <0.70, body <0.60, **≥0.85 = DROP**;
-- закрывает риск scaled-content по 438+ однотипным карточкам.
+- [x] `SeoMetaService`: `fit()` (трим по границе слова, не mid-word), `buildTitle()`
+  (самый информативный вариант ≤60 с branded-anchor + суффиксом WEARBASE),
+  `buildDescription()` (из description/anons по границе слова ≤155, иначе шаблон).
+- [x] `GenerateBrandContentCommand::applyMeta` — заменён mid-word `mb_substr(…,60/155)`
+  на `SeoMetaService::fit` (резал слова посередине).
+- [x] `app:seo:meta-repair` — чинит ТОЛЬКО дефектные поля (пустые / title>60 / desc>155),
+  приоритет по показам GSC (gsc_page_stats, LEFT JOIN), `--dry-run`, `--min-impressions`.
+  Локально починено 2 active-бренда (ostrovimenitebya md 226→145 — был обрезан Google;
+  Moncecy title 63→54), 0 дефектов осталось.
+- [x] unit-тесты `SeoMetaServiceTest` (7).
+
+⚠️ meta-репорт/ремонт гонять на Mac/.43 (там GSC-данные и канонический brand-слой
+RAG); чтобы починка доехала на прод — ре-пуш бренда (агент-API, content_version).
+Прод-дефекты (если есть) лечатся прямым прогоном `app:seo:meta-repair` на проде
+(detect по длине работает без GSC).
+
+### 6. article-qa-toolkit как гейт RAG-генерации — ✅ сделано 2026-06-13
+
+- [x] **SB/HL-гейт уже был** (`ArticleQaService`): гоняет article-qa-toolkit на
+  сгенерированном описании (SpamBrain≥7, Human-likeness≥8, overall≥75), fail-open;
+  Reader Value сознательно не применяем (откалибрована под статьи 1200+ слов).
+- [x] **Near-dup добавлен** (был главный пробел — scaled-content по однотипным карточкам):
+  `NearDuplicateDetector` (Jaccard по word-3-shingles, пороги пакета: ≥0.85 DROP,
+  0.60–0.85 WARN, title 0.70). Встроен в `GenerateBrandContentCommand` после QA-гейта:
+  сравнение с описаниями остальных active-брендов, ≥0.85 → бренд в review (повтор
+  корпуса не лечит); принятое описание добавляется в корпус (дубли внутри прогона).
+- [x] `app:seo:near-dup` — аудит существующего корпуса (попарный Jaccard, DROP/WARN,
+  `--threshold`, `--export`). Текущий каталог: **дублей нет** (RAG-генерация уникальна).
+- [x] unit-тесты `NearDuplicateDetectorTest` (6).
 
 ## Доктрина пакета — короткая выжимка
 

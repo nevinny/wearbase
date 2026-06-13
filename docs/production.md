@@ -78,4 +78,5 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 - Креды: `config/secrets/gsc-sa.json` (service account) + `GSC_SITE_URL=sc-domain:wearbase.ru` — только на Mac.
 - `php bin/console app:gsc:sync` — Search Analytics + покрытие индекса → таблицы `gsc_page_stats` / `gsc_index_status` (локальная БД).
 - `php bin/console app:report:daily` — дайджест (публикации + GSC) в Telegram, запускать с Mac.
-- ⚠️ 2026-06-12: в выдаче есть дубль-хост `www.wearbase.ru` — нужен 301 www→apex на хостинге.
+- ⚠️ 2026-06-12: дубль-хост `www.wearbase.ru` закрыт 301 www→apex (`public_html/.htaccess`, деплой 2026-06-12) + canonical/hreflang/sitemap от `SITE_BASE_URL`.
+- ⚠️ `gsc_index_status`/`gsc_page_stats` на проде **пусты** (GSC синкается на Mac/.43). Поэтому index-guard и drip-health в `app:brand:publish-tick`, а также приоритизация `app:seo:meta-repair` по показам — на проде fail-open/без приоритета, пока индекс-данные GSC не попадут на прод. Логика готова, ждёт данных (push в агент-API или отдельный sync-таргет). `app:seo:meta-repair` на проде всё равно полезна: дефекты по длине meta она ловит без GSC.
