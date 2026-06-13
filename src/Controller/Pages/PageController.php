@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller\Pages;
 
+use App\Repository\BrandRepository;
 use App\Repository\ShippingRuleRepository;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -29,6 +31,14 @@ class PageController extends AbstractController
         return $this->render('pages/delivery.html.twig', [
             'grouped'      => $grouped,
             'carrierIcons' => self::CARRIER_ICONS,
+        ]);
+    }
+
+    #[Route('/{_locale}/about', name: 'about_us', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
+    public function about(BrandRepository $brandRepo): Response
+    {
+        return $this->render('pages/about.html.twig', [
+            'brandsCount' => $brandRepo->count(['status' => Statuses::Active]),
         ]);
     }
 

@@ -1,0 +1,48 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+
+{% block title %}О проекте WEARBASE — каталог российских брендов одежды{% endblock %}
+{% block meta_description %}WEARBASE — каталог российских брендов одежды. Покупка напрямую у бренда без комиссии маркетплейса с продаж. Уже {{ brandsCount }} брендов.{% endblock %}
+
+{% block body %}
+<div class="container mx-auto px-4 py-10 max-w-3xl prose prose-gray">
+    <nav class="flex mb-6 text-sm not-prose" aria-label="Хлебные крошки">
+        <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+        <span class="mx-2 text-gray-400">/</span>
+        <span class="text-gray-900 font-medium">О нас</span>
+    </nav>
+
+    <h1 class="text-3xl font-bold mb-6">О проекте WEARBASE</h1>
+
+    <p>WEARBASE — это каталог российских брендов одежды. Мы собираем марки из разных
+    городов России в одном месте, чтобы их было проще найти, сравнить и купить
+    напрямую. Сейчас в каталоге {{ brandsCount }} брендов, и список пополняется.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">Зачем мы это делаем</h2>
+    <p>Сильные локальные марки часто теряются среди тысяч карточек на маркетплейсах,
+    а комиссия площадки с каждой продажи поднимает цену для покупателя. Мы строим
+    витрину, где у каждого бренда есть собственная страница с описанием, ассортиментом,
+    контактами и магазинами — без обезличивания.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">Как это работает для покупателя</h2>
+    <ul class="list-disc pl-6 mt-2 space-y-1">
+        <li>Каталог <a href="{{ path('brand_index', {_locale: page_locale}) }}">брендов</a> и <a href="{{ path('catalog_index') }}">товаров</a> с поиском и фильтрами.</li>
+        <li>Бренды можно смотреть <a href="{{ path('brand_cities', {_locale: page_locale}) }}">по городам</a>.</li>
+        <li>Оплата заказа уходит напрямую бренду — площадка не берёт комиссию с продажи.</li>
+        <li>Цены в каталоге пересчитываются в выбранную валюту для международных покупателей.</li>
+    </ul>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">Как это работает для бренда</h2>
+    <p>Бренд получает страницу в каталоге и принимает оплату на свои реквизиты — мы не
+    встаём между брендом и покупателем в расчётах. Подробнее на странице
+    <a href="{{ path('landing_for_brands', {_locale: page_locale}) }}">для брендов</a>;
+    о том, чем это отличается от маркетплейсов, — в материале
+    <a href="{{ path('landing_no_marketplace', {_locale: page_locale}) }}">«Без маркетплейсов»</a>.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">Контакты</h2>
+    <p>По вопросам сотрудничества и работы каталога пишите на
+    <a href="mailto:hello@wearbase.ru">hello@wearbase.ru</a> или в наш
+    <a href="https://t.me/wearbase" target="_blank" rel="noopener">Telegram</a>.</p>
+</div>
+{% endblock %}

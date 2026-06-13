@@ -60,6 +60,12 @@ class SitemapController extends AbstractController
         }
 
         $urls[] = [
+            'loc' => $this->generateUrl('about_us', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'monthly',
+            'priority' => '0.6',
+        ];
+
+        $urls[] = [
             'loc' => $this->generateUrl('blog_index', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
             'changefreq' => 'weekly',
             'priority' => '0.8',
