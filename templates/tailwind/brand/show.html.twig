@@ -53,9 +53,17 @@
                         "name": "Бренды",
                         "item": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}"
                     },
+                    {% if citySlug %}
                     {
                         "@type": "ListItem",
                         "position": 3,
+                        "name": "{{ brand.city|escape('js') }}",
+                        "item": "{{ url('brand_city', {_locale: app.request.locale|default('ru'), slug: citySlug}) }}"
+                    },
+                    {% endif %}
+                    {
+                        "@type": "ListItem",
+                        "position": {{ citySlug ? 4 : 3 }},
                         "name": "{{ _bt }}",
                         "item": "{{ url('brand_show', {slug: brand.slug}) }}"
                     }
@@ -174,6 +182,10 @@
             <span class="mx-2 text-gray-400">/</span>
             <a href="{{ path('brand_index', {_locale: show_locale}) }}" class="text-gray-500 hover:text-gray-900">Бренды</a>
             <span class="mx-2 text-gray-400">/</span>
+            {% if citySlug %}
+            <a href="{{ path('brand_city', {_locale: show_locale, slug: citySlug}) }}" class="text-gray-500 hover:text-gray-900">{{ brand.city }}</a>
+            <span class="mx-2 text-gray-400">/</span>
+            {% endif %}
             <span class="text-gray-900 font-medium">{{ _bt }}</span>
         </nav>
 

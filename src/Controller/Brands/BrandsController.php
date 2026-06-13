@@ -210,7 +210,7 @@ class BrandsController extends AbstractController
         name: 'brand_show',
         requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'],
         defaults: ['_locale' => 'ru'])]
-    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo): Response
+    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo, \App\Service\CitySlugger $citySlugger): Response
     {
         // Является ли текущий пользователь участником команды ИМЕННО этого бренда
         $isMemberOfThisBrand = false;
@@ -300,6 +300,9 @@ class BrandsController extends AbstractController
             'similarBrands' => $similarBrands,
             'styles' => $styles,
             'cities' => $cities,
+            // Слаг города бренда → ссылка на дедицированный city-хаб (реципрок к city→card,
+            // «родительская категория» по правилу 2.12). null если города нет.
+            'citySlug' => ($c = trim((string) $brandCity)) !== '' ? $citySlugger->slugify($c) : null,
             'isMemberOfThisBrand' => $isMemberOfThisBrand,
             'faqs' => $faqs,
             'hiddenDp' => $hiddenDp,
