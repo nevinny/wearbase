@@ -8,6 +8,8 @@ use App\Service\ArticleQaService;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
+use App\Service\NearDuplicateDetector;
+use App\Service\SeoMetaService;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -32,10 +34,14 @@ class GenerateBrandContentCommand extends Command
     private int $failed          = 0; // ошибка при обращении к LLM
     private int $validationFailed = 0; // не прошло валидацию
     private int $qaFailed        = 0; // не прошло QA-гейт (article-qa-toolkit)
+    private int $nearDupDropped  = 0; // near-duplicate другого бренда (≥0.85) → review
     private int $deferred        = 0; // grounded-only: корпус не прошёл gate, отложено
 
     /** EM не readonly — после DB-ошибки пересоздаём через ManagerRegistry (многодневный прогон). */
     private EntityManagerInterface $em;
+
+    /** Лениво собранный корпус shingle-множеств описаний активных брендов (id => set). */
+    private ?array $corpusShingles = null;
 
     public function __construct(
         private readonly ManagerRegistry $managerRegistry,
@@ -43,6 +49,8 @@ class GenerateBrandContentCommand extends Command
         private readonly ContentValidator $validator,
         private readonly BrandRagService $rag,
         private readonly ArticleQaService $articleQa,
+        private readonly NearDuplicateDetector $nearDup,
+        private readonly SeoMetaService $seoMeta,
     ) {
         parent::__construct();
         $this->em = $this->managerRegistry->getManager();
@@ -334,6 +342,40 @@ class GenerateBrandContentCommand extends Command
             if ($qa['checked']) {
                 $io->text(sprintf('    QA: ok (overall %.1f)', $qa['metrics']['overall'] ?? 0));
             }
+
+            // 1.6. Near-duplicate гейт (scaled-content / doorway по однотипным карточкам).
+            // Сравниваем с описаниями ОСТАЛЬНЫХ активных брендов: ≥0.85 → DROP (в review,
+            // повтор корпуса не лечит — нужна ручная проверка/иной источник); 0.60–0.85 —
+            // предупреждение о каннибализации, но публикуем.
+            $shingles = $this->nearDup->shingles($description);
+            $corpus   = $this->corpus();
+            unset($corpus[$brand->getId()]); // не сравниваем с собственным старым описанием
+            $near = $this->nearDup->nearest($shingles, $corpus);
+            if ($near['score'] >= NearDuplicateDetector::DROP_THRESHOLD) {
+                $io->warning(sprintf(
+                    'Near-duplicate для "%s" (Jaccard %.2f с brand #%s) → review',
+                    $brandName, $near['score'], $near['id'],
+                ));
+                if (!$dryRun) {
+                    /** @var \App\Repository\BrandRagPipelineRepository $repo */
+                    $repo = $this->em->getRepository(BrandRagPipeline::class);
+                    $repo->getOrCreate($brand)
+                        ->setStatus(BrandRagPipeline::STATUS_REVIEW)
+                        ->setLastError(sprintf('near-duplicate: Jaccard %.2f с brand #%s', $near['score'], $near['id']));
+                    $this->em->flush();
+                    $this->em->clear();
+                    $this->corpusShingles = null; // EM очищен — корпус перечитаем при следующем обращении
+                }
+                $this->nearDupDropped++;
+                return;
+            }
+            if ($near['score'] >= NearDuplicateDetector::WARN_THRESHOLD) {
+                $io->text(sprintf('    near-dup: каннибализация %.2f с brand #%s (публикуем)', $near['score'], $near['id']));
+            }
+            // принятое описание попадает в корпус — ловим дубли в пределах одного прогона
+            if ($this->corpusShingles !== null) {
+                $this->corpusShingles[$brand->getId()] = $shingles;
+            }
         }
 
         // 2. Генерация meta на основе только что созданного description
@@ -445,8 +487,11 @@ class GenerateBrandContentCommand extends Command
 
     private function applyMeta(Brand $brand, array $meta): void
     {
-        $brand->setMetaTitle(mb_substr($meta['title'] ?? '', 0, 60) ?: null);
-        $brand->setMetaDescription(mb_substr($meta['description'] ?? '', 0, 155) ?: null);
+        // _fit по границе слова (не mid-word mb_substr): доктрина «ремонт вместо реджекта»
+        $title = trim((string) ($meta['title'] ?? ''));
+        $desc  = trim((string) ($meta['description'] ?? ''));
+        $brand->setMetaTitle($title !== '' ? $this->seoMeta->fit($title, SeoMetaService::MAX_TITLE) : null);
+        $brand->setMetaDescription($desc !== '' ? $this->seoMeta->fit($desc, SeoMetaService::MAX_DESCRIPTION) : null);
         $brand->setMetaKeywords(mb_substr($meta['keywords'] ?? '', 0, 200) ?: null);
         $brand->setUpdatedAt(new \DateTime());
     }
@@ -461,6 +506,31 @@ class GenerateBrandContentCommand extends Command
         return $styles ? implode(', ', $styles) : null;
     }
 
+    /**
+     * Корпус shingle-множеств описаний активных брендов для near-dup гейта.
+     * Лениво и один раз на прогон (id => shingle-set); инвалидируется при em->clear().
+     *
+     * @return array<int,array<string,true>>
+     */
+    private function corpus(): array
+    {
+        if ($this->corpusShingles !== null) {
+            return $this->corpusShingles;
+        }
+
+        $rows = $this->em->getConnection()->fetchAllAssociative(
+            "SELECT id, description FROM brand
+             WHERE status = 'active' AND description IS NOT NULL AND CHAR_LENGTH(description) > 0",
+        );
+
+        $this->corpusShingles = [];
+        foreach ($rows as $row) {
+            $this->corpusShingles[(int) $row['id']] = $this->nearDup->shingles((string) $row['description']);
+        }
+
+        return $this->corpusShingles;
+    }
+
     private function printResults(SymfonyStyle $io, bool $metaOnly): void
     {
         $io->newLine();
@@ -471,6 +541,7 @@ class GenerateBrandContentCommand extends Command
             $rows[] = ['Сгенерировано (description + meta)', $this->processed];
             $rows[] = ['Не прошло валидацию',               $this->validationFailed];
             $rows[] = ['Не прошло QA-гейт',                  $this->qaFailed];
+            $rows[] = ['Near-duplicate → review',            $this->nearDupDropped];
             $rows[] = ['Отложено (grounded-only)',           $this->deferred];
         }
 
