@@ -40,6 +40,15 @@ class SeoMetaServiceTest extends TestCase
         self::assertStringEndsNotWith(',', $out);
     }
 
+    public function testFitStripsDanglingPipeSeparator(): void
+    {
+        // обрезали «… купить | WEARBASE» — висячий «|» оставаться не должен
+        $out = $this->s->fit('Бренд Wahhid — одежда streetwear, отзывы, купить | WEARBASE', 52);
+        self::assertLessThanOrEqual(52, mb_strlen($out));
+        self::assertStringEndsNotWith('|', rtrim($out));
+        self::assertStringEndsNotWith('|', $out);
+    }
+
     public function testBuildTitleFitsLimitAndKeepsBrand(): void
     {
         $title = $this->s->buildTitle('GATE31', 'Санкт-Петербург');

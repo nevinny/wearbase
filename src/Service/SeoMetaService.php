@@ -35,7 +35,8 @@ class SeoMetaService
             }
         }
 
-        return rtrim($cut, " \t\n\r\0\x0B.,;:—-");
+        // хвостовая пунктуация + висячий разделитель «|» (обрезали «… купить | WEARBASE»)
+        return rtrim($cut, " \t\n\r\0\x0B.,;:—-|");
     }
 
     /**
