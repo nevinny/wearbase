@@ -17,6 +17,8 @@ class SeoMetaService
     public const MAX_DESCRIPTION = 155;
 
     private const BRAND_SUFFIX = ' | WEARBASE';
+    /** Суффикс, который шаблон (tailwind/brand/show.html.twig) добавляет, если его нет. */
+    private const RENDER_SUFFIX = ' | WEARBASE';
 
     /** Тримит текст к лимиту по границе слова (без обрезанных слов и хвостовой пунктуации). */
     public function fit(string $text, int $max): string
@@ -37,6 +39,23 @@ class SeoMetaService
 
         // хвостовая пунктуация + висячий разделитель «|» (обрезали «… купить | WEARBASE»)
         return rtrim($cut, " \t\n\r\0\x0B.,;:—-|");
+    }
+
+    /**
+     * Title, безопасный для РЕНДЕРА: шаблон карточки добавляет « | WEARBASE», если
+     * его нет в значении. Поэтому итог считаем по результату трима:
+     *   есть WEARBASE → шаблон не добавит → достаточно ≤60;
+     *   нет WEARBASE  → шаблон добавит суффикс → режем под (60 − длина суффикса),
+     *                   чтобы итоговый <title> остался ≤60.
+     */
+    public function fitTitleForRender(string $title): string
+    {
+        $fit = $this->fit($title, self::MAX_TITLE);
+        if (mb_stripos($fit, 'WEARBASE') !== false) {
+            return $fit;
+        }
+
+        return $this->fit($title, self::MAX_TITLE - mb_strlen(self::RENDER_SUFFIX));
     }
 
     /**
@@ -62,7 +81,8 @@ class SeoMetaService
             }
         }
 
-        return $this->fit($brandTitle, self::MAX_TITLE);
+        // очень длинное название без подходящего варианта с суффиксом — режем render-safe
+        return $this->fitTitleForRender($brandTitle);
     }
 
     /**

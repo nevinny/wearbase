@@ -137,10 +137,20 @@ fill 494 / style 36, **сирот 0** (min in-degree 2, max 19).
   Moncecy title 63→54), 0 дефектов осталось.
 - [x] unit-тесты `SeoMetaServiceTest` (7).
 
-⚠️ meta-репорт/ремонт гонять на Mac/.43 (там GSC-данные и канонический brand-слой
-RAG); чтобы починка доехала на прод — ре-пуш бренда (агент-API, content_version).
-Прод-дефекты (если есть) лечатся прямым прогоном `app:seo:meta-repair` на проде
-(detect по длине работает без GSC).
+**🐞 Найден и исправлен скрытый баг (2026-06-13):** `TranslationExtension::getBrandOriginal`
+для `metaTitle`/`metaDescription` возвращал `$brand->getTitle()`/`getAnons()`, а НЕ сами
+колонки `meta_title`/`meta_description`. Т.к. `brand_translation` пуст, вся
+RAG-сгенерированная meta НЕ рендерилась — `<title>` был «<Бренд> | WEARBASE», meta
+description — анонс. Фикс: `getMetaTitle() ?: getTitle()` (и аналогично description).
+Теперь keyword-rich RAG-meta живёт в выдаче.
+
+Следствие — render-safety: шаблон добавляет « | WEARBASE», если его нет в meta_title.
+`SeoMetaService::fitTitleForRender()` режет с учётом этого суффикса (нет WEARBASE →
+бюджет 60−11=49), `meta-repair` ловит render-overflow (no-WEARBASE & >49). Прогнано:
+прод 135 + локально 141 title нормализованы render-safe, рендер-overflow = 0.
+
+⚠️ meta-ремонт гонять на Mac/.43 (GSC + канонический brand-слой RAG); прод-дефекты
+лечатся прямым прогоном `app:seo:meta-repair` на проде (detect по длине без GSC).
 
 ### 6. article-qa-toolkit как гейт RAG-генерации — ✅ сделано 2026-06-13
 

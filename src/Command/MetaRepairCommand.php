@@ -68,9 +68,14 @@ class MetaRepairCommand extends Command
 
         // Дефектные active-бренды + показы GSC (LEFT JOIN — без GSC попадают с imp=0).
         // gsc_page_stats может не существовать (прод) → деградируем к выборке без приоритета.
+        // Дефект = пустая meta; длиннее лимита колонки; ИЛИ рендер-overflow: title без
+        // суффикса WEARBASE длиннее (60 − len(' | WEARBASE')=49) → шаблон добавит суффикс
+        // и итоговый <title> превысит 60 (TranslationExtension рендерит meta_title как есть).
+        $renderBudget = $maxT - mb_strlen(' | WEARBASE');
         $defectWhere =
             "b.status = 'active' AND (
                 b.meta_title IS NULL OR b.meta_title = '' OR CHAR_LENGTH(b.meta_title) > {$maxT}
+                OR (b.meta_title NOT LIKE '%WEARBASE%' AND CHAR_LENGTH(b.meta_title) > {$renderBudget})
                 OR b.meta_description IS NULL OR b.meta_description = '' OR CHAR_LENGTH(b.meta_description) > {$maxD}
             )";
 
@@ -108,14 +113,18 @@ class MetaRepairCommand extends Command
             $changes = [];
 
             $title = (string) $brand->getMetaTitle();
-            if ($title === '' || mb_strlen($title) > $maxT) {
-                // пустой → собираем; слишком длинный → тримим по границе слова
+            // render-overflow: нет WEARBASE и длиннее (60 − суффикс) → шаблон добавит «| WEARBASE» → >60
+            $renderOverflow = mb_stripos($title, 'WEARBASE') === false && mb_strlen($title) > $renderBudget;
+            if ($title === '' || mb_strlen($title) > $maxT || $renderOverflow) {
+                // пустой → собираем; иначе → render-safe трим по границе слова
                 $newTitle = $title === ''
                     ? $this->seoMeta->buildTitle((string) $brand->getTitle(), $brand->getCity())
-                    : $this->seoMeta->fit($title, $maxT);
-                $changes['title'] = [$title, $newTitle];
-                if (!$dryRun) {
-                    $brand->setMetaTitle($newTitle);
+                    : $this->seoMeta->fitTitleForRender($title);
+                if ($newTitle !== $title) {
+                    $changes['title'] = [$title, $newTitle];
+                    if (!$dryRun) {
+                        $brand->setMetaTitle($newTitle);
+                    }
                 }
             }
 

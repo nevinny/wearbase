@@ -153,8 +153,11 @@ class TranslationExtension extends AbstractExtension
             'title'           => $brand->getTitle(),
             'anons'           => $brand->getAnons(),
             'description'     => $brand->getDescription(),
-            'metaTitle'       => $brand->getTitle(), // SEO fallback
-            'metaDescription' => $brand->getAnons(),
+            // Сгенерированная RAG-meta — основной источник; bare title/anons — fallback
+            // для брендов без meta. (Раньше тут безусловно стоял getTitle()/getAnons() —
+            // колонки meta_title/meta_description не рендерились вообще.)
+            'metaTitle'       => $brand->getMetaTitle() ?: $brand->getTitle(),
+            'metaDescription' => $brand->getMetaDescription() ?: $brand->getAnons(),
             default           => null,
         };
     }

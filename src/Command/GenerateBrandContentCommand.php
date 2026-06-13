@@ -490,7 +490,7 @@ class GenerateBrandContentCommand extends Command
         // _fit по границе слова (не mid-word mb_substr): доктрина «ремонт вместо реджекта»
         $title = trim((string) ($meta['title'] ?? ''));
         $desc  = trim((string) ($meta['description'] ?? ''));
-        $brand->setMetaTitle($title !== '' ? $this->seoMeta->fit($title, SeoMetaService::MAX_TITLE) : null);
+        $brand->setMetaTitle($title !== '' ? $this->seoMeta->fitTitleForRender($title) : null);
         $brand->setMetaDescription($desc !== '' ? $this->seoMeta->fit($desc, SeoMetaService::MAX_DESCRIPTION) : null);
         $brand->setMetaKeywords(mb_substr($meta['keywords'] ?? '', 0, 200) ?: null);
         $brand->setUpdatedAt(new \DateTime());

@@ -49,6 +49,23 @@ class SeoMetaServiceTest extends TestCase
         self::assertStringEndsNotWith('|', $out);
     }
 
+    public function testFitTitleForRenderReservesSuffixWhenAbsent(): void
+    {
+        // нет WEARBASE → шаблон добавит « | WEARBASE» (11) → итог должен остаться ≤60
+        $title    = 'Бренд Wahhid (Ваххид) — одежда streetwear, отзывы, купить, доставка';
+        $stored   = $this->s->fitTitleForRender($title);
+        $rendered = str_contains($stored, 'WEARBASE') ? $stored : $stored . ' | WEARBASE';
+        self::assertLessThanOrEqual(60, mb_strlen($rendered));
+        self::assertStringNotContainsString('WEARBASE', $stored); // суффикс добавит шаблон
+    }
+
+    public function testFitTitleForRenderKeepsSuffixedTitleUnderLimit(): void
+    {
+        $title  = 'NEVERLATE — бренд одежды | WEARBASE';
+        $stored = $this->s->fitTitleForRender($title);
+        self::assertSame($title, $stored); // ≤60 и уже с суффиксом — не трогаем
+    }
+
     public function testBuildTitleFitsLimitAndKeepsBrand(): void
     {
         $title = $this->s->buildTitle('GATE31', 'Санкт-Петербург');
