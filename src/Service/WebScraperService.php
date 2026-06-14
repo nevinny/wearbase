@@ -47,6 +47,8 @@ class WebScraperService
             return null;
         }
 
+        $url = self::normalizeTelegramUrl($url);
+
         if ($this->trafilaturaAvailable()) {
             $extracted = $this->runTrafilatura($url, $keepTables);
             if ($extracted !== null && trim($extracted) !== '') {
@@ -158,6 +160,21 @@ class WebScraperService
         $raw = $body->count() > 0 ? $body->text(null, false) : $crawler->text(null, false);
 
         return $this->normalizeText($raw);
+    }
+
+    /**
+     * Telegram-канал → читаемый веб-превью: t.me/<канал> (и telegram.me, и ссылки на
+     * посты t.me/<канал>/123) → t.me/s/<канал>. Страница t.me/<канал> — JS-приложение
+     * без контента; /s/ отдаёт серверный HTML с последними постами (годен для скрейпа
+     * и эмбеддинга). Инвайты (joinchat/, +…) и уже-/s/ — без изменений.
+     */
+    public static function normalizeTelegramUrl(string $url): string
+    {
+        if (preg_match('~^https?://(?:t\.me|telegram\.me)/(?:s/)?(?!joinchat/|\+)([A-Za-z0-9_]{3,})~i', $url, $m)) {
+            return 'https://t.me/s/' . $m[1];
+        }
+
+        return $url;
     }
 
     /**

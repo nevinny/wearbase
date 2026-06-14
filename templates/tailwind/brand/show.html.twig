@@ -249,7 +249,9 @@
                     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
                         <h2 class="text-2xl font-semibold mb-4">О бренде {{ _bt }}</h2>
                         <div class="prose max-w-none text-gray-700 leading-relaxed">
-                            <p style="white-space: pre-line">{{ _bd }}</p>
+                            {# striptags: часть legacy-описаний хранит <p>…</p> — без чистки теги
+                               видны как текст (вложенный <p> ещё и невалиден). pre-line держит переносы. #}
+                            <p style="white-space: pre-line">{{ _bd|striptags }}</p>
                         </div>
                     </section>
                 {% endif %}
