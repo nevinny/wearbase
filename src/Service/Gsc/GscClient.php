@@ -89,6 +89,51 @@ class GscClient
         ];
     }
 
+    /**
+     * Sitemaps API — агрегат покрытия без поштучной инспекции (масштабируется на любой объём).
+     * ⚠️ Поле contents[].indexed Google давно не заполняет (deprecated, обычно 0) — берём
+     * submitted как знаменатель, errors/warnings/lastDownloaded как health-сигнал.
+     *
+     * @return array<int,array{path:string,submitted:int,errors:int,warnings:int,lastDownloaded:?string,isPending:bool}>
+     */
+    public function listSitemaps(): array
+    {
+        $data = $this->get('https://www.googleapis.com/webmasters/v3/sites/' . rawurlencode((string) $this->siteUrl) . '/sitemaps');
+
+        $out = [];
+        foreach (($data['sitemap'] ?? []) as $sm) {
+            $submitted = 0;
+            foreach (($sm['contents'] ?? []) as $c) {
+                $submitted += (int) ($c['submitted'] ?? 0);
+            }
+            $out[] = [
+                'path'           => (string) ($sm['path'] ?? ''),
+                'submitted'      => $submitted,
+                'errors'         => (int) ($sm['errors'] ?? 0),
+                'warnings'       => (int) ($sm['warnings'] ?? 0),
+                'lastDownloaded' => isset($sm['lastDownloaded']) ? (string) $sm['lastDownloaded'] : null,
+                'isPending'      => (bool) ($sm['isPending'] ?? false),
+            ];
+        }
+
+        return $out;
+    }
+
+    /** @return array<string,mixed> */
+    private function get(string $url): array
+    {
+        $response = $this->httpClient->request('GET', $url, [
+            'headers' => ['Authorization' => 'Bearer ' . $this->accessToken()],
+            'timeout' => 30,
+        ]);
+
+        if ($response->getStatusCode() >= 400) {
+            throw new \RuntimeException(sprintf('GSC HTTP %d: %s', $response->getStatusCode(), mb_substr($response->getContent(false), 0, 300)));
+        }
+
+        return $response->toArray(false);
+    }
+
     /** @return array<string,mixed> */
     private function post(string $url, array $body): array
     {

@@ -15,10 +15,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Синк Google Search Console (cron 1 раз в день, дизайн «аналитика+GSC»):
  *  1. Search Analytics одним батчем (до 25k строк, лаг GSC ~2-3 дня) → gsc_page_stats;
  *     brand_id резолвится по slug (срезая /{locale}/brands/) — суммирует 9 локалей.
- *  2. URL Inspection: лимит Google 2000/день → cap 1500. Приоритет — свежеопубликованные
- *     дрипом (published_at за 7 дней, главный риск неиндексации), остаток — round-robin
- *     по last_checked_at (давно не проверенные). Полный обход базы ~4 дня.
- *  3. --report: алерты в лог (низкий indexed_ratio свежих, обвал показов день-к-дню).
+ *  1b. Индекс по Search Analytics: бренд с показами (ЛЮБАЯ локаль) = де-факто в индексе
+ *     (показ невозможен без индексации). Помечаем indexed=1 БЕЗ инспекции — иначе инспекция
+ *     одного ru-URL недосчитывает индексацию в разы (ранжируется en/tr/…, а ru ещё нет).
+ *     Это и масштабируется: на десятках тысяч страниц индекс выводим из SA, не из квоты.
+ *  2. URL Inspection (лимит Google 2000/день → cap 1500) — ДИАГНОСТИКА МОЛЧУНОВ: квоту
+ *     тратим на свежеопубликованные + страницы БЕЗ показов (их и надо разбирать «почему не
+ *     в индексе»); уже ранжирующиеся не инспектируем — они и так помечены п.1b.
+ *  3. --report: алерты в лог + sitemaps-агрегат (submitted/errors без поштучной инспекции).
  *
  * FAIL-OPEN: без кредов — лог и exit 0. GSC никогда не тормозит дрип-публикацию.
  *
@@ -66,6 +70,7 @@ class SyncGscCommand extends Command
         try {
             if (!$input->getOption('inspect-only')) {
                 $this->syncAnalytics($io);
+                $this->markServedFromAnalytics($io);
             }
             if (!$input->getOption('analytics-only')) {
                 $this->syncIndexCoverage($io, max(1, (int) $input->getOption('inspect-cap')));
@@ -113,6 +118,43 @@ class SyncGscCommand extends Command
         $io->text("Upsert в gsc_page_stats: {$upserted}");
     }
 
+    /**
+     * Индекс по Search Analytics: бренд с показами (любая локаль) = де-факто в индексе.
+     * first_indexed_at ← первый день с показами (а не NOW, чтобы не ломать time-to-index).
+     * coverage_state инспекции (по ru-URL) НЕ затираем — он остаётся диагностикой ru-страницы.
+     */
+    private function markServedFromAnalytics(SymfonyStyle $io): void
+    {
+        $servedSub = "SELECT brand_id, MIN(day) first_day FROM gsc_page_stats
+                      WHERE brand_id IS NOT NULL AND impressions > 0 GROUP BY brand_id";
+
+        // 1) уже существующие строки: поднимаем indexed=1, фиксируем самый ранний first_indexed_at
+        $this->db->executeStatement(
+            "UPDATE gsc_index_status s
+             JOIN ({$servedSub}) p ON p.brand_id = s.brand_id
+             SET s.indexed = 1,
+                 s.coverage_state = IF(s.coverage_state IS NULL OR s.coverage_state LIKE 'Served%',
+                                       'Served (Search Analytics)', s.coverage_state),
+                 s.first_indexed_at = LEAST(COALESCE(s.first_indexed_at, p.first_day), p.first_day)",
+        );
+
+        // 2) бренды с показами, которых ещё нет в gsc_index_status — заводим как Served
+        $this->db->executeStatement(
+            "INSERT INTO gsc_index_status (brand_id, page_url, coverage_state, indexed, last_checked_at, first_indexed_at)
+             SELECT p.brand_id, CONCAT('https://wearbase.ru/ru/brands/', b.slug),
+                    'Served (Search Analytics)', 1, NULL, p.first_day
+             FROM ({$servedSub}) p
+             JOIN brand b ON b.id = p.brand_id
+             LEFT JOIN gsc_index_status s ON s.brand_id = p.brand_id
+             WHERE s.brand_id IS NULL",
+        );
+
+        $served = (int) $this->db->fetchOne(
+            "SELECT COUNT(DISTINCT brand_id) FROM gsc_page_stats WHERE brand_id IS NOT NULL AND impressions > 0",
+        );
+        $io->text("Индекс по Search Analytics: {$served} брендов с показами помечены проиндексированными (любая локаль)");
+    }
+
     private function syncIndexCoverage(SymfonyStyle $io, int $cap): void
     {
         $siteBase = 'https://wearbase.ru'; // канонический хост страниц брендов
@@ -128,12 +170,15 @@ class SyncGscCommand extends Command
              'today' => (new \DateTime('today'))->format('Y-m-d H:i:s')],
         );
 
-        // Приоритет 2: round-robin по давности проверки
+        // Приоритет 2: очередь МОЛЧУНОВ — страницы без показов (их и надо диагностировать
+        // «почему не в индексе»). Уже ранжирующиеся не трогаем: они помечены по Search Analytics,
+        // инспекция их ru-URL лишь жгла бы квоту. Внутри — round-robin по давности проверки.
         $rest = $this->db->fetchAllAssociative(
             "SELECT b.id, b.slug FROM brand b
              LEFT JOIN gsc_index_status s ON s.brand_id = b.id
              WHERE b.status = 'active'
                AND (s.last_checked_at IS NULL OR s.last_checked_at < :today)
+               AND NOT EXISTS (SELECT 1 FROM gsc_page_stats g WHERE g.brand_id = b.id AND g.impressions > 0)
              ORDER BY s.last_checked_at IS NULL DESC, s.last_checked_at ASC
              LIMIT " . max(0, $cap - count($fresh)),
             ['today' => (new \DateTime('today'))->format('Y-m-d H:i:s')],
@@ -144,6 +189,12 @@ class SyncGscCommand extends Command
             $targets[(int) $row['id']] = (string) $row['slug']; // дедуп по brand_id
         }
         $targets = array_slice($targets, 0, $cap, preserve_keys: true);
+
+        // Бренды с показами: для них indexed=1 истинно (любая локаль), даже если ru-URL
+        // инспекция вернёт «не в индексе» — иначе откатили бы корректную SA-метку.
+        $servedSet = array_fill_keys(array_map('intval', $this->db->fetchFirstColumn(
+            "SELECT DISTINCT brand_id FROM gsc_page_stats WHERE brand_id IS NOT NULL AND impressions > 0",
+        )), true);
 
         $io->text(sprintf('Inspection: %d URL (cap %d, из них свежих %d)', count($targets), $cap, count($fresh)));
         $checked = $indexed = 0;
@@ -161,6 +212,8 @@ class SyncGscCommand extends Command
                 continue;
             }
 
+            $isIndexed = $result['indexed'] || isset($servedSet[$brandId]);
+
             // first_indexed_at — момент ПЕРВОГО появления в индексе (time-to-index);
             // выставляется один раз и не сбрасывается при выпадении из индекса.
             $this->db->executeStatement(
@@ -173,11 +226,11 @@ class SyncGscCommand extends Command
                     'brand_id' => $brandId,
                     'url'      => $url,
                     'coverage' => $result['coverageState'],
-                    'indexed'  => $result['indexed'] ? 1 : 0,
+                    'indexed'  => $isIndexed ? 1 : 0,
                 ],
             );
             $checked++;
-            $indexed += $result['indexed'] ? 1 : 0;
+            $indexed += $isIndexed ? 1 : 0;
             usleep(300_000); // вежливость к API
         }
 
@@ -243,6 +296,26 @@ class SyncGscCommand extends Command
             if ((int) $d0['imp'] > 100 && (int) $d1['imp'] < (int) $d0['imp'] / 2) {
                 $alerts[] = '⚠ Показы упали >50% день-к-дню.';
             }
+        }
+
+        // Sitemaps-агрегат: покрытие/здоровье без поштучной инспекции (масштабируется на любой объём)
+        try {
+            $sitemaps = $this->gsc->listSitemaps();
+            if ($sitemaps !== []) {
+                $submitted = array_sum(array_column($sitemaps, 'submitted'));
+                $errors    = array_sum(array_column($sitemaps, 'errors'));
+                $warnings  = array_sum(array_column($sitemaps, 'warnings'));
+                $served    = (int) $this->db->fetchOne(
+                    "SELECT COUNT(DISTINCT brand_id) FROM gsc_page_stats WHERE brand_id IS NOT NULL AND impressions > 0",
+                );
+                $lines[] = sprintf('Sitemaps: %d шт · submitted %d URL · errors %d · warnings %d · с показами %d брендов',
+                    count($sitemaps), $submitted, $errors, $warnings, $served);
+                if ($errors > 0) {
+                    $alerts[] = sprintf('⚠ В sitemap ошибок: %d — проверь Search Console.', $errors);
+                }
+            }
+        } catch (\Throwable $e) {
+            $lines[] = 'Sitemaps: запрос не удался (' . mb_substr($e->getMessage(), 0, 80) . ')';
         }
 
         foreach ($lines as $line) {
