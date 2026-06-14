@@ -207,6 +207,16 @@
                     <div class="flex-1 text-center lg:text-left">
                         <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-gray-900">{{ _bt }}</h1>
 
+                        {# Фактоид-полоса (соц-доказательство в сниппет/CTR): год основания · город.
+                           Чистая презентация существующих полей — контент не меняем, версионирование не нужно. #}
+                        {% if brand.foundingYear or brand.city %}
+                            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-x-4 gap-y-1 mb-4 text-sm text-gray-500">
+                                {% if brand.foundingYear %}<span>Основан в {{ brand.foundingYear }}</span>{% endif %}
+                                {% if brand.foundingYear and brand.city %}<span class="text-gray-300">·</span>{% endif %}
+                                {% if brand.city %}<span>{{ brand.city }}</span>{% endif %}
+                            </div>
+                        {% endif %}
+
                         {% if _ba %}
                             <p class="text-gray-700 text-xl lg:text-2xl leading-relaxed max-w-3xl mx-auto lg:mx-0 font-light">
                                 {{ _ba }}
