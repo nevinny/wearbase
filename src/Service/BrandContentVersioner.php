@@ -139,13 +139,14 @@ class BrandContentVersioner
     public function gscSnapshot(int $brandId): array
     {
         $since = (new \DateTime('-' . self::WINDOW_DAYS . ' days'))->format('Y-m-d');
+        // SUM/MAX по пустому набору → NULL; PHP-касты ниже ((int)/(bool)) превращают в 0/false.
         $row = $this->db->fetchAssociative(
-            'SELECT COALESCE(SUM(impressions),0) impr, COALESCE(SUM(clicks),0) clicks
+            'SELECT SUM(impressions) impr, SUM(clicks) clicks
              FROM gsc_page_stats WHERE brand_id = :id AND day >= :since',
             ['id' => $brandId, 'since' => $since],
         ) ?: ['impr' => 0, 'clicks' => 0];
         $indexed = (bool) $this->db->fetchOne(
-            'SELECT COALESCE(MAX(indexed),0) FROM gsc_index_status WHERE brand_id = :id',
+            'SELECT MAX(indexed) FROM gsc_index_status WHERE brand_id = :id',
             ['id' => $brandId],
         );
 

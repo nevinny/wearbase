@@ -306,7 +306,7 @@ class BrandRepository extends ServiceEntityRepository
                      OR b.contact_enriched_at < :ttl
                    )
              ORDER BY
-                 COALESCE(p.priority, 0) DESC,
+                 p.priority DESC,
                  CASE
                      WHEN o.bounced_at IS NOT NULL THEN 0
                      WHEN b.contact_status = 'partial'             THEN 1
