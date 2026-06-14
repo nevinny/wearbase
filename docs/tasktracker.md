@@ -794,3 +794,21 @@ brand_source_url(id, brand_id, url VARCHAR(1024), url_hash CHAR(64), source_type
 4. Смоук: /ru/blog, /ru/cities, /ru/cities/moskva, 301 у /ru/marketplace-commissions, бургер на мобильном.
 
 **Открыто:** падения PHPUnit (31) — предсуществующие (битые data providers «0 passed, 1 expected», БД-зависимые тесты), к этому релизу не относятся, чинить отдельно. Instagram-ссылка в подвале — решить про дисклеймер Meta.
+
+---
+
+## 2026-06-14 — closed-loop регенерация + конкурент-разбор + лиды
+
+**Сделано:** версионирование контента (`brand_content_revision` + `BrandContentVersioner`),
+closed-loop (`app:seo:evaluate-experiments`: GSC win/loss/откат/реген, окно 14д), `--regen-flagged`,
+priority очереди, GSC-индекс из Search Analytics + sitemaps, noindex непереведённых локалей,
+фикс тегов в описании, TG-корпус через `t.me/s/`. Контур в `scheduled_command` (env=dev).
+Разбор vitrine.market → `docs/competitors.md`. Импорт **261 бренда-лида** конкурента
+(`app:brand:import-leads`, status=new → discover).
+
+**Открыто / next:**
+- Поднять **.43** → discover/embed/generate для 261 новых + реген 82 флагнутых (TG-обогащённых).
+- **Outreach 261 лидов**: enrich-contacts → рассылка с питчем «0% комиссии vs 30–67%».
+- SEO: **фактоид-блок** (foundingYear+city) в карточке — презентация, без версионирования (не сделано).
+  Факты в meta_description — только через RAG-генерацию (версионируется), НЕ bulk-UPDATE.
+- SEO отклонено как неприоритет: Product+Offer JSON-LD и транзакц. title (мы brand-led, не product-led; нет товаров в выдаче).
