@@ -29,7 +29,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *   php bin/console app:seo:meta-repair --limit=100      # починить 100
  *
  * ⚠️ Где запускать: на Mac/.43 (там GSC-данные для приоритета и канонические brand-
- * данные RAG-конвейера). Чтобы починка доехала на прод — ре-пуш бренда (content_version).
+ * данные RAG-конвейера). Чтобы починка доехала на прод — ре-пуш бренда (agent_sync_version).
  */
 #[AsCommand(
     name: 'app:seo:meta-repair',

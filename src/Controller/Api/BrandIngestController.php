@@ -39,7 +39,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *   "related": [{"slug": "12storeez", "position": 1, "source": "embedding"}],  // жёсткий граф перелинковки; неизвестные slug'и скипаются
  *   "logo": {"filename": "logo.png", "content_base64": "..."},
  *   "external_id": 6203,        // dev brand.id — только аудит/лог
- *   "content_version": 3        // ≤ текущей версии на проде → skipped
+ *   "agent_sync_version": 3        // ≤ текущей версии на проде → skipped
  * }
  */
 #[Route('/api/v1')]
@@ -359,7 +359,7 @@ class BrandIngestController extends AbstractController
             'status'          => $brand->getStatus(),
             'publish_pending' => $brand->isPublishPending(),
             'published_at'    => $brand->getPublishedAt()?->format(DATE_ATOM),
-            'content_version' => $brand->getContentVersion(),
+            'agent_sync_version' => $brand->getAgentSyncVersion(),
         ]);
     }
 

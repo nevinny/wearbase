@@ -59,6 +59,10 @@ class BrandRagPipeline
     #[ORM\Column(length: 20, options: ['default' => self::STATUS_PENDING])]
     private string $status = self::STATUS_PENDING;
 
+    /** Ручной приоритет в очереди генерации: чем больше — тем раньше берётся (default 0). */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $priority = 0;
+
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $scrapedAt = null;
 
@@ -191,6 +195,17 @@ class BrandRagPipeline
     public function setStatus(string $status): self
     {
         $this->status = $status;
+        return $this;
+    }
+
+    public function getPriority(): int
+    {
+        return $this->priority;
+    }
+
+    public function setPriority(int $priority): self
+    {
+        $this->priority = $priority;
         return $this;
     }
 

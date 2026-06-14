@@ -3,8 +3,10 @@
 namespace App\Command;
 
 use App\Entity\Brand;
+use App\Entity\BrandContentRevision;
 use App\Entity\BrandRagPipeline;
 use App\Service\ArticleQaService;
+use App\Service\BrandContentVersioner;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
@@ -36,6 +38,7 @@ class GenerateBrandContentCommand extends Command
     private int $qaFailed        = 0; // не прошло QA-гейт (article-qa-toolkit)
     private int $nearDupDropped  = 0; // near-duplicate другого бренда (≥0.85) → review
     private int $deferred        = 0; // grounded-only: корпус не прошёл gate, отложено
+    private int $skippedPerforming = 0; // protect-performing: страница с показами, не трогаем
 
     /** EM не readonly — после DB-ошибки пересоздаём через ManagerRegistry (многодневный прогон). */
     private EntityManagerInterface $em;
@@ -51,6 +54,7 @@ class GenerateBrandContentCommand extends Command
         private readonly ArticleQaService $articleQa,
         private readonly NearDuplicateDetector $nearDup,
         private readonly SeoMetaService $seoMeta,
+        private readonly BrandContentVersioner $versioner,
     ) {
         parent::__construct();
         $this->em = $this->managerRegistry->getManager();
@@ -91,6 +95,8 @@ class GenerateBrandContentCommand extends Command
             ->addOption('grounded-only', null, InputOption::VALUE_NONE, 'Без RAG-фактов не генерить: бренд → deferred, ждёт дозревания корпуса (description не перезаписывается — legacy-вода зацементировалась бы)')
             ->addOption('shard',         null, InputOption::VALUE_REQUIRED, 'Номер шарда (0..total-1)', '0')
             ->addOption('total',         null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
+            ->addOption('protect-performing', null, InputOption::VALUE_NONE, 'Не трогать страницы с показами в GSC (closed-loop: работающее не ломаем)')
+            ->addOption('force',         null, InputOption::VALUE_NONE, 'Игнорировать --protect-performing')
         ;
     }
 
@@ -105,6 +111,7 @@ class GenerateBrandContentCommand extends Command
         $groundedOnly = (bool) $input->getOption('grounded-only');
         $shard        = (int) $input->getOption('shard');
         $total        = max(1, (int) $input->getOption('total'));
+        $protect      = (bool) $input->getOption('protect-performing') && !$input->getOption('force');
 
         $io->title('Генерация контента для брендов');
 
@@ -121,7 +128,7 @@ class GenerateBrandContentCommand extends Command
             }
 
             $io->section(sprintf('Бренд: %s (ID: %d)', $brand->getTitle(), $brand->getId()));
-            $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate, $groundedOnly);
+            $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate, $groundedOnly, $protect);
             $this->printResults($io, $metaOnly);
 
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
@@ -152,7 +159,7 @@ class GenerateBrandContentCommand extends Command
         foreach ($brandIds as $id) {
             $brand = $this->em->find(Brand::class, $id);
             if ($brand) {
-                $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate, $groundedOnly);
+                $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate, $groundedOnly, $protect);
             }
             $io->progressAdvance();
             gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
@@ -175,10 +182,21 @@ class GenerateBrandContentCommand extends Command
         bool $metaOnly,
         bool $skipValidate,
         bool $groundedOnly = false,
+        bool $protect = false,
     ): void {
         $brandName   = $brand->getTitle() ?? 'Unknown';
         $city        = $brand->getCity();
         $existingDescription = trim($brand->getDescription() ?? '');
+
+        // closed-loop: страницу с показами в GSC не перегенериваем (не ломаем работающее).
+        if ($protect) {
+            [$impr] = $this->versioner->gscSnapshot((int) $brand->getId());
+            if ($impr > 0) {
+                $io->text(sprintf('  ⏭ %s — %d показов в GSC, пропуск (protect-performing)', $brandName, $impr));
+                $this->skippedPerforming++;
+                return;
+            }
+        }
 
         $io->text(sprintf(
             '  → %s%s',
@@ -236,7 +254,9 @@ class GenerateBrandContentCommand extends Command
         ));
 
         if (!$dryRun) {
+            $this->versioner->ensureBaseline($brand);
             $this->applyMeta($brand, $this->withWordstatKeywords($brand, $meta));
+            $this->versioner->record($brand, BrandContentRevision::SOURCE_RAG, $context !== null, null, 'meta-only');
             $this->em->flush();
             $this->em->clear();
         }
@@ -400,9 +420,12 @@ class GenerateBrandContentCommand extends Command
         }
 
         if (!$dryRun) {
+            $this->versioner->ensureBaseline($brand); // снять старое (legacy) ДО перезаписи — не теряем
             $brand->setDescription($description);
             $this->applyMeta($brand, $this->withWordstatKeywords($brand, $meta));
             $this->markGenerated($brand, $rag);
+            // прошёл quality-gate → промоутим новую активную ревизию + старт closed-loop эксперимента
+            $this->versioner->record($brand, BrandContentRevision::SOURCE_RAG, $rag['context'] !== null, $rag['score'] ?? null, 'generate-content');
             $this->em->flush();
             $this->em->clear();
         }

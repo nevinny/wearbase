@@ -232,7 +232,7 @@ class BrandRefreshContactsCommand extends Command
         $now = new \DateTime();
 
         if ($dirty && !$dryRun) {
-            $brand->setContentVersion($brand->getContentVersion() + 1);
+            $brand->setAgentSyncVersion($brand->getAgentSyncVersion() + 1);
             // Контакты изменились → пометить для ре-доставки на прод (push-предикат).
             $this->em->getRepository(\App\Entity\BrandRagPipeline::class)->markContentChanged($brand);
         }

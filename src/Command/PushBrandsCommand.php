@@ -23,7 +23,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * На проде бренд приземляется как status=new + publish_pending=1 и ждёт дрип-крон.
  *
  * Трекинг доставки: pipeline.pushed_at (успех) / push_attempts+push_error (ретраи ≤3).
- * content_version инкрементируется на dev после успешной доставки.
+ * agent_sync_version инкрементируется на dev после успешной доставки.
  *
  *   php bin/console app:brand:push --id=42 --dry-run    # показать payload для одного
  *   php bin/console app:brand:push --id=42,43,44         # несколько брендов по ID
@@ -205,7 +205,7 @@ class PushBrandsCommand extends Command
                 $io->text(sprintf(
                     '  → %s: v%d, email=%s, faq=%d, kw=%d, links=%d, attr=%d, stores=%d, logo=%s',
                     $name,
-                    $payload['content_version'],
+                    $payload['agent_sync_version'],
                     $payload['contacts']['email'] ?? '—',
                     count($payload['faq']),
                     count($payload['keywords']),
@@ -238,7 +238,7 @@ class PushBrandsCommand extends Command
             $io->text(sprintf('  → %s: %s (prod id %s)', $name, $data['status'], $data['brand_id'] ?? '?'));
 
             // Успех: pushed_at + инкремент версии на dev (следующий пуш будет v+1)
-            $this->markPushed($brand, (int) $payload['content_version']);
+            $this->markPushed($brand, (int) $payload['agent_sync_version']);
             $data['status'] === 'skipped' ? $this->skipped++ : $this->pushed++;
         } catch (\Throwable $e) {
             $io->warning(sprintf('    Ошибка «%s»: %s', $name, $e->getMessage()));
@@ -249,7 +249,7 @@ class PushBrandsCommand extends Command
 
     private function markPushed(Brand $brand, int $sentVersion): void
     {
-        $brand->setContentVersion($sentVersion);
+        $brand->setAgentSyncVersion($sentVersion);
         /** @var BrandRagPipelineRepository $repo */
         $repo = $this->em->getRepository(BrandRagPipeline::class);
         $repo->getOrCreate($brand)

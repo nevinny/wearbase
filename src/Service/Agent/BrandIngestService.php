@@ -17,7 +17,7 @@ use Nevinny\AdminCoreBundle\Enum\Statuses;
  * каталога/sitemap (публичные запросы фильтруют status='active'), публикует
  * дрип-крон app:brand:publish-tick.
  *
- * content_version: payload с версией ≤ текущей пропускается (ре-доставка/гонки).
+ * agent_sync_version: payload с версией ≤ текущей пропускается (ре-доставка/гонки).
  * Картинки: v1 принимает только логотип (base64-байты — прод не видит LAN).
  */
 class BrandIngestService
@@ -44,8 +44,8 @@ class BrandIngestService
             $brand = $this->em->getRepository(Brand::class)->findOneBy(['slug' => $slug]);
             $isNew = $brand === null;
 
-            $version = (int) ($payload['content_version'] ?? 1);
-            if (!$isNew && $version <= $brand->getContentVersion()) {
+            $version = (int) ($payload['agent_sync_version'] ?? 1);
+            if (!$isNew && $version <= $brand->getAgentSyncVersion()) {
                 return ['status' => 'skipped', 'brand_id' => $brand->getId()];
             }
 
@@ -58,7 +58,7 @@ class BrandIngestService
             }
 
             $brand->setTitle((string) $payload['title'])
-                ->setContentVersion($version);
+                ->setAgentSyncVersion($version);
 
             // Скалярные поля — только присланные (не затираем не-присланное null'ами).
             foreach ([
@@ -83,7 +83,7 @@ class BrandIngestService
             }
 
             // Owner-guard: поля с provenance=owner (правка владельца через ЛК) НЕ затираем
-            // ре-обогащением — guard независим от content_version (owner-правки на проде
+            // ре-обогащением — guard независим от agent_sync_version (owner-правки на проде
             // версию не бампают). Дизайн: tasktracker «краудсорс-валидация».
             /** @var \App\Repository\BrandDatapointRepository $dpRepo */
             $dpRepo = $this->em->getRepository(\App\Entity\BrandDatapoint::class);

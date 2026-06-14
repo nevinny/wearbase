@@ -40,7 +40,7 @@ class BrandPayloadAssembler
                 'address' => $brand->getAddress(),
             ]),
             'external_id'     => $brand->getId(),
-            'content_version' => $brand->getContentVersion() + 1,
+            'agent_sync_version' => $brand->getAgentSyncVersion() + 1,
         ];
 
         $payload['keywords'] = array_map(static fn(BrandKeyword $k) => [

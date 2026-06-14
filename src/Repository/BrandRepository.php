@@ -191,6 +191,7 @@ class BrandRepository extends ServiceEntityRepository
     public function findWithDescriptionWithoutMeta(int $limit, int $shard = 0, int $total = 1): array
     {
         $qb = $this->createQueryBuilder('b')
+            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b') // для сортировки по p.priority
             ->where('b.description IS NOT NULL')
             ->andWhere('b.description != :empty')
             ->andWhere('b.metaTitle IS NULL OR b.metaTitle = :empty')
@@ -202,14 +203,14 @@ class BrandRepository extends ServiceEntityRepository
     public function findWithoutDescription(int $limit, int $shard = 0, int $total = 1, bool $excludeDeferred = false): array
     {
         $qb = $this->createQueryBuilder('b')
+            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b') // для сортировки по p.priority
             ->where('b.description IS NULL OR b.description = :empty')
             ->setParameter('empty', '');
 
         // --grounded-only: deferred-бренды ждут дозревания корпуса (fetch вернёт их в scraped);
         // без исключения выборка крутилась бы по одним и тем же тонким брендам вечно.
         if ($excludeDeferred) {
-            $qb->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
-                ->andWhere('p.id IS NULL OR p.status != :deferred')
+            $qb->andWhere('p.id IS NULL OR p.status != :deferred')
                 ->setParameter('deferred', BrandRagPipeline::STATUS_DEFERRED);
         }
 
@@ -476,6 +477,11 @@ class BrandRepository extends ServiceEntityRepository
                 ->setParameter('total', $total)
                 ->setParameter('shard', $shard);
         }
+
+        // Ручной приоритет очереди (brand_rag_pipeline.priority): чем больше — тем раньше.
+        // Первичный ключ сортировки на всех этапах; вторичный порядок ниже не меняется.
+        // Все вызывающие методы джойнят пайплайн как 'p'.
+        $qb->addOrderBy('COALESCE(p.priority, 0)', 'DESC');
 
         if ($oldestFirst) {
             // NULLs first (никогда не пушились), потом самые старые по pushedAt

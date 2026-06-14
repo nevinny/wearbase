@@ -185,9 +185,10 @@ class Brand
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTimeInterface $publishedAt = null;
 
-    /** Версия контента (агент-API): прод пропускает payload с версией ≤ текущей. */
+    /** Sequence-версия доставки в агент-API: прод пропускает payload с версией ≤ текущей.
+     *  ⚠️ Это НЕ версионирование контента (для истории текста см. BrandContentRevision). */
     #[ORM\Column(options: ['default' => 0])]
-    private int $contentVersion = 0;
+    private int $agentSyncVersion = 0;
 
     public function __construct()
     {
@@ -836,14 +837,14 @@ class Brand
         );
     }
 
-    public function getContentVersion(): int
+    public function getAgentSyncVersion(): int
     {
-        return $this->contentVersion;
+        return $this->agentSyncVersion;
     }
 
-    public function setContentVersion(int $version): static
+    public function setAgentSyncVersion(int $version): static
     {
-        $this->contentVersion = $version;
+        $this->agentSyncVersion = $version;
 
         return $this;
     }
