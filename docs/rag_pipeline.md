@@ -603,8 +603,18 @@ php bin/console app:brand:ask "Снежная Королева" "из чего �
 3. **действие:** win/neutral → оставить; **loss** → вилка: attempt < MAX_REGEN и есть grounded-
    корпус → регенерация (новый эксперимент), иначе → откат к лучшей прошлой ревизии.
 
-### Статус и что осталось
-✅ версии/versioner/wire-in/backfill/priority/protect-performing/rename — внедрено, на Mac и проде.
-⬜ команда `app:seo:evaluate-experiments` (тик closed-loop) + режим `--regen-flagged` в
-   generate-content (форс-реген по флагу из loss-ветки) + регистрация джобов в `scheduled_command`
-   (генерация на llm/.43, gsc-sync/eval/index-ping на dev/Mac) — для полной автономности.
+### Автоматизация (scheduled_command, env=dev — диспетчер Mac тикает ежеминутно)
+Контур самокрутится:
+- `0 3` — `generate-content 50 --regen-flagged --protect-performing` (форс-реген проигравших по флагу `regen_requested_at`, ночью);
+- `0 8` — `gsc:sync --report` (замер: показы/индекс + sitemaps);
+- `0 10` — `seo:evaluate-experiments` (тик closed-loop: win/loss/neutral/not_indexed → keep/откат/реген-флаг);
+- `0 11` — `google:index-ping` (пуш not-indexed).
+
+⚠️ **Массовую генерацию бэклога** (82 grounded-ready тонких, 425 embedded, 3475 без описания)
+гоняем вручную `nohup`'ом (CLAUDE.md: тяжёлые батчи не в минутный диспетчер — длинный джоб держит
+глобальный flock и съедает минутно-точные задачи). ~24 бренда/час; требует поднятого .43 (ollama):
+`nohup php -d memory_limit=512M bin/console app:brand:generate-content <N> --grounded-only --protect-performing --no-debug >> var/log/gen.log 2>&1 &`.
+
+### Статус
+✅ Всё внедрено на Mac и проде: версии/versioner/wire-in/backfill/priority/protect-performing/rename +
+   `evaluate-experiments` + `--regen-flagged` (флаг `regen_requested_at`) + джобы в scheduled_command.

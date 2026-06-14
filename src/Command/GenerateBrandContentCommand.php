@@ -97,6 +97,7 @@ class GenerateBrandContentCommand extends Command
             ->addOption('total',         null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
             ->addOption('protect-performing', null, InputOption::VALUE_NONE, 'Не трогать страницы с показами в GSC (closed-loop: работающее не ломаем)')
             ->addOption('force',         null, InputOption::VALUE_NONE, 'Игнорировать --protect-performing')
+            ->addOption('regen-flagged', null, InputOption::VALUE_NONE, 'Форс-реген брендов с флагом regen_requested_at (loss-ветка closed-loop)')
         ;
     }
 
@@ -112,6 +113,7 @@ class GenerateBrandContentCommand extends Command
         $shard        = (int) $input->getOption('shard');
         $total        = max(1, (int) $input->getOption('total'));
         $protect      = (bool) $input->getOption('protect-performing') && !$input->getOption('force');
+        $regenFlagged = (bool) $input->getOption('regen-flagged');
 
         $io->title('Генерация контента для брендов');
 
@@ -138,14 +140,14 @@ class GenerateBrandContentCommand extends Command
         // em->clear() после каждого (иначе detached RAG-pipeline/Brand ломают EM в долгом прогоне).
         /** @var \App\Repository\BrandRepository $repo */
         $repo = $this->em->getRepository(Brand::class);
-        $brandIds = array_map(
-            static fn(Brand $b) => $b->getId(),
-            $metaOnly
-                ? $repo->findWithDescriptionWithoutMeta($limit, $shard, $total)
-                : $repo->findWithoutDescription($limit, $shard, $total, $groundedOnly),
-        );
+        $selection = match (true) {
+            $regenFlagged => $repo->findRegenFlagged($limit, $shard, $total),
+            $metaOnly     => $repo->findWithDescriptionWithoutMeta($limit, $shard, $total),
+            default       => $repo->findWithoutDescription($limit, $shard, $total, $groundedOnly),
+        };
+        $brandIds = array_map(static fn(Brand $b) => $b->getId(), $selection);
 
-        $mode = $metaOnly ? 'только meta' : 'description + meta';
+        $mode = $regenFlagged ? 'форс-реген (флаг)' : ($metaOnly ? 'только meta' : 'description + meta');
         $io->section(sprintf('Будет обработано: %d брендов (%s, shard %d/%d)', count($brandIds), $mode, $shard, $total));
 
         if ($brandIds === []) {
@@ -159,7 +161,12 @@ class GenerateBrandContentCommand extends Command
         foreach ($brandIds as $id) {
             $brand = $this->em->find(Brand::class, $id);
             if ($brand) {
-                $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate, $groundedOnly, $protect);
+                // regen-flagged → форс полной перегенерации (минуя meta-only short-circuit)
+                $this->processBrand($brand, $io, $dryRun, $metaOnly, $skipValidate, $groundedOnly || $regenFlagged, $protect, $regenFlagged);
+            }
+            // флаг — одноразовый: снимаем независимо от исхода (eval перефлагнет при новом loss)
+            if ($regenFlagged && !$dryRun) {
+                $this->em->getConnection()->executeStatement('UPDATE brand_rag_pipeline SET regen_requested_at = NULL WHERE brand_id = :id', ['id' => $id]);
             }
             $io->progressAdvance();
             gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
@@ -183,6 +190,7 @@ class GenerateBrandContentCommand extends Command
         bool $skipValidate,
         bool $groundedOnly = false,
         bool $protect = false,
+        bool $forceRegen = false,
     ): void {
         $brandName   = $brand->getTitle() ?? 'Unknown';
         $city        = $brand->getCity();
@@ -205,11 +213,12 @@ class GenerateBrandContentCommand extends Command
         ));
 
         try {
-            if ($metaOnly || $existingDescription !== '') {
+            if (!$forceRegen && ($metaOnly || $existingDescription !== '')) {
                 // Режим: только meta (description уже есть)
                 $this->processMetaOnly($brand, $brandName, $city, $existingDescription, $io, $dryRun, $skipValidate);
             } else {
-                // Режим: полная генерация (description + meta)
+                // Режим: полная генерация (description + meta). forceRegen перезапишет существующее
+                // описание — но groundedOnly уже включён вызывающим, так что без фактов уйдёт в deferred.
                 $this->processFullGeneration($brand, $brandName, $city, $io, $dryRun, $skipValidate, $groundedOnly);
             }
         } catch (\Throwable $e) {

@@ -145,6 +145,11 @@ class BrandRagPipeline
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $contentChangedAt = null;
 
+    /** Флаг форс-регенерации из loss-ветки closed-loop: ставит evaluate-experiments,
+     *  потребляет generate-content --regen-flagged (затем сбрасывает). */
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $regenRequestedAt = null;
+
     #[ORM\Column(options: ['default' => 0])]
     private int $pushAttempts = 0;
 
@@ -454,6 +459,17 @@ class BrandRagPipeline
     public function getContentChangedAt(): ?\DateTimeInterface
     {
         return $this->contentChangedAt;
+    }
+
+    public function getRegenRequestedAt(): ?\DateTimeInterface
+    {
+        return $this->regenRequestedAt;
+    }
+
+    public function setRegenRequestedAt(?\DateTimeInterface $at): self
+    {
+        $this->regenRequestedAt = $at;
+        return $this;
     }
 
     public function setContentChangedAt(?\DateTimeInterface $at): self

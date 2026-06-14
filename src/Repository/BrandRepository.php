@@ -188,6 +188,16 @@ class BrandRepository extends ServiceEntityRepository
         return $stats;
     }
 
+    /** Бренды, помеченные на форс-регенерацию из loss-ветки closed-loop (priority DESC). */
+    public function findRegenFlagged(int $limit, int $shard = 0, int $total = 1): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.regenRequestedAt IS NOT NULL');
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
     public function findWithDescriptionWithoutMeta(int $limit, int $shard = 0, int $total = 1): array
     {
         $qb = $this->createQueryBuilder('b')
