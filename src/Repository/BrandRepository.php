@@ -291,10 +291,22 @@ class BrandRepository extends ServiceEntityRepository
         $ttl  = (new \DateTime())->modify("-{$ttlDays} days")->format('Y-m-d H:i:s');
 
         $ids = $conn->fetchFirstColumn(
+            // TTL — настоящий гейт (в WHERE): свежеобогащённых (enriched_at >= ttl, не partial)
+            // НЕ берём. not_found — терминальный (не повторяем). priority (brand_rag_pipeline)
+            // — первичная сортировка (общий приоритет бренда: discover/контакты/outreach).
             "SELECT b.id FROM brand b
              LEFT JOIN brand_outreach o ON o.brand_id = b.id AND o.bounced_at IS NOT NULL
+             LEFT JOIN brand_rag_pipeline p ON p.brand_id = b.id
              WHERE b.status IN ('active', 'new')
+               AND (b.contact_status IS NULL OR b.contact_status <> 'not_found')
+               AND (
+                     o.bounced_at IS NOT NULL
+                     OR b.contact_status = 'partial'
+                     OR b.contact_enriched_at IS NULL
+                     OR b.contact_enriched_at < :ttl
+                   )
              ORDER BY
+                 COALESCE(p.priority, 0) DESC,
                  CASE
                      WHEN o.bounced_at IS NOT NULL THEN 0
                      WHEN b.contact_status = 'partial'             THEN 1
