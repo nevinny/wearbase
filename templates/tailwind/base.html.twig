@@ -6,29 +6,35 @@
     <meta name="theme-color" content="#ffffff">
 
     {% block hreflang %}
-    {# brand_translation/product_translation пусты — все локали отдают один русский текст,
-       поэтому hreflang объявляем только ru + x-default, а canonical для не-ru локалей
-       указывает на ru-версию (дедуп дублей). Когда появятся реальные переводы —
-       вернуть соответствующие локали в hreflang и self-canonical. #}
+    {# brand_translation/product_translation пусты — все локали отдают один русский текст.
+       Поэтому: hreflang только ru + x-default; canonical не-ru → ru; а сами не-ru страницы
+       помечаем noindex,follow — canonical лишь подсказка, и Google всё равно тащил не-ru
+       дубли в индекс (это scaled-content, см. _seo/SEO_Guide_4.9 §111/§222; вероятная причина
+       270 «Discovered, not indexed»). Когда появятся РЕАЛЬНЫЕ переводы — вернуть локаль в
+       hreflang + self-canonical и снять для неё noindex. #}
     {% set supported_locales = ['ru', 'en', 'zh', 'ar', 'tr', 'de', 'fr', 'es', 'ko'] %}
     {% set path_segments = app.request.pathInfo|split('/') %}
     {% if path_segments|length > 1 and path_segments[1] in supported_locales %}
         {% set path_without_locale = path_segments|slice(2)|join('/') %}
+        {% set current_locale = path_segments[1] %}
     {% else %}
         {% set path_without_locale = path_segments|slice(1)|join('/') %}
+        {% set current_locale = 'ru' %}
     {% endif %}
     {# главная живёт на /ru/ (со слешем) — canonical обязан совпадать с sitemap/served URL #}
     {% set ru_url = site_base_url ~ '/ru' ~ (path_without_locale ? '/' ~ path_without_locale : '/') %}
     <link rel="alternate" hreflang="ru" href="{{ ru_url }}">
     <link rel="alternate" hreflang="x-default" href="{{ ru_url }}">
     {% if block('canonical_url') is defined %}<link rel="canonical" href="{{ block('canonical_url') }}">{% else %}<link rel="canonical" href="{{ ru_url }}">{% endif %}
+    {% if current_locale != 'ru' %}<meta name="robots" content="noindex, follow">{% endif %}
     {% endblock %}
 
     {% if block('title') is defined %}<title>{{ block('title') }}</title>{% else %}<title>Российские бренды одежды | WEARBASE</title>{% endif %}
 
     {% if block('meta_description') is defined %}<meta name="description" content="{{ block('meta_description') }}">{% endif %}
     {% if block('meta_keywords') is defined %}<meta name="keywords" content="{{ block('meta_keywords') }}">{% endif %}
-    {% if block('meta_robots') is defined %}{{ block('meta_robots') }}{% endif %}
+    {# на не-ru уже выставлен noindex,follow выше — собственный meta_robots страницы только для ru, без конфликта директив #}
+    {% if app.request.locale == 'ru' and block('meta_robots') is defined %}{{ block('meta_robots') }}{% endif %}
 
     {% if block('og_title') is defined %}<meta property="og:title" content="{{ block('og_title') }}">{% endif %}
     {% if block('og_description') is defined %}<meta property="og:description" content="{{ block('og_description') }}">{% endif %}

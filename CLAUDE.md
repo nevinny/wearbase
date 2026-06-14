@@ -87,6 +87,8 @@ All public pages use `/{_locale}/` as a route prefix with `requirements: ['_loca
 
 To switch language, POST to `/locale/switch` with field `locale=en`. The controller rewrites the locale prefix in the Referer URL so RouterListener picks it up correctly on the next request.
 
+**SEO непереведённых локалей:** `brand_translation`/`product_translation` пусты → все не-ru локали отдают русский fallback. Чтобы не плодить scaled-content дубли, `base.html.twig` ставит `noindex, follow` на **любую не-ru локаль** (canonical всё равно → `/ru/…`, sitemap — только ru). ru индексируется как обычно. Подробности и как откатывать при появлении реальных переводов — **[docs/international.md](docs/international.md)** (раздел «SEO непереведённых локалей»).
+
 ### Currency
 
 All prices are stored in **RUB**. Conversion is done on the fly by `CurrencyConverter` (cached 1h in Symfony Cache). The selected currency is stored in cookie `currency` via `CurrencySession`. Twig globals `app_currency` and `currencies_list` are provided by `CurrencyExtension`.
