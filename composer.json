@@ -11,6 +11,7 @@
         "doctrine/doctrine-bundle": "^2.18",
         "doctrine/doctrine-migrations-bundle": "^3.5",
         "doctrine/orm": "^3.5",
+        "dragonmantank/cron-expression": "^3.1",
         "easycorp/easyadmin-bundle": "^4.27",
         "google/auth": "^1.50",
         "nevinny/admin-core": "^1.0.4",

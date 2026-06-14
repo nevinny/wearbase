@@ -14,10 +14,10 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * Сводка RAG-конвейера в Telegram (по запросу владельца — раз в 3 часа кроном):
- * парсинг/генерация/ключевики/готовность к пушу + темпы за час.
+ * Сводка RAG-конвейера в Telegram: парсинг/генерация/ключевики/готовность к пушу + темпы за час.
  *
- *   0 *\/3 * * * cd /home/zyablik/wearbase && php -d memory_limit=512M bin/console app:report:pipeline --no-debug >> var/log/report.log 2>&1
+ * Частоту задаёт планировщик (таблица scheduled_command, /admin → «Крон (расписание)»),
+ * а не сама команда — внутренний throttle убран: каждый запуск шлёт сводку.
  */
 #[AsCommand(
     name: 'app:report:pipeline',
@@ -40,25 +40,12 @@ class PipelineReportCommand extends Command
     protected function configure(): void
     {
         $this->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Не слать в Telegram, только вывести');
-        // throttle: крон может тикать чаще, но шлём не чаще раза в N минут (по файлу-метке).
-        $this->addOption('min-interval', null, InputOption::VALUE_REQUIRED, 'Мин. интервал между отправками в TG, мин', '180');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $one = fn(string $sql) => (int) $this->db->fetchOne($sql);
-
-        // Throttle: расписание крона не меняется (его не правят из этого окружения),
-        // частоту регулируем тут — шлём не чаще раза в min-interval минут.
-        $minMin   = max(1, (int) $input->getOption('min-interval'));
-        $stateFile = getcwd() . '/var/report-pipeline-last';
-        $last = is_file($stateFile) ? (int) file_get_contents($stateFile) : 0;
-        $next = (($last + $minMin * 60) - time()) / 60;
-        if (time() - $last < $minMin * 60) {
-            $io->text(sprintf('Пропуск отправки: с прошлой прошло < %d мин. Осталось %d мин', $minMin, $next));
-            return Command::SUCCESS;
-        }
 
         // Темп за час — от MAX(ts) самой стадии (TZ-независимо)
         $rate = function (string $table, string $col): int {
@@ -151,7 +138,6 @@ class PipelineReportCommand extends Command
             }
 
             $this->notifier->send($msg);
-            @file_put_contents($stateFile, (string) time());
         }
 
         return Command::SUCCESS;

@@ -33,6 +33,33 @@
 | `app:brand:enrich-contacts` | `*/10 * * * *` (легаси) | 🖥 .43 | обогащение контактами |
 | `app:rag:daemon` | непрерывно (или supervised) | 🖥 .43 | оркестратор RAG-стадий |
 
+### 🍎 Mac-крон: одна точка входа + расписание в БД
+
+На Mac больше нет россыпи строк в `crontab`. Вместо неё — **один** тикающий раз в минуту
+вызов `app:cron:run-scheduled` (на Mac — строкой `* * * * *` в crontab; launchd-вариант
+лежит в `ops/com.wearbase.cron.plist`, но на этой машине не грузится — `$HOME` на внешнем
+томе → EIO 5). Команда смотрит таблицу `scheduled_command` и запускает задачи, чьё
+cron-время наступило (`CronExpression::isDue`, зона **Europe/Moscow**), пишет трекинг
+(last_run/exit/duration/output/next_run) и держит глобальный `flock`, чтобы тики не
+наложились. Управление — из админки **/admin → «Крон (расписание)»** (DELETE отключён,
+выключение через `enabled`). Тяжёлые RAG-батчи сюда НЕ ставим — их по-прежнему гоняем `nohup`.
+
+**Разделение по окружениям.** У каждой задачи есть поле `environment` (`dev` = Mac, `prod`
+= regru, `llm` = .43). Диспетчер на каждой машине читает `CRON_ENV` (`.env`, переопределяется
+в `.env.local`; пусто = `dev`) и берёт **только свои** строки. Так одна и та же таблица
+обслуживает все три хоста: ставишь крон в общей админке, помечаешь окружением — он
+исполнится там, где надо. `.43` сейчас выключен — его строки просто ждут, пока поднимется
+его диспетчер.
+
+```bash
+php bin/console app:cron:run-scheduled --dry-run   # что due прямо сейчас
+# установка агента (из своего Terminal, не из IDE/headless):
+cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
+  && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.wearbase.cron.plist
+```
+
+Сейчас засеяны три прежних Mac-задачи: `app:gsc:sync`, `app:report:pipeline`, `app:report:daily`.
+
 ---
 
 ## 1. RAG-конвейер (генерация контента брендов)

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Единственная точка крона WEARBASE на Mac.
+  Тикает раз в минуту → app:cron:run-scheduled смотрит таблицу scheduled_command
+  и запускает задачи, чьё время наступило. Всё расписание правится из админки
+  (/admin → «Крон (расписание)»), сюда лазить больше не нужно.
+
+  Установка:
+    cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/
+    launchctl unload ~/Library/LaunchAgents/com.wearbase.cron.plist 2>/dev/null
+    launchctl load   ~/Library/LaunchAgents/com.wearbase.cron.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.wearbase.cron</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/php</string>
+        <string>-d</string>
+        <string>memory_limit=512M</string>
+        <string>/Volumes/SAMSUNG-origin/Users/zyablik/work/wearbase/bin/console</string>
+        <string>app:cron:run-scheduled</string>
+        <string>--no-debug</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Volumes/SAMSUNG-origin/Users/zyablik/work/wearbase</string>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Volumes/SAMSUNG-origin/Users/zyablik/work/wearbase/var/log/cron.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Volumes/SAMSUNG-origin/Users/zyablik/work/wearbase/var/log/cron.log</string>
+</dict>
+</plist>
