@@ -490,8 +490,9 @@ class BrandRepository extends ServiceEntityRepository
 
         // Ручной приоритет очереди (brand_rag_pipeline.priority): чем больше — тем раньше.
         // Первичный ключ сортировки на всех этапах; вторичный порядок ниже не меняется.
-        // Все вызывающие методы джойнят пайплайн как 'p'.
-        $qb->addOrderBy('COALESCE(p.priority, 0)', 'DESC');
+        // Все вызывающие методы джойнят пайплайн как 'p' (left-join → MySQL ставит NULL
+        // последними при DESC, что нам и нужно: бренды без строки пайплайна — в хвост).
+        $qb->addOrderBy('p.priority', 'DESC');
 
         if ($oldestFirst) {
             // NULLs first (никогда не пушились), потом самые старые по pushedAt
