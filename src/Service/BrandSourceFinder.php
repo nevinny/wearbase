@@ -5,6 +5,7 @@ namespace App\Service;
 use App\Entity\Brand;
 use App\Service\Discovery\DiscoveredUrl;
 use App\Service\Discovery\SourceTypeClassifier;
+use App\Service\SearxUnavailableException;
 
 /**
  * Находит URL-источники бренда для скрейпа.
@@ -79,20 +80,34 @@ class BrandSourceFinder
     {
         usleep(self::QUERY_SLEEP_MS * 1000);
 
-        $results = $this->searx->search($query, self::PER_QUERY);
-
-        // Доп-источник: официальный Yandex Search API (если настроен) — закрывает
-        // яндекс-выдачу, которую SearXNG не тянет (parsing error + бот-детект). Merge с
-        // дедупом по URL; no-op пока YANDEX_SEARCH_API_KEY/FOLDER_ID не заданы.
+        // ПЕРВИЧНЫЙ источник — официальный Yandex Search API (Yandex Cloud, внешний, не зависит
+        // от .43). SearXNG — ВСПОМОГАТЕЛЬНЫЙ: дополняет выдачу и НЕ фатален, если Yandex отработал
+        // (его падение/CAPTCHA не должно глушить весь прогон, когда Yandex доступен).
+        $results  = [];
+        $yandexOk = false;
         if ($this->yandex->isConfigured()) {
+            try {
+                $results  = $this->yandex->search($query, self::PER_QUERY);
+                $yandexOk = true;
+            } catch (\Throwable) {
+                // Yandex недоступен/квота — упадём на SearXNG ниже
+            }
+        }
+
+        try {
             $seen = [];
             foreach ($results as $r) {
                 $seen[rtrim($r['url'], '/')] = true;
             }
-            foreach ($this->yandex->search($query, self::PER_QUERY) as $r) {
+            foreach ($this->searx->search($query, self::PER_QUERY) as $r) {
                 if (!isset($seen[rtrim($r['url'], '/')])) {
                     $results[] = $r;
                 }
+            }
+        } catch (SearxUnavailableException $e) {
+            // SearXNG лёг — ок, если Yandex дал результат; иначе сигналим брейкеру (оба источника мертвы)
+            if (!$yandexOk) {
+                throw $e;
             }
         }
 

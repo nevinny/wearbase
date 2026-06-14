@@ -151,6 +151,15 @@ review → admin /admin/rag/review → requeue (сброс в pending) | hide (i
 Search API + DB-ссылки) находит URL-кандидаты бренда **без скачивания страниц** и кладёт в очередь
 `brand_source_url` (дедуп по `url_hash`, cap по `source_type`).
 
+**Источники поиска (мёржатся по URL, дедуп):**
+- **Yandex Search API — ПЕРВИЧНЫЙ** (`YandexSearchClient`, `YANDEX_SEARCH_API_KEY` +
+  `YANDEX_SEARCH_FOLDER_ID`): официальный Yandex Cloud Search API v2
+  (`searchapi.api.cloud.yandex.net`), **внешний, НЕ зависит от .43** → discover работает с Mac
+  даже когда .43 выключен. no-op если ключ/folder не заданы.
+- **SearXNG — ВСПОМОГАТЕЛЬНЫЙ** (`SEARXNG_URL`, :8080 на **.43**): дополняет выдачу. Его падение
+  НЕ фатально, если Yandex отработал. Circuit breaker (3 бренда подряд) срабатывает только когда
+  **оба** источника мертвы (или Yandex не настроен + SearXNG лёг).
+
 - **Вход**: активные бренды (`status ∈ {active, new}`) без `discovered_at`.
 - **Выход**: строки `brand_source_url` (status=`pending`); `pipeline.has_own_site` (provisional),
   `discovered_at`. **Не трогает `pipeline.status`.**

@@ -52,7 +52,8 @@ class DiscoverBrandSourcesCommand extends Command
         BrandSourceUrl::TYPE_MENTION        => 6,
     ];
 
-    /** Подряд брендов с лежащим SearXNG → стоп всего прогона (движки suspended не лечатся ретраем). */
+    /** Подряд брендов, у кого ОБА источника поиска (Yandex API + SearXNG) легли → стоп прогона.
+     *  Падение только SearXNG при живом Yandex НЕ считается (Yandex — первичный источник). */
     private const SEARX_DOWN_ABORT = 3;
 
     private int $discovered = 0;   // брендов с ≥1 новым URL в очереди
@@ -134,7 +135,7 @@ class DiscoverBrandSourcesCommand extends Command
             // прогон только жжёт время. Бренды не помечены, повторный запуск доберёт.
             if ($this->searxDownStreak >= self::SEARX_DOWN_ABORT) {
                 $io->progressFinish();
-                $io->error(sprintf('SearXNG лежит (%d брендов подряд) — стоп. Перезапусти, когда движки оживут.', $this->searxDownStreak));
+                $io->error(sprintf('Поиск недоступен — Yandex API и SearXNG оба легли (%d брендов подряд) — стоп. Перезапусти, когда поиск оживёт.', $this->searxDownStreak));
                 $this->printResults($io);
                 return Command::FAILURE;
             }
