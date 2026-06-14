@@ -561,3 +561,50 @@ php bin/console app:brand:ask "Снежная Королева" "из чего �
 группировка чанков по бренду, шортлист 15 → LLM-реранк (`think:false`). ⚠️ Видны только бренды,
 прошедшие `embed`; чистый вектор не гарантирует жёсткие фильтры («женщина») — реранк отсекает мусор
 по фактам. Апгрейд при шумной выдаче — структурный пред-фильтр по `BrandAudience`/`BrandStyle`.
+
+---
+
+## 10. Версионирование контента + closed-loop регенерация (2026-06-14)
+
+Цель: безопасно перегенеривать тонкий/недоиндексированный контент, **не теряя текущий**
+и **не ломая работающие страницы**, с обратной связью от GSC (источник правды по индексу).
+
+### Модель данных
+- **`brand_content_revision`** (append-only) — история тройки `description + meta_title +
+  meta_description`. Поля: `source` (legacy|rag|manual|import|rollback), `grounded`,
+  `retrieval_score`, `is_active` (зеркалит живые `brand.*`), `attempt`, `prev_revision_id`,
+  `created_at`, `measure_after`, `verdict` (pending|win|loss|neutral|not_indexed) и снимки GSC
+  `gsc_{impr,clicks,indexed}_{before,after}`. Live-значения остаются в `brand.*` — read-path
+  сайта не трогаем; активная ревизия их дублирует.
+- **`BrandContentVersioner`** (`src/Service/`): `ensureBaseline()` (снять текущее как `legacy`,
+  чтобы не потерять), `record()` (новая активная ревизия + старт эксперимента: baseline GSC +
+  окно `WINDOW_DAYS=14`), `rollback()` (append-only — пишет новую ревизию `source=rollback`).
+  Снимок GSC берётся из `gsc_page_stats`/`gsc_index_status` (живут на Mac).
+- ⚠️ `brand.content_version` переименован в **`agent_sync_version`** — это sequence-номер
+  доставки в агент-API, НЕ версии контента (раньше путало).
+
+### Где встроено
+- `generate-content`: контент пишется только после quality-gate (refusal → validateDescription →
+  article-QA → near-duplicate). На записи: `ensureBaseline()` ДО перезаписи + `record()` ПОСЛЕ →
+  промоут новой активной ревизии. Флаг **`--protect-performing`** пропускает бренды с показами в
+  GSC (работающее не ломаем), `--force` обходит.
+- `brand_rag_pipeline.priority` (INT, default 0): ручной приоритет очереди, `priority DESC` —
+  первичная сортировка во всех этапах (`BrandRepository::finishStageQuery`). Поднять бренд:
+  `UPDATE brand_rag_pipeline SET priority=N WHERE brand_id=…`.
+- `app:brand:backfill-content-revisions` — одноразовый baseline `legacy` для текущих брендов.
+
+### Closed-loop (дерево решений эксперимента) — по `_seo/SEO_Guide_4.9` (growth-loop)
+После истечения окна (`measure_after`), команда оценки сверяет GSC variant vs baseline:
+1. **not indexed / impressions < MIN_SAMPLE (10)** → `not_indexed`: НЕ откат (контент не виноват,
+   Google не дал шанс) → индексационные рычаги (перелинковка, index-ping), замер позже.
+2. **судим с порогом** (относит. 20% + абсолютный пол: clicks ±2 / impr ±10, отсечь шум):
+   `loss` (clicks/impr упали > порога) · `win` (clicks не упали И (impr ↑ или впервые в индексе))
+   · иначе `neutral`.
+3. **действие:** win/neutral → оставить; **loss** → вилка: attempt < MAX_REGEN и есть grounded-
+   корпус → регенерация (новый эксперимент), иначе → откат к лучшей прошлой ревизии.
+
+### Статус и что осталось
+✅ версии/versioner/wire-in/backfill/priority/protect-performing/rename — внедрено, на Mac и проде.
+⬜ команда `app:seo:evaluate-experiments` (тик closed-loop) + режим `--regen-flagged` в
+   generate-content (форс-реген по флагу из loss-ветки) + регистрация джобов в `scheduled_command`
+   (генерация на llm/.43, gsc-sync/eval/index-ping на dev/Mac) — для полной автономности.
