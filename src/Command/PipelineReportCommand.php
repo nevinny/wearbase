@@ -48,14 +48,15 @@ class PipelineReportCommand extends Command
         $one = fn(string $sql) => (int) $this->db->fetchOne($sql);
 
         // Темп за час — от MAX(ts) самой стадии (TZ-независимо)
+        // Темп за РЕАЛЬНЫЙ последний час (NOW), а не от MAX(ts): иначе замороженная стадия
+        // вечно показывает призрачный «+N/ч» из своего последнего активного часа (напр.
+        // генерация +25/ч 3-дневной давности при выключенном .43). cutoff считаем в PHP — той
+        // же зоной, что пишутся timestamp'ы (new \DateTime() в командах), без MySQL NOW()-перекоса.
         $rate = function (string $table, string $col): int {
-            $max = $this->db->fetchOne("SELECT MAX({$col}) FROM {$table}");
-            if (!$max) {
-                return 0;
-            }
+            $since = (new \DateTime('-1 hour'))->format('Y-m-d H:i:s');
             return (int) $this->db->fetchOne(
-                "SELECT COUNT(*) FROM {$table} WHERE {$col} >= DATE_SUB(:m, INTERVAL 1 HOUR)",
-                ['m' => $max],
+                "SELECT COUNT(*) FROM {$table} WHERE {$col} >= :since",
+                ['since' => $since],
             );
         };
 
