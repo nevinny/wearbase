@@ -98,6 +98,7 @@ class LlmService
         ?string $style = null,
         ?string $facts = null,
         ?string $keywords = null,
+        ?string $model = null,
     ): string {
         $lines = ["Бренд: {$brandName}"];
         if ($city !== null) {
@@ -156,7 +157,7 @@ class LlmService
 Формат: только текст, без заголовков и markdown-разметки.
 EOT;
 
-        return $this->generate($prompt, $systemPrompt, local: true, think: false);
+        return $this->generate($prompt, $systemPrompt, model: $model, local: true, think: false);
     }
 
     /**
