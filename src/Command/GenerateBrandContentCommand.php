@@ -297,7 +297,9 @@ class GenerateBrandContentCommand extends Command
             if (!$dryRun) {
                 /** @var \App\Repository\BrandRagPipelineRepository $repo */
                 $repo = $this->em->getRepository(BrandRagPipeline::class);
-                $repo->getOrCreate($brand)->setStatus(BrandRagPipeline::STATUS_DEFERRED);
+                $p = $repo->getOrCreate($brand);
+                $p->setStatus(BrandRagPipeline::STATUS_DEFERRED)
+                  ->setGenerateAttempts($p->getGenerateAttempts() + 1);
                 $this->em->flush();
                 $this->em->clear();
             }
@@ -334,9 +336,10 @@ class GenerateBrandContentCommand extends Command
             if (!$dryRun) {
                 /** @var \App\Repository\BrandRagPipelineRepository $repo */
                 $repo = $this->em->getRepository(BrandRagPipeline::class);
-                $repo->getOrCreate($brand)
-                    ->setStatus(BrandRagPipeline::STATUS_REVIEW)
-                    ->setLastError('refusal: факты не о бренде / недостаточны');
+                $p = $repo->getOrCreate($brand);
+                $p->setStatus(BrandRagPipeline::STATUS_REVIEW)
+                    ->setLastError('refusal: факты не о бренде / недостаточны')
+                    ->setGenerateAttempts($p->getGenerateAttempts() + 1);
                 $this->em->flush();
                 $this->em->clear();
             }
@@ -460,9 +463,10 @@ class GenerateBrandContentCommand extends Command
     {
         /** @var \App\Repository\BrandRagPipelineRepository $repo */
         $repo = $this->em->getRepository(\App\Entity\BrandRagPipeline::class);
-        $repo->getOrCreate($brand)
-            ->setStatus(\App\Entity\BrandRagPipeline::STATUS_DONE)
+        $p = $repo->getOrCreate($brand);
+        $p->setStatus(\App\Entity\BrandRagPipeline::STATUS_DONE)
             ->setGeneratedAt(new \DateTime())
+            ->setGenerateAttempts($p->getGenerateAttempts() + 1)
             ->setGrounded($rag['context'] !== null)
             ->setTopRetrievalScore($rag['score'] ?? null)
             // Описание/meta записаны → пометить для (ре-)доставки на прод. На первой

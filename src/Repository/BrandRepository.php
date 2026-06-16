@@ -217,11 +217,15 @@ class BrandRepository extends ServiceEntityRepository
             ->where('b.description IS NULL OR b.description = :empty')
             ->setParameter('empty', '');
 
-        // --grounded-only: deferred-бренды ждут дозревания корпуса (fetch вернёт их в scraped);
-        // без исключения выборка крутилась бы по одним и тем же тонким брендам вечно.
+        // --grounded-only: исключаем ТЕРМИНАЛЬНЫЕ для авто-генерации статусы, иначе выборка
+        // крутится по одним и тем же брендам вечно:
+        //  - deferred: ждут дозревания корпуса (вернёт fetch→scraped, не мы);
+        //  - review:   модель отказала (факты не о бренде) — ручная верификация, повтор не поможет.
+        // Без исключения review demon бесконечно перегенерировал refusal-бренды (нет описания →
+        // снова в выборке → снова refusal), не доходя до реальной embedded-очереди.
         if ($excludeDeferred) {
-            $qb->andWhere('p.id IS NULL OR p.status != :deferred')
-                ->setParameter('deferred', BrandRagPipeline::STATUS_DEFERRED);
+            $qb->andWhere('p.id IS NULL OR p.status NOT IN (:terminal)')
+                ->setParameter('terminal', [BrandRagPipeline::STATUS_DEFERRED, BrandRagPipeline::STATUS_REVIEW]);
         }
 
         return $this->finishStageQuery($qb, $limit, $shard, $total);
@@ -374,7 +378,8 @@ class BrandRepository extends ServiceEntityRepository
             ->setParameter('failed', BrandRagPipeline::STATUS_GENERATE_FAILED)
             ->setParameter('max', $maxAttempts);
 
-        return $this->finishStageQuery($qb, $limit, $shard, $total);
+        // leastAttemptsFirst: меньше попыток — раньше (не залипаем на одних брендах при перевыборе)
+        return $this->finishStageQuery($qb, $limit, $shard, $total, false, true);
     }
 
     /** Бренды без собранных ключевиков (нет ни одной строки brand_keyword). */
@@ -464,6 +469,28 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Бренды без логотипа для стадии app:brand:logo: активные/new с пустым logo,
+     * у которых поиск ещё не делался либо зафейлился сетью (logo_status NULL | failed).
+     * not_found/skipped — терминальны (без --force). --force берёт всех без логотипа.
+     * leftJoin: бренд без строки пайплайна (p.id NULL) тоже подхватывается.
+     */
+    public function findForLogo(int $limit, int $shard = 0, int $total = 1, bool $force = false): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('b.status IN (:statuses)')
+            ->andWhere("b.logo IS NULL OR b.logo = ''")
+            ->setParameter('statuses', [Statuses::Active, Statuses::New]);
+
+        if (!$force) {
+            $qb->andWhere('p.id IS NULL OR p.logoStatus IS NULL OR p.logoStatus = :failed')
+                ->setParameter('failed', BrandRagPipeline::LOGO_FAILED);
+        }
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /**
      * Бренды, готовые к доставке на прод (isPublishReady, развёрнутый в SQL):
      * никогда не пушенные ИЛИ изменённые обогащением после пуша
      * (contentChangedAt > pushedAt). --force (includePushed) берёт все.
@@ -492,7 +519,7 @@ class BrandRepository extends ServiceEntityRepository
         return $this->finishStageQuery($qb, $limit, $shard, $total, $includePushed && $oldestFirst);
     }
 
-    private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total, bool $oldestFirst = false): array
+    private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total, bool $oldestFirst = false, bool $leastAttemptsFirst = false): array
     {
         if ($total > 1) {
             $qb->andWhere('MOD(b.id, :total) = :shard')
@@ -505,6 +532,12 @@ class BrandRepository extends ServiceEntityRepository
         // Все вызывающие методы джойнят пайплайн как 'p' (left-join → MySQL ставит NULL
         // последними при DESC, что нам и нужно: бренды без строки пайплайна — в хвост).
         $qb->addOrderBy('p.priority', 'DESC');
+
+        // Меньше попыток — раньше: не застреваем на одних и тех же брендах, если они
+        // перевыбираются (generate инкрементит generate_attempts на каждом проходе).
+        if ($leastAttemptsFirst) {
+            $qb->addOrderBy('p.generateAttempts', 'ASC');
+        }
 
         if ($oldestFirst) {
             // NULLs first (никогда не пушились), потом самые старые по pushedAt
