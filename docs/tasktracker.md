@@ -812,3 +812,56 @@ priority очереди, GSC-индекс из Search Analytics + sitemaps, noin
 - SEO: **фактоид-блок** (foundingYear+city) в карточке — презентация, без версионирования (не сделано).
   Факты в meta_description — только через RAG-генерацию (версионируется), НЕ bulk-UPDATE.
 - SEO отклонено как неприоритет: Product+Offer JSON-LD и транзакц. title (мы brand-led, не product-led; нет товаров в выдаче).
+
+---
+
+## 2026-06-16 — Маркетинг/бренд-стратегия (из advisors)
+
+Применение бренд-плейбука «как из скучных товаров делают культы» к продвижению самого
+wearbase.ru. Полная стратегия: [`marketing_strategy.md`](marketing_strategy.md) (позиционирование,
+враг, движение «Прямой бренд», мессединг) + каналы [`marketing_seo.md`](marketing_seo.md) и
+[`marketing_email.md`](marketing_email.md). Исходный разбор-плейбук:
+[`transcripts/branding-boring-products-theses.md`](transcripts/branding-boring-products-theses.md).
+
+**Стержень:** враг = маркетплейс-«арендодатель» (бренд → безликий SKU, покупатель → лента
+алгоритма); подписка/покупка = «голос» против него. Идентичность **+** математика (3000₽ vs
+30-67%), не одно без другого.
+
+**Роадмап (приоритет по убыванию; пока НЕ реализовано):**
+- [ ] №1 [both, M] Движение «Прямой бренд»: манифест `/manifest` + бейдж-ассет для брендов.
+- [ ] №2 [brand, Low] Рерайт копии /for-brands, /without-marketplaces, hero: фичелист → язык
+      врага/идентичности (пиллары A-D из `marketing_strategy.md` §5).
+- [ ] №3 [both, Low] On-page рефрейм каталога/карточек: H1/title/meta «напрямую, без
+      маркетплейса» (`brand/index.html.twig`, `brand/show.html.twig` + `--meta-only`/`meta-repair`).
+- [ ] №4 [brand, M] Калькулятор «сколько WB забирает у тебя» (shareable, ход Jolie).
+- [ ] №5 [both, M] Enemy-pillar «уйти с маркетплейса» + 2 спойка, вплести в link-graph
+      (`app:blog:publish-drafts` + `app:brand:build-link-graph`).
+- [ ] №6 [both, S-M] GEO/FAQ-слой: сравнит. таблица 0% vs 30-67% + FAQPage + доп. Q в
+      `app:brand:faq` («можно купить не на маркетплейсе?»). Без fake AggregateRating/Offer.
+- [ ] №7 [shopper, Low] Рефрейм shopper-копии каталога: «нашёл раньше ленты» вместо «каталог 1000+».
+- [ ] №8 [brand, M] ⚠️ ФЗ-38: двухстадийный email-гейт cold/warm + claim-CTA рерайт. Cold =
+      уведомление «заберите страницу» БЕЗ цен; sales «3000₽ vs 30%» только после claim/opt-in.
+- [ ] №9 [brand, M] Активационная серия free→paid: новая `app:activation:send` (Day 0/2/5/12/25)
+      + калькулятор; метрика — free→paid по когорте + time-to-first-value.
+- [ ] №10 [both, M] Newsletter→движение: редакц. слот + UTM (`app:newsletter:send-digest`);
+      prereq для E-E-A-T-интервью — миграция `Article.author` + Article/Person JSON-LD
+      (`src/Entity/Article.php` сейчас без поля автора — НЕ фабриковать авторов).
+
+**Reality-check:** одной vitrine.market (263 лида → ~3-8 платящих) цель «40 брендов / 120к₽
+MRR» не закрыть; нужен поток брендов (RAG) + B2C-спрос. Индексируется ~5.3% брендов —
+enemy/культурный контент отрабатывает индексный бюджет (см. `marketing_seo.md` §0).
+
+**Соц-блок (Instagram/Telegram/VK авто-постинг, drip).** План — [`marketing_instagram.md`](marketing_instagram.md).
+⚠️ Meta/Instagram запрещена в РФ, платное продвижение нельзя (только органика) → движок
+канал-агностичный, приоритет Telegram+VK, Instagram вторичен.
+- [ ] [S] Канал-агностичный слой: статус-машина `social_post` + cron `app:social:plan`/`generate`/`publish-tick` (drip + ramp-cap + health-cap, по образцу `publish-tick`). Публикация — **через Postiz API** (не свои адаптеры).
+- [ ] [M] **Развернуть Postiz** (open-source AGPL, self-host Docker) — нативно VK+Telegram+Instagram, public API. Снимает написание per-channel адаптеров. (Альт: нативные TG Bot API + VK API.) IG: нужен Professional/Creator-аккаунт, **FB-страница НЕ нужна** (Instagram-Login / Postiz standalone, см. marketing_instagram §4а).
+- [ ] [M] Шаблоны-рендеры карточек на 5 авто-рубрик + калькулятор-карточка.
+- [ ] [S] Генерация подписей `LlmService` + анти-AI-гейт (переиспользовать `ContentValidator`).
+- [ ] [S] `app:social:evaluate` closed-loop (saves/shares/link-taps) + UTM ссылки в шапке.
+- [ ] [prereq] Сбор UGC/видео от подключённых брендов (Day-0 активационного письма + бейдж «Прямой бренд»).
+- [ ] [S] **Image-gen — дефолт free-cloud** (Cloudflare Workers AI Flux-schnell / Pollinations): ноль контеншна, ноль инфры. Локальный ComfyUI на боксе только off-peak с выгрузкой модели (`OLLAMA_KEEP_ALIVE=0`) на A4000 — карты заняты слойно-размазанной 27B, свободной нет (см. marketing_instagram §5).
+- [ ] [M] **Faceless/data-Reels рендер** — **Revideo или Motion Canvas (MIT, free)**, детерминированный рендер из данных, без AI/GPU. (НЕ Remotion — BUSL-лицензия.) → апгрейд рубрик в ✅ полный авто.
+- [ ] [S] **Product-motion (image-to-video)** — локально **LTX-Video / WAN 2.2 5B** на выделенной карте; либо облако fal.ai (Seedance ~$0.03/с, Kling Turbo ~$0.07/с). WAN 14B (40–48GB) — только облако/мультиGPU. Полу-авто.
+- [ ] [S] **Audio-policy + AI-маркировка**: лицензионное/royalty-free аудио, метка AI-контента (Meta) в QA-гейте; финальная сборка Reels со звуком — semi-auto.
+- ⚠️ Граница: НЕ генерировать синтетический «UGC»/founder talking-head — противоречит позиционированию «Прямой бренд» + нарушает маркировку Meta. AI только ассистирует реальным брендам.

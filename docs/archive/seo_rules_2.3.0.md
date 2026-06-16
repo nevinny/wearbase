@@ -1,5 +1,10 @@
 # SEO Rules — v2.3.0
 **Версия:** 2.3.0 | **Дата:** 2026-05-26
+
+> ⚠️ **АРХИВ (2026-06-16).** Консолидировано в канон [`../seo_rules.md`](../seo_rules.md)
+> (раздел «Нормативные правила MUST/SHOULD/NICE»). Файл сохранён для истории и отката;
+> актуальные правила — в каноне.
+
 **Основано на:** SEO-PEDIA-2026, SpamBrain PDF, AVI PDF, Manual Actions, production-кейсах Key Group, external framework v2 (indexability / migrations / monitoring / parameters layer)
 
 ---

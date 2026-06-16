@@ -40,6 +40,8 @@ BASE_URL=http://localhost:8000 npx playwright test           # custom base URL
 
 ## Architecture
 
+> Полный индекс документации (`docs/`) — **[docs/README.md](docs/README.md)**.
+
 ### Прод и деплой
 
 Сервер, env-карта (SMTP/Turnstile/GSC/Telegram), процедура деплоя и известные прод-проблемы — **[docs/production.md](docs/production.md)**. Не лазить на прод за тем, что уже описано там.
