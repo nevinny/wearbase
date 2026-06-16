@@ -30,7 +30,6 @@ class SocialPublishTickCommand extends Command
 {
     private const MAX_PUBLISH_ATTEMPTS = 3;
     private const STALE_MINUTES = 60;
-    private const RATE_GROWTH = 0.125;
 
     /** Хард-квота медиа/24ч по площадке (предохранитель). */
     private const QUOTA_24H = [
@@ -45,6 +44,7 @@ class SocialPublishTickCommand extends Command
         private readonly SocialPostRepository $posts,
         private readonly SocialPublisherRegistry $registry,
         private readonly AdminNotifier $notifier,
+        private readonly \App\Service\Social\RampSchedule $ramp,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
         #[Autowire('%env(SOCIAL_LAUNCH_DATE)%')]
@@ -164,20 +164,15 @@ class SocialPublishTickCommand extends Command
         return Command::SUCCESS;
     }
 
-    /** Ramp-up дневной потолок T(w) = min(cap, round(start*(1+G)^w)); w — недель с launchDate. */
+    /** Ramp-up дневной потолок канала (формула — в RampSchedule, ради тестируемости). */
     private function rampTarget(SocialChannel $channel): int
     {
-        $start = $channel->getRateStart() ?? max(1, $this->startRate);
-        $cap = $channel->getRateCap() ?? max($start, $this->cap);
+        $launch = $channel->getLaunchDate()?->format('Y-m-d') ?? ($this->launchDate ?: null);
 
-        $launch = $channel->getLaunchDate()?->format('Y-m-d') ?? $this->launchDate;
-        if (trim((string) $launch) === '') {
-            return $start; // нет даты старта — держим стартовый темп
-        }
-
-        $tz = new \DateTimeZone('Europe/Moscow');
-        $weeks = max(0, (int) floor((time() - (new \DateTime($launch, $tz))->getTimestamp()) / (7 * 86400)));
-
-        return (int) min($cap, round($start * (1 + self::RATE_GROWTH) ** $weeks));
+        return $this->ramp->dailyTarget(
+            $channel->getRateStart() ?? $this->startRate,
+            $channel->getRateCap() ?? $this->cap,
+            $launch,
+        );
     }
 }
