@@ -13,6 +13,12 @@ parameters:
     env(BRAND_CLAIM_AUTOGRANT_EMAIL): '1'
     env(BRAND_CLAIM_AUTOGRANT_VK): '1'
     env(PAYMENT_SECRET_KEY): ''
+    # Соц-автоматизация: дрип-рамп (предохранитель) + Postiz для Instagram
+    env(SOCIAL_LAUNCH_DATE): ''
+    env(SOCIAL_START_RATE): '3'
+    env(SOCIAL_CAP): '14'
+    env(POSTIZ_URL): ''
+    env(POSTIZ_API_KEY): ''
     # Движки SearXNG для автоматики discover (толерантные к объёму с одного IP).
     env(SEARX_ENGINES): 'bing,mojeek'
     # Официальный Yandex Search API v2 (доп-источник discover). Пусто = выключен.
@@ -35,6 +41,8 @@ services:
     _instanceof:
         App\Payment\Gateway\PaymentGatewayInterface:
             tags: ['app.payment_gateway']
+        App\Social\Publisher\SocialPublisherInterface:
+            tags: ['app.social_publisher']
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
@@ -183,3 +191,12 @@ services:
     App\Service\Social\MediaRenderer:
         arguments:
             $projectDir: '%kernel.project_dir%'
+
+    App\Social\Publisher\TelegramPublisher:
+        arguments:
+            $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
+
+    App\Social\Publisher\InstagramPublisher:
+        arguments:
+            $postizUrl: '%env(POSTIZ_URL)%'
+            $postizApiKey: '%env(POSTIZ_API_KEY)%'
