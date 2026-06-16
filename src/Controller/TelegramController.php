@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\User;
+use App\Notification\AdminNotifier;
 use App\Notification\TelegramNotifier;
+use App\Service\Agent\BrandUnpublisher;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -21,8 +23,16 @@ class TelegramController extends AbstractController
         Request $request,
         EntityManagerInterface $em,
         TelegramNotifier $telegramNotifier,
+        AdminNotifier $adminNotifier,
+        BrandUnpublisher $unpublisher,
     ): Response {
         $body = json_decode($request->getContent(), true);
+
+        // Нажатие inline-кнопки (напр. «🚫 Скрыть с публикации» под уведомлением о публикации).
+        if (is_array($body) && isset($body['callback_query'])) {
+            return $this->handleCallback($body['callback_query'], $telegramNotifier, $adminNotifier, $unpublisher);
+        }
+
         if (!$body || !isset($body['message'])) {
             return new JsonResponse(['ok' => false]);
         }
@@ -51,6 +61,38 @@ class TelegramController extends AbstractController
 2. Нажмите «Привязать Telegram»
 
 После этого вы будете получать уведомления о заказах и других событиях.');
+        }
+
+        return new JsonResponse(['ok' => true]);
+    }
+
+    /** Обработка нажатия inline-кнопки. Сейчас: «unpub:<id>» — скрыть бренд с публикации. */
+    private function handleCallback(
+        array $cq,
+        TelegramNotifier $telegram,
+        AdminNotifier $adminNotifier,
+        BrandUnpublisher $unpublisher,
+    ): Response {
+        $cqId    = (string) ($cq['id'] ?? '');
+        $data    = (string) ($cq['data'] ?? '');
+        $chatId  = (string) ($cq['message']['chat']['id'] ?? $cq['from']['id'] ?? '');
+        $msgId   = $cq['message']['message_id'] ?? null;
+        $msgText = (string) ($cq['message']['text'] ?? '');
+
+        // Безопасность: скрывать бренды может ТОЛЬКО наш админ-чат (вебхук публичный).
+        if (!$adminNotifier->isAdminChat($chatId)) {
+            $telegram->answerCallbackQuery($cqId, 'Не авторизовано');
+            return new JsonResponse(['ok' => true]);
+        }
+
+        if (str_starts_with($data, 'unpub:')) {
+            $res = $unpublisher->hide((int) substr($data, 6));
+            $telegram->answerCallbackQuery($cqId, $res['ok'] ? '🚫 Скрыт' : 'Не удалось');
+            if ($msgId !== null) {
+                $telegram->editMessageText($chatId, (int) $msgId, $msgText . "\n\n🚫 <b>Скрыт:</b> {$res['message']}");
+            }
+        } else {
+            $telegram->answerCallbackQuery($cqId, '');
         }
 
         return new JsonResponse(['ok' => true]);

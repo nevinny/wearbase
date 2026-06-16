@@ -27,4 +27,24 @@ readonly class AdminNotifier
         }
         $this->telegram->send($this->adminChatId, $html);
     }
+
+    /**
+     * Уведомление с одной inline-кнопкой-действием (callback_data обрабатывает TelegramController).
+     * Напр. «🚫 Скрыть с публикации» под сообщением об опубликованном бренде.
+     */
+    public function sendWithButton(string $html, string $buttonText, string $callbackData): void
+    {
+        if ($this->adminChatId === '') {
+            return;
+        }
+        $this->telegram->send($this->adminChatId, $html, [
+            'inline_keyboard' => [[['text' => $buttonText, 'callback_data' => $callbackData]]],
+        ]);
+    }
+
+    /** Тот ли это чат, что наш админский (защита callback'ов: чужой не должен скрывать бренды). */
+    public function isAdminChat(string $chatId): bool
+    {
+        return $this->adminChatId !== '' && $chatId === $this->adminChatId;
+    }
 }

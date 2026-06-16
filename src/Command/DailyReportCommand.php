@@ -139,6 +139,23 @@ class DailyReportCommand extends Command
                 return Command::SUCCESS;
             }
             $this->notifier->send($msg);
+
+            // Свежеопубликованные (24ч) — отдельным сообщением с кнопкой «🚫 Скрыть с публикации»
+            // (TG-callback → BrandUnpublisher). Публикуется на проде, но TG ходит только с Mac,
+            // поэтому уведомление-с-кнопкой шлём отсюда (дневной крон Mac). Кап, чтобы не спамить.
+            $justPublished = $this->db->fetchAllAssociative(
+                "SELECT id, title, slug FROM brand
+                 WHERE status='active' AND published_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                 ORDER BY published_at DESC LIMIT 15"
+            );
+            foreach ($justPublished as $b) {
+                $this->notifier->sendWithButton(
+                    sprintf("✅ <b>Опубликован:</b> %s\nhttps://wearbase.ru/ru/brands/%s",
+                        htmlspecialchars((string) $b['title']), $b['slug']),
+                    '🚫 Скрыть с публикации',
+                    'unpub:' . (int) $b['id'],
+                );
+            }
         }
 
         return Command::SUCCESS;

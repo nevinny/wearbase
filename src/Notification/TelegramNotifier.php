@@ -17,20 +17,19 @@ readonly class TelegramNotifier
         private LoggerInterface $logger,
     ) {}
 
-    public function send(string $chatId, string $text): bool
+    /** @param array<mixed>|null $replyMarkup inline-клавиатура (reply_markup), напр. кнопка «Скрыть» */
+    public function send(string $chatId, string $text, ?array $replyMarkup = null): bool
     {
         if ($this->botToken === '' || $chatId === '') {
             return false;
         }
 
         try {
-            $response = $this->httpClient->request('POST', self::API_BASE . $this->botToken . '/sendMessage', [
-                'json' => [
-                    'chat_id'    => $chatId,
-                    'text'       => $text,
-                    'parse_mode' => 'HTML',
-                ],
-            ]);
+            $json = ['chat_id' => $chatId, 'text' => $text, 'parse_mode' => 'HTML'];
+            if ($replyMarkup !== null) {
+                $json['reply_markup'] = $replyMarkup;
+            }
+            $response = $this->httpClient->request('POST', self::API_BASE . $this->botToken . '/sendMessage', ['json' => $json]);
 
             $data = $response->toArray();
             if (!($data['ok'] ?? false)) {
@@ -39,6 +38,38 @@ readonly class TelegramNotifier
             return $data['ok'] ?? false;
         } catch (\Throwable $e) {
             $this->logger->error('Telegram notification failed', ['chat_id' => $chatId, 'error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
+    /** Ответ на нажатие inline-кнопки (всплывашка у пользователя). */
+    public function answerCallbackQuery(string $callbackQueryId, string $text = ''): bool
+    {
+        if ($this->botToken === '') {
+            return false;
+        }
+        try {
+            $data = $this->httpClient->request('POST', self::API_BASE . $this->botToken . '/answerCallbackQuery', [
+                'json' => ['callback_query_id' => $callbackQueryId, 'text' => $text],
+            ])->toArray(false);
+            return $data['ok'] ?? false;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** Перезаписать текст сообщения (убрать кнопку после действия). */
+    public function editMessageText(string $chatId, int $messageId, string $text): bool
+    {
+        if ($this->botToken === '') {
+            return false;
+        }
+        try {
+            $data = $this->httpClient->request('POST', self::API_BASE . $this->botToken . '/editMessageText', [
+                'json' => ['chat_id' => $chatId, 'message_id' => $messageId, 'text' => $text, 'parse_mode' => 'HTML'],
+            ])->toArray(false);
+            return $data['ok'] ?? false;
+        } catch (\Throwable) {
             return false;
         }
     }
