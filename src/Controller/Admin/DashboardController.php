@@ -16,6 +16,8 @@ use App\Entity\Currency;
 use App\Entity\ExchangeRate;
 use App\Entity\Language;
 use App\Entity\ScheduledCommand;
+use App\Entity\SocialChannel;
+use App\Entity\SocialPost;
 use App\Entity\BrandMarket;
 use App\Entity\ShippingRule;
 use App\Entity\TaxRule;
@@ -86,6 +88,10 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToCrud('SectionType', 'fas fa-list', SectionType::class);
         yield MenuItem::linkToCrud('SectionLink', 'fas fa-list', SectionLink::class);
         yield MenuItem::linkToCrud('Крон (расписание)', 'fas fa-clock', ScheduledCommand::class);
+        yield MenuItem::section('Соцсети');
+        yield MenuItem::linkToCrud('Каналы', 'fab fa-telegram', SocialChannel::class);
+        yield MenuItem::linkToCrud('Посты', 'fas fa-paper-plane', SocialPost::class);
+
         yield MenuItem::section('Заявки');
         yield MenuItem::linkToUrl('Заявки на бренды', 'fas fa-store',
             $this->generateUrl('admin', ['routeName' => 'admin_brand_claims']),

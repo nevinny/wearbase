@@ -67,9 +67,29 @@ class SocialChannel
     #[ORM\Column(nullable: true)]
     private ?int $rateCap = null;
 
+    /** Транзиентное поле для ввода токена в открытом виде в админке (шифруется при сохранении). */
+    private ?string $plainToken = null;
+
     public function getId(): ?int
     {
         return $this->id;
+    }
+
+    /** Для админки: задан ли токен (без раскрытия значения). */
+    public function getHasToken(): bool
+    {
+        return $this->tokenEnc !== null && $this->tokenEnc !== '';
+    }
+
+    public function getPlainToken(): ?string
+    {
+        return $this->plainToken;
+    }
+
+    public function setPlainToken(?string $plainToken): self
+    {
+        $this->plainToken = $plainToken;
+        return $this;
     }
 
     public function getPlatform(): string
