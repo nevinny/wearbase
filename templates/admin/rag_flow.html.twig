@@ -1,0 +1,209 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block page_title %}RAG-конвейер · поток{% endblock %}
+
+{% block main %}
+<style>
+    .flow-wrap { --gap: 14px; margin: 18px 0; color: var(--bs-body-color, #e6e6e6); }
+    .flow-head { display:flex; align-items:center; gap:14px; margin-bottom:14px; font-size:13px; opacity:.7; }
+    .flow-head .live { display:inline-flex; align-items:center; gap:6px; }
+    .flow-head .dot-live { width:9px; height:9px; border-radius:50%; background:#19c37d; box-shadow:0 0 0 0 rgba(25,195,125,.6); animation:pulse 1.6s infinite; }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(25,195,125,.5)} 70%{box-shadow:0 0 0 8px rgba(25,195,125,0)} 100%{box-shadow:0 0 0 0 rgba(25,195,125,0)} }
+
+    .conveyor { position:relative; padding:4px 0; }
+    .lane { border:1px solid var(--border-color,#3a3d44); border-radius:12px; margin-bottom:14px; padding:6px 10px 12px; }
+    .lane-net { background:rgba(79,140,255,.05); }
+    .lane-gpu { background:rgba(25,195,125,.05); }
+    .lane-head { display:flex; gap:10px; align-items:baseline; padding:4px 4px 6px; }
+    .lane-head b { font-size:14px; } .lane-head span { opacity:.5; font-size:12px; }
+    .lane-track { display:flex; align-items:flex-end; gap:var(--gap); overflow-x:auto; padding:24px 4px 4px; }
+    .sidesep { align-self:center; writing-mode:vertical-rl; text-orientation:mixed; font-size:10px; opacity:.4; text-transform:uppercase; letter-spacing:.12em; margin:0 2px 34px; }
+    .stage { position:relative; flex:1 1 0; min-width:118px; background:var(--content-bg, #1b1d22); border:1px solid var(--border-color,#3a3d44);
+             border-radius:12px; padding:12px 10px 10px; text-align:center; }
+    .stage.lane-net { border-top:2px solid #4f8cff; } .stage.lane-gpu { border-top:2px solid #19c37d; }
+    .stage.side { border-style:dashed; opacity:.9; }
+    .stage.side .pile i { background:linear-gradient(90deg,#7a7d85,#a6a9b0); }
+    .sidetag { font-size:9px; opacity:.5; font-weight:600; }
+    .qcap { font-size:10px; opacity:.5; margin-top:-1px; }
+    .stage .ico { font-size:20px; line-height:1; }
+    .stage .name { font-size:12px; text-transform:uppercase; letter-spacing:.04em; opacity:.7; margin-top:3px; }
+    .stage .stack { font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:6px; transition:color .3s; }
+    .stage .stack.bump { color:#19c37d; }
+    .stage .pile { height:54px; display:flex; flex-direction:column-reverse; gap:2px; align-items:center; margin:6px 0 4px; }
+    .stage .pile i { display:block; width:60%; height:5px; border-radius:2px; background:linear-gradient(90deg,#4f8cff,#19c37d); opacity:.85; }
+    /* ветки-исходы generate (deferred/review) — это очереди, а не «сделано» */
+    .stage.outcome { border-style:dashed; }
+    .stage.out-deferred { border-color:#8a8f99; } .stage.out-deferred .stack { color:#aeb3bd; }
+    .stage.out-deferred .pile i { background:linear-gradient(90deg,#6b7077,#9aa0aa); }
+    .stage.out-review   { border-color:#d9534f; } .stage.out-review .stack { color:#e8736f; }
+    .stage.out-review   .pile i { background:linear-gradient(90deg,#b5413d,#e8736f); }
+    .stage.out-review a { color:inherit; text-decoration:none; } .stage.out-review a:hover { text-decoration:underline; }
+    .stage.hit { animation:hit .7s; }
+    @keyframes hit { 0%{border-color:#19c37d; box-shadow:0 0 14px rgba(25,195,125,.5)} 100%{border-color:var(--border-color,#3a3d44); box-shadow:none} }
+    .arrow { align-self:center; flex:0 0 14px; text-align:center; opacity:.4; font-size:16px; margin-bottom:34px; }
+
+    /* летящая точка-элемент */
+    .flydot { position:absolute; top:0; width:12px; height:12px; border-radius:50%; background:#ffd24a;
+              box-shadow:0 0 8px rgba(255,210,74,.9); pointer-events:none; z-index:5; transition:left 1.3s ease-in-out, top 1.3s ease-in-out, opacity .3s; }
+
+    .ticker { margin-top:18px; border:1px solid var(--border-color,#3a3d44); border-radius:10px; max-height:320px; overflow-y:auto; }
+    .ticker h3 { font-size:12px; text-transform:uppercase; opacity:.6; margin:0; padding:10px 14px; border-bottom:1px solid var(--border-color,#3a3d44); }
+    .tick { display:flex; align-items:center; gap:10px; padding:7px 14px; border-bottom:1px solid rgba(255,255,255,.05); font-size:14px; }
+    .tick:first-of-type { animation:flashrow 1.2s; }
+    @keyframes flashrow { 0%{background:rgba(25,195,125,.22)} 100%{background:transparent} }
+    .tick .tstage { font-size:11px; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:9px; background:rgba(79,140,255,.18); color:#7aa7ff; min-width:74px; text-align:center; }
+    .tick .ttitle { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tick .tid { opacity:.4; font-size:12px; }
+    .tick a { color:inherit; text-decoration:none; }
+    .tick a:hover { text-decoration:underline; }
+</style>
+
+<div class="flow-wrap" id="flow"
+     data-url="{{ path('admin_rag_flow_data') }}"
+     data-brand-url="{{ path('admin_rag_brand_panel', {id: 0}) }}"
+     data-review-url="{{ path('admin_rag_review') }}">
+    <div class="flow-head">
+        <span class="live"><span class="dot-live"></span> живой поток</span>
+        <span>обновление каждые 3с · число в боксе = сколько брендов в ОЧЕРЕДИ ждёт этот этап · точка = бренд переходит дальше</span>
+        <span id="flow-upd" style="margin-left:auto;"></span>
+    </div>
+    <div class="conveyor" id="conveyor"></div>
+    <div class="ticker"><h3>последние переходы брендов</h3><div id="ticks"></div></div>
+</div>
+
+<script>
+(function () {
+    const root = document.getElementById('flow');
+    const URL = root.dataset.url;
+    const BRAND_URL = root.dataset.brandUrl;            // .../brand/0 → подменяем id
+    const conveyor = document.getElementById('conveyor');
+    const ticks = document.getElementById('ticks');
+    const REVIEW_URL = root.dataset.reviewUrl;
+    const ICON = {discover:'🔍', crawl:'🕸️', fetch:'⬇️', embed:'🧬', generate:'✍️', deferred:'⏸️', review:'⚠️', enrich:'📇', faq:'❓', extract:'📐', logo:'🏷️', keywords:'🔑', push:'🚀'};
+    const LANES = [
+        {key:'net', title:'🖥 Mac · сеть',          sub:'net-демон · discover → crawl → fetch · logo · push  (keywords — отд. демон)'},
+        {key:'gpu', title:'🧠 LLM-сервер .119 · GPU', sub:'gpu-демон · embed → generate · enrich · faq · extract'},
+    ];
+    // подпись под числом-очередью (что именно ждут)
+    const CAP = {push:'ждут отправки', deferred:'ждут дозревания корпуса', review:'на ручную верификацию', keywords:'ждут опроса Wordstat'};
+
+    let initial = {{ data|json_encode|raw }};
+    const seen = new Set();
+    let byKey = {};                                     // key → stage (next/lane для анимации)
+
+    function pile(stack) {                              // высота «стопки» ∝ log
+        const n = Math.max(0, Math.min(10, Math.round(Math.log10(stack + 1) * 3.2)));
+        return '<i></i>'.repeat(n);
+    }
+
+    function numHtml(s) {                                // review кликабельно → страница верификации
+        const n = s.stack.toLocaleString('ru');
+        return s.key === 'review' ? `<a href="${REVIEW_URL}">${n}</a>` : n;
+    }
+
+    function stageBox(s) {
+        const cls = s.role === 'side' ? 'side' : (s.role === 'outcome' ? 'outcome out-' + s.key : '');
+        const tag = s.role === 'side' ? ' <span class="sidetag">побочн.</span>'
+                  : (s.role === 'outcome' ? ' <span class="sidetag">ветка</span>' : '');
+        return `<div class="stage lane-${s.lane} ${cls}" id="st-${s.key}">
+            <div class="ico">${ICON[s.key] || '•'}</div>
+            <div class="name">${s.label}${tag}</div>
+            <div class="pile">${pile(s.stack)}</div>
+            <div class="stack" id="stk-${s.key}">${numHtml(s)}</div>
+            <div class="qcap">${CAP[s.key] || 'в очереди'}</div>
+        </div>`;
+    }
+
+    function renderLanes(stages) {
+        byKey = {}; stages.forEach(s => byKey[s.key] = s);
+        conveyor.innerHTML = LANES.map(L => {
+            const inLane = r => stages.filter(s => s.lane === L.key && s.role === r);
+            const mains = inLane('main'), outs = inLane('outcome'), sides = inLane('side');
+            let html = mains.map((s, i) => (i ? '<div class="arrow">▸</div>' : '') + stageBox(s)).join('');
+            if (outs.length)  html += '<div class="sidesep">ветки generate</div>' + outs.map(stageBox).join('');
+            if (sides.length) html += '<div class="sidesep">побочные</div>'      + sides.map(stageBox).join('');
+            return `<div class="lane lane-${L.key}">
+                <div class="lane-head"><b>${L.title}</b><span>${L.sub}</span></div>
+                <div class="lane-track">${html}</div>
+            </div>`;
+        }).join('');
+    }
+
+    function updateStacks(stages) {
+        stages.forEach(s => {
+            byKey[s.key] = s;
+            const el = document.getElementById('stk-' + s.key);
+            if (!el) return;
+            const n = s.stack.toLocaleString('ru');
+            if (el.textContent.trim() !== n) {
+                el.innerHTML = numHtml(s);
+                el.classList.add('bump'); setTimeout(() => el.classList.remove('bump'), 400);
+            }
+        });
+    }
+
+    // бренд завершил stageKey → пульс этапа; если это магистраль (есть next) — точка летит дальше
+    // (в т.ч. между дорожками: fetch→embed вниз, generate→push вверх). side (next=null) — только пульс.
+    function flyDot(stageKey) {
+        const from = document.getElementById('st-' + stageKey);
+        if (!from) return;
+        from.classList.add('hit'); setTimeout(() => from.classList.remove('hit'), 700);
+        const nextKey = (byKey[stageKey] || {}).next;
+        const to = nextKey ? document.getElementById('st-' + nextKey) : null;
+        if (!to) return;
+        const box = conveyor.getBoundingClientRect();
+        const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+        const dot = document.createElement('div');
+        dot.className = 'flydot';
+        dot.style.left = (a.left - box.left + a.width / 2 - 6) + 'px';
+        dot.style.top  = (a.top  - box.top  + a.height / 2 - 6) + 'px';
+        conveyor.appendChild(dot);
+        requestAnimationFrame(() => {
+            dot.style.left = (b.left - box.left + b.width / 2 - 6) + 'px';
+            dot.style.top  = (b.top  - box.top  + b.height / 2 - 6) + 'px';
+        });
+        setTimeout(() => { dot.style.opacity = '0'; }, 1300);
+        setTimeout(() => dot.remove(), 1700);
+    }
+
+    function tickRow(r) {
+        const href = BRAND_URL.replace(/0$/, r.brandId);
+        return `<div class="tick"><span class="tstage">${ICON[r.stage] || ''} ${r.stage}</span>`
+            + `<span class="ttitle"><a href="${href}">${(r.title || '').replace(/</g,'&lt;')}</a></span>`
+            + `<span class="tid">#${r.brandId} · ${String(r.at).slice(5,16).replace('T',' ')}</span></div>`;
+    }
+
+    function key(r) { return r.brandId + '|' + r.stage + '|' + r.at; }
+
+    function ingest(recent, animate) {
+        // recent отсортирован DESC; идём в обратном порядке, чтобы новые легли сверху
+        const fresh = recent.filter(r => !seen.has(key(r)));
+        fresh.slice().reverse().forEach(r => {
+            seen.add(key(r));
+            if (animate) flyDot(r.stage);
+            ticks.insertAdjacentHTML('afterbegin', tickRow(r));
+        });
+        while (ticks.children.length > 60) ticks.lastChild.remove();
+    }
+
+    function paint(data, animate) {
+        if (document.getElementById('st-' + data.stages[0].key)) updateStacks(data.stages);
+        else renderLanes(data.stages);
+        ingest(data.recent, animate);
+        document.getElementById('flow-upd').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru');
+    }
+
+    // первый рендер — без анимации (только заполняем seen + ленту)
+    paint(initial, false);
+
+    async function poll() {
+        if (document.hidden) return;
+        try {
+            const r = await fetch(URL, {headers: {'X-Requested-With': 'fetch'}});
+            if (r.ok) paint(await r.json(), true);
+        } catch (e) { /* сеть моргнула — ждём следующий тик */ }
+    }
+    setInterval(poll, 3000);
+})();
+</script>
+{% endblock %}

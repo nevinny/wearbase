@@ -117,6 +117,117 @@ class RagDashboardController extends AbstractController
     }
 
     /**
+     * Живая визуализация конвейера: горизонтальный «конвейер» этапов со «стопками»
+     * (сколько ждёт перед этапом) + темпом/ч + лентой реальных переходов брендов.
+     * Трассировка пути бренда — из per-stage таймстемпов (новых таблиц не нужно).
+     * Сама страница — лёгкий shell; данные тянет JS-поллингом с flow.json.
+     */
+    #[Route('/flow', name: '_flow', methods: ['GET'])]
+    public function flow(Request $request): Response
+    {
+        $this->initAdminContext($request);
+        return $this->render('admin/rag_flow.html.twig', ['data' => $this->buildFlowData()]);
+    }
+
+    #[Route('/flow.json', name: '_flow_data', methods: ['GET'])]
+    public function flowData(): Response
+    {
+        return $this->json($this->buildFlowData());
+    }
+
+    /**
+     * @return array{stages: list<array{key:string,label:string,stack:int,perHour:int,lastAt:?string}>,
+     *               recent: list<array<string,mixed>>}
+     */
+    private function buildFlowData(): array
+    {
+        $one = fn(string $sql) => (int) $this->db->fetchOne($sql);
+
+        // Этапы конвейера. ГЛАВНАЯ метрика — `stack`: сколько брендов ЖДЁТ обработки этим этапом
+        // (очередь). Темп «сделано/ч» намеренно НЕ показываем (не интересует + вводил в заблуждение
+        // на generate, где done пишется редко, а deferred — массово).
+        // lane: net (Mac/сеть) | gpu (зовёт LLM .119). role: main (магистраль) | outcome (ветка-исход
+        // generate: deferred/review) | side (побочное обогащение). next — для анимации перехода.
+        $stages = [
+            ['key' => 'discover', 'label' => 'discover', 'lane' => 'net', 'role' => 'main', 'next' => 'crawl', 'stack' => $one(
+                "SELECT COUNT(*) FROM brand b LEFT JOIN brand_rag_pipeline p ON p.brand_id=b.id
+                 WHERE b.status IN ('active','new') AND (p.id IS NULL OR p.discovered_at IS NULL)"
+            )],
+            ['key' => 'crawl', 'label' => 'crawl', 'lane' => 'net', 'role' => 'main', 'next' => 'fetch', 'stack' => $one(
+                "SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
+                 WHERE b.status IN ('active','new') AND p.discovered_at IS NOT NULL AND p.crawl_status IS NULL"
+            )],
+            ['key' => 'fetch', 'label' => 'fetch', 'lane' => 'net', 'role' => 'main', 'next' => 'embed', 'stack' => $one(
+                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='pending'"
+            )],
+            ['key' => 'embed', 'label' => 'embed', 'lane' => 'gpu', 'role' => 'main', 'next' => 'generate', 'stack' => $one(
+                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='scraped'"
+            )],
+            ['key' => 'generate', 'label' => 'generate', 'lane' => 'gpu', 'role' => 'main', 'next' => 'push', 'stack' => $one(
+                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='embedded'"
+            )],
+            // Ветки-исходы generate (видимые очереди, а не «сделано»):
+            ['key' => 'deferred', 'label' => 'deferred', 'lane' => 'gpu', 'role' => 'outcome', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='deferred'"
+            )],
+            ['key' => 'review', 'label' => 'review', 'lane' => 'gpu', 'role' => 'outcome', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='review'"
+            )],
+            ['key' => 'enrich', 'label' => 'enrich', 'lane' => 'gpu', 'role' => 'side', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand WHERE status IN ('active','new') AND contact_enriched_at IS NULL"
+            )],
+            ['key' => 'faq', 'label' => 'faq', 'lane' => 'gpu', 'role' => 'side', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='done' AND faq_status IS NULL AND keywords_status IS NOT NULL"
+            )],
+            ['key' => 'extract', 'label' => 'extract', 'lane' => 'gpu', 'role' => 'side', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE source_count > 0 AND attributes_status IS NULL
+                 AND status IN ('scraped','embedded','generated','done')"
+            )],
+            ['key' => 'logo', 'label' => 'logo', 'lane' => 'net', 'role' => 'side', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand b LEFT JOIN brand_rag_pipeline p ON p.brand_id=b.id
+                 WHERE b.status IN ('active','new') AND (b.logo IS NULL OR b.logo='')
+                   AND (p.id IS NULL OR p.logo_status IS NULL OR p.logo_status='failed')"
+            )],
+            // keywords — отдельный квотируемый демон (Yandex Wordstat 100/ч), не в gpu/net-наборах
+            ['key' => 'keywords', 'label' => 'keywords', 'lane' => 'net', 'role' => 'side', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand b LEFT JOIN brand_rag_pipeline p ON p.brand_id=b.id
+                 LEFT JOIN brand_keyword k ON k.brand_id=b.id
+                 WHERE b.status IN ('active','new') AND k.id IS NULL AND (p.id IS NULL OR p.keywords_status IS NULL)"
+            )],
+            ['key' => 'push', 'label' => 'push', 'lane' => 'net', 'role' => 'main', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
+                 WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3
+                   AND p.faq_status IN ('done','skipped') AND p.keywords_status IN ('found','not_found')
+                   AND b.description<>'' AND b.meta_title<>'' AND b.meta_description<>''"
+            )],
+        ];
+
+        // Лента реальных переходов: последние 40 событий «бренд завершил этап X».
+        // Union per-stage таймстемпов = точная трасса каждого бренда (ORDER BY at —
+        // без NOW(), поэтому TZ-перекос максимум переставит соседей, не врёт принципиально).
+        $recent = $this->db->fetchAllAssociative(<<<'SQL'
+            SELECT t.brand_id AS brandId, t.stage, t.at AS at, b.title
+            FROM (
+                SELECT brand_id, 'discover' stage, discovered_at  at FROM brand_rag_pipeline WHERE discovered_at  IS NOT NULL
+                UNION ALL SELECT brand_id, 'crawl',    crawled_at      FROM brand_rag_pipeline WHERE crawled_at      IS NOT NULL
+                UNION ALL SELECT brand_id, 'fetch',    scraped_at      FROM brand_rag_pipeline WHERE scraped_at      IS NOT NULL
+                UNION ALL SELECT brand_id, 'embed',    embedded_at     FROM brand_rag_pipeline WHERE embedded_at     IS NOT NULL
+                UNION ALL SELECT brand_id, 'generate', generated_at    FROM brand_rag_pipeline WHERE generated_at    IS NOT NULL
+                UNION ALL SELECT brand_id, 'extract',  extracted_at    FROM brand_rag_pipeline WHERE extracted_at    IS NOT NULL
+                UNION ALL SELECT brand_id, 'logo',     logo_checked_at FROM brand_rag_pipeline WHERE logo_checked_at IS NOT NULL
+                UNION ALL SELECT brand_id, 'push',     pushed_at       FROM brand_rag_pipeline WHERE pushed_at       IS NOT NULL
+                UNION ALL SELECT brand_id, 'keywords', keywords_checked_at FROM brand_rag_pipeline WHERE keywords_checked_at IS NOT NULL
+                UNION ALL SELECT id,       'enrich',   contact_enriched_at FROM brand WHERE contact_enriched_at IS NOT NULL
+            ) t
+            JOIN brand b ON b.id = t.brand_id
+            ORDER BY t.at DESC
+            LIMIT 40
+            SQL);
+
+        return ['stages' => $stages, 'recent' => $recent];
+    }
+
+    /**
      * Страница ручной верификации «подозрительных» брендов: контент-отказ модели
      * (status='review' — факты не о бренде / недостаточны, инцидент Majestic).
      * Владелец проходит список, сверяет данные и решает: переобогатить или скрыть.
