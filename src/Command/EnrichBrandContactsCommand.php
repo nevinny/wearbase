@@ -7,6 +7,7 @@ use App\Entity\BrandLink;
 use App\Entity\BrandRagPipeline;
 use App\Entity\BrandStore;
 use App\Entity\BrandSourceDocument;
+use App\Entity\BrandSourceUrl;
 use App\Repository\BrandRepository;
 use App\Service\ContactVerifier;
 use App\Service\LlmService;
@@ -56,6 +57,15 @@ class EnrichBrandContactsCommand extends Command
 {
     private const MAX_ERROR_RETRIES    = 3;
     private const SLEEP_BETWEEN_MS     = 1200; // мс между запросами к API
+
+    /**
+     * Маркетплейсы/агрегаторы: discovery иногда метит их own_site, но это НЕ сайт
+     * бренда — не промоутим в website-ссылку (vitrine.market — конкурент-каталог).
+     */
+    private const MARKETPLACE_HOSTS = [
+        'vitrine.market', 'wildberries.ru', 'wildberries.by', 'ozon.ru', 'lamoda.ru',
+        'market.yandex.ru', 'megamarket.ru', 'sbermegamarket.ru', 'aliexpress.ru', 'flowwow.com',
+    ];
 
     // Счётчики
     private int $enriched  = 0;
@@ -354,7 +364,68 @@ class EnrichBrandContactsCommand extends Command
             }
         }
 
+        // ── Сайт из подтверждённого own_site, если LLM не вернул website ──────────
+        // Сайт у нас УЖЕ есть (его скрейпили как own_site), но полный URL сайта в
+        // тексте корпуса почти не встречается → LLM его не возвращает, и на странице
+        // бренда нет ссылки на сайт. Промоутим own_site → website-ссылку, кроме
+        // маркетплейсов/агрегаторов (см. MARKETPLACE_HOSTS).
+        if (!$this->hasWebsiteLink($brand) && $this->promoteOwnSite($brand, $noVerify, $io)) {
+            $changed = true;
+        }
+
         return $changed;
+    }
+
+    /** Промоут подтверждённого own_site в website-ссылку. @return bool записана ли ссылка */
+    private function promoteOwnSite(Brand $brand, bool $noVerify, SymfonyStyle $io): bool
+    {
+        $ownSite = $this->em->getRepository(BrandSourceUrl::class)->findOneBy(
+            ['brand' => $brand, 'sourceType' => BrandSourceUrl::TYPE_OWN_SITE, 'status' => BrandSourceUrl::STATUS_FETCHED],
+            ['relevanceScore' => 'DESC'],
+        );
+        if ($ownSite === null) {
+            return false;
+        }
+
+        $url = $this->contactVerifier->normalizeUrl($ownSite->getUrl());
+        if ($url === null || $this->isMarketplaceHost($url)) {
+            return false;
+        }
+        if (!$noVerify && !$this->contactVerifier->verifyUrl($url)) {
+            $io->text("    ✗ website (own_site): {$url} (HTTP-проверка провалена)");
+            return false;
+        }
+
+        $link = new BrandLink();
+        $link->setLinkUrl($url);
+        $link->setLinkType('website');
+        $link->setTitle($this->linkTitle('website', $url));
+        $link->setSlug(substr(md5('website' . $url), 0, 24));
+        $brand->addLink($link);
+        $io->text("    ✓ website (из own_site): {$url}");
+
+        return true;
+    }
+
+    private function hasWebsiteLink(Brand $brand): bool
+    {
+        foreach ($brand->getLinks() as $link) {
+            if ($link->getLinkType() === 'website') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function isMarketplaceHost(string $url): bool
+    {
+        $host = preg_replace('/^www\./', '', strtolower((string) parse_url($url, PHP_URL_HOST)));
+        foreach (self::MARKETPLACE_HOSTS as $m) {
+            if ($host === $m || str_ends_with($host, '.' . $m)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function previewContacts(array $data, Brand $brand, SymfonyStyle $io): void
