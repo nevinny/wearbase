@@ -255,3 +255,34 @@ UTM на ссылке в шапке → видеть в аналитике са�
   из реальных фото); финальная сборка Reels со **звуком** (трендовое аудио — ручная привязка, §5).
 - ❌ Не авто (и не фейкать): founder talking-head, **UGC** — контент реальных людей.
 - 🚫 Нельзя: платное продвижение в Instagram/Meta (запрещено законом РФ, §0).
+
+---
+
+## 9. Реализация и запуск (Ф1–Ф5 готовы в коде)
+
+Конвейер реализован и протестирован офлайн (миграция, schema:validate, lint:container,
+plan→generate end-to-end, publish-tick claim→publish с реальным TG-вызовом, юнит-тест рампа).
+**Что осталось до живого постинга — внешняя обвязка (Ф0) и догенерация медиа.**
+
+**Сущности/таблицы:** `social_channel`, `social_post` (статус-машина), `social_post_metric`.
+**Команды:** `app:social:plan` · `app:social:generate` · `app:social:publish-tick --host=mac|prod` · `app:social:evaluate`.
+**Админка:** EasyAdmin → «Соцсети» → Каналы / Посты (ввод токена → шифруется; «Одобрить» для held).
+
+**Запуск (по шагам):**
+1. Ф0-аккаунты: TG-канал (+@wearbase_bot админом), VK-сообщество (community token), IG→Creator + Postiz.
+2. `.env.local`: `SOCIAL_LAUNCH_DATE=YYYY-MM-DD`, `SOCIAL_START_RATE`, `SOCIAL_CAP`,
+   `POSTIZ_URL`/`POSTIZ_API_KEY` (для IG), `TELEGRAM_BOT_TOKEN` (уже есть). `PAYMENT_SECRET_KEY` — для шифра VK-токена.
+3. Завести каналы в админке (платформа, target, egress-host: TG/IG→mac, VK→prod, токен).
+4. `doctrine:migrations:migrate` на проде.
+5. Cron через `scheduled_command` (админка → «Крон»), пример:
+   - `app:social:plan --no-debug` — `0 6 * * *` (env=prod): план на неделю вперёд.
+   - `app:social:generate --no-debug` — `*/30 * * * *` (env=llm/где ollama): наполнение.
+   - `app:social:publish-tick --host=prod --no-debug` — `0 * * * *` (env=prod): VK.
+   - `app:social:publish-tick --host=mac --no-debug` — `0 * * * *` (env=mac): TG+IG (egress!).
+   - `app:social:evaluate --notify --no-debug` — `0 9 * * 1` (еженедельно).
+
+**Осталось доделать (TODO, заведено в tasktracker):**
+- Медиа-карточки текст-рубрик (Cloudflare/Pollinations + оверлей) и data-Reels (Revideo) — §5;
+  сейчас текст-рубрики постятся текстом (TG/VK ок; для IG уходят в held — нужна картинка).
+- VK photo-attach (сейчас текстовый wall.post), Postiz API-контракт под версию инстанса (§4а).
+- Метрик-коллектор по площадкам → наполнение `social_post_metric` (включает closed-loop §7).

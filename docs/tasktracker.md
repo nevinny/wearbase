@@ -854,12 +854,19 @@ enemy/культурный контент отрабатывает индекс�
 **Соц-блок (Instagram/Telegram/VK авто-постинг, drip).** План — [`marketing_instagram.md`](marketing_instagram.md).
 ⚠️ Meta/Instagram запрещена в РФ, платное продвижение нельзя (только органика) → движок
 канал-агностичный, приоритет Telegram+VK, Instagram вторичен.
-- [ ] [S] Канал-агностичный слой: статус-машина `social_post` + cron `app:social:plan`/`generate`/`publish-tick` (drip + ramp-cap + health-cap, по образцу `publish-tick`). Публикация — **через Postiz API** (не свои адаптеры).
-- [ ] [M] **Развернуть Postiz** (open-source AGPL, self-host Docker) — нативно VK+Telegram+Instagram, public API. Снимает написание per-channel адаптеров. (Альт: нативные TG Bot API + VK API.) IG: нужен Professional/Creator-аккаунт, **FB-страница НЕ нужна** (Instagram-Login / Postiz standalone, см. marketing_instagram §4а).
-- [ ] [M] Шаблоны-рендеры карточек на 5 авто-рубрик + калькулятор-карточка.
-- [ ] [S] Генерация подписей `LlmService` + анти-AI-гейт (переиспользовать `ContentValidator`).
-- [ ] [S] `app:social:evaluate` closed-loop (saves/shares/link-taps) + UTM ссылки в шапке.
+**✅ Реализовано (Ф1–Ф5, 2026-06-17), гибрид нативные TG/VK + Postiz для IG (см. marketing_instagram §9):**
+- [x] [S] Статус-машина `social_post`/`social_channel`/`social_post_metric` + claim `FOR UPDATE SKIP LOCKED`.
+- [x] [S] `app:social:plan` (сетка рубрик, MSK) + `app:social:generate` (подпись+медиа+QA, held при провале).
+- [x] [S] Генерация подписей: шаблонный банк (ядро-сообщения, без LLM) + LLM из описания бренда; QA = banned-слова `ContentValidator`.
+- [x] [S] Публикаторы TG (Bot API) / VK (wall.post) / IG (Postiz) через тег-реестр; `app:social:publish-tick` (рамп-предохранитель + 24ч-квота, ретраи, per-host egress).
+- [x] [S] `app:social:evaluate` (read-only отчёт по рубрикам) + админка (каналы/посты, approve held). Рамп вынесен в `RampSchedule` + юнит-тест.
+
+**Осталось (Ф0 внешнее + догенерация):**
+- [ ] [prereq] Аккаунты: TG-канал (+бот-админ), VK-сообщество+токен, IG→Creator + Postiz self-host (egress к Meta!).
+- [ ] [M] **Развернуть Postiz** (self-host) — только для IG (standalone Instagram-Login, без FB-страницы, §4а).
 - [ ] [prereq] Сбор UGC/видео от подключённых брендов (Day-0 активационного письма + бейдж «Прямой бренд»).
+- [ ] [M] **Метрик-коллектор** по площадкам → наполнение `social_post_metric` (включает closed-loop; авто-правка сетки рубрик).
+- [ ] [S] VK photo-attach (сейчас текстовый wall.post); Postiz API-контракт под версию инстанса.
 - [ ] [S] **Image-gen — дефолт free-cloud** (Cloudflare Workers AI Flux-schnell / Pollinations): ноль контеншна, ноль инфры. Локальный ComfyUI на боксе только off-peak с выгрузкой модели (`OLLAMA_KEEP_ALIVE=0`) на A4000 — карты заняты слойно-размазанной 27B, свободной нет (см. marketing_instagram §5).
 - [ ] [M] **Faceless/data-Reels рендер** — **Revideo или Motion Canvas (MIT, free)**, детерминированный рендер из данных, без AI/GPU. (НЕ Remotion — BUSL-лицензия.) → апгрейд рубрик в ✅ полный авто.
 - [ ] [S] **Product-motion (image-to-video)** — локально **LTX-Video / WAN 2.2 5B** на выделенной карте; либо облако fal.ai (Seedance ~$0.03/с, Kling Turbo ~$0.07/с). WAN 14B (40–48GB) — только облако/мультиGPU. Полу-авто.
