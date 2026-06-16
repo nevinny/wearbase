@@ -37,6 +37,10 @@ class EvaluateExperimentsCommand extends Command
     private const DELTA_ABS_CLK   = 2;    // абсолютный пол по кликам
     private const DELTA_ABS_IMPR  = 10;   // абсолютный пол по показам
     private const MAX_ATTEMPT     = 3;    // после стольких попыток — откат, не реген
+    private const RE_MEASURE_DAYS = 14;   // not_indexed: через сколько перепроверить (ждём index-ping)
+    private const MAX_INDEX_WAIT_DAYS = 60; // дольше не ждём индексацию → терминальный not_indexed
+    private const GSC_STALE_DAYS  = 5;    // нет свежих GSC-данных за столько дней → не судим (синк сломан)
+    private const LOSS_CONFIRM_WINDOWS = 2; // антифлаппинг: реген только после стольких окон loss подряд
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -59,6 +63,20 @@ class EvaluateExperimentsCommand extends Command
         $dryRun = (bool) $input->getOption('dry-run');
         $limit  = max(1, (int) $input->getOption('limit'));
 
+        // ГАРД свежести GSC: если gsc:sync молча сломался (креды/квота), данные устаревают,
+        // gscSnapshot вернёт нули → ВСЁ уйдёт в not_indexed (и теперь в вечный re-measure),
+        // маскируя поломку. Не судим по протухшим данным. GSC сам лагает ~2-3 дня, поэтому
+        // порог GSC_STALE_DAYS с запасом — ловим именно многодневный обрыв синка.
+        $lastGscDay = $this->db->fetchOne('SELECT MAX(day) FROM gsc_page_stats');
+        $staleBefore = (new \DateTime('-' . self::GSC_STALE_DAYS . ' days'))->format('Y-m-d');
+        if ($lastGscDay === null || $lastGscDay < $staleBefore) {
+            $io->error(sprintf(
+                'GSC-данные устарели (последний день: %s, порог: %s). Оценка ПРОПУЩЕНА — иначе ложный not_indexed по нулям. Проверь app:gsc:sync.',
+                $lastGscDay ?: 'нет данных', $staleBefore,
+            ));
+            return Command::FAILURE;
+        }
+
         $due = $this->revisions->findDueForEvaluation(new \DateTime(), $limit);
         $io->title(sprintf('Closed-loop: ревизий к оценке %d', count($due)));
         if ($due === []) {
@@ -66,7 +84,7 @@ class EvaluateExperimentsCommand extends Command
             return Command::SUCCESS;
         }
 
-        $tally = ['win' => 0, 'loss' => 0, 'neutral' => 0, 'not_indexed' => 0, 'regen' => 0, 'rollback' => 0];
+        $tally = ['win' => 0, 'loss' => 0, 'neutral' => 0, 'not_indexed' => 0, 'regen' => 0, 'rollback' => 0, 'remeasure' => 0, 'loss_tentative' => 0];
 
         foreach ($due as $rev) {
             $brand = $rev->getBrand();
@@ -81,12 +99,28 @@ class EvaluateExperimentsCommand extends Command
 
             $action = '';
             if ($verdict === BrandContentRevision::VERDICT_LOSS) {
-                if ($rev->getAttempt() < self::MAX_ATTEMPT && $this->hasGroundedCorpus($brandId)) {
+                // Антифлаппинг: реагируем только на ПОДТВЕРЖДЁННЫЙ loss (≥2 окна подряд).
+                // Первый loss на низкочастотке часто шум → не дёргаем контент, ждём ещё окно.
+                if ($rev->getLossStreak() + 1 < self::LOSS_CONFIRM_WINDOWS) {
+                    $action = 'loss_tentative';
+                    $tally['loss_tentative']++;
+                } elseif ($rev->getAttempt() < self::MAX_ATTEMPT && $this->hasGroundedCorpus($brandId)) {
                     $action = 'regen';
+                    $tally[$action]++;
                 } else {
                     $action = 'rollback';
+                    $tally[$action]++;
                 }
-                $tally[$action]++;
+            } elseif ($verdict === BrandContentRevision::VERDICT_NOT_INDEXED) {
+                // Контент не виноват — Google не дал шанс. Не финализируем терминально:
+                // даём index-ping'у время и ПЕРЕОТКРЫВАЕМ окно, чтобы оценить контент, когда
+                // страница попадёт в индекс. Сдаёмся (терминальный not_indexed) только если
+                // ждём индексацию дольше MAX_INDEX_WAIT_DAYS.
+                $ageDays = (new \DateTime())->diff($rev->getCreatedAt())->days;
+                if ($ageDays < self::MAX_INDEX_WAIT_DAYS) {
+                    $action = 'remeasure';
+                    $tally['remeasure']++;
+                }
             }
 
             $io->writeln(sprintf(
@@ -102,7 +136,22 @@ class EvaluateExperimentsCommand extends Command
                 continue;
             }
 
-            $rev->setGscImprAfter($impr)->setGscClicksAfter($clicks)->setGscIndexedAfter($indexed)->setVerdict($verdict);
+            $rev->setGscImprAfter($impr)->setGscClicksAfter($clicks)->setGscIndexedAfter($indexed);
+
+            if ($action === 'remeasure' || $action === 'loss_tentative') {
+                // verdict ОСТАЁТСЯ pending → ревизия вернётся в оценку после нового окна.
+                //  - remeasure (not_indexed): ждём индексацию (index-ping);
+                //  - loss_tentative: первый loss, ждём подтверждения трендом ещё одним окном.
+                if ($action === 'loss_tentative') {
+                    $rev->setLossStreak($rev->getLossStreak() + 1);
+                }
+                $rev->setMeasureAfter((new \DateTime())->modify('+' . self::RE_MEASURE_DAYS . ' days'));
+                $this->em->flush();
+                $this->em->clear();
+                continue;
+            }
+
+            $rev->setVerdict($verdict);
 
             if ($action === 'regen') {
                 $this->pipeline($brand)

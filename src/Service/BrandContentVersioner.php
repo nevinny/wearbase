@@ -24,6 +24,18 @@ class BrandContentVersioner
 {
     public const WINDOW_DAYS = 14;
 
+    /**
+     * Длина окна замера по номеру попытки: молодым страницам Google нужен разгон,
+     * поэтому первые окна длиннее (меньше ложных loss на недокрученной выдаче), дальше — 14.
+     * attempt 1 (первая генерация) → 28, attempt 2 (после 1-го регена) → 21, далее → 14.
+     */
+    private const WINDOW_BY_ATTEMPT = [1 => 28, 2 => 21];
+
+    public static function windowDays(int $attempt): int
+    {
+        return self::WINDOW_BY_ATTEMPT[$attempt] ?? self::WINDOW_DAYS;
+    }
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly BrandContentRevisionRepository $repo,
@@ -60,6 +72,7 @@ class BrandContentVersioner
     ): BrandContentRevision {
         $this->ensureBaseline($brand);
         $prev = $this->repo->findActive($brand);
+        $attempt = $prev ? $prev->getAttempt() + 1 : 1;
 
         $rev = $this->snapshot($brand, $source)
             ->setGrounded($grounded)
@@ -67,9 +80,9 @@ class BrandContentVersioner
             ->setNote($note)
             ->setActive(true)
             ->setPrevRevisionId($prev?->getId())
-            ->setAttempt($prev ? $prev->getAttempt() + 1 : 1)
+            ->setAttempt($attempt)
             ->setVerdict(BrandContentRevision::VERDICT_PENDING)
-            ->setMeasureAfter((new \DateTime())->modify('+' . self::WINDOW_DAYS . ' days'));
+            ->setMeasureAfter((new \DateTime())->modify('+' . self::windowDays($attempt) . ' days'));
 
         $this->captureGscBefore($rev, $brand);
 

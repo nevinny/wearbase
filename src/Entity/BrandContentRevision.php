@@ -65,6 +65,10 @@ class BrandContentRevision
     #[ORM\Column]
     private int $attempt = 1;
 
+    /** Сколько ОКОН подряд показали loss (антифлаппинг: реген только после подтверждения, ≥2). */
+    #[ORM\Column(type: Types::SMALLINT, options: ['default' => 0])]
+    private int $lossStreak = 0;
+
     #[ORM\Column(nullable: true)]
     private ?int $prevRevisionId = null;
 
@@ -131,6 +135,9 @@ class BrandContentRevision
 
     public function getAttempt(): int { return $this->attempt; }
     public function setAttempt(int $v): static { $this->attempt = $v; return $this; }
+
+    public function getLossStreak(): int { return $this->lossStreak; }
+    public function setLossStreak(int $v): static { $this->lossStreak = $v; return $this; }
 
     public function getPrevRevisionId(): ?int { return $this->prevRevisionId; }
     public function setPrevRevisionId(?int $v): static { $this->prevRevisionId = $v; return $this; }
