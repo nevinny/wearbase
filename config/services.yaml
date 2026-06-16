@@ -174,3 +174,12 @@ services:
     App\Service\ImageDownloaderService:
         arguments:
             $publicDir: '%kernel.project_dir%/public'
+
+    # --- Соц-автоматизация (docs/marketing_instagram.md) ---
+    App\Service\Social\CaptionGenerator:
+        arguments:
+            $siteBaseUrl: '%app.site_base_url%'
+
+    App\Service\Social\MediaRenderer:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
