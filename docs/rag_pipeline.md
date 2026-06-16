@@ -30,7 +30,7 @@
 
 Магистральный поток — четыре стадии, каждая своей командой и со своим статусом в
 `brand_rag_pipeline`. Вокруг них — побочные стадии обогащения (crawl / keywords / faq / extract /
-wb / push), которые читают тот же корпус и пишут свои поля статуса.
+wb / logo / push), которые читают тот же корпус и пишут свои поля статуса.
 
 ```
               ┌─────────────────────────── магистраль ───────────────────────────┐
@@ -55,6 +55,7 @@ status=done | deferred | review
         app:brand:faq        FAQ из ключевиков + фактов → brand_faq       (faqStatus)        │
         app:brand:extract    атрибуты из product_sample-краула           (attributesStatus) │
         app:brand:wb-enrich  ингест карточек Wildberries                 (wbStatus)          │
+        app:brand:logo       лого из HTML own_site/маркетплейс → brand.logo  (logoStatus)    │
         app:brand:enrich-contacts  контакты из корпуса → email/phone/links/stores           │
                                                                                             ▼
                                                           app:brand:push → прод (агент-API)
@@ -118,9 +119,10 @@ review → admin /admin/rag/review → requeue (сброс в pending) | hide (i
 | `crawlStatus` | `CRAWL_DONE` / `CRAWL_SKIPPED` (нет own_site) / `CRAWL_FAILED` | `crawl` | не краулили |
 | `attributesStatus` | `ATTR_DONE` / `ATTR_SKIPPED` / `ATTR_FAILED` | `extract` | не извлекали |
 | `faqStatus` | `FAQ_DONE` / `FAQ_SKIPPED` (нет ключевиков) / `FAQ_FAILED` | `faq` | не генерили |
+| `logoStatus` | `LOGO_FOUND` / `LOGO_NOT_FOUND` (страницы перебраны, годного лого нет) / `LOGO_SKIPPED` (нет URL-кандидатов) / `LOGO_FAILED` (сеть, повторяемо) | `logo` | не искали лого |
 
 Соответствующие timestamp-поля: `discoveredAt`, `scrapedAt`, `embeddedAt`, `generatedAt`,
-`keywordsCheckedAt`, `wbCheckedAt`, `crawledAt`, `extractedAt`. Счётчики попыток: `scrapeAttempts`,
+`keywordsCheckedAt`, `wbCheckedAt`, `crawledAt`, `extractedAt`, `logoCheckedAt`. Счётчики попыток: `scrapeAttempts`,
 `embedAttempts`, `generateAttempts`, `pushAttempts`. Аудит grounding: `sourceCount` (сколько
 документов), `grounded` (использовался ли RAG-контекст), `topRetrievalScore` (топовый cosine).
 
@@ -258,11 +260,41 @@ Search API + DB-ссылки) находит URL-кандидаты бренда
 | FAQ | `app:brand:faq` | FAQ из ключевиков + фактов → `brand_faq` (после generate) | `faqStatus`, `contentChangedAt` |
 | Extract | `app:brand:extract` | Атрибуты (размеры/материалы) из product_sample-краула | `attributesStatus`, `extractedAt`, `contentChangedAt` |
 | WB-enrich | `app:brand:wb-enrich` | Ингест карточек Wildberries | `wbStatus`, `wbCheckedAt` |
+| Logo | `app:brand:logo` | Лого из HTML own_site/маркетплейс → `brand.logo` | `logoStatus`, `logoCheckedAt`, `contentChangedAt` |
 | Push | `app:brand:push` | Доставка готовых брендов на прод (агент-API + HMAC) | `pushedAt`, `pushAttempts`, `pushError` |
 
 > **keywords** — отдельный долгоживущий демон (квота Wordstat 100/час, ~56 мин/цикл), **не** входит
 > в дефолтный цикл `rag:daemon`. **wb-enrich** (`app:brand:wb-enrich`) — реальная стадия, но в
 > `RagDaemonCommand::STAGES` её **нет** (запускается отдельно/вручную).
+
+### 3.6 `app:brand:logo` — поиск и извлечение логотипа
+
+`FetchBrandLogoCommand`. Достаёт логотип бренда и кладёт в `brand.logo`. **Корпус
+(`brand_source_document`) для лого бесполезен** — это чистый ТЕКСТ, где `img`/`svg`/`header`/`og`/
+JSON-LD вырезаны при чистке, а сырой HTML не хранится (§4). Поэтому стадия **заново фетчит HTML**
+страницы (1 запрос/бренд) через `WebScraperService::fetch()`; из корпуса переиспользуется только
+**список URL** (`brand_source_url`), не контент. Не зависит от LLM-сервера (только фетч сайтов +
+скачивание картинок).
+
+- **Вход**: активные/`new` бренды без `logo` (`BrandRepository::findForLogo`), у которых лого ещё
+  не искали либо был сетевой сбой (`logoStatus ∈ {null, failed}`). `not_found`/`skipped` —
+  терминальны без `--force`.
+- **URL-кандидаты страниц** (в порядке приоритета, дедуп, cap 4): own_site (`brand_source_url`
+  type `own_site`, по `relevance`) → `BrandLink` website → `marketplace` (WB/Lamoda/vitrine).
+- **Извлечение** (`LogoExtractor`, парсинг HTML): скоринг источников
+  JSON-LD `Organization.logo` (100) → `og:logo` (90) → `<img>` с «logo» в src/alt/class/id (80) →
+  `apple-touch-icon` (60) → `og:image` (40) → favicon (20). Абсолютизация, дедуп, сортировка.
+- **Скачивание+валидация** (`LogoFetcher`): формат png/jpg/webp/gif/svg; raster ≥120px (favicon
+  ≥48px — мягкий fallback); отсев баннеров (соотношение сторон >6:1) и битых файлов; ≤2 МБ. SVG —
+  вектор, без проверки размера. Перебор кандидатов по убыванию score до первого валидного
+  (cap 6 скачиваний/бренд).
+- **Выход**: файл в `public_html/images/logos` (имя `logo_{brandId}_{sha8}.{ext}`, детерминировано
+  по содержимому → нет дублей), `brand.logo` + `markContentChanged` (→ push довезёт лого как base64,
+  см. `BrandPayloadAssembler`). `logoStatus` + `logoCheckedAt`.
+- **Параметры**: `limit` (деф. 30), `--id`, `--force` (вкл. not_found/skipped и с уже выставленным
+  logo), `--dry-run`, `--shard`/`--total`.
+- **vitrine.market** (конкурент-каталог) **разрешён** как источник лого (аватарка там — обычно
+  реальный логотип бренда), но как **website-ссылка** он заблокирован (deny-лист в enrich, §6).
 
 ---
 
@@ -370,6 +402,12 @@ chunks < MIN_CHUNKS (3)            → context=null  (легаси/deferred)
 `prioritize()` также ставит own_site-чанки (`OWN_SITE_TYPES = {own_site, official_site}`) раньше,
 сохраняя cosine-порядок внутри групп (стабильный usort PHP 8.2).
 
+**Гард топикальности (анти-омоним).** После прохождения cosine-gate собранный контекст проверяется
+на наличие хоть одного fashion/commerce-сигнала (`FASHION_SIGNALS`: одежд/коллекц/магазин/ткань/
+fashion/shop…). Если НЕТ ни одного — корпус почти наверняка про **омоним** (страна Mauritius,
+браузер Vivaldi, страховая Wysh), а не про бренд одежды → `context=null` (не заземляем, grounded-only
+→ `deferred`). Ловит чужую сущность ДО генерации; refusal-гейт (`ContentValidator`) — последняя сетка.
+
 **Итоги в `brand_rag_pipeline`**: `grounded` (`context !== null`), `topRetrievalScore`.
 
 ---
@@ -395,6 +433,12 @@ chunks < MIN_CHUNKS (3)            → context=null  (легаси/deferred)
 3. Применить (не перезаписывая существующее): `email`/`phone` (валидация `ContactVerifier`),
    `BrandLink` по типам (website верифицируется HTTP, если не `--no-verify`; соцсети — нет),
    `BrandStore` (адрес+город+телефон). Если что-то записано → `markContentChanged` (ре-доставка).
+4. **Промоут own_site → website-ссылка**: если LLM не вернул website (а в тексте корпуса полного
+   URL сайта обычно нет, хотя сам сайт мы скрейпили как own_site), бренду проставляется
+   подтверждённый own_site (`brand_source_url`) как `BrandLink` type `website`. Защита: deny-лист
+   маркетплейсов/агрегаторов (`MARKETPLACE_HOSTS`: vitrine.market, wildberries, ozon, lamoda,
+   market.yandex, megamarket, aliexpress, flowwow) — discovery иногда метит их `own_site`, но это
+   не сайт бренда, в website их не пускаем.
 
 **`Brand.contactStatus`** (по `confidence`):
 
@@ -432,6 +476,7 @@ chunks < MIN_CHUNKS (3)            → context=null  (легаси/deferred)
 | `fetch` | `app:brand:fetch` | `--max-urls=250` |
 | `embed` | `app:brand:embed` | `30` |
 | `enrich` | `app:brand:enrich-contacts` | `10` |
+| `logo` | `app:brand:logo` | `20` |
 | `generate` | `app:brand:generate-content` | `10 --grounded-only` |
 | `faq` | `app:brand:faq` | `10` |
 | `extract` | `app:brand:extract` | `10` |
@@ -527,6 +572,26 @@ INSERT в `brand_source_document` (через сеттер `setCleanText()` — 
 - Контент: `app:brand:generate-content --id=<id>` (если description пуст — полная генерация;
   иначе meta-only ветка). `--dry-run` для предпросмотра.
 
+### Ре-валидация уже-`done` контента (выловить протёкшие отказы)
+
+`app:brand:revalidate-content` — прогоняет описания `done`-брендов через `ContentValidator::isRefusal`
+и демотирует протёкшие отказы (корпус-омоним: модель отказала, но текст уехал на прод) в `review`
++ снимает с публикации на проде (агент-API). Запускать после ужесточения refusal-паттернов.
+```bash
+php bin/console app:brand:revalidate-content --dry-run      # только показать протечки
+php bin/console app:brand:revalidate-content                # demote в review + unpublish
+php bin/console app:brand:revalidate-content --id=3818      # один бренд
+php bin/console app:brand:revalidate-content --no-unpublish # demote локально, прод не трогать
+```
+
+### Скрыть бренд с публикации из Telegram
+
+Дневной отчёт (`app:report:daily`, крон Mac) шлёт по свежеопубликованным (24ч) бренду сообщение с
+inline-кнопкой **«🚫 Скрыть с публикации»** (`callback_data=unpub:<id>`). Нажатие → `TelegramController`
+вебхук `callback_query` → `BrandUnpublisher::hide()`: локальный soft-hide (`status=inactive`) +
+unpublish на проде. Защита: действие только из админ-чата (`AdminNotifier::isAdminChat`). ⚠️ TG из РФ
+ходит только с Mac — поэтому уведомление-с-кнопкой шлёт Mac-крон, не прод-publish-tick.
+
 ### Админка `/admin/rag`
 
 - **`/admin/rag`** — дашборд: воронка брендов, статусы пайплайна, очередь URL, прогресс стадий
@@ -582,13 +647,14 @@ php bin/console app:brand:ask "Снежная Королева" "из чего �
 - **`brand_content_revision`** (append-only) — история тройки `description + meta_title +
   meta_description`. Поля: `source` (legacy|rag|manual|import|rollback), `grounded`,
   `retrieval_score`, `is_active` (зеркалит живые `brand.*`), `attempt`, `prev_revision_id`,
-  `created_at`, `measure_after`, `verdict` (pending|win|loss|neutral|not_indexed) и снимки GSC
-  `gsc_{impr,clicks,indexed}_{before,after}`. Live-значения остаются в `brand.*` — read-path
-  сайта не трогаем; активная ревизия их дублирует.
+  `created_at`, `measure_after`, `verdict` (pending|win|loss|neutral|not_indexed), `loss_streak`
+  (окон loss подряд — антифлаппинг) и снимки GSC `gsc_{impr,clicks,indexed}_{before,after}`.
+  Live-значения остаются в `brand.*` — read-path сайта не трогаем; активная ревизия их дублирует.
 - **`BrandContentVersioner`** (`src/Service/`): `ensureBaseline()` (снять текущее как `legacy`,
   чтобы не потерять), `record()` (новая активная ревизия + старт эксперимента: baseline GSC +
-  окно `WINDOW_DAYS=14`), `rollback()` (append-only — пишет новую ревизию `source=rollback`).
-  Снимок GSC берётся из `gsc_page_stats`/`gsc_index_status` (живут на Mac).
+  **окно по попытке** `windowDays(attempt)`: attempt 1 → 28д, 2 → 21д, далее → 14д — молодым
+  страницам Google нужен разгон, меньше ложных loss), `rollback()` (append-only — пишет новую
+  ревизию `source=rollback`). Снимок GSC из `gsc_page_stats`/`gsc_index_status`.
 - ⚠️ `brand.content_version` переименован в **`agent_sync_version`** — это sequence-номер
   доставки в агент-API, НЕ версии контента (раньше путало).
 
@@ -603,14 +669,25 @@ php bin/console app:brand:ask "Снежная Королева" "из чего �
 - `app:brand:backfill-content-revisions` — одноразовый baseline `legacy` для текущих брендов.
 
 ### Closed-loop (дерево решений эксперимента) — по `_seo/SEO_Guide_4.9` (growth-loop)
-После истечения окна (`measure_after`), команда оценки сверяет GSC variant vs baseline:
-1. **not indexed / impressions < MIN_SAMPLE (10)** → `not_indexed`: НЕ откат (контент не виноват,
-   Google не дал шанс) → индексационные рычаги (перелинковка, index-ping), замер позже.
+`EvaluateExperimentsCommand`. После истечения окна (`measure_after`) сверяет GSC variant vs baseline.
+
+**0. Гард свежести GSC** (в начале): `MAX(gsc_page_stats.day)` старше `GSC_STALE_DAYS=5` (или нет
+данных) → команда **аварийно выходит** (exit≠0), НЕ судит. Иначе тихий сбой `gsc:sync` дал бы нули →
+весь каталог ушёл бы в ложный `not_indexed`. GSC сам лагает ~2-3 дня, порог 5 — с запасом.
+
+1. **not indexed / impressions < MIN_SAMPLE (10)** → `not_indexed`: контент не виноват (Google не
+   дал шанс). **НЕ терминально:** если ревизия младше `MAX_INDEX_WAIT_DAYS=60` → verdict остаётся
+   `pending`, окно переоткрывается (+`RE_MEASURE_DAYS=14`) → переоценим, когда `index-ping` доведёт
+   до индекса и пойдут показы. Терминальный `not_indexed` — только после 60 дней ожидания.
 2. **судим с порогом** (относит. 20% + абсолютный пол: clicks ±2 / impr ±10, отсечь шум):
    `loss` (clicks/impr упали > порога) · `win` (clicks не упали И (impr ↑ или впервые в индексе))
    · иначе `neutral`.
-3. **действие:** win/neutral → оставить; **loss** → вилка: attempt < MAX_REGEN и есть grounded-
-   корпус → регенерация (новый эксперимент), иначе → откат к лучшей прошлой ревизии.
+3. **действие:** win/neutral → оставить.
+   **`loss` — антифлаппинг:** первый `loss` НЕ реагирует — `loss_streak++`, окно переоткрывается
+   (+14д), ждём подтверждения. Только при **`loss_streak ≥ LOSS_CONFIRM_WINDOWS=2`** (loss 2 окна
+   подряд) → вилка: `attempt < MAX_ATTEMPT=3` и есть grounded-корпус (≥3 док) → **регенерация**
+   (флаг `regen_requested_at` + `priority≥50`, новый эксперимент); иначе → **откат** к лучшей
+   ревизии (`findRollbackTarget`: последний подтверждённый `win`, иначе самая свежая прошлая).
 
 ### Автоматизация (scheduled_command, env=dev — диспетчер Mac тикает ежеминутно)
 Контур самокрутится:
