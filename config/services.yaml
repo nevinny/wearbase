@@ -85,6 +85,10 @@ services:
             # (остаются доступны в UI SearXNG). Дефолт в .env; пусто = все дефолтные движки.
             $engines: '%env(SEARX_ENGINES)%'
 
+    App\Service\LogoFetcher:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
     App\Service\Agent\BrandIngestService:
         arguments:
             $projectDir: '%kernel.project_dir%'

@@ -47,6 +47,11 @@ class BrandRagPipeline
     public const FAQ_SKIPPED = 'skipped';
     public const FAQ_FAILED  = 'failed';
 
+    public const LOGO_FOUND     = 'found';
+    public const LOGO_NOT_FOUND = 'not_found'; // страницы перебраны, годного лого нет (терминально без --force)
+    public const LOGO_SKIPPED   = 'skipped';   // нет ни одного URL-кандидата (own_site/website/marketplace)
+    public const LOGO_FAILED    = 'failed';    // сетевая/HTTP-ошибка — повторяемо
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -135,6 +140,13 @@ class BrandRagPipeline
     /** Исход генерации FAQ: null=не генерили | done | skipped (нет ключевиков) | failed. */
     #[ORM\Column(length: 12, nullable: true)]
     private ?string $faqStatus = null;
+
+    /** Исход поиска логотипа (стадия logo): null=не искали | found | not_found | skipped | failed. */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $logoStatus = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $logoCheckedAt = null;
 
     /** Когда бренд доставлен на прод агентом-пушем (null = не доставлен). */
     #[ORM\Column(type: 'datetime', nullable: true)]
@@ -442,6 +454,28 @@ class BrandRagPipeline
     public function setFaqStatus(?string $status): self
     {
         $this->faqStatus = $status;
+        return $this;
+    }
+
+    public function getLogoStatus(): ?string
+    {
+        return $this->logoStatus;
+    }
+
+    public function setLogoStatus(?string $status): self
+    {
+        $this->logoStatus = $status;
+        return $this;
+    }
+
+    public function getLogoCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->logoCheckedAt;
+    }
+
+    public function setLogoCheckedAt(?\DateTimeInterface $at): self
+    {
+        $this->logoCheckedAt = $at;
         return $this;
     }
 

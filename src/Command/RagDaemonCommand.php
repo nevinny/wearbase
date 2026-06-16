@@ -44,6 +44,7 @@ class RagDaemonCommand extends Command
         'fetch'    => ['app:brand:fetch',    ['--max-urls=250']], // ломоть на цикл, дренаж продолжается между циклами
         'embed'    => ['app:brand:embed',    ['30']],
         'enrich'   => ['app:brand:enrich-contacts', ['10']], // извлечение магазинов/контактов из краула (перед generate/faq)
+        'logo'     => ['app:brand:logo', ['20']],  // сетевой набор: лого из HTML own_site/маркетплейс (перекачка страницы)
         'generate' => ['app:brand:generate-content', ['10', '--grounded-only']], // без фактов не генерим: вода зацементировалась бы
         'faq'      => ['app:brand:faq', ['10']],   // GPU-набор: после generate (status=done)
         'extract'  => ['app:brand:extract', ['10']],  // GPU-набор: атрибуты из краула
