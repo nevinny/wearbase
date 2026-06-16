@@ -23,6 +23,14 @@ class BrandRagService
     private const MAX_HITS         = 8;     // итоговый максимум чанков в контекст
     private const MIN_CHUNKS       = 3;     // меньше — не заземляем
     private const MIN_SCORE        = 0.5;   // cosine; ниже — мусорная релевантность
+
+    /** Сигналы «это про одежду/торговлю» — хоть один в корпусе, иначе омоним (анти-Mauritius). */
+    private const FASHION_SIGNALS = [
+        'одежд', 'коллекц', 'бренд', 'магазин', 'купить', 'носить', 'ткан', 'размер', 'ассортимент',
+        'мода', 'модн', 'стиль', 'пошив', 'фабрик', 'дизайнер', 'лукбук', 'футболк', 'платье', 'куртк',
+        'джинс', 'обув', 'аксессуар', 'текстиль', 'худи', 'свитшот', 'кроссовк', 'сумк', 'трикотаж',
+        'fashion', 'wear', 'clothing', 'apparel', 'shop', 'store', 'sale', 'sneaker',
+    ];
     private const MAX_CONTEXT_CHARS = 6000;
     private const RELEVANCE_FLOOR  = 0.35;  // payload-relevance ниже (но >0) — омоним/мусор, выкидываем
 
@@ -74,7 +82,30 @@ class BrandRagService
             return ['context' => null, 'score' => $topScore, 'chunks' => $cnt];
         }
 
-        return ['context' => $this->assemble($hits), 'score' => $topScore, 'chunks' => $cnt];
+        $context = $this->assemble($hits);
+
+        // Гард топикальности (анти-омоним): cosine высок, потому что корпус «про {имя}», но имя —
+        // омоним (страна Mauritius, браузер Vivaldi, страховая Wysh…). Если в собранном контексте
+        // НЕТ ни одного fashion/commerce-сигнала — это почти наверняка чужая сущность, а не бренд
+        // одежды. Не заземляем → grounded-only уведёт в deferred (не тратим gemma на чужой корпус,
+        // и refusal-гейт остаётся последней сеткой). Один сигнал = достаточно (мало false-negative).
+        if (!$this->looksLikeFashion($context)) {
+            return ['context' => null, 'score' => $topScore, 'chunks' => $cnt];
+        }
+
+        return ['context' => $context, 'score' => $topScore, 'chunks' => $cnt];
+    }
+
+    /** Есть ли в тексте хоть один сигнал одежды/торговли (иначе корпус — про чужую сущность-омоним). */
+    private function looksLikeFashion(string $text): bool
+    {
+        $t = mb_strtolower($text);
+        foreach (self::FASHION_SIGNALS as $s) {
+            if (mb_strpos($t, $s) !== false) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Один запрос — для брендов с малым числом чанков (возвращаются все). */
