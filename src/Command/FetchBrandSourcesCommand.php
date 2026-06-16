@@ -325,6 +325,24 @@ class FetchBrandSourcesCommand extends Command
             /** @var BrandRagPipelineRepository $pipeRepo */
             $pipeRepo = $this->em->getRepository(BrandRagPipeline::class);
             $pipeline = $pipeRepo->getOrCreate($brand);
+
+            // ГАРД: не понижаем в scraped бренд, уже прошедший дальше — иначе crawl/fetch,
+            // доезжая новые own_page-URL, сбрасывает embedded/done/review назад в scraped и
+            // перетирает результат (в т.ч. ОПУБЛИКОВАННОЕ done). deferred НЕ протектим —
+            // его пере-созревание (scraped→embed→generate при доросшем корпусе) штатно.
+            $protected = [
+                BrandRagPipeline::STATUS_EMBEDDED,
+                BrandRagPipeline::STATUS_GENERATED,
+                BrandRagPipeline::STATUS_DONE,
+                BrandRagPipeline::STATUS_REVIEW,
+            ];
+            if (in_array($pipeline->getStatus(), $protected, true)) {
+                // только обновим аудит источников, статус не трогаем
+                $pipeline->setSourceCount($sourceCount)->setHasOwnSite($hasOwnSite);
+                $this->em->flush();
+                return;
+            }
+
             $pipeline->setStatus(BrandRagPipeline::STATUS_SCRAPED)
                 ->setScrapedAt(new \DateTime())
                 ->setSourceCount($sourceCount)
