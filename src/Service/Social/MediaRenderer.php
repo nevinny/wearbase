@@ -33,6 +33,8 @@ class MediaRenderer
         private readonly LoggerInterface $logger,
         private readonly string $projectDir,
         private readonly string $geminiApiKey = '',
+        private readonly string $cfAccountId = '',
+        private readonly string $cfApiToken = '',
     ) {
     }
 
@@ -68,7 +70,10 @@ class MediaRenderer
         return $base . '. No text, no letters, no logo, no watermark.';
     }
 
-    /** Bytes картинки или null. Gemini (если ключ) → Pollinations → null. */
+    /**
+     * Bytes картинки или null. Цепочка с фолбэком: Gemini (платный, если ключ) →
+     * Cloudflare Flux (free, если креды) → Pollinations (free, без ключа). Первый успех выигрывает.
+     */
     private function generate(string $prompt): ?string
     {
         if (trim($this->geminiApiKey) !== '') {
@@ -78,7 +83,45 @@ class MediaRenderer
             }
         }
 
+        if (trim($this->cfAccountId) !== '' && trim($this->cfApiToken) !== '') {
+            $bytes = $this->tryCloudflare($prompt);
+            if ($bytes !== null) {
+                return $bytes;
+            }
+        }
+
         return $this->tryPollinations($prompt);
+    }
+
+    private function tryCloudflare(string $prompt): ?string
+    {
+        try {
+            $url = sprintf(
+                'https://api.cloudflare.com/client/v4/accounts/%s/ai/run/@cf/black-forest-labs/flux-1-schnell',
+                $this->cfAccountId,
+            );
+            $resp = $this->httpClient->request('POST', $url, [
+                'headers' => ['Authorization' => 'Bearer ' . $this->cfApiToken],
+                'json'    => ['prompt' => $prompt, 'steps' => 8],
+                'timeout' => 90,
+            ]);
+            if ($resp->getStatusCode() !== 200) {
+                return null;
+            }
+            $data = $resp->toArray(false);
+            $b64 = $data['result']['image'] ?? $data['image'] ?? null;
+            if ($b64 !== null) {
+                $decoded = base64_decode($b64, true);
+                if ($decoded !== false && strlen($decoded) > 1024) {
+                    return $decoded;
+                }
+            }
+
+            return null;
+        } catch (\Throwable $e) {
+            $this->logger->warning('Cloudflare Flux image gen failed: ' . $e->getMessage());
+            return null;
+        }
     }
 
     private function tryPollinations(string $prompt): ?string

@@ -20,6 +20,8 @@ parameters:
     env(POSTIZ_URL): ''
     env(POSTIZ_API_KEY): ''
     env(GEMINI_API_KEY): ''
+    env(CLOUDFLARE_ACCOUNT_ID): ''
+    env(CLOUDFLARE_AI_TOKEN): ''
     # Движки SearXNG для автоматики discover (толерантные к объёму с одного IP).
     env(SEARX_ENGINES): 'bing,mojeek'
     # Официальный Yandex Search API v2 (доп-источник discover). Пусто = выключен.
@@ -193,6 +195,8 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
             $geminiApiKey: '%env(GEMINI_API_KEY)%'
+            $cfAccountId: '%env(CLOUDFLARE_ACCOUNT_ID)%'
+            $cfApiToken: '%env(CLOUDFLARE_AI_TOKEN)%'
 
     App\Social\Publisher\TelegramPublisher:
         arguments:
