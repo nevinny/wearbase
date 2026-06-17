@@ -202,8 +202,8 @@ class CollectBrandKeywordsCommand extends Command
             }
 
             $saved = 0;
-            $seen  = []; // дедуп В ПРЕДЕЛАХ батча: Wordstat возвращает повторы фраз, иначе
-                         // unique-индекс (brand_id, keyword, type) роняет весь бренд на flush
+            $seen  = []; // дешёвый дедуп точных повторов в батче (меньше запросов)
+            $conn  = $this->em->getConnection();
             foreach ($rows as $row) {
                 $phrase = mb_substr(trim((string) ($row['keyword'] ?? '')), 0, 255);
                 $type   = ($row['type'] ?? BrandKeyword::TYPE_ORIGIN) === BrandKeyword::TYPE_RELATED
@@ -211,24 +211,24 @@ class CollectBrandKeywordsCommand extends Command
                 if ($phrase === '') {
                     continue;
                 }
-                $key = $type . '|' . mb_strtolower($phrase); // индекс case-insensitive — ловим и регистр
+                $key = $type . '|' . mb_strtolower($phrase);
                 if (isset($seen[$key])) {
                     continue;
                 }
                 $seen[$key] = true;
-                if (!$force && $kwRepo->existsPhrase($brand, $phrase, $type)) {
+                if ($dryRun) {
+                    $saved++;
                     continue;
                 }
-                if (!$dryRun) {
-                    $kw = (new BrandKeyword())
-                        ->setBrand($brand)
-                        ->setKeyword($phrase)
-                        ->setType($type)
-                        ->setMonthlyShows($row['monthlyShows'] ?? null)
-                        ->setSource(BrandKeyword::SOURCE_WORDSTAT);
-                    $this->em->persist($kw);
-                }
-                $saved++;
+                // INSERT IGNORE: keyword = utf8mb4_unicode_ci (accent/case-insensitive), PHP-дедуп
+                // её не воспроизводит (uludağ≈uludag, NFC≠NFD), поэтому уникальность решает БД —
+                // повтор молча игнорится, бренд НЕ падает на flush (баг 1062 на Bursa/Aline).
+                // Покрывает и не-force повторный прогон (существующие фразы просто игнорятся).
+                $saved += $conn->executeStatement(
+                    'INSERT IGNORE INTO brand_keyword (brand_id, keyword, type, monthly_shows, source, created_at, updated_at)
+                     VALUES (:bid, :kw, :type, :ms, :src, NOW(), NOW())',
+                    ['bid' => $brand->getId(), 'kw' => $phrase, 'type' => $type, 'ms' => $row['monthlyShows'] ?? null, 'src' => BrandKeyword::SOURCE_WORDSTAT],
+                );
             }
 
             $this->totalKeywords += $saved;
