@@ -266,6 +266,11 @@ class BrandRepository extends ServiceEntityRepository
                     'b.contactStatus = :error AND b.contactAttempts < :maxAttempts' .
                 ')'
             )
+            // ТОЛЬКО бренды с корпусом: enrich извлекает контакты из brand_source_document.
+            // Без этого no-corpus бренды (нет ни одного документа) выбираются каждый прогон,
+            // скипаются («нет корпуса»), не помечаются → крутятся по кругу и душат очередь
+            // (O'STIN снова и снова). Появится корпус (fetch) — бренд снова станет eligible.
+            ->andWhere('EXISTS (SELECT d.id FROM App\Entity\BrandSourceDocument d WHERE d.brand = b)')
             ->setParameter('error', 'error')
             ->setParameter('maxAttempts', $maxErrorAttempts)
             ->groupBy('b.id')
