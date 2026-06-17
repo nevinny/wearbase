@@ -106,11 +106,25 @@ EOT;
 
     private function ctaLine(SocialPost $post): string
     {
+        $source = $post->getChannel()?->getPlatform() ?? 'social';
         $brand = $post->getBrand();
+
         if ($brand !== null && $brand->getSlug()) {
-            return 'Бренд напрямую → ' . rtrim($this->siteBaseUrl, '/') . '/ru/brands/' . $brand->getSlug();
+            return 'Бренд напрямую → ' . $this->withUtm('/ru/brands/' . $brand->getSlug(), $source, $post->getRubric());
         }
 
-        return 'Каталог независимых русских брендов → ' . rtrim($this->siteBaseUrl, '/');
+        return 'Каталог независимых русских брендов → ' . $this->withUtm('/ru/', $source, $post->getRubric());
+    }
+
+    /** Ссылка с UTM-метками — для отслеживания эффективности канала/рубрики в аналитике. */
+    private function withUtm(string $path, string $source, string $rubric): string
+    {
+        $query = http_build_query([
+            'utm_source'   => $source,                          // tg | vk | ig
+            'utm_medium'   => 'social',
+            'utm_campaign' => $rubric !== '' ? $rubric : 'social_auto',
+        ]);
+
+        return rtrim($this->siteBaseUrl, '/') . $path . '?' . $query;
     }
 }
