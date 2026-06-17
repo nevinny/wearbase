@@ -166,6 +166,7 @@ class PublishTickCommand extends Command
         $published = 0;
         $newUrls = [];
         $tgLines = [];
+        $tgButtons = []; // по одной кнопке «🚫 Скрыть» на бренд (callback → BrandUnpublisher::hide)
         foreach ($ids as $id) {
             $brand = $this->em->find(Brand::class, (int) $id);
             if ($brand === null) {
@@ -190,6 +191,7 @@ class PublishTickCommand extends Command
             $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
             $newUrls[] = $url;
             $tgLines[] = sprintf('• <a href="%s">%s</a>', $url, htmlspecialchars((string) $brand->getTitle()));
+            $tgButtons[] = ['text' => '🚫 Скрыть: ' . mb_substr((string) $brand->getTitle(), 0, 40), 'data' => 'unpub:' . $brand->getId()];
             $published++;
         }
 
@@ -199,12 +201,12 @@ class PublishTickCommand extends Command
             $io->text(sprintf('  → IndexNow: %d URL отправлено (Яндекс/Bing)', count($newUrls)));
         }
 
-        // ТГ-уведомление со ссылками — для верификации человеком (fail-open).
+        // ТГ-уведомление со ссылками + кнопки «🚫 Скрыть» по каждому бренду (верификация человеком,
+        // callback → unpublish). Fail-open: уведомление не должно ломать публикацию.
         if ($tgLines !== [] && $this->notifier->isEnabled()) {
             try {
-                $this->notifier->send("📢 <b>Дрип-публикация</b>\n" . implode("\n", $tgLines));
+                $this->notifier->sendWithButtons("📢 <b>Дрип-публикация</b>\n" . implode("\n", $tgLines), $tgButtons);
             } catch (\Throwable) {
-                // уведомление не должно ломать публикацию
             }
         }
 

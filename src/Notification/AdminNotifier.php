@@ -42,6 +42,23 @@ readonly class AdminNotifier
         ]);
     }
 
+    /**
+     * Уведомление с НЕСКОЛЬКИМИ inline-кнопками (по одной на строку), напр. список
+     * опубликованных брендов, у каждого «🚫 Скрыть».
+     * @param list<array{text:string, data:string}> $buttons
+     */
+    public function sendWithButtons(string $html, array $buttons): void
+    {
+        if ($this->adminChatId === '' || $buttons === []) {
+            return;
+        }
+        $rows = array_map(
+            static fn(array $b) => [['text' => $b['text'], 'callback_data' => $b['data']]],
+            $buttons,
+        );
+        $this->telegram->send($this->adminChatId, $html, ['inline_keyboard' => $rows]);
+    }
+
     /** Тот ли это чат, что наш админский (защита callback'ов: чужой не должен скрывать бренды). */
     public function isAdminChat(string $chatId): bool
     {
