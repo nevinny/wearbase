@@ -123,13 +123,19 @@ class SitemapController extends AbstractController
 
         foreach ($brands as $brand) {
             if ($brand->getSlug()) {
+                // Приоритет по РЕАЛЬНОМУ объёму контента, а не по факту наличия строки:
+                // legacy-заглушка в 17 символов — truthy, но это тонкая страница, которую
+                // Google всё равно не индексирует (crawled - not indexed). Не разбазариваем
+                // на неё сигнал приоритета. Заполнится через RAG-генерацию → вырастет тир.
+                $descLen  = mb_strlen(strip_tags((string) $brand->getDescription()));
+                $priority = $descLen >= 1000 ? '0.7' : ($descLen >= 400 ? '0.6' : '0.4');
                 $urls[] = [
                     'loc' => $this->generateUrl('brand_show', [
                         '_locale' => 'ru',
                         'slug' => $brand->getSlug()
                     ], UrlGeneratorInterface::ABSOLUTE_URL),
                     'changefreq' => 'weekly',
-                    'priority' => $brand->getDescription() ? '0.7' : '0.5',
+                    'priority' => $priority,
                     'lastmod' => $brand->getUpdatedAt()?->format('Y-m-d'),
                 ];
             }
