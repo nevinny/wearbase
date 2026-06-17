@@ -117,8 +117,9 @@ class SocialPublishTickCommand extends Command
             $chId = $ch->getId();
 
             if (($budget[$chId] ?? 0) <= 0) {
-                // Бюджет канала исчерпан — вернуть в очередь на следующий тик.
+                // Бюджет канала исчерпан — вернуть в очередь на следующий тик (с flush, иначе застрянет в publishing).
                 $post->setStatus(SocialPost::STATUS_SCHEDULED)->setClaimedAt(null);
+                $this->em->flush();
                 continue;
             }
 

@@ -72,9 +72,8 @@ class SocialGenerateCommand extends Command
 
                 $mediaPath = $this->media->render($post);
                 $post->setMediaPath($mediaPath);
-                if ($mediaPath === null) {
-                    $post->setMediaType(SocialPost::MEDIA_NONE);
-                }
+                // Тип медиа = факт: есть картинка → image, иначе none (для текст-рубрик без карточки).
+                $post->setMediaType($mediaPath !== null ? SocialPost::MEDIA_IMAGE : SocialPost::MEDIA_NONE);
 
                 $reason = $this->qaReason($post, (string) $post->getCaption(), $mediaPath);
                 if ($reason !== null) {
