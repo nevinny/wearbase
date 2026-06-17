@@ -190,7 +190,18 @@ class PublishTickCommand extends Command
             $io->text(sprintf('  ✓ опубликован: %s (id %d)', $brand->getTitle(), $brand->getId()));
             $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
             $newUrls[] = $url;
-            $tgLines[] = sprintf('• <a href="%s">%s</a>', $url, htmlspecialchars((string) $brand->getTitle()));
+            // Сниппет описания (несколько предложений) — чтобы сразу было видно, про что бренд
+            // (ловим чужие сущности глазами: «…пневмоэлементы автоподвески» → жмём «Скрыть»).
+            $desc = trim(preg_replace('/\s+/', ' ', strip_tags((string) $brand->getDescription())));
+            $snippet = mb_substr($desc, 0, 280);
+            if (mb_strlen($desc) > 280) {
+                $snippet .= '…';
+            }
+            $tgLines[] = sprintf(
+                '• <a href="%s">%s</a>%s',
+                $url, htmlspecialchars((string) $brand->getTitle()),
+                $snippet !== '' ? "\n<i>" . htmlspecialchars($snippet) . '</i>' : '',
+            );
             $tgButtons[] = ['text' => '🚫 Скрыть: ' . mb_substr((string) $brand->getTitle(), 0, 40), 'data' => 'unpub:' . $brand->getId()];
             $published++;
         }
