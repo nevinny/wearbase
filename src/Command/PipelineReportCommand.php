@@ -69,7 +69,12 @@ class PipelineReportCommand extends Command
         $grounded   = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE grounded=1");
         $deferred   = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='deferred'");
         $kwChecked  = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE keywords_status IS NOT NULL");
-        $kwLeft     = $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id WHERE b.status IN ('active','new') AND p.keywords_status IS NULL");
+        // keywords_status IS NULL, но строки brand_keyword уже есть → бренд фактически опрошен
+        // (статус не проставился из-за прежнего dup-краша). Демон такие не берёт → не «осталось».
+        // Семантика как в админ-флоу (RagDashboardController): остаток = нет ключевиков вовсе.
+        $kwLeft     = $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
+            WHERE b.status IN ('active','new') AND p.keywords_status IS NULL
+              AND NOT EXISTS (SELECT 1 FROM brand_keyword k WHERE k.brand_id=b.id)");
         $faqDone    = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE faq_status='done'");
         $readyPush  = $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
             WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3
