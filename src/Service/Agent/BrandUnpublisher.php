@@ -3,13 +3,13 @@
 namespace App\Service\Agent;
 
 use App\Entity\Brand;
-use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * Скрытие бренда с публикации: soft-hide локально (`status=inactive`, политика soft-delete)
+ * Скрытие бренда с публикации: soft-hide локально (`status=Disabled`, политика soft-delete)
  * + снятие с прод-каталога через агент-API `/api/v1/brands/unpublish` (X-Agent-Token + HMAC).
  * Fail-soft: прод недоступен/не настроен → локальный hide всё равно применён.
  *
@@ -21,7 +21,6 @@ class BrandUnpublisher
 {
     public function __construct(
         private readonly EntityManagerInterface $em,
-        private readonly Connection $db,
         private readonly HttpClientInterface $httpClient,
         #[Autowire('%env(default::PROD_API_URL)%')]
         private readonly ?string $prodApiUrl,
@@ -45,7 +44,9 @@ class BrandUnpublisher
         $slug  = (string) $brand->getSlug();
 
         // 1) Локальный soft-hide (никогда не физический DELETE — политика проекта).
-        $this->db->executeStatement("UPDATE brand SET status='inactive' WHERE id=:id", ['id' => $brandId]);
+        // Статус — backed-enum Statuses; «скрыт» = Disabled (как в agent-API unpublish).
+        $brand->setStatus(Statuses::Disabled)->setPublishPending(false);
+        $this->em->flush();
 
         // 2) Снять с прод-каталога.
         $prod = $this->unpublishOnProd($slug, $brandId);
