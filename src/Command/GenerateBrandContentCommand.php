@@ -30,6 +30,11 @@ class GenerateBrandContentCommand extends Command
 {
     private const MAX_RETRIES = 3;
 
+    /** Порог «содержательного» описания: короче — это заглушка/legacy-обрывок, нужна
+     *  полная генерация, а не только meta. Иначе бренды с 20-символьной заглушкой
+     *  бесконечно идут в meta-only (статус не двигается → reselect, §2① хвост). */
+    private const MIN_REAL_DESCRIPTION_CHARS = 400;
+
     // Счётчики результатов
     private int $processed       = 0; // успешно обработано (description + meta)
     private int $metaGenerated   = 0; // обработано только meta (была готовая description)
@@ -218,8 +223,13 @@ class GenerateBrandContentCommand extends Command
         ));
 
         try {
-            if (!$forceRegen && ($metaOnly || $existingDescription !== '')) {
-                // Режим: только meta (description уже есть)
+            // meta-only только при ЯВНОМ флаге или СОДЕРЖАТЕЛЬНОМ (≥400) описании. Тощая
+            // заглушка (<400) → полная генерация: meta-only её не двигает из embedded →
+            // вечный reselect (§2① хвост). --grounded-only защищает от клоббера.
+            $substantialDesc = $existingDescription !== ''
+                && mb_strlen($existingDescription) >= self::MIN_REAL_DESCRIPTION_CHARS;
+            if (!$forceRegen && ($metaOnly || $substantialDesc)) {
+                // Режим: только meta (есть содержательное описание)
                 $this->processMetaOnly($brand, $brandName, $city, $existingDescription, $io, $dryRun, $skipValidate);
             } else {
                 // Режим: полная генерация (description + meta). forceRegen перезапишет существующее
@@ -277,6 +287,13 @@ class GenerateBrandContentCommand extends Command
             $this->versioner->ensureBaseline($brand);
             $this->applyMeta($brand, $this->withWordstatKeywords($brand, $meta));
             $this->versioner->record($brand, BrandContentRevision::SOURCE_RAG, $context !== null, null, 'meta-only');
+            // Бренд из очереди генерации (embedded) с содержательным описанием получил meta →
+            // контент готов, продвигаем в done. Без этого embedded не двигается из meta-only-пути
+            // → вечный reselect (§2① хвост: 97 legacy-брендов). Другие статусы не трогаем.
+            $p = $this->em->getRepository(BrandRagPipeline::class)->getOrCreate($brand);
+            if ($p->getStatus() === BrandRagPipeline::STATUS_EMBEDDED) {
+                $p->setStatus(BrandRagPipeline::STATUS_DONE)->setGeneratedAt(new \DateTime());
+            }
             $this->em->flush();
             $this->em->clear();
         }
