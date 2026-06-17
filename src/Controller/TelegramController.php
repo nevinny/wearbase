@@ -25,12 +25,13 @@ class TelegramController extends AbstractController
         TelegramNotifier $telegramNotifier,
         AdminNotifier $adminNotifier,
         BrandUnpublisher $unpublisher,
+        \Psr\Log\LoggerInterface $telegramLogger,
     ): Response {
         $body = json_decode($request->getContent(), true);
 
         // Нажатие inline-кнопки (напр. «🚫 Скрыть с публикации» под уведомлением о публикации).
         if (is_array($body) && isset($body['callback_query'])) {
-            return $this->handleCallback($body['callback_query'], $telegramNotifier, $adminNotifier, $unpublisher);
+            return $this->handleCallback($body['callback_query'], $telegramNotifier, $adminNotifier, $unpublisher, $telegramLogger);
         }
 
         if (!$body || !isset($body['message'])) {
@@ -72,6 +73,7 @@ class TelegramController extends AbstractController
         TelegramNotifier $telegram,
         AdminNotifier $adminNotifier,
         BrandUnpublisher $unpublisher,
+        \Psr\Log\LoggerInterface $telegramLogger,
     ): Response {
         $cqId    = (string) ($cq['id'] ?? '');
         $data    = (string) ($cq['data'] ?? '');
@@ -79,14 +81,18 @@ class TelegramController extends AbstractController
         $msgId   = $cq['message']['message_id'] ?? null;
         $msgText = (string) ($cq['message']['text'] ?? '');
 
+        $telegramLogger->info('TG callback', ['chat' => $chatId, 'data' => $data, 'admin' => $adminNotifier->isAdminChat($chatId)]);
+
         // Безопасность: скрывать бренды может ТОЛЬКО наш админ-чат (вебхук публичный).
         if (!$adminNotifier->isAdminChat($chatId)) {
+            $telegramLogger->warning('TG callback от не-админ чата отклонён', ['chat' => $chatId, 'data' => $data]);
             $telegram->answerCallbackQuery($cqId, 'Не авторизовано');
             return new JsonResponse(['ok' => true]);
         }
 
         if (str_starts_with($data, 'unpub:')) {
             $res = $unpublisher->hide((int) substr($data, 6));
+            $telegramLogger->info('TG hide-кнопка', ['data' => $data, 'ok' => $res['ok'], 'title' => $res['title'] ?? '', 'result' => $res['message']]);
             $telegram->answerCallbackQuery($cqId, $res['ok'] ? '🚫 Скрыт' : 'Не удалось');
             if ($msgId !== null) {
                 $telegram->editMessageText($chatId, (int) $msgId, $msgText . "\n\n🚫 <b>Скрыт:</b> {$res['message']}");
