@@ -210,27 +210,6 @@ class BrandRepository extends ServiceEntityRepository
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }
 
-    public function findWithoutDescription(int $limit, int $shard = 0, int $total = 1, bool $excludeDeferred = false): array
-    {
-        $qb = $this->createQueryBuilder('b')
-            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b') // для сортировки по p.priority
-            ->where('b.description IS NULL OR b.description = :empty')
-            ->setParameter('empty', '');
-
-        // --grounded-only: исключаем ТЕРМИНАЛЬНЫЕ для авто-генерации статусы, иначе выборка
-        // крутится по одним и тем же брендам вечно:
-        //  - deferred: ждут дозревания корпуса (вернёт fetch→scraped, не мы);
-        //  - review:   модель отказала (факты не о бренде) — ручная верификация, повтор не поможет.
-        // Без исключения review demon бесконечно перегенерировал refusal-бренды (нет описания →
-        // снова в выборке → снова refusal), не доходя до реальной embedded-очереди.
-        if ($excludeDeferred) {
-            $qb->andWhere('p.id IS NULL OR p.status NOT IN (:terminal)')
-                ->setParameter('terminal', [BrandRagPipeline::STATUS_DEFERRED, BrandRagPipeline::STATUS_REVIEW]);
-        }
-
-        return $this->finishStageQuery($qb, $limit, $shard, $total);
-    }
-
     /**
      * Бренды, которые нужно обогатить контактами.
      *
@@ -419,7 +398,7 @@ class BrandRepository extends ServiceEntityRepository
             ->where('p.sourceCount > 0')
             ->andWhere('p.attributesStatus IS NULL')
             ->andWhere('p.status IN (:done)')
-            ->setParameter('done', [BrandRagPipeline::STATUS_SCRAPED, BrandRagPipeline::STATUS_EMBEDDED, BrandRagPipeline::STATUS_GENERATED, BrandRagPipeline::STATUS_DONE]);
+            ->setParameter('done', [BrandRagPipeline::STATUS_SCRAPED, BrandRagPipeline::STATUS_EMBEDDED, BrandRagPipeline::STATUS_DONE]);
 
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }
@@ -503,7 +482,38 @@ class BrandRepository extends ServiceEntityRepository
      */
     public function findReadyToPush(int $limit, int $shard = 0, int $total = 1, int $maxAttempts = 3, bool $includePushed = false, bool $oldestFirst = false): array
     {
-        $qb = $this->createQueryBuilder('b')
+        return $this->finishStageQuery(
+            $this->readyToPushQb($maxAttempts, $includePushed),
+            $limit,
+            $shard,
+            $total,
+            $includePushed && $oldestFirst,
+        );
+    }
+
+    /**
+     * Сколько брендов готовы к доставке на прод — ТОТ ЖЕ предикат, что findReadyToPush.
+     * Единый источник правды: дашборд (RagDashboardController) и отчёт (PipelineReportCommand)
+     * зовут это вместо собственных raw-SQL-копий, которые расходились с DQL (§2③).
+     */
+    public function countReadyToPush(int $maxAttempts = 3, bool $includePushed = false): int
+    {
+        return (int) $this->readyToPushQb($maxAttempts, $includePushed)
+            ->select('COUNT(b.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Единый предикат «готов к публикации» (SQL-зеркало BrandRagPipeline::isPublishReady):
+     * никогда не пушенные ИЛИ изменённые обогащением после пуша (contentChangedAt > pushedAt).
+     * --force (includePushed) берёт все. Ретраи: push_attempts < maxAttempts.
+     * Качество описания (refusal-текст) гейтит ContentValidator на генерации + revalidate-content
+     * демотирует уже-done refusal'ы в deferred — здесь хватает status=done.
+     */
+    private function readyToPushQb(int $maxAttempts, bool $includePushed): QueryBuilder
+    {
+        return $this->createQueryBuilder('b')
             ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
             ->where('p.status = :done')
             ->andWhere('p.pushAttempts < :maxAttempts')
@@ -513,15 +523,10 @@ class BrandRepository extends ServiceEntityRepository
             ->andWhere("b.description IS NOT NULL AND b.description != ''")
             ->andWhere("b.metaTitle IS NOT NULL AND b.metaTitle != ''")
             ->andWhere("b.metaDescription IS NOT NULL AND b.metaDescription != ''")
-            // Качество описания (refusal-текст) гейтит ContentValidator на этапе генерации
-            // (новые бренды) + app:brand:revalidate-content демотирует уже-done refusal'ы в
-            // deferred. Здесь хватает status=done — отдельный SQL-regexp хрупок и дублирует.
             ->setParameter('done', BrandRagPipeline::STATUS_DONE)
             ->setParameter('maxAttempts', $maxAttempts)
             ->setParameter('faqOk', [BrandRagPipeline::FAQ_DONE, BrandRagPipeline::FAQ_SKIPPED])
             ->setParameter('kwOk', [BrandRagPipeline::KW_FOUND, BrandRagPipeline::KW_NOT_FOUND]);
-
-        return $this->finishStageQuery($qb, $limit, $shard, $total, $includePushed && $oldestFirst);
     }
 
     private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total, bool $oldestFirst = false, bool $leastAttemptsFirst = false): array

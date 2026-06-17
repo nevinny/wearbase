@@ -140,10 +140,15 @@ class GenerateBrandContentCommand extends Command
         // em->clear() после каждого (иначе detached RAG-pipeline/Brand ломают EM в долгом прогоне).
         /** @var \App\Repository\BrandRepository $repo */
         $repo = $this->em->getRepository(Brand::class);
+        // Очередь генерации = pipeline.status=embedded (канон, по нему же меряют отчёт/админка/doctor).
+        // Раньше тут был findWithoutDescription (description IS NULL OR '') — он НЕ видел embedded-брендов
+        // с непустой заглушкой/легаси-описанием → они застревали навсегда (§2①, дренаж вставал).
+        // --grounded-only защищает от клоббера: без groundable-корпуса бренд уходит в deferred,
+        // описание НЕ перезаписывается (см. processFullGeneration).
         $selection = match (true) {
             $regenFlagged => $repo->findRegenFlagged($limit, $shard, $total),
             $metaOnly     => $repo->findWithDescriptionWithoutMeta($limit, $shard, $total),
-            default       => $repo->findWithoutDescription($limit, $shard, $total, $groundedOnly),
+            default       => $repo->findForGeneration($limit, $shard, $total),
         };
         $brandIds = array_map(static fn(Brand $b) => $b->getId(), $selection);
 

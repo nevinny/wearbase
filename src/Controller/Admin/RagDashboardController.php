@@ -6,6 +6,7 @@ use App\Entity\Brand;
 use App\Entity\BrandRagPipeline;
 use App\Entity\BrandSourceDocument;
 use App\Entity\BrandSourceUrl;
+use App\Repository\BrandRepository;
 use App\Service\VectorStoreService;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -27,6 +28,7 @@ class RagDashboardController extends AbstractController
     public function __construct(
         private readonly Connection $db,
         private readonly EntityManagerInterface $em,
+        private readonly BrandRepository $brands,
         private readonly VectorStoreService $vectors,
         private readonly AdminContextFactory $adminContextFactory,
         private readonly DashboardController $dashboard,
@@ -88,7 +90,7 @@ class RagDashboardController extends AbstractController
                 'left'     => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='done' AND faq_status IS NULL AND keywords_status IS NOT NULL"),
             ],
             'push → прод' => $stage('brand_rag_pipeline', 'pushed_at')
-                + ['left' => $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3 AND p.faq_status IN ('done','skipped') AND p.keywords_status IN ('found','not_found') AND b.description IS NOT NULL AND b.description != '' AND b.meta_title IS NOT NULL AND b.meta_title != '' AND b.meta_description IS NOT NULL AND b.meta_description != ''"),
+                + ['left' => $this->brands->countReadyToPush(),
                    'waitsProd' => trim((string) $this->prodApiUrl) === ''],
             'publish-tick (прод, крон)' => $this->prodPublishStage(),
         ];
@@ -194,12 +196,8 @@ class RagDashboardController extends AbstractController
                  LEFT JOIN brand_keyword k ON k.brand_id=b.id
                  WHERE b.status IN ('active','new') AND k.id IS NULL AND (p.id IS NULL OR p.keywords_status IS NULL)"
             )],
-            ['key' => 'push', 'label' => 'push', 'lane' => 'net', 'role' => 'main', 'next' => null, 'stack' => $one(
-                "SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
-                 WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3
-                   AND p.faq_status IN ('done','skipped') AND p.keywords_status IN ('found','not_found')
-                   AND b.description<>'' AND b.meta_title<>'' AND b.meta_description<>''"
-            )],
+            ['key' => 'push', 'label' => 'push', 'lane' => 'net', 'role' => 'main', 'next' => null,
+             'stack' => $this->brands->countReadyToPush()],
         ];
 
         // Лента реальных переходов: последние 40 событий «бренд завершил этап X».

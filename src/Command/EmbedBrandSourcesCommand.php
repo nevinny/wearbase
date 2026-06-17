@@ -237,22 +237,8 @@ class EmbedBrandSourcesCommand extends Command
     {
         /** @var BrandRagPipelineRepository $repo */
         $repo = $this->em->getRepository(BrandRagPipeline::class);
-        $p = $repo->getOrCreate($brand);
-
-        // Guard против лоссового демоута: ре-эмбед уже-готового бренда НЕ сбрасывает
-        // статус done → embedded. Иначе generate его не подберёт (описание непустое →
-        // невидим для findWithoutDescription) и бренд застревает навсегда (инцидент
-        // 06-06: 484 done-бренда демотнуты ре-эмбедом, дренаж generate встал).
-        // Корпус обновился → регенерацию запрашивает closed-loop через regenRequestedAt,
-        // не молчаливый демоут. Освежаем только embeddedAt (аудит «когда переэмбедили»).
-        if ($p->getStatus() === BrandRagPipeline::STATUS_DONE) {
-            $p->setEmbeddedAt(new \DateTime())->setLastError(null);
-            return;
-        }
-
-        $p->setStatus(BrandRagPipeline::STATUS_EMBEDDED)
-            ->setEmbeddedAt(new \DateTime())
-            ->setLastError(null);
+        // Доменный переход: markEmbedded() сам не демотит done (guard внутри сущности).
+        $repo->getOrCreate($brand)->markEmbedded();
     }
 
     private function recordFailure(?int $brandId, bool $dryRun): void

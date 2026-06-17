@@ -7,8 +7,9 @@ use Doctrine\ORM\Mapping as ORM;
 use Nevinny\AdminCoreBundle\Entity\Trait\Created;
 
 /**
- * Состояние RAG-пайплайна для бренда: pending → scraped → embedded → generated → done
- * (+ *_failed на каждом этапе). Ведёт finder-запросы команд-воркеров и переживает
+ * Состояние RAG-пайплайна для бренда: pending → scraped → embedded → done
+ * (+ *_failed на каждом этапе; ветки deferred/review). Ведёт finder-запросы
+ * команд-воркеров и переживает
  * перезапуски многодневного прогона. Отдельная таблица, чтобы не раздувать Brand
  * восемью per-stage колонками.
  */
@@ -21,7 +22,6 @@ class BrandRagPipeline
     public const STATUS_PENDING        = 'pending';
     public const STATUS_SCRAPED        = 'scraped';
     public const STATUS_EMBEDDED       = 'embedded';
-    public const STATUS_GENERATED      = 'generated';
     public const STATUS_DONE           = 'done';
     public const STATUS_SCRAPE_FAILED  = 'scrape_failed';
     public const STATUS_EMBED_FAILED   = 'embed_failed';
@@ -212,6 +212,27 @@ class BrandRagPipeline
     public function setStatus(string $status): self
     {
         $this->status = $status;
+        return $this;
+    }
+
+    /**
+     * Доменный переход «эмбеддинг завершён». Инкапсулирует guard против лоссового демоута:
+     * готовый (done) бренд НЕ откатывается в embedded при ре-эмбеде — иначе он выпадает из
+     * очереди генерации по статусу и застревает (инцидент 06-06). Корпус обновился →
+     * регенерацию запрашивает closed-loop через regenRequestedAt, а не молчаливый демоут.
+     * Освежаем только embeddedAt (аудит «когда переэмбедили»).
+     *
+     * Первый шаг переноса переходов статуса в домен (раньше каждая команда дёргала
+     * setStatus() напрямую — машина состояний была размазана, инварианты не держались).
+     */
+    public function markEmbedded(): self
+    {
+        if ($this->status !== self::STATUS_DONE) {
+            $this->status = self::STATUS_EMBEDDED;
+        }
+        $this->embeddedAt = new \DateTime();
+        $this->lastError = null;
+
         return $this;
     }
 

@@ -332,7 +332,6 @@ class FetchBrandSourcesCommand extends Command
             // его пере-созревание (scraped→embed→generate при доросшем корпусе) штатно.
             $protected = [
                 BrandRagPipeline::STATUS_EMBEDDED,
-                BrandRagPipeline::STATUS_GENERATED,
                 BrandRagPipeline::STATUS_DONE,
                 BrandRagPipeline::STATUS_REVIEW,
             ];

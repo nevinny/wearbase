@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Repository\BrandRepository;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -28,6 +29,7 @@ class PipelineReportCommand extends Command
     public function __construct(
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
+        private readonly BrandRepository $brands,
         private readonly HttpClientInterface $httpClient,
         #[Autowire('%env(default::PROD_API_URL)%')]
         private readonly ?string $prodApiUrl = null,
@@ -76,12 +78,9 @@ class PipelineReportCommand extends Command
             WHERE b.status IN ('active','new') AND p.keywords_status IS NULL
               AND NOT EXISTS (SELECT 1 FROM brand_keyword k WHERE k.brand_id=b.id)");
         $faqDone    = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE faq_status='done'");
-        $readyPush  = $one("SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
-            WHERE p.status='done' AND p.pushed_at IS NULL AND p.push_attempts < 3
-              AND p.faq_status IN ('done','skipped') AND p.keywords_status IN ('found','not_found')
-              AND b.description IS NOT NULL AND b.description != ''
-              AND b.meta_title IS NOT NULL AND b.meta_title != ''
-              AND b.meta_description IS NOT NULL AND b.meta_description != ''");
+        // Единый источник правды — тот же предикат, что у пуша (вкл. ветку contentChangedAt > pushedAt,
+        // которой raw-копия не имела). Раньше тут была расходящаяся raw-SQL (§2③).
+        $readyPush  = $this->brands->countReadyToPush();
         $pushed     = $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE pushed_at IS NOT NULL");
 
         $dHr = $rate('brand_rag_pipeline', 'discovered_at');

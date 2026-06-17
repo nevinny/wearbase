@@ -43,7 +43,6 @@ class ResetPhantomPipelineCommand extends Command
     private const PHANTOM_STATUSES = [
         BrandRagPipeline::STATUS_SCRAPED,
         BrandRagPipeline::STATUS_EMBEDDED,
-        BrandRagPipeline::STATUS_GENERATED,
         BrandRagPipeline::STATUS_EMBED_FAILED,
         BrandRagPipeline::STATUS_GENERATE_FAILED,
     ];

@@ -88,4 +88,20 @@ class BrandRagPipelineTest extends TestCase
         $p = (new BrandRagPipeline())->setStatus(BrandRagPipeline::STATUS_DONE);
         self::assertFalse($p->isPublishReady());
     }
+
+    // --- markEmbedded(): guard против лоссового демоута (регресс дренаж-бага 06-06) ---
+
+    public function testMarkEmbeddedFromScrapedAdvances(): void
+    {
+        $p = (new BrandRagPipeline())->setStatus(BrandRagPipeline::STATUS_SCRAPED)->markEmbedded();
+        self::assertSame(BrandRagPipeline::STATUS_EMBEDDED, $p->getStatus());
+        self::assertNotNull($p->getEmbeddedAt());
+    }
+
+    public function testMarkEmbeddedDoesNotDemoteDone(): void
+    {
+        $p = (new BrandRagPipeline())->setStatus(BrandRagPipeline::STATUS_DONE)->markEmbedded();
+        self::assertSame(BrandRagPipeline::STATUS_DONE, $p->getStatus(), 'done не демотится ре-эмбедом');
+        self::assertNotNull($p->getEmbeddedAt(), 'но embeddedAt освежается (аудит переэмбеда)');
+    }
 }

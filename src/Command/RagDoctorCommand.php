@@ -82,14 +82,6 @@ class RagDoctorCommand extends Command
                  )",
                 'формулы PipelineReportCommand и RagDashboardController должны совпадать',
             ),
-            $this->check(
-                'очередь генерации: статус embedded ≢ что видит generate',
-                'warn',
-                // embedded-бренды, невидимые текущему generate (описание непустое) — §2①, чинит Фаза 2
-                "SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
-                 WHERE p.status='embedded' AND b.description IS NOT NULL AND b.description<>''",
-                'generate ходит по findWithoutDescription (пустое описание), а очередь — по status=embedded → §2①, Фаза 2',
-            ),
         ];
 
         $rows = [];
