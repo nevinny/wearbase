@@ -19,6 +19,7 @@ parameters:
     env(SOCIAL_CAP): '14'
     env(POSTIZ_URL): ''
     env(POSTIZ_API_KEY): ''
+    env(GEMINI_API_KEY): ''
     # Движки SearXNG для автоматики discover (толерантные к объёму с одного IP).
     env(SEARX_ENGINES): 'bing,mojeek'
     # Официальный Yandex Search API v2 (доп-источник discover). Пусто = выключен.
@@ -191,6 +192,7 @@ services:
     App\Service\Social\MediaRenderer:
         arguments:
             $projectDir: '%kernel.project_dir%'
+            $geminiApiKey: '%env(GEMINI_API_KEY)%'
 
     App\Social\Publisher\TelegramPublisher:
         arguments:
