@@ -48,6 +48,7 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 | `GSC_CREDENTIALS_PATH` | `config/secrets/gsc-sa.json` | пусто (GSC гоняем с Mac) | `app:gsc:sync`, `app:report:daily` |
 | `YOOKASSA_*` | пусто/тест | прод `.env.local` | |
 | LLM/RAG (`LOCAL_LLM_URL` и т.д.) | 192.168.2.43 | не используется на проде | конвейер живёт на Mac/LLM-сервере, прод получает готовый контент через agent-API |
+| Соцсети (`SOCIAL_*`, `CLOUDFLARE_*`, `GEMINI_API_KEY`, `POSTIZ_*`) | `.env.local` на Mac | не используется на проде | авто-постинг (TG/VK/IG) живёт на Mac (egress + cron + БД); на проде только ссылка на TG-канал в подвале. См. [marketing_instagram.md](marketing_instagram.md) |
 
 ## Email (Rusender)
 

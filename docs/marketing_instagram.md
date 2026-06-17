@@ -163,7 +163,7 @@ instagrapi на основном аккаунте — не рекомендуе�
 | Слой | Рекомендация | Бесплатный fallback / альтернатива | Стоимость |
 |---|---|---|---|
 | **Публикация TG+VK+IG** | **Postiz** (open-source AGPL, self-host Docker) — нативно VK + Telegram + Instagram, есть public API + n8n/Make → наш `app:social:*` пушит в Postiz, адаптеры под каналы не пишем | нативные Telegram Bot API + VK API (free, больше кода); Mixpost (11 сетей, без VK) | **free** (self-host) |
-| **Картинки** (фоны/сцены) | **Cloudflare Workers AI** (Flux-schnell, ~230 img/день free) или **Pollinations.ai** (free, без ключа) — ноль контеншна с LLM-боксом | ComfyUI локально только off-peak (см. ниже про железо) · Together (~$0.003/img) | **free** |
+| **Картинки** (фоны/сцены) | ✅ **РЕАЛИЗОВАНО** в `MediaRenderer`: цепочка с фолбэком **Gemini → Cloudflare → Pollinations**. По умолчанию **Cloudflare Flux-schnell** (free 10k/день, из РФ, без VPN). Pollinations — фолбэк (free, без ключа). Gemini «Nano Banana» — опц. (качественнее, но image-модель **не бесплатна**: free-квота=0, нужен биллинг ~$0.039/img + Google геоблок РФ → прокси/VPN) | ComfyUI локально только off-peak (см. ниже про железо) | **free** (Cloudflare/Pollinations) |
 | **Видео faceless/data** (калькулятор, манифест, статистика) | **Revideo** или **Motion Canvas** (оба MIT, без лицензии) — программный рендер из данных, без AI и без GPU | ⚠️ Remotion мощнее, но BUSL-лицензия ($0 до $1M ARR, дальше платно) — берём MIT-варианты | **free** |
 | **Видео product-motion** (image-to-video из реальных фото) | локально **LTX-Video** (быстрый: ~121 кадр/11с на 4090) или **WAN 2.2 5B** (влезает в 24GB) на отдельной GPU | облако по запросу: fal.ai — ByteDance Seedance Fast ~$0.03/сек, Kling 2.5 Turbo ~$0.07/сек | free локально / центы за клип |
 | **Подписи** | существующая локальная ollama (`LlmService`) | — | **free** |
@@ -221,6 +221,12 @@ instagrapi на основном аккаунте — не рекомендуе�
 **Хэштеги:** owned-движение **#ПрямойБренд** в каждом посте + 2–4 нишевых (#российскиебренды,
 #брендыроссии, #сделановроссии, #{город}бренды). IG-best-practice 2026 — 3–5 точных, не спам-облако.
 
+✅ **CTA реализован per-platform** (хранится в `social_post.cta_url/cta_label`, UTM проставляется
+автоматически `utm_source=<платформа>&utm_medium=social&utm_campaign=<рубрика>`):
+- **TG** — кликабельный текст `<a href>` (метки в href, в посте не видны), `parse_mode=HTML`;
+- **VK** — «текст: ссылка» (VK автолинкует);
+- **IG** — без URL в подписи, «ссылка в профиле» (в IG ссылки в тексте некликабельны).
+
 ---
 
 ## 7. Метрики и closed-loop
@@ -270,8 +276,11 @@ plan→generate end-to-end, publish-tick claim→publish с реальным TG-
 
 **Запуск (по шагам):**
 1. Ф0-аккаунты: TG-канал (+@wearbase_bot админом), VK-сообщество (community token), IG→Creator + Postiz.
-2. `.env.local`: `SOCIAL_LAUNCH_DATE=YYYY-MM-DD`, `SOCIAL_START_RATE`, `SOCIAL_CAP`,
-   `POSTIZ_URL`/`POSTIZ_API_KEY` (для IG), `TELEGRAM_BOT_TOKEN` (уже есть). `PAYMENT_SECRET_KEY` — для шифра VK-токена.
+2. `.env.local` (на Mac — конвейер живёт там): `SOCIAL_LAUNCH_DATE=YYYY-MM-DD`, `SOCIAL_START_RATE`,
+   `SOCIAL_CAP`, `POSTIZ_URL`/`POSTIZ_API_KEY` (для IG), `TELEGRAM_BOT_TOKEN` (уже есть),
+   `PAYMENT_SECRET_KEY` (шифр VK-токена). Картинки: **`CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_AI_TOKEN`**
+   (free, дефолт-генератор) — без них работает Pollinations без ключа; `GEMINI_API_KEY` опц.
+   (нужен биллинг + прокси к Google).
 3. Завести каналы в админке (платформа, target, egress-host: TG/IG→mac, VK→prod, токен).
 4. `doctrine:migrations:migrate` на проде.
 5. Cron через `scheduled_command` (админка → «Крон»), пример:

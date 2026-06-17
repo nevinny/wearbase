@@ -867,7 +867,7 @@ enemy/культурный контент отрабатывает индекс�
 - [ ] [prereq] Сбор UGC/видео от подключённых брендов (Day-0 активационного письма + бейдж «Прямой бренд»).
 - [ ] [M] **Метрик-коллектор** по площадкам → наполнение `social_post_metric` (включает closed-loop; авто-правка сетки рубрик).
 - [ ] [S] VK photo-attach (сейчас текстовый wall.post); Postiz API-контракт под версию инстанса.
-- [ ] [S] **Image-gen — дефолт free-cloud** (Cloudflare Workers AI Flux-schnell / Pollinations): ноль контеншна, ноль инфры. Локальный ComfyUI на боксе только off-peak с выгрузкой модели (`OLLAMA_KEEP_ALIVE=0`) на A4000 — карты заняты слойно-размазанной 27B, свободной нет (см. marketing_instagram §5).
+- [x] [S] **Image-gen — РЕАЛИЗОВАНО** в `MediaRenderer`: Gemini→Cloudflare→Pollinations (дефолт Cloudflare Flux, free, из РФ). UTM в CTA + per-platform рендер ссылки. ComfyUI на боксе off-peak — TODO (не нужно, картинки бесплатны в облаке).
 - [ ] [M] **Faceless/data-Reels рендер** — **Revideo или Motion Canvas (MIT, free)**, детерминированный рендер из данных, без AI/GPU. (НЕ Remotion — BUSL-лицензия.) → апгрейд рубрик в ✅ полный авто.
 - [ ] [S] **Product-motion (image-to-video)** — локально **LTX-Video / WAN 2.2 5B** на выделенной карте; либо облако fal.ai (Seedance ~$0.03/с, Kling Turbo ~$0.07/с). WAN 14B (40–48GB) — только облако/мультиGPU. Полу-авто.
 - [ ] [S] **Audio-policy + AI-маркировка**: лицензионное/royalty-free аудио, метка AI-контента (Meta) в QA-гейте; финальная сборка Reels со звуком — semi-auto.
