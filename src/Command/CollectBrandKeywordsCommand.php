@@ -202,14 +202,21 @@ class CollectBrandKeywordsCommand extends Command
             }
 
             $saved = 0;
+            $seen  = []; // дедуп В ПРЕДЕЛАХ батча: Wordstat возвращает повторы фраз, иначе
+                         // unique-индекс (brand_id, keyword, type) роняет весь бренд на flush
             foreach ($rows as $row) {
-                $phrase = trim((string) ($row['keyword'] ?? ''));
+                $phrase = mb_substr(trim((string) ($row['keyword'] ?? '')), 0, 255);
                 $type   = ($row['type'] ?? BrandKeyword::TYPE_ORIGIN) === BrandKeyword::TYPE_RELATED
                     ? BrandKeyword::TYPE_RELATED : BrandKeyword::TYPE_ORIGIN;
                 if ($phrase === '') {
                     continue;
                 }
-                if (!$force && $kwRepo->existsPhrase($brand, mb_substr($phrase, 0, 255), $type)) {
+                $key = $type . '|' . mb_strtolower($phrase); // индекс case-insensitive — ловим и регистр
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                if (!$force && $kwRepo->existsPhrase($brand, $phrase, $type)) {
                     continue;
                 }
                 if (!$dryRun) {
