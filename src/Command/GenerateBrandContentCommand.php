@@ -246,9 +246,15 @@ class GenerateBrandContentCommand extends Command
         [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $existingDescription, $city, $skipValidate, $io, $context, $this->rankedKeywords($brand));
 
         if (!$skipValidate && !empty($metaErrors)) {
-            $io->warning(sprintf('Валидация meta не прошла для "%s": %s', $brandName, implode(', ', $metaErrors)));
             $this->validationFailed++;
-            return;
+            // Анти-цикл: бренд (есть описание, нет меты) иначе выбирается findWithDescriptionWithoutMeta
+            // КАЖДЫЙ прогон и снова валится → вечный reselect + жжёт gemma. Best-effort мета непустая
+            // (валидация ругнулась на длину/формат) → применяем. Пустая → редкий сбой, ретрай.
+            if (trim((string) ($meta['title'] ?? '')) === '' || trim((string) ($meta['description'] ?? '')) === '') {
+                $io->warning(sprintf('Валидация meta не прошла для "%s" и best-effort пуст: %s — ретрай позже', $brandName, implode(', ', $metaErrors)));
+                return;
+            }
+            $io->warning(sprintf('Валидация meta не прошла для "%s": %s — применяю best-effort (анти-цикл)', $brandName, implode(', ', $metaErrors)));
         }
 
         $io->text(sprintf(
@@ -414,9 +420,12 @@ class GenerateBrandContentCommand extends Command
         [$meta, $metaErrors] = $this->generateMetaWithRetry($brandName, $description, $city, $skipValidate, $io, $context, $keywords);
 
         if (!$skipValidate && !empty($metaErrors)) {
-            $io->warning(sprintf('Валидация meta не прошла для "%s": %s', $brandName, implode(', ', $metaErrors)));
+            // Анти-цикл: описание уже прошло refusal/QA/near-dup (дорого) — НЕ выбрасываем его из-за
+            // провала меты. Сохраняем описание + best-effort мету; если мета пустая — бренд всё равно
+            // получит описание и выйдет из findWithoutDescription (мету добьёт meta-only путь). Иначе
+            // full-регенерация крутилась бы вечно в демоне, сжигая gemma на одном бренде.
+            $io->warning(sprintf('Валидация meta не прошла для "%s": %s — сохраняю описание + best-effort мету (анти-цикл)', $brandName, implode(', ', $metaErrors)));
             $this->validationFailed++;
-            return;
         }
 
         // Анонс (краткая выжимка из описания) — если ещё нет.
