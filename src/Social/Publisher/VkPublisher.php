@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Social\Publisher;
 
 use App\Entity\SocialChannel;
+use App\Entity\SocialPost;
 use App\Service\SecretCipher;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -28,7 +29,7 @@ class VkPublisher implements SocialPublisherInterface
         return SocialChannel::PLATFORM_VK;
     }
 
-    public function publish(SocialChannel $channel, string $caption, ?string $mediaAbsPath): string
+    public function publish(SocialChannel $channel, SocialPost $post, ?string $mediaAbsPath): string
     {
         $enc = $channel->getTokenEnc();
         if ($enc === null || $enc === '') {
@@ -39,11 +40,17 @@ class VkPublisher implements SocialPublisherInterface
             throw new \RuntimeException('У VK-канала пустой target (нужен owner_id сообщества).');
         }
 
+        // VK автолинкует URL — CTA как «текст: ссылка» (UTM сохраняется).
+        $message = (string) $post->getCaption();
+        if ($post->getCtaUrl() !== null) {
+            $message .= "\n\n" . trim(($post->getCtaLabel() ?? '') . ': ' . $post->getCtaUrl(), ': ');
+        }
+
         $response = $this->httpClient->request('POST', 'https://api.vk.com/method/wall.post', [
             'body' => [
                 'owner_id'     => $ownerId,
                 'from_group'   => 1,
-                'message'      => $caption,
+                'message'      => $message,
                 'access_token' => $this->cipher->decrypt($enc),
                 'v'            => self::API_VERSION,
             ],

@@ -72,6 +72,14 @@ class SocialPost
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $mediaPath = null;
 
+    /** CTA-ссылка (с UTM) — вынесена из подписи, публикаторы оформляют по-своему. */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $ctaUrl = null;
+
+    /** Текст-подпись CTA-ссылки (для кликабельного текста в TG). */
+    #[ORM\Column(length: 120, nullable: true)]
+    private ?string $ctaLabel = null;
+
     /** Сгенерировано ИИ (для обязательной маркировки на площадке). */
     #[ORM\Column(options: ['default' => false])]
     private bool $aiGenerated = false;
@@ -181,6 +189,28 @@ class SocialPost
     public function setMediaPath(?string $mediaPath): self
     {
         $this->mediaPath = $mediaPath;
+        return $this;
+    }
+
+    public function getCtaUrl(): ?string
+    {
+        return $this->ctaUrl;
+    }
+
+    public function setCtaUrl(?string $ctaUrl): self
+    {
+        $this->ctaUrl = $ctaUrl;
+        return $this;
+    }
+
+    public function getCtaLabel(): ?string
+    {
+        return $this->ctaLabel;
+    }
+
+    public function setCtaLabel(?string $ctaLabel): self
+    {
+        $this->ctaLabel = $ctaLabel;
         return $this;
     }
 

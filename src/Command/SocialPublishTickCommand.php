@@ -128,7 +128,7 @@ class SocialPublishTickCommand extends Command
                     : null;
 
                 $externalId = $this->registry->get($ch->getPlatform())
-                    ->publish($ch, (string) $post->getCaption(), $mediaAbs);
+                    ->publish($ch, $post, $mediaAbs);
 
                 $post->setStatus(SocialPost::STATUS_PUBLISHED)
                     ->setPublishedAt(new \DateTime())

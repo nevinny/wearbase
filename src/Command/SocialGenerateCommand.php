@@ -66,8 +66,7 @@ class SocialGenerateCommand extends Command
             }
 
             try {
-                $caption = $this->captions->compose($post, $def);
-                $post->setCaption($caption);
+                $this->captions->compose($post, $def);
                 $post->setAiGenerated($def['source'] === SocialRubrics::SOURCE_LLM);
                 $post->setGenerateAttempts($post->getGenerateAttempts() + 1);
 
@@ -77,7 +76,7 @@ class SocialGenerateCommand extends Command
                     $post->setMediaType(SocialPost::MEDIA_NONE);
                 }
 
-                $reason = $this->qaReason($post, $caption, $mediaPath);
+                $reason = $this->qaReason($post, (string) $post->getCaption(), $mediaPath);
                 if ($reason !== null) {
                     $this->hold($post, $reason);
                     $held++;

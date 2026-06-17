@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Social\Publisher;
 
 use App\Entity\SocialChannel;
+use App\Entity\SocialPost;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -27,7 +28,7 @@ class TelegramPublisher implements SocialPublisherInterface
         return SocialChannel::PLATFORM_TG;
     }
 
-    public function publish(SocialChannel $channel, string $caption, ?string $mediaAbsPath): string
+    public function publish(SocialChannel $channel, SocialPost $post, ?string $mediaAbsPath): string
     {
         if (trim($this->botToken) === '') {
             throw new \RuntimeException('TELEGRAM_BOT_TOKEN не задан — публикация в TG невозможна.');
@@ -37,20 +38,31 @@ class TelegramPublisher implements SocialPublisherInterface
             throw new \RuntimeException('У TG-канала пустой target (нужен @handle или chat_id).');
         }
 
+        // CTA — кликабельный текст (UTM в href, но не виден в посте).
+        $text = htmlspecialchars((string) $post->getCaption(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if ($post->getCtaUrl() !== null && $post->getCtaLabel() !== null) {
+            $text .= sprintf(
+                "\n\n<a href=\"%s\">%s</a>",
+                htmlspecialchars($post->getCtaUrl(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+                htmlspecialchars($post->getCtaLabel(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            );
+        }
+
         $withPhoto = $mediaAbsPath !== null
             && is_file($mediaAbsPath)
-            && mb_strlen($caption) <= self::TG_PHOTO_CAPTION_LIMIT;
+            && mb_strlen($text) <= self::TG_PHOTO_CAPTION_LIMIT;
 
         $result = $withPhoto
             ? $this->call('sendPhoto', [
-                'chat_id' => $chatId,
-                'caption' => $caption,
-                'photo'   => fopen($mediaAbsPath, 'r'),
+                'chat_id'    => $chatId,
+                'caption'    => $text,
+                'parse_mode' => 'HTML',
+                'photo'      => fopen($mediaAbsPath, 'r'),
             ])
             : $this->call('sendMessage', [
-                'chat_id'                  => $chatId,
-                'text'                     => $caption,
-                'disable_web_page_preview' => 'false',
+                'chat_id'    => $chatId,
+                'text'       => $text,
+                'parse_mode' => 'HTML',
             ]);
 
         $messageId = $result['result']['message_id'] ?? null;

@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Social\Publisher;
 
 use App\Entity\SocialChannel;
+use App\Entity\SocialPost;
 
 /**
  * Публикатор в соцсеть. Каждая площадка (tg|vk|ig) — отдельная реализация,
  * резолвится в SocialPublisherRegistry по platform() (паттерн PaymentGatewayRegistry).
+ * Получает весь пост и сам оформляет CTA-ссылку под площадку (TG — кликабельный текст,
+ * VK — текст+URL, IG — без URL/ссылка в профиле).
  */
 interface SocialPublisherInterface
 {
@@ -21,5 +24,5 @@ interface SocialPublisherInterface
      *
      * @param string|null $mediaAbsPath абсолютный путь к локальному медиа (null = текстовый пост)
      */
-    public function publish(SocialChannel $channel, string $caption, ?string $mediaAbsPath): string;
+    public function publish(SocialChannel $channel, SocialPost $post, ?string $mediaAbsPath): string;
 }

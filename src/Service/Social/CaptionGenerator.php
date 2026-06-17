@@ -43,16 +43,21 @@ class CaptionGenerator
     }
 
     /**
-     * Собрать полную подпись поста: тело (банк или LLM) + CTA + хэштеги.
-     * Возвращает готовую строку; aiGenerated проставляет вызывающий по источнику рубрики.
+     * Наполнить пост: подпись (тело банка/LLM + хэштеги, БЕЗ сырого URL) и CTA-поля
+     * (label + ссылка с UTM). Публикаторы оформляют ссылку под площадку (TG — кликабельный
+     * текст, VK — текст+URL, IG — без URL). aiGenerated проставляет вызывающий по источнику.
      */
-    public function compose(SocialPost $post, array $rubricDef): string
+    public function compose(SocialPost $post, array $rubricDef): void
     {
         $body = $rubricDef['source'] === SocialRubrics::SOURCE_LLM
             ? $this->llmBody($post)
             : $this->templateBody($post->getRubric(), (int) $post->getId());
 
-        return $this->assemble($body, $post, $rubricDef['hashtags']);
+        $tags = implode(' ', $rubricDef['hashtags']);
+        $post->setCaption(trim($body) . "\n\n" . $tags);
+
+        [$label, $url] = $this->cta($post);
+        $post->setCtaLabel($label)->setCtaUrl($url);
     }
 
     /** Детерминированный выбор из банка (ротация по id поста — стабильно при ретраях). */
@@ -95,25 +100,20 @@ EOT;
         return trim($this->llm->generate($prompt, $system, local: true, think: false));
     }
 
-    /** Тело + CTA-ссылка + хэштеги. */
-    private function assemble(string $body, SocialPost $post, array $hashtags): string
-    {
-        $cta = $this->ctaLine($post);
-        $tags = implode(' ', $hashtags);
-
-        return trim($body) . "\n\n" . $cta . "\n\n" . $tags;
-    }
-
-    private function ctaLine(SocialPost $post): string
+    /**
+     * CTA: текст-подпись + ссылка с UTM.
+     * @return array{0:string,1:string} [label, url]
+     */
+    private function cta(SocialPost $post): array
     {
         $source = $post->getChannel()?->getPlatform() ?? 'social';
         $brand = $post->getBrand();
 
         if ($brand !== null && $brand->getSlug()) {
-            return 'Бренд напрямую → ' . $this->withUtm('/ru/brands/' . $brand->getSlug(), $source, $post->getRubric());
+            return ['Бренд напрямую', $this->withUtm('/ru/brands/' . $brand->getSlug(), $source, $post->getRubric())];
         }
 
-        return 'Каталог независимых русских брендов → ' . $this->withUtm('/ru/', $source, $post->getRubric());
+        return ['Каталог независимых русских брендов', $this->withUtm('/ru/', $source, $post->getRubric())];
     }
 
     /** Ссылка с UTM-метками — для отслеживания эффективности канала/рубрики в аналитике. */

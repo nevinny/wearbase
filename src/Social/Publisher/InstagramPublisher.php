@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Social\Publisher;
 
 use App\Entity\SocialChannel;
+use App\Entity\SocialPost;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -29,7 +30,7 @@ class InstagramPublisher implements SocialPublisherInterface
         return SocialChannel::PLATFORM_IG;
     }
 
-    public function publish(SocialChannel $channel, string $caption, ?string $mediaAbsPath): string
+    public function publish(SocialChannel $channel, SocialPost $post, ?string $mediaAbsPath): string
     {
         if (trim($this->postizUrl) === '' || trim($this->postizApiKey) === '') {
             throw new \RuntimeException('POSTIZ_URL/POSTIZ_API_KEY не заданы — публикация в Instagram невозможна.');
@@ -42,12 +43,18 @@ class InstagramPublisher implements SocialPublisherInterface
             throw new \RuntimeException('У IG-канала пустой target (нужен id интеграции Postiz).');
         }
 
+        // IG: кликабельных ссылок в подписи нет — ссылка живёт в профиле; URL в текст не вставляем.
+        $content = (string) $post->getCaption();
+        if ($post->getCtaLabel() !== null) {
+            $content .= "\n\n" . $post->getCtaLabel() . ' — ссылка в профиле';
+        }
+
         $response = $this->httpClient->request('POST', rtrim($this->postizUrl, '/') . '/api/public/v1/posts', [
             'headers' => ['Authorization' => $this->postizApiKey],
             'json'    => [
                 'type'         => 'now',
                 'integrations' => [['id' => $integrationId]],
-                'content'      => $caption,
+                'content'      => $content,
                 // media — путь/URL медиа; конкретный формат уточнить под версию Postiz (Фаза 0)
                 'media'        => [['path' => $mediaAbsPath]],
             ],
