@@ -71,9 +71,11 @@ class RevalidateContentCommand extends Command
             $io->note('dry-run — изменения не сохраняются, прод не трогаем');
         }
 
-        // Берём только id+slug — описание тянем по одному (память на 2000+ брендах).
+        // Берём id+slug всех с описанием, что СЕЙЧАС done ИЛИ когда-либо пушились на прод
+        // (pushed_at): бренд мог быть опубликован, потом сброшен в embedded (старый fetch-баг) —
+        // на проде плохая версия осталась, а по status='done' такой не попал бы (кейс Blackstone).
         $sql = "SELECT b.id, b.slug FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
-                WHERE p.status='done' AND b.description IS NOT NULL AND b.description<>''";
+                WHERE (p.status='done' OR p.pushed_at IS NOT NULL) AND b.description IS NOT NULL AND b.description<>''";
         $params = [];
         if ($brandId !== null) {
             $sql .= ' AND b.id = :id';
