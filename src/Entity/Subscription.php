@@ -82,6 +82,11 @@ class Subscription
         $this->updatedAt = new \DateTimeImmutable();
     }
 
+    public function __toString(): string
+    {
+        return sprintf("ID: %s",  $this->id);
+    }
+
     public function getId(): ?int { return $this->id; }
 
     public function getBrand(): ?Brand { return $this->brand; }
