@@ -178,6 +178,10 @@ services:
             $cdekPassword: '%env(CDEK_PASSWORD)%'
             $boxberryToken: '%env(BOXBERRY_TOKEN)%'
 
+    App\EventListener\AgentReadyListener:
+        arguments:
+            $siteBaseUrl: '%app.site_base_url%'
+
     App\Command\MigrateImagesToSubdirsCommand:
         arguments:
             $projectDir: '%kernel.project_dir%'

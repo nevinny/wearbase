@@ -1,0 +1,112 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WEARBASE Currency API",
+    "description": "Публичный API курсов валют и конвертации. Все цены на сайте хранятся в RUB; курсы обновляются ежедневно из ЦБ РФ.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://wearbase.ru/currency/api" }
+  ],
+  "paths": {
+    "/currencies": {
+      "get": {
+        "operationId": "listCurrencies",
+        "summary": "Список активных валют",
+        "responses": {
+          "200": {
+            "description": "Массив валют",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": { "type": "string", "example": "USD" },
+                      "symbol": { "type": "string", "example": "$" },
+                      "symbolPosition": { "type": "string" },
+                      "nameRu": { "type": "string" },
+                      "nameEn": { "type": "string" },
+                      "decimalPlaces": { "type": "integer" },
+                      "isBase": { "type": "boolean" },
+                      "isCurrent": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange-rates": {
+      "get": {
+        "operationId": "getExchangeRates",
+        "summary": "Актуальные курсы для базовой валюты",
+        "parameters": [
+          {
+            "name": "base",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "RUB" },
+            "description": "Код базовой валюты (ISO 4217)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Курсы",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "base": { "type": "string", "example": "RUB" },
+                    "date": { "type": "string", "format": "date" },
+                    "source": { "type": "string", "example": "cbr" },
+                    "rates": {
+                      "type": "object",
+                      "additionalProperties": { "type": "number" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Валюта не найдена" }
+        }
+      }
+    },
+    "/convert": {
+      "get": {
+        "operationId": "convertAmount",
+        "summary": "Конвертация суммы между валютами",
+        "parameters": [
+          { "name": "amount", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "from", "in": "query", "required": false, "schema": { "type": "string", "default": "RUB" } },
+          { "name": "to", "in": "query", "required": false, "schema": { "type": "string", "default": "USD" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Результат конвертации",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "from": { "type": "string" },
+                    "to": { "type": "string" },
+                    "amount": { "type": "number" },
+                    "result": { "type": "number" },
+                    "formatted": { "type": "string", "example": "$16.25" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Курс не найден" }
+        }
+      }
+    }
+  }
+}

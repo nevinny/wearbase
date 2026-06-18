@@ -1,21 +1,39 @@
+# robots.txt — wearbase.ru
+# Content Signals (https://contentsignals.org): search — показ в поиске,
+# ai-input — использование в ответах AI-ассистентов, ai-train — обучение моделей.
+# Разрешаем поиск и ответы AI (видимость в AI-выдаче), но НЕ обучение моделей на контенте.
+
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
-
-# Tracking parameters — prevent crawl waste on UTM/ref variants
-Disallow: /*?utm_*
-Disallow: /*?ref=*
-
-# AI Overviews visibility
-User-agent: Googlebot-Extended
-Allow: /
-
-# Sitemap
-Sitemap: https://wearbase.ru/sitemap.xml
-
-# Crawl-delay
-Crawl-delay: 1
-
-# Disallow admin
 Disallow: /admin/
 Disallow: /_profiler/
 Disallow: /_wdt/
+# Tracking parameters — экономим краул-бюджет на UTM/ref вариантах
+Disallow: /*?utm_*
+Disallow: /*?ref=*
+Crawl-delay: 1
+
+# AI-краулеры и ассистенты — явно разрешаем индексацию и использование в ответах.
+# Несколько User-agent перед одним блоком правил = одна группа (спека robots.txt).
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: Amazonbot
+User-agent: meta-externalagent
+User-agent: CCBot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+Allow: /
+Disallow: /admin/
+Disallow: /_profiler/
+Disallow: /_wdt/
+
+# Sitemap и LLM-индекс
+Sitemap: https://wearbase.ru/sitemap.xml
