@@ -7,6 +7,7 @@ use App\Entity\BrandRagPipeline;
 use App\Entity\BrandSourceDocument;
 use App\Entity\BrandSourceUrl;
 use App\Repository\BrandRepository;
+use App\Service\Agent\BrandPayloadAssembler;
 use App\Service\VectorStoreService;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -29,6 +30,7 @@ class RagDashboardController extends AbstractController
         private readonly Connection $db,
         private readonly EntityManagerInterface $em,
         private readonly BrandRepository $brands,
+        private readonly BrandPayloadAssembler $payloadAssembler,
         private readonly VectorStoreService $vectors,
         private readonly AdminContextFactory $adminContextFactory,
         private readonly DashboardController $dashboard,
@@ -554,6 +556,75 @@ class RagDashboardController extends AbstractController
 
         $this->addFlash('success', "Этап «{$stage}» сброшен — демон перезапустит его в ближайшем цикле.");
         return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+    }
+
+    /**
+     * Принудительная доставка на прод (mode=push) и/или мгновенная публикация (mode=publish),
+     * минуя демон/дрип. push: assemble → /api/v1/brands/upsert (как PushBrandsCommand --id, без
+     * гейта готовности). publish: после доставки ещё /api/v1/brands/publish (status=active сразу).
+     * Синхронно, agent-API + HMAC. Прод-API не настроен → fail-soft.
+     */
+    #[Route('/brand/{id}/deploy/{mode}', name: '_brand_deploy', methods: ['POST'], requirements: ['id' => '\d+', 'mode' => 'push|publish'])]
+    public function brandDeploy(int $id, string $mode, Request $request): Response
+    {
+        $brand = $this->requireBrandCsrf($id, $request);
+        if (!$brand instanceof Brand) {
+            return $brand;
+        }
+
+        if (trim((string) $this->prodApiUrl) === '' || trim((string) $this->agentToken) === '' || trim((string) $this->agentSecret) === '') {
+            $this->addFlash('danger', 'Прод-API не настроен (PROD_API_URL/AGENT_API_TOKEN/AGENT_API_SECRET) — доставка недоступна.');
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        // 1. Доставка датасета (/upsert) — минуя гейт готовности (принудительно, как push --id).
+        try {
+            $payload = $this->payloadAssembler->assemble($brand);
+            $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            $data = $this->agentApi('/api/v1/brands/upsert', $body);
+            if (!in_array($data['status'] ?? '', ['created', 'updated', 'skipped'], true)) {
+                throw new \RuntimeException('неожиданный ответ: ' . json_encode($data, JSON_UNESCAPED_UNICODE));
+            }
+            $brand->setAgentSyncVersion((int) $payload['agent_sync_version']);
+            $this->pipelineFor($brand)->setPushedAt(new \DateTime())->setPushError(null);
+            $this->em->flush();
+            $this->addFlash('success', "Доставлено на прод: {$data['status']} (prod id " . ($data['brand_id'] ?? '?') . ').');
+        } catch (\Throwable $e) {
+            $this->addFlash('danger', 'Пуш не прошёл: ' . $e->getMessage());
+            return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+        }
+
+        // 2. Публикация (мгновенная активация, минуя дрип) — только mode=publish.
+        if ($mode === 'publish') {
+            try {
+                $body = json_encode(['slug' => $brand->getSlug()], JSON_UNESCAPED_UNICODE);
+                $data = $this->agentApi('/api/v1/brands/publish', $body);
+                if (!in_array($data['status'] ?? '', ['published', 'already_published'], true)) {
+                    throw new \RuntimeException('неожиданный ответ: ' . json_encode($data, JSON_UNESCAPED_UNICODE));
+                }
+                $this->addFlash('success', "Опубликовано на проде: {$data['status']} — " . ($data['url'] ?? '—'));
+            } catch (\Throwable $e) {
+                $this->addFlash('warning', 'Доставлено, но publish не прошёл (опубликует дрип-крон): ' . $e->getMessage());
+            }
+        }
+
+        return $this->redirectToRoute('admin_rag_brand_panel', ['id' => $id]);
+    }
+
+    /** POST на agent-API прода (X-Agent-Token + HMAC тела), возвращает декодированный JSON. */
+    private function agentApi(string $path, string $body): array
+    {
+        $resp = $this->httpClient->request('POST', rtrim((string) $this->prodApiUrl, '/') . $path, [
+            'headers' => [
+                'Content-Type'  => 'application/json',
+                'X-Agent-Token' => (string) $this->agentToken,
+                'X-Signature'   => hash_hmac('sha256', $body, (string) $this->agentSecret),
+            ],
+            'body'    => $body,
+            'timeout' => 15,
+        ]);
+
+        return $resp->getStatusCode() === 200 ? $resp->toArray(false) : ['status' => 'http_' . $resp->getStatusCode()];
     }
 
     /** Soft-skip нерелевантного URL: статус skipped (не рефетчим; dedup не даст discover'у вернуть его). */

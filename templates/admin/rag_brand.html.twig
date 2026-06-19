@@ -116,6 +116,27 @@
             <b>файл:</b> {{ brand.logo ? 'есть' : 'нет' }} · <b>проверен:</b> {{ p and p.logo_checked_at ? p.logo_checked_at : '—' }}
         </div>
     </div>
+
+    <div class="rb-card">
+        <h3>Доставка на прод</h3>
+        <div class="rb-kv">
+            <b>на проде:</b> {{ brand.status == 'active' ? 'опубликован' : (p and p.pushed_at ? 'доставлен (скрыт)' : 'нет') }} ·
+            <b>pushed:</b> {{ p and p.pushed_at ? p.pushed_at : '—' }}
+        </div>
+        <div class="rb-stage" style="margin-top:8px; gap:6px; flex-wrap:wrap">
+            <form method="post" action="{{ path('admin_rag_brand_deploy', {id: brand.id, mode: 'push'}) }}"
+                  onsubmit="return confirm('Принудительно доставить датасет бренда на прод (минуя гейт готовности)?')">
+                <input type="hidden" name="_token" value="{{ token }}">
+                <button type="submit" class="rb-btn">↑ запушить (force)</button>
+            </form>
+            <form method="post" action="{{ path('admin_rag_brand_deploy', {id: brand.id, mode: 'publish'}) }}"
+                  onsubmit="return confirm('Доставить И сразу опубликовать на проде (минуя дрип)? Бренд станет виден в каталоге немедленно.')">
+                <input type="hidden" name="_token" value="{{ token }}">
+                <button type="submit" class="rb-btn">🚀 опубликовать на прод</button>
+            </form>
+        </div>
+        <p class="rb-hint" style="margin-top:6px">«force» обходит проверку готовности — пустой/тонкий бренд уедет как мёртвая страница. Публикуйте только с готовым контентом (description + meta).</p>
+    </div>
 </div>
 
 {# ---- Формы ручного ввода ---- #}
