@@ -325,7 +325,7 @@ class RagDashboardController extends AbstractController
         $this->initAdminContext($request);
         $brand = $this->db->fetchAssociative(
             'SELECT id, title, slug, status, city, email, description, meta_title, meta_description,
-                    contact_status, contact_attempts
+                    contact_status, contact_attempts, logo
              FROM brand WHERE id = :id',
             ['id' => $id],
         );
@@ -502,7 +502,7 @@ class RagDashboardController extends AbstractController
     }
 
     /** Перезапуск конкретного этапа: сбрасывает состояние, демон обработает заново. */
-    #[Route('/brand/{id}/rerun/{stage}', name: '_brand_rerun', methods: ['POST'], requirements: ['id' => '\d+', 'stage' => 'discover|fetch|embed|generate|contacts'])]
+    #[Route('/brand/{id}/rerun/{stage}', name: '_brand_rerun', methods: ['POST'], requirements: ['id' => '\d+', 'stage' => 'discover|fetch|embed|generate|contacts|logo'])]
     public function brandRerun(int $id, string $stage, Request $request): Response
     {
         $brand = $this->requireBrandCsrf($id, $request);
@@ -542,6 +542,11 @@ class RagDashboardController extends AbstractController
                 break;
             case 'generate':
                 $p->setStatus(BrandRagPipeline::STATUS_EMBEDDED)->setGeneratedAt(null)->setLastError(null);
+                break;
+            case 'logo':
+                // Сброс поиска логотипа: logo_status=NULL → findForLogo снова подхватит
+                // (даже терминальные not_found/skipped). Бренд должен быть без logo.
+                $p->setLogoStatus(null)->setLogoCheckedAt(null);
                 break;
         }
 

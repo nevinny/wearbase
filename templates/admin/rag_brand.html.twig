@@ -100,6 +100,22 @@
             <b>описание:</b> {{ brand.description ? (brand.description|length ~ ' симв.') : 'нет' }} · <b>meta:</b> {{ brand.meta_title ? 'есть' : 'нет' }}
         </div>
     </div>
+
+    <div class="rb-card">
+        <h3>Логотип</h3>
+        {% set lstatus = p ? p.logo_status : null %}
+        <div class="rb-stage">
+            <span class="rb-badge {{ lstatus == 'found' ? 'rb-ok' : (lstatus in ['not_found','failed'] ? 'rb-bad' : 'rb-wait') }}">{{ lstatus ?: '— не искали' }}</span>
+            <form method="post" action="{{ path('admin_rag_brand_rerun', {id: brand.id, stage: 'logo'}) }}"
+                  onsubmit="return confirm('Перезапустить поиск логотипа (обход not_found/skipped)?')">
+                <input type="hidden" name="_token" value="{{ token }}">
+                <button type="submit" class="rb-btn">↻ логотип</button>
+            </form>
+        </div>
+        <div class="rb-kv" style="margin-top:6px">
+            <b>файл:</b> {{ brand.logo ? 'есть' : 'нет' }} · <b>проверен:</b> {{ p and p.logo_checked_at ? p.logo_checked_at : '—' }}
+        </div>
+    </div>
 </div>
 
 {# ---- Формы ручного ввода ---- #}
