@@ -114,10 +114,13 @@
             </section>
 
             <section id="styles" class="bg-white rounded-xl shadow-sm p-6">
-                <h2 class="text-xl font-semibold mb-4">Стили</h2>
+                <div class="flex items-baseline justify-between mb-4">
+                    <h2 class="text-xl font-semibold">Стили</h2>
+                    <a href="{{ path('brand_styles', {_locale: locale}) }}" class="text-sm text-indigo-600 hover:text-indigo-800">Все стили →</a>
+                </div>
                 <div class="space-y-2">
                     {% for style in topStyles %}
-                        <a href="{{ path('brand_index', {_locale: locale, style: style.id}) }}"
+                        <a href="{{ path('brand_style', {_locale: locale, slug: style.slug}) }}"
                            class="flex justify-between items-center p-2 rounded-lg hover:bg-gray-50 transition">
                             <span>{{ style.title }}</span>
                             <span class="text-sm text-gray-500">{{ style.cnt }}</span>

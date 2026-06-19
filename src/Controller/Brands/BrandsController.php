@@ -5,9 +5,11 @@ namespace App\Controller\Brands;
 use App\Entity\Brand;
 use App\Entity\Product;
 use App\Repository\BrandRepository;
+use App\Repository\BrandStyleRepository;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use App\Service\Agent\BrandUnpublisher;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -206,11 +208,43 @@ class BrandsController extends AbstractController
         ]);
     }
 
+    /**
+     * Скрыть бренд из каталога — веб-кнопка для админа прямо на странице бренда
+     * (замена сломанной TG-кнопки: вебхук Telegram→прод таймаутит). Soft-hide +
+     * снятие с прод-каталога через тот же BrandUnpublisher::hide.
+     */
+    #[Route('/{_locale}/brands/{slug}/hide',
+        name: 'brand_hide',
+        requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'],
+        defaults: ['_locale' => 'ru'],
+        methods: ['POST'])]
+    public function hide(
+        #[MapEntity(mapping: ['slug' => 'slug'])] Brand $brand,
+        Request $request,
+        BrandUnpublisher $unpublisher,
+        \App\Service\AdminAccess $adminAccess,
+    ): Response {
+        if (!$adminAccess->isAdmin()) {
+            throw $this->createAccessDeniedException();
+        }
+        if (!$this->isCsrfTokenValid('brand_hide_' . $brand->getId(), (string) $request->request->get('_token'))) {
+            $this->addFlash('error', 'Неверный токен — попробуйте ещё раз.');
+
+            return $this->redirectToRoute('brand_show', ['_locale' => $request->getLocale(), 'slug' => $brand->getSlug()]);
+        }
+
+        $res = $unpublisher->hide($brand->getId());
+        $this->addFlash($res['ok'] ? 'success' : 'error',
+            $res['ok'] ? sprintf('Бренд «%s» скрыт. %s', $res['title'] ?? '', $res['message'] ?? '') : ($res['message'] ?? 'Не удалось скрыть.'));
+
+        return $this->redirectToRoute('brand_index', ['_locale' => $request->getLocale()]);
+    }
+
     #[Route('/{_locale}/brands/{slug}',
         name: 'brand_show',
         requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'],
         defaults: ['_locale' => 'ru'])]
-    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo, \App\Service\CitySlugger $citySlugger): Response
+    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo, \App\Service\CitySlugger $citySlugger, \App\Service\AdminAccess $adminAccess): Response
     {
         // Является ли текущий пользователь участником команды ИМЕННО этого бренда
         $isMemberOfThisBrand = false;
@@ -220,7 +254,8 @@ class BrandsController extends AbstractController
 
         // Неактивные бренды (new = в очереди дрип-публикации, disabled/deleted) публично
         // не существуют — 404, как в каталоге/sitemap. Участникам бренда — превью.
-        if ($brand->getStatus() !== \Nevinny\AdminCoreBundle\Enum\Statuses::Active && !$isMemberOfThisBrand) {
+        // Админу (main ROLE_ADMIN или admincore-сессия) — превью любого бренда.
+        if ($brand->getStatus() !== \Nevinny\AdminCoreBundle\Enum\Statuses::Active && !$isMemberOfThisBrand && !$adminAccess->isAdmin()) {
             throw $this->createNotFoundException('Бренд не опубликован');
         }
 
@@ -349,7 +384,7 @@ class BrandsController extends AbstractController
         unset($cityRow);
 
         $styles = $repo->createQueryBuilder('b')
-            ->select('s.id, s.title, COUNT(DISTINCT b.id) as cnt')
+            ->select('s.id, s.slug, s.title, COUNT(DISTINCT b.id) as cnt')
             ->leftJoin('b.styles', 's')
             ->where('b.status = :status')
             ->andWhere('s.id IS NOT NULL')
@@ -431,6 +466,53 @@ class BrandsController extends AbstractController
 
         return $this->render('tailwind/city.html.twig', [
             'city' => $city,
+            'slug' => $slug,
+            'brands' => $brands,
+            'locale' => $request->getLocale(),
+        ]);
+    }
+
+    #[Route('/{_locale}/styles', name: 'brand_styles', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
+    public function styles(BrandRepository $repo, Request $request): Response
+    {
+        $styles = $repo->createQueryBuilder('b')
+            ->select('s.slug, s.title, COUNT(DISTINCT b.id) as cnt')
+            ->join('b.styles', 's')
+            ->where('b.status = :status')
+            ->setParameter('status', Statuses::Active)
+            ->groupBy('s.id')
+            ->orderBy('cnt', 'DESC')
+            ->addOrderBy('s.title', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $this->render('tailwind/styles.html.twig', [
+            'styles' => $styles,
+            'totalBrands' => array_sum(array_column($styles, 'cnt')),
+            'locale' => $request->getLocale(),
+        ]);
+    }
+
+    #[Route('/{_locale}/style/{slug}', name: 'brand_style', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
+    public function styleShow(string $slug, BrandRepository $repo, BrandStyleRepository $styleRepo, Request $request): Response
+    {
+        $style = $styleRepo->findOneBy(['slug' => $slug]);
+        if (!$style) {
+            throw $this->createNotFoundException('Стиль не найден');
+        }
+
+        $brands = $repo->createQueryBuilder('b')
+            ->join('b.styles', 's')
+            ->where('b.status = :status')
+            ->andWhere('s.slug = :slug')
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('slug', $slug)
+            ->orderBy('b.title', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $this->render('tailwind/style.html.twig', [
+            'style' => $style,
             'slug' => $slug,
             'brands' => $brands,
             'locale' => $request->getLocale(),

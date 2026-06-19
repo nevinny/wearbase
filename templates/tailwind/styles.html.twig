@@ -1,0 +1,70 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+
+{% block title %}Российские бренды одежды по стилям — streetwear, минимализм, Y2K, горпкор и другие | WEARBASE{% endblock %}
+
+{% block meta_description %}Каталог российских брендов одежды по стилям: streetwear, минимализм, Y2K, горпкор, опиум, винтаж и другие. {{ totalBrands }}+ марок — выбирайте стиль и покупайте напрямую, без наценки маркетплейсов.{% endblock %}
+
+{% block meta_keywords %}бренды одежды по стилям, streetwear бренды россия, минимализм одежда, y2k бренды, горпкор, российские бренды одежды{% endblock %}
+
+{% block og_title %}Российские бренды одежды по стилям | WEARBASE{% endblock %}
+
+{% block og_description %}{{ totalBrands }}+ российских брендов одежды, сгруппированных по стилям — от streetwear до минимализма.{% endblock %}
+
+{% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
+
+{% block body %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": "{{ url('brand_styles', {_locale: page_locale}) }}#webpage",
+                "url": "{{ url('brand_styles', {_locale: page_locale}) }}",
+                "name": "Российские бренды одежды по стилям | WEARBASE",
+                "breadcrumb": {"@id": "{{ url('brand_styles', {_locale: page_locale}) }}#breadcrumb"}
+            },
+            {
+                "@type": "BreadcrumbList",
+                "@id": "{{ url('brand_styles', {_locale: page_locale}) }}#breadcrumb",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 2, "name": "Стили", "item": "{{ url('brand_styles', {_locale: page_locale}) }}"}
+                ]
+            }
+        ]
+    }
+    </script>
+
+    <div class="container mx-auto px-4 py-10">
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">Стили</span>
+        </nav>
+
+        <h1 class="text-3xl md:text-4xl font-bold mb-3">Российские бренды одежды по стилям</h1>
+        <p class="text-gray-600 max-w-2xl mb-10">У каждого стиля — своя вселенная марок: {{ totalBrands }}+ брендов в {{ styles|length }} направлениях, от streetwear и минимализма до Y2K и горпкора. Выбирайте стиль, смотрите бренды и покупайте напрямую, без наценки маркетплейсов.</p>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {% for style in styles %}
+                <a href="{{ path('brand_style', {_locale: page_locale, slug: style.slug}) }}"
+                   class="flex items-center justify-between bg-white rounded-xl shadow-sm hover:shadow-md transition px-5 py-4">
+                    <span class="font-medium text-gray-900">{{ style.title }}</span>
+                    <span class="text-sm text-gray-400">{{ style.cnt }}</span>
+                </a>
+            {% endfor %}
+        </div>
+
+        <div class="mt-12 p-6 bg-gray-50 rounded-xl text-center">
+            <p class="font-semibold mb-2">Не нашли свой стиль?</p>
+            <p class="text-sm text-gray-600 mb-4">Каталог пополняется — смотрите все {{ totalBrands }}+ российских брендов одежды.</p>
+            <a href="{{ path('brand_index', {_locale: page_locale}) }}"
+               class="inline-block px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition">
+                Все бренды
+            </a>
+        </div>
+    </div>
+{% endblock %}

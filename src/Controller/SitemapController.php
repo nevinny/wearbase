@@ -103,6 +103,34 @@ class SitemapController extends AbstractController
             ];
         }
 
+        $urls[] = [
+            'loc' => $this->generateUrl('brand_styles', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'weekly',
+            'priority' => '0.7',
+        ];
+
+        // Стилевые хабы — только стили с хотя бы одним активным брендом (пустые не индексируем).
+        $styleSlugs = $repo->createQueryBuilder('b')
+            ->select('s.slug')
+            ->join('b.styles', 's')
+            ->where('b.status = :status')
+            ->andWhere('s.slug IS NOT NULL')
+            ->setParameter('status', 'active')
+            ->groupBy('s.id')
+            ->getQuery()
+            ->getSingleColumnResult();
+
+        foreach ($styleSlugs as $styleSlug) {
+            $urls[] = [
+                'loc' => $this->generateUrl('brand_style', [
+                    '_locale' => 'ru',
+                    'slug' => $styleSlug,
+                ], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'weekly',
+                'priority' => '0.7',
+            ];
+        }
+
         foreach ($articleRepo->findPublished('ru', 500) as $article) {
             $urls[] = [
                 'loc' => $this->generateUrl('blog_show', [

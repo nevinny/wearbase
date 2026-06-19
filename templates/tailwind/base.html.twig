@@ -112,7 +112,7 @@
             <a href="{{ path('brand_index', {_locale: nav_locale}) }}" class="text-gray-700 hover:text-indigo-600 transition">Бренды</a>
             <a href="{{ path('catalog_index') }}" class="text-gray-700 hover:text-indigo-600 transition">Каталог</a>
             <a href="{{ path('brand_cities', {_locale: nav_locale}) }}" class="text-gray-700 hover:text-indigo-600 transition">Города</a>
-            <a href="{{ path('home_hub', {_locale: nav_locale}) }}#styles" class="text-gray-700 hover:text-indigo-600 transition">Стили</a>
+            <a href="{{ path('brand_styles', {_locale: nav_locale}) }}" class="text-gray-700 hover:text-indigo-600 transition">Стили</a>
         </nav>
 
         <div class="flex items-center gap-2">
@@ -220,7 +220,7 @@
             <a href="{{ path('brand_index', {_locale: nav_locale}) }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Бренды</a>
             <a href="{{ path('catalog_index') }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Каталог</a>
             <a href="{{ path('brand_cities', {_locale: nav_locale}) }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Города</a>
-            <a href="{{ path('home_hub', {_locale: nav_locale}) }}#styles" class="py-2 text-gray-700 hover:text-indigo-600 transition">Стили</a>
+            <a href="{{ path('brand_styles', {_locale: nav_locale}) }}" class="py-2 text-gray-700 hover:text-indigo-600 transition">Стили</a>
 
             <div class="border-t border-gray-100 my-2"></div>
             {% if app.user %}
@@ -286,6 +286,7 @@
                 <ul class="space-y-2">
                     <li><a href="{{ path('about_us', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">О нас</a></li>
                     <li><a href="{{ path('brand_cities', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Бренды по городам</a></li>
+                    <li><a href="{{ path('brand_styles', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Бренды по стилям</a></li>
                     <li><a href="{{ path('landing_for_brands', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Для брендов</a></li>
                     <li><a href="{{ path('landing_no_marketplace', {_locale: nav_locale}) }}" class="text-sm text-gray-400 hover:text-white transition">Без маркетплейсов</a></li>
                     <li><a href="{{ path('blog_show', {_locale: 'ru', slug: 'komissii-marketpleysov-2026'}) }}" class="text-sm text-gray-400 hover:text-white transition">Комиссии маркетплейсов</a></li>

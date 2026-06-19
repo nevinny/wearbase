@@ -189,6 +189,18 @@
             <span class="text-gray-900 font-medium">{{ _bt }}</span>
         </nav>
 
+        {# --- Админ-панель: скрыть бренд из каталога (main ROLE_ADMIN или admincore-сессия) --- #}
+        {% if is_platform_admin() %}
+            <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm ring-1 ring-amber-200">
+                <span class="font-medium text-amber-900">Админ · статус: <b>{{ brand.status.value ?? brand.status }}</b>{% if brand.publishPending %} · в очереди дрип-публикации{% endif %}</span>
+                <form method="post" action="{{ path('brand_hide', {_locale: show_locale, slug: brand.slug}) }}"
+                      onsubmit="return confirm('Скрыть бренд «{{ _bt|e('js') }}» из каталога (и снять с прода)?')">
+                    <input type="hidden" name="_token" value="{{ csrf_token('brand_hide_' ~ brand.id) }}">
+                    <button type="submit" class="rounded-lg bg-rose-600 px-3 py-1.5 font-semibold text-white hover:bg-rose-700">🚫 Скрыть бренд</button>
+                </form>
+            </div>
+        {% endif %}
+
         {# --- Header бренда --- #}
         <section class="w-full bg-gray-50 py-12 mb-16 border-b">
             <div class="max-w-6xl mx-auto px-4">

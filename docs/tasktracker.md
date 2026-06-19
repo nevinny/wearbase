@@ -872,3 +872,32 @@ enemy/культурный контент отрабатывает индекс�
 - [ ] [S] **Product-motion (image-to-video)** — локально **LTX-Video / WAN 2.2 5B** на выделенной карте; либо облако fal.ai (Seedance ~$0.03/с, Kling Turbo ~$0.07/с). WAN 14B (40–48GB) — только облако/мультиGPU. Полу-авто.
 - [ ] [S] **Audio-policy + AI-маркировка**: лицензионное/royalty-free аудио, метка AI-контента (Meta) в QA-гейте; финальная сборка Reels со звуком — semi-auto.
 - ⚠️ Граница: НЕ генерировать синтетический «UGC»/founder talking-head — противоречит позиционированию «Прямой бренд» + нарушает маркировку Meta. AI только ассистирует реальным брендам.
+
+---
+
+## 2026-06-19 — Публичные хабы стилей + веб-админ-доступ
+
+Продолжение каноникализации стилей (`brand_attribute → brand_style`, M2M, коммит `7b860c8`):
+у `BrandStyle` теперь есть `slug` (все 27 — заполнены), что разблокировало индексируемые
+SEO-страницы по стилям (раньше «Стили» вели на якорь `home_hub#styles`).
+
+**Публичные страницы стилей (`BrandsController`):**
+- [x] `/{_locale}/styles` (`brand_styles`) — индекс всех непустых стилей (INNER join: только
+      стили с активными брендами), карточки со счётчиком, JSON-LD `CollectionPage`+`BreadcrumbList`.
+      Шаблон `templates/tailwind/styles.html.twig`.
+- [x] `/{_locale}/style/{slug}` (`brand_style`, slug `[a-z0-9-]+`) — бренды одного стиля,
+      JSON-LD `CollectionPage`+`BreadcrumbList`+`ItemList` (топ-30). Опц. `style.description` в интро.
+      Шаблон `templates/tailwind/style.html.twig`.
+- [x] Навигация/футер (`base.html.twig`) и блок на главной (`hub.html.twig`) → ведут на `brand_styles`;
+      `topStyles` и плитки главной линкуют на `brand_style` по slug.
+- [x] Sitemap (`SitemapController`): индекс стилей + по URL на каждый непустой стиль (priority 0.7,
+      weekly). Пустые стили не индексируем.
+
+**Веб-админ-доступ (новое, `AdminAccess` + `AdminAccessExtension`):**
+- [x] `AdminAccess::isAdmin()` — единая проверка: main `ROLE_ADMIN` ИЛИ залогиненная admincore-сессия
+      (`_security_admin`, читаем только при `hasPreviousSession()` — чтобы не плодить Set-Cookie/срывать
+      кеш на анон-запросах). Twig: `is_platform_admin()`.
+- [x] Админу — превью неопубликованных брендов на `brand_show` (раньше 404).
+- [x] `POST /{_locale}/brands/{slug}/hide` (`brand_hide`) — веб-кнопка «🚫 Скрыть бренд» прямо на
+      странице бренда, CSRF-гейт, через `BrandUnpublisher::hide` (soft-hide `Disabled` + снятие с прода).
+      **Замена сломанной TG-кнопки** (вебхук Telegram→прод таймаутит).
