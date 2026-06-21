@@ -875,6 +875,37 @@ enemy/культурный контент отрабатывает индекс�
 
 ---
 
+## 2026-06-21 — Автоскейл RAG, dead-в-стадии, соц-fallback + адаптивные картинки
+
+**Автоскейл / демон:**
+- `app:rag:daemon` — `--shard/--total` (lock учитывает shard) → параллельные шарды стадии.
+- `app:rag:autoscale` (cron `*/3`, Mac) — супервизор + target-tracking: держит 1 baseline-net
+  (`discover,crawl,fetch,logo,push`) + 1 baseline-gpu (`embed:200,generate,faq,extract`, поднимается
+  ТОЛЬКО при живом .119 — иначе net-only, не жжём attempts). На заторе fetch — burst-шарды по глубине
+  очереди, cap по ядрам. Реконсайл = масштаб + респаун (отдельный супервизор не нужен). health-gate:
+  варнинг, если embed/generate-очередь копится при мёртвом .119.
+- ⚠️ Раздельные net/gpu baseline — чтобы GPU не голодал, деля цикл с медленными net-стадиями.
+  `enrich` (OpenRouter, сеть) перенесён в net, не gpu (тормозил embed); `embed:200` — мелкая модель давит backlog.
+
+**Dead-бренды (оценка в стадии fetch, без отдельной команды):**
+- `finalizeIfDrained`: осушили очередь бренда + 0 корпуса → pipeline `dead` (терминал, исключён из всех
+  стадий, не гоняем через embed→generate→deferred впустую). Новый статус `BrandRagPipeline::STATUS_DEAD`.
+
+**Discover отключён (Yandex Search API — платный):** убран из autoscale baseline/burst (вернуть —
+раскомментировать в `RagAutoscaleCommand`). keywords (Wordstat) — отдельный Yandex-биллинг, тоже не гонять.
+
+**/admin/rag/flow:** панель живых процессов (демоны+стадии + счётчик); второе число «работы» у fetch (URL)
+и embed (док) — отличать бренды-в-очереди от единиц работы; `dead` — отдельный исход.
+
+**Соцсети:**
+- `SocialPlanner`: fallback — в дни только с held-рубриками (UGC/lifestyle, не автогенерятся по политике)
+  добавляется авто-template-пост (детерминированно по дате) → выходные не пустуют.
+- `MediaRenderer`: случайный seed на каждую генерацию (Pollinations детерминирован по промпту → были
+  одинаковые картинки на рубрику) + **адаптивный image-промпт**: caption → LLM (.119) → англо-промпт
+  по содержанию поста → генератор; промежуточный промпт в `social_post.image_prompt` (для улучшения).
+
+---
+
 ## 2026-06-20 — Диагностика пустых фетчей + reset мусорных источников в discover
 
 Разбор «deferred ветка / source_count=0» (2366 брендов): URL помечены `fetched`, но

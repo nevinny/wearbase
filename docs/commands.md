@@ -31,7 +31,9 @@
 | `app:currency:update-rates` | `0 12 * * *` (ежедневно) | ☁️ prod | курсы валют ЦБ РФ |
 | `app:subscription:expire` | ежедневно (рекоменд.) | ☁️ prod | истечение подписок |
 | `app:brand:enrich-contacts` | `*/10 * * * *` (легаси) | 🖥 .43 | обогащение контактами |
-| `app:rag:daemon` | непрерывно (или supervised) | 🖥 .43 | оркестратор RAG-стадий |
+| `app:rag:daemon` | непрерывно (под autoscale) | 🍎 Mac | оркестратор RAG-стадий (net + gpu, шарды) |
+| `app:rag:autoscale` | `*/3 * * * *` | 🍎 Mac | супервизор baseline + burst по очередям + health-gate |
+| `app:social:plan` / `generate` / `publish-tick` | `6:00` / `*/30` / `0 * * * *` | 🍎 Mac | контент-сетка → наполнение → дрип-публикация (TG/VK) |
 
 ### 🍎 Mac-крон: одна точка входа + расписание в БД
 
@@ -70,13 +72,15 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 
 | Команда | Зачем | Как часто |
 |---|---|---|
-| `app:rag:daemon` | Оркестратор: бесконечный цикл, каждая стадия — отдельным дочерним процессом (память освобождается ОС). Два демона по типу ресурса: `discover,fetch` (сеть/CPU) и `embed,generate` (GPU). | 🔁 непрерывно |
+| `app:rag:daemon` | Оркестратор: бесконечный цикл, каждая стадия — отдельным дочерним процессом. Базовые наборы: net `discover,crawl,fetch,logo,push` + gpu `embed,generate,enrich,faq,extract` (раздельны → GPU не голодает). `--shard/--total` — параллельные шарды (lock учитывает shard). | 🔁 непрерывно |
+| `app:rag:autoscale` | **Супервизор + автоскейл**: держит 1 baseline-net + 1 baseline-gpu (gpu только при живом .119, иначе net-only — не жжём attempts), на заторах поднимает burst-воркеры по глубине очереди (cap по ядрам). health-gate: варнинг, если GPU-очередь копится при мёртвом сервере. Реконсайл = масштаб + респаун. | ⏰ `*/3 * * * *` (Mac) |
 | `app:brand:discover` | Этап 0: SearXNG/DB-ссылки → URL-кандидаты в очередь `brand_source_url` (без скачивания). Cap'ы по типу источника. | 🔁 фон (через демон) |
 | `app:brand:crawl` | Этап 0.5: для брендов с own_site разворачивает sitemap/ссылки в `own_page` → дренит обычный fetch. Прокси не нужен. | 🔁 фон |
-| `app:brand:fetch` | Этап 1: дренит очередь URL → скачивает текст (trafilatura) → `brand_source_document` (кеш 30д, дедуп по content_hash). Финализирует pipeline в `scraped`. | 🔁 фон (через демон) |
+| `app:brand:fetch` | Этап 1: дренит очередь URL → скачивает текст (trafilatura) → `brand_source_document` (кеш 30д, дедуп по content_hash). Финализирует pipeline в `scraped` (**0 корпуса → `dead`**). Мёртвые/недоступные URL → `skipped` (+`http_status` для триажа: 403/404/null). | 🔁 фон (через демон) |
+| `app:brand:rediscover` | Сброс брендов с мёртвыми источниками обратно в discover: мусорные URL → `skipped` (soft, остаются для дедупа), pipeline → pre-discover. | 👆 по запросу |
 | `app:brand:scrape` | **Легаси-монолит** discover+fetch в одном проходе. Fallback по `--id`. | 👆 по запросу |
 | `app:brand:embed` | Этап 2: чанки → эмбеддинги (bge-m3) → Qdrant (`brand_chunks`). Статус → `embedded`. | 🔁 фон (через демон) |
-| `app:brand:extract` | Извлечение атрибутов (стили/категории/размеры/гео) из краула → `brand_attribute` (qwen). | 🔁 фон |
+| `app:brand:extract` | Извлечение атрибутов (стили/категории/размеры/гео) + **city и год основания** (→ `brand.city`/`foundingYear`) из корпуса. `--fields-only` — только city/год (backfill без churn атрибутов). | 🔁 фон |
 | `app:brand:keywords` | Wordstat-ключевики → `brand_keyword` (заранее, для генерации). **Квота 100/час** — сам встаёт на паузу; НЕ шардить (квота общая). | 🔁 долгий процесс в окне |
 | `app:brand:generate-content` | Генерация описания + SEO-meta (RAG-grounded если корпус прошёл gate, иначе legacy). `--grounded-only` → бренд в `deferred` вместо воды. Статус → `done`. | 🔁 фон (GPU-стадия) |
 | `app:brand:faq` | SEO: FAQ из Wordstat-фраз, grounded-ответы 27b → `brand_faq` + FAQPage JSON-LD. Без ключевиков → `skipped`. | 🔁 фон |

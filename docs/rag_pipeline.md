@@ -78,7 +78,7 @@ status=done | deferred | review
 | Константа | Значение | Кто ставит | Смысл |
 |---|---|---|---|
 | `STATUS_PENDING` | `pending` | (default) / requeue | Новая строка, ещё не скрейплена |
-| `STATUS_SCRAPED` | `scraped` | `fetch` (finalize, когда очередь дренирована) | Корпус собран (даже 0 документов) |
+| `STATUS_SCRAPED` | `scraped` | `fetch` (finalize, когда очередь дренирована) | Корпус собран (≥1 документ; **0 документов → `dead`**) |
 | `STATUS_EMBEDDED` | `embedded` | `embed` | Чанки залиты в Qdrant |
 | `STATUS_GENERATED` | `generated` | — (зарезервирован; код пишет сразу `done`) | — |
 | `STATUS_DONE` | `done` | `generate-content` | Description + meta сгенерированы |
@@ -87,6 +87,7 @@ status=done | deferred | review
 | `STATUS_GENERATE_FAILED` | `generate_failed` | — | (зарезервирован) |
 | `STATUS_DEFERRED` | `deferred` | `generate-content --grounded-only` | Корпус не прошёл gate → ждём дозревания |
 | `STATUS_REVIEW` | `review` | `generate-content` (refusal) | Модель отказала (факты не о бренде) → ручная верификация, **не публикуем** |
+| `STATUS_DEAD` | `dead` | `fetch` (finalize, 0 корпуса) / `app:brand:rediscover` | Корпус невозможен (все источники мертвы/skipped). Терминал, исключён из всех стадий; реверсивно (reset в pending при возврате discover) |
 
 > `STATUS_GENERATED`, `STATUS_SCRAPE_FAILED`, `STATUS_GENERATE_FAILED` объявлены, но в текущем
 > коде магистрали не выставляются (генерация пишет сразу `done`; сбои скрейпа живут на уровне
