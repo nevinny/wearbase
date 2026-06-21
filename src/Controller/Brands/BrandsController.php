@@ -439,7 +439,7 @@ class BrandsController extends AbstractController
     }
 
     #[Route('/{_locale}/cities/{slug}', name: 'brand_city', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
-    public function cityShow(string $slug, BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger): Response
+    public function cityShow(string $slug, BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger, \App\Repository\CityHubRepository $cityHubRepo): Response
     {
         $allCities = $repo->createQueryBuilder('b')
             ->select('DISTINCT b.city')
@@ -468,6 +468,8 @@ class BrandsController extends AbstractController
             'city' => $city,
             'slug' => $slug,
             'brands' => $brands,
+            // Кураторский SEO-контент (Москва-плацдарм и т.п.); null → формульная мета
+            'hub' => $cityHubRepo->findActiveBySlug($slug),
             'locale' => $request->getLocale(),
         ]);
     }

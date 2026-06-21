@@ -43,8 +43,20 @@ class WebScraperService
      */
     public function fetchCleanText(string $url, bool $keepTables = false): ?string
     {
+        return $this->fetchCleanTextWithStatus($url, $keepTables)['text'];
+    }
+
+    /**
+     * URL → {text, httpStatus} для диагностики пустых фетчей (бан 403/429 vs мёртвый 404 vs JS-пусто 200).
+     * httpStatus: 200 при успешном trafilatura-извлечении (код не наблюдаем, но контент получен);
+     * реальный код при HTTP-fallback (вкл. ≥400); null если недоступен (DNS/timeout/не-HTML/исключён).
+     *
+     * @return array{text: ?string, httpStatus: ?int}
+     */
+    public function fetchCleanTextWithStatus(string $url, bool $keepTables = false): array
+    {
         if ($this->urlFilter->isExcluded($url)) {
-            return null;
+            return ['text' => null, 'httpStatus' => null];
         }
 
         $url = self::normalizeTelegramUrl($url);
@@ -52,18 +64,18 @@ class WebScraperService
         if ($this->trafilaturaAvailable()) {
             $extracted = $this->runTrafilatura($url, $keepTables);
             if ($extracted !== null && trim($extracted) !== '') {
-                return $this->normalizeText($extracted);
+                return ['text' => $this->normalizeText($extracted), 'httpStatus' => 200];
             }
-            // пусто/ошибка — падаем на HTTP+DomCrawler
+            // пусто/ошибка — падаем на HTTP+DomCrawler (заодно фиксируем http-код)
         }
 
         $page = $this->fetch($url);
         if ($page === null) {
-            return null;
+            return ['text' => null, 'httpStatus' => null];
         }
         $text = $this->clean($page['html'], $keepTables);
 
-        return $text !== '' ? $text : null;
+        return ['text' => $text !== '' ? $text : null, 'httpStatus' => $page['httpStatus']];
     }
 
     /**

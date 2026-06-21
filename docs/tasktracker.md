@@ -875,6 +875,118 @@ enemy/культурный контент отрабатывает индекс�
 
 ---
 
+## 2026-06-20 — Диагностика пустых фетчей + reset мусорных источников в discover
+
+Разбор «deferred ветка / source_count=0» (2366 брендов): URL помечены `fetched`, но
+документов ~0 → корпуса нет → вечный deferred (очередь deferred не перебирает).
+
+**Корень (не бан):** триаж 188/188 URL → http_status **NULL** (недоступны/DNS). Это
+**мусорные/галлюцинированные домены** (NXDOMAIN: `ti.lr`, `bo.aw`, `wowahwul.hr`…) —
+наследие инцидента SearXNG-CAPTCHA 2026-06-04..08, когда вспомогательный SearXNG отдавал
+мусор. Re-fetch не спасает (домены мёртвые). Yandex уже первичный (`BrandSourceFinder`).
+
+**Сделано:**
+- [x] `brand_source_url.http_status` + `WebScraperService::fetchCleanTextWithStatus()` —
+      фиксируем http-код фетча (триаж: 403/429 бан · 404 мёртв · 200 JS-пусто · null недоступен).
+- [x] `fetch`: недоступный/мёртвый URL (null или ≥400) → **SKIPPED** (не FETCHED): в embed не
+      попадёт (документа нет), fetch/crawl больше не берут (только pending), discover не дублирует
+      (дедуп `findOneByBrandUrlHash` статус-агностичен → skipped остаётся, не реактивируется).
+- [x] `app:brand:rediscover` (--id / батч deferred+source_count=0): мусорные URL → **skipped**
+      (НЕ удаляем — soft, остаются для дедупа) + сброс pipeline в pre-discover (discovered_at=NULL,
+      status=pending) → discover (Yandex) переоткрывает начисто. ⚠️ новую команду до `--no-debug`
+      нужен `cache:clear` (no-debug контейнер кэширует список команд).
+- [x] Прогон по бэклогу: **2353 бренда → очередь discover**, 5426 мусорных URL → skipped.
+
+**Открыто / next:**
+- [ ] Запустить discover-демон (Yandex) по 2353 переоткрытым → fetch→embed→generate. ⚠️ объём
+      Yandex-запросов; демон с caps. Часть брендов получит реальный корпус, часть — честно тонкие.
+- [ ] `app:brand:wb-enrich` (ингест товаров с Wildberries → корпус→embed→grounded) — отдельный
+      рычаг для брендов с мёртвым own-site, но присутствием на ВБ (discover находит wildberries/ozon).
+      Не в дефолтном цикле демона; запускать по `wb_status IS NULL` (active/new).
+
+---
+
+## 2026-06-20 — Конвейер: город + год основания в фактоид (кейс Bevza)
+
+Кейс Bevza (627): украинский бренд, в БД city=«Москва», на проде 404, нет года/города/сегмента.
+Разбор вскрыл несколько пробелов, не один баг.
+
+**Диагноз:**
+- Прод 404 — бренд доставлен, но `--publish` не довёл до active (остался new). Поэтому «пусто».
+- `brand.city` ставился только импортом/ingest; RAG/extract писал geo в `brand_attribute`, но
+  **не заполнял first-class `brand.city`/`brand.foundingYear`** → город застрял на импортном «Москва».
+- **Год основания не реализован**: `setFoundingYear` не вызывался нигде (0/439), extract не извлекал,
+  ассемблер не пушил. tasktracker:812 «фактоид — не сделано». Документированный, но невыполненный пункт.
+- price_segment — извлекался и пушился, невидим только из-за 404.
+- Корень для Bevza: crawl пропустил `/pages/about` (нет в sitemap) → факты (Киев, 2006) не в корпусе.
+
+**Сделано (системно):**
+- [x] `LlmService::extractBrandAttributes` извлекает `city` (город, не страна) + `founding_year` (4 цифры, grounded).
+- [x] `ExtractBrandAttributesCommand` пишет `brand.city`/`brand.foundingYear`. City — **только если пуст**
+      (LLM даёт разнобой «москва»/«московский» → перезапись фрагментировала бы city-хабы); год — всегда.
+- [x] `BrandPayloadAssembler` + `BrandIngestService` — `foundingYear` в payload и приёме на проде.
+- [x] Admin add-source форма (`RagDashboardController`): добавлены `own_page`/`product_sample`
+      в выбор типа + `$allowed` + `tierForType` (tier 1). Раньше нельзя было вручную добавить own_page.
+- [x] Bevza: about-страница затащена в корпус → extract дал **Киев · 2006**; city=Киев (вручную, факт),
+      опубликован. Прод 200, фактоид «Основан в 2006 · Киев», JSON-LD foundingDate, geo/сегмент видны.
+
+**Бэкфилл (сделано 2026-06-20):**
+- [x] Новый флаг `app:brand:extract --fields-only` — backfill только `brand.city`/`foundingYear`,
+      атрибуты не трогает (без `--force`-churn'а/дублей). ⚠️ batch-селектор `findForExtract` берёт только
+      `attributesStatus IS NULL` → уже-обработанных не перебирает даже с `--force`; backfill — через `--id`-итерацию.
+- [x] Прогон по 317 активным брендам с корпусом: **active с годом 0 → 82** (грунтовано, 1991–2021);
+      пустые города заполнены. Доставлено на прод (done — обычный push; active+deferred/review — `push --id --force`).
+      Проверено: foundingDate в JSON-LD + фактоид на проде.
+
+**Открыто / next:**
+- [ ] Бэкфилл остального каталога (new+done 2997 — не на проде, ценность ниже): `extract --id --fields-only` пачками.
+- [ ] Не-РФ бренды (~20: 9 italia и т.д.) с неверным city — точечная курация (geo даёт страну, не город).
+- [ ] crawl пропускает страницы вне sitemap (about) — рассмотреть добавление /about,/pages/about в кандидаты.
+
+---
+
+## 2026-06-19 — Плацдарм Москва: кураторский SEO-контент городских хабов (`CityHub`)
+
+Big-player roadmap §#2 (выбор плацдарма): плацдарм = **Москва** (144 активных бренда — крупнейший
+город каталога). Чтобы городской хаб мог быть уникальной топ-3-страницей, а не формульным дублем,
+добавлен слот под кураторский контент.
+
+**Что важно (опасение «перезатирания head-меты» снято):** `city.html.twig`/`style.html.twig` —
+уже отдельные шаблоны со своими Twig-блоками `title`/`meta_description`/`og_*`; brand-мета живёт
+в `brand/show.html.twig`. Общего head-блока нет → ничего не «течёт». Реальный пробел был в модели:
+`brand.city` — строка (не FK к `City`, та для адресов), хранить SEO-контент города негде.
+
+**Сделано (путь «расширить сущности», не новый шаблон):**
+- [x] Сущность `CityHub` (`city_hub`): `slug` (unique) + `title`/`h1`/`metaTitle`/`metaDescription`/
+      `intro` (HTML) + `isActive` + `Created`. Decoupled от `brand.city` и `City`; ключ — slug из
+      `CitySlugger`. Миграция `Version20260619_city_hub` (CREATE TABLE IF NOT EXISTS + INSERT IGNORE).
+- [x] `cityShow` грузит `CityHubRepository::findActiveBySlug`; `city.html.twig` использует кураторские
+      поля при наличии, иначе **прежняя формула** (проверено: `moskva` → кураторская мета/intro,
+      `sankt-peterburg` → формула «58 марок»).
+- [x] Засев Москвы (slug `moskva`): уникальные h1/meta/intro без фейк-цифр.
+- [x] EasyAdmin `CityHubCrudController` (раздел «Контент») — контент городов редактируем, масштабируется
+      на регионы. Стили (`BrandStyle` уже c `description`) — meta-поля добавим при выборе стиля-плацдарма.
+
+**Покрытие Москвы (база 2026-06-19, 232 бренда):** done 127 (55%) · deferred 102 · review 3.
+Из deferred: 45 own_site+sources (🟢 рескью), 9 sources-only, 48 без сайта/источников (🔴 тонкие).
+
+**Сделано:**
+- [x] Опубликован пул из **59 готовых (done+new)** через `app:brand:push --id=<59> --publish`
+      (минуя дрип, осознанная концентрация плацдарма). Прод Москва **144→201 active**, 0 ошибок,
+      IndexNow по каждому. Спот-чек прод-URL → 200.
+- [x] Приоритет 102 deferred поднят до ≥50 (`brand_rag_pipeline.priority`) → демон берёт их первыми.
+
+**Открыто / next по плацдарму:**
+- [x] Задеплоено на прод (rsync + миграция `city_hub` + cache:clear). Смоук: `/ru/cities/moskva`
+      отдаёт кураторский title/intro, `/ru/styles` 200, fallback СПб цел. ⚠️ rsync: `--exclude '.env.local*'`
+      (канонический `--exclude .env.local` НЕ ловит `.env.local.bak-*` → утечка локального env на прод).
+- [ ] §#2 рескью 102 deferred: `app:rag:daemon --no-debug` (discover→fetch→embed→generate, priority выставлен).
+      Реалистичный потолок ~+50 → done ≈175–180; ~48 «мёртвых» без онлайн-присутствия исключить из знаменателя.
+- [ ] §#3 топ-3 по «бренды одежды Москва» — после индексации (GSC).
+- [ ] Засеять следующие города (СПб 58 / НН 13) тем же CityHub.
+
+---
+
 ## 2026-06-19 — Публичные хабы стилей + веб-админ-доступ
 
 Продолжение каноникализации стилей (`brand_attribute → brand_style`, M2M, коммит `7b860c8`):

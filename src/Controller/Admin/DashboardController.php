@@ -11,6 +11,7 @@ use App\Entity\BrandSize;
 use App\Entity\BrandStyle;
 use App\Entity\BrandTier;
 use App\Entity\City;
+use App\Entity\CityHub;
 use App\Entity\Country;
 use App\Entity\Currency;
 use App\Entity\ExchangeRate;
@@ -76,6 +77,7 @@ class DashboardController extends AbstractDashboardController
 
         yield MenuItem::section('Контент');
         yield MenuItem::linkToCrud('Статьи блога', 'fas fa-newspaper', Article::class);
+        yield MenuItem::linkToCrud('SEO города (хабы)', 'fas fa-city', CityHub::class);
 
         yield MenuItem::section('Dictionaries');
         yield MenuItem::linkToCrud('Размеры', 'fas fa-list', BrandSize::class);

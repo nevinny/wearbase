@@ -129,7 +129,9 @@ class PipelineQueueRepository
             ->where('p.sourceCount > 0')
             ->andWhere('p.attributesStatus IS NULL')
             ->andWhere('p.status IN (:done)')
-            ->setParameter('done', [BrandRagPipeline::STATUS_SCRAPED, BrandRagPipeline::STATUS_EMBEDDED, BrandRagPipeline::STATUS_DONE]);
+            // deferred включён: атрибуты/city/год грунтуются независимо от гейта описания
+            // (generate отправляет в deferred ДО extract → иначе deferred-бренды без атрибутов).
+            ->setParameter('done', [BrandRagPipeline::STATUS_SCRAPED, BrandRagPipeline::STATUS_EMBEDDED, BrandRagPipeline::STATUS_DONE, BrandRagPipeline::STATUS_DEFERRED]);
 
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }

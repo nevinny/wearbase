@@ -30,6 +30,9 @@ class BrandRagPipeline
     public const STATUS_DEFERRED        = 'deferred';
     /** Контент — отказ модели (нет/чужой корпус): на ручную верификацию в админке, НЕ публикуем. */
     public const STATUS_REVIEW          = 'review';
+    /** Мёртвый бренд: discover отработал, но корпус невозможен (все URL мёртвы/skipped, 0 доков).
+     *  Терминальный, исключён из всех стадий. Реверсивно: reset в pending при возврате discover. */
+    public const STATUS_DEAD            = 'dead';
 
     public const KW_FOUND     = 'found';
     public const KW_NOT_FOUND = 'not_found';

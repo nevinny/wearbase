@@ -3,6 +3,7 @@
 namespace App\Service\Social;
 
 use App\Entity\SocialPost;
+use App\Service\LlmService;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -31,6 +32,7 @@ class MediaRenderer
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly LoggerInterface $logger,
+        private readonly LlmService $llm,
         private readonly string $projectDir,
         private readonly string $geminiApiKey = '',
         private readonly string $cfAccountId = '',
@@ -40,7 +42,13 @@ class MediaRenderer
 
     public function render(SocialPost $post): ?string
     {
-        $bytes = $this->generate($this->prompt($post));
+        // Адаптивный промпт из текста поста (LLM на .119); при неудаче — статический per-rubric.
+        $imagePrompt = $this->buildPrompt($post);
+        $post->setImagePrompt($imagePrompt); // промежуточный результат → в запись (flush в generate-команде)
+
+        // Случайный seed на каждую генерацию — иначе Pollinations (детерминирован по промпту)
+        // и кеши отдают ОДНУ И ТУ ЖЕ картинку. С seed каждый пост — уникальный визуал.
+        $bytes = $this->generate($imagePrompt, random_int(1, 2_000_000_000));
         if ($bytes !== null) {
             $saved = $this->save($post, $bytes);
             if ($saved !== null) {
@@ -58,13 +66,35 @@ class MediaRenderer
         return null; // текст-пост (TG/VK ок; IG уйдёт в held)
     }
 
+    /** Адаптивный промпт из caption через LLM; при пустом тексте/ошибке — статический per-rubric. */
+    private function buildPrompt(SocialPost $post): string
+    {
+        $caption = $post->getCaption();
+        if ($caption !== null && trim($caption) !== '') {
+            $adaptive = $this->llm->imagePromptFromCaption($caption, $post->getRubric());
+            if ($adaptive !== null) {
+                return $adaptive . '. No text, no letters, no logo, no watermark.';
+            }
+        }
+
+        return $this->prompt($post);
+    }
+
     private function prompt(SocialPost $post): string
     {
         $base = self::PROMPTS[$post->getRubric()] ?? 'minimalist editorial fashion photography, independent clothing brand, muted tones';
 
+        // Релевантность брендовому посту: город + стиль бренда (slug латиницей: streetwear/minimalizm…),
+        // чтобы визуал отражал конкретный бренд, а не только рубрику.
         $brand = $post->getBrand();
-        if ($brand !== null && $brand->getCity()) {
-            $base .= ', vibe of ' . $brand->getCity();
+        if ($brand !== null) {
+            if ($brand->getCity()) {
+                $base .= ', vibe of ' . $brand->getCity();
+            }
+            $style = $brand->getStyles()->first();
+            if ($style !== false && $style->getSlug()) {
+                $base .= ', ' . str_replace('-', ' ', $style->getSlug()) . ' style';
+            }
         }
 
         return $base . '. No text, no letters, no logo, no watermark.';
@@ -74,26 +104,26 @@ class MediaRenderer
      * Bytes картинки или null. Цепочка с фолбэком: Gemini (платный, если ключ) →
      * Cloudflare Flux (free, если креды) → Pollinations (free, без ключа). Первый успех выигрывает.
      */
-    private function generate(string $prompt): ?string
+    private function generate(string $prompt, int $seed): ?string
     {
         if (trim($this->geminiApiKey) !== '') {
-            $bytes = $this->tryGemini($prompt);
+            $bytes = $this->tryGemini($prompt); // Gemini рандомит сам, seed не нужен
             if ($bytes !== null) {
                 return $bytes;
             }
         }
 
         if (trim($this->cfAccountId) !== '' && trim($this->cfApiToken) !== '') {
-            $bytes = $this->tryCloudflare($prompt);
+            $bytes = $this->tryCloudflare($prompt, $seed);
             if ($bytes !== null) {
                 return $bytes;
             }
         }
 
-        return $this->tryPollinations($prompt);
+        return $this->tryPollinations($prompt, $seed);
     }
 
-    private function tryCloudflare(string $prompt): ?string
+    private function tryCloudflare(string $prompt, int $seed): ?string
     {
         try {
             $url = sprintf(
@@ -102,7 +132,7 @@ class MediaRenderer
             );
             $resp = $this->httpClient->request('POST', $url, [
                 'headers' => ['Authorization' => 'Bearer ' . $this->cfApiToken],
-                'json'    => ['prompt' => $prompt, 'steps' => 8],
+                'json'    => ['prompt' => $prompt, 'steps' => 8, 'seed' => $seed],
                 'timeout' => 90,
             ]);
             if ($resp->getStatusCode() !== 200) {
@@ -124,11 +154,11 @@ class MediaRenderer
         }
     }
 
-    private function tryPollinations(string $prompt): ?string
+    private function tryPollinations(string $prompt, int $seed): ?string
     {
         try {
             $url = 'https://image.pollinations.ai/prompt/' . rawurlencode($prompt)
-                . '?width=1024&height=1024&nologo=true&model=flux';
+                . '?width=1024&height=1024&nologo=true&model=flux&seed=' . $seed;
             $resp = $this->httpClient->request('GET', $url, ['timeout' => 90]);
             if ($resp->getStatusCode() !== 200) {
                 return null;

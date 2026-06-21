@@ -67,6 +67,16 @@
         <span>обновление каждые 3с · число в боксе = сколько брендов в ОЧЕРЕДИ ждёт этот этап · точка = бренд переходит дальше</span>
         <span id="flow-upd" style="margin-left:auto;"></span>
     </div>
+    <style>
+        .procs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 4px;font-size:12px}
+        .procs-n{font-weight:700;background:#16321f;color:#7dffb0;padding:3px 9px;border-radius:6px}
+        .procs-off{font-weight:700;background:#3a1620;color:#ff8aa0;padding:3px 9px;border-radius:6px}
+        .proc{padding:3px 8px;border-radius:6px;background:#1c2333;color:#cfe;border:1px solid #2b364d}
+        .proc.s{background:#241c33;color:#e7d6ff;border-color:#3a2b4d}
+        .proc b{color:#ffd479}.proc i{opacity:.5;font-style:normal}
+        .substack{font-size:11px;color:#7da6ff;opacity:.8;margin-top:-2px}
+    </style>
+    <div class="procs" id="procs"><span class="procs-off">процессы: загрузка…</span></div>
     <div class="conveyor" id="conveyor"></div>
     <div class="ticker"><h3>последние переходы брендов</h3><div id="ticks"></div></div>
 </div>
@@ -79,13 +89,13 @@
     const conveyor = document.getElementById('conveyor');
     const ticks = document.getElementById('ticks');
     const REVIEW_URL = root.dataset.reviewUrl;
-    const ICON = {discover:'🔍', crawl:'🕸️', fetch:'⬇️', embed:'🧬', generate:'✍️', deferred:'⏸️', review:'⚠️', enrich:'📇', faq:'❓', extract:'📐', logo:'🏷️', keywords:'🔑', push:'🚀'};
+    const ICON = {discover:'🔍', crawl:'🕸️', fetch:'⬇️', embed:'🧬', generate:'✍️', deferred:'⏸️', review:'⚠️', dead:'☠️', enrich:'📇', faq:'❓', extract:'📐', logo:'🏷️', keywords:'🔑', push:'🚀'};
     const LANES = [
         {key:'net', title:'🖥 Mac · сеть',          sub:'net-демон · discover → crawl → fetch · logo · push  (keywords — отд. демон)'},
         {key:'gpu', title:'🧠 LLM-сервер .119 · GPU', sub:'gpu-демон · embed → generate · enrich · faq · extract'},
     ];
     // подпись под числом-очередью (что именно ждут)
-    const CAP = {push:'ждут отправки', deferred:'ждут дозревания корпуса', review:'на ручную верификацию', keywords:'ждут опроса Wordstat'};
+    const CAP = {push:'ждут отправки', deferred:'ждут дозревания корпуса', review:'на ручную верификацию', dead:'мёртвые — нет корпуса', keywords:'ждут опроса Wordstat'};
 
     let initial = {{ data|json_encode|raw }};
     const seen = new Set();
@@ -110,6 +120,7 @@
             <div class="name">${s.label}${tag}</div>
             <div class="pile">${pile(s.stack)}</div>
             <div class="stack" id="stk-${s.key}">${numHtml(s)}</div>
+            ${s.sub != null ? `<div class="substack" id="sub-${s.key}">${(+s.sub.n).toLocaleString('ru')} ${s.sub.u}</div>` : ''}
             <div class="qcap">${CAP[s.key] || 'в очереди'}</div>
         </div>`;
     }
@@ -120,7 +131,7 @@
             const inLane = r => stages.filter(s => s.lane === L.key && s.role === r);
             const mains = inLane('main'), outs = inLane('outcome'), sides = inLane('side');
             let html = mains.map((s, i) => (i ? '<div class="arrow">▸</div>' : '') + stageBox(s)).join('');
-            if (outs.length)  html += '<div class="sidesep">ветки generate</div>' + outs.map(stageBox).join('');
+            if (outs.length)  html += '<div class="sidesep">исходы</div>' + outs.map(stageBox).join('');
             if (sides.length) html += '<div class="sidesep">побочные</div>'      + sides.map(stageBox).join('');
             return `<div class="lane lane-${L.key}">
                 <div class="lane-head"><b>${L.title}</b><span>${L.sub}</span></div>
@@ -138,6 +149,10 @@
             if (el.textContent.trim() !== n) {
                 el.innerHTML = numHtml(s);
                 el.classList.add('bump'); setTimeout(() => el.classList.remove('bump'), 400);
+            }
+            if (s.sub != null) {
+                const sub = document.getElementById('sub-' + s.key);
+                if (sub) sub.textContent = (+s.sub.n).toLocaleString('ru') + ' ' + s.sub.u;
             }
         });
     }
@@ -186,10 +201,21 @@
         while (ticks.children.length > 60) ticks.lastChild.remove();
     }
 
+    function renderProcs(p) {
+        const el = document.getElementById('procs');
+        if (!el || !p) return;
+        if (!p.count) { el.innerHTML = '<span class="procs-off">⛔ процессы не запущены (0)</span>'; return; }
+        const dz = (p.daemons || []).map(d =>
+            `<span class="proc d">⚙ ${d.stages}${d.total > 1 ? ` <b>${d.shard}/${d.total}</b>` : ''} <i>#${d.pid}</i></span>`).join('');
+        const sz = (p.stages || []).map(s => `<span class="proc s">▶ ${s.name} <i>#${s.pid}</i></span>`).join('');
+        el.innerHTML = `<span class="procs-n">⚙ процессов: ${p.count}</span>` + dz + sz;
+    }
+
     function paint(data, animate) {
         if (document.getElementById('st-' + data.stages[0].key)) updateStacks(data.stages);
         else renderLanes(data.stages);
         ingest(data.recent, animate);
+        renderProcs(data.processes);
         document.getElementById('flow-upd').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru');
     }
 

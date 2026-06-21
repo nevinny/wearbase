@@ -62,9 +62,10 @@ class BrandIngestService
 
             // Скалярные поля — только присланные (не затираем не-присланное null'ами).
             foreach ([
-                'city'        => 'setCity',
-                'description' => 'setDescription',
-                'anons'       => 'setAnons',
+                'city'         => 'setCity',
+                'foundingYear' => 'setFoundingYear',
+                'description'  => 'setDescription',
+                'anons'        => 'setAnons',
             ] as $key => $setter) {
                 if (array_key_exists($key, $payload)) {
                     $brand->{$setter}($payload[$key] !== null ? (string) $payload[$key] : null);

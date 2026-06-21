@@ -76,6 +76,10 @@ class BrandSourceUrl
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $lastError = null;
 
+    /** HTTP-код последнего фетча (для триажа пустых: 403/429 бан, 404 мёртв, 200 JS-пусто, null недоступен). */
+    #[ORM\Column(type: 'smallint', nullable: true, options: ['unsigned' => true])]
+    private ?int $httpStatus = null;
+
     #[ORM\Column(type: 'datetime', options: ['default' => 'CURRENT_TIMESTAMP'])]
     private ?\DateTimeInterface $discoveredAt = null;
 
@@ -204,6 +208,17 @@ class BrandSourceUrl
     public function setLastError(?string $error): self
     {
         $this->lastError = $error;
+        return $this;
+    }
+
+    public function getHttpStatus(): ?int
+    {
+        return $this->httpStatus;
+    }
+
+    public function setHttpStatus(?int $httpStatus): self
+    {
+        $this->httpStatus = $httpStatus;
         return $this;
     }
 

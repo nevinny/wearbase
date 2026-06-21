@@ -534,14 +534,18 @@ EOT;
   "sizes": ["XS","S","M","L","XL"] или ["42","44","46"] или ["one size"],
   "materials": ["хлопок","вискоза"],
   "price_segment": "масс-маркет|средний|премиум|люкс|null",
-  "geo": "город/регион производства или null"
+  "geo": "страна/регион производства или null",
+  "city": "город, где базируется бренд (именно ГОРОД, не страна), или null",
+  "founding_year": "год основания бренда, 4 цифры (напр. 2015), или null"
 }
 
 Правила:
 - Поля, которых НЕТ в тексте → пустой массив [] или null. Не придумывай.
 - categories — типы товаров, которые бренд реально продаёт (из каталога/ассортимента).
 - sizes — размерный ряд из размерной сетки/карточек (буквенный ИЛИ числовой, как на сайте).
-- Значения короткие, в нижнем регистре (кроме размеров).
+- city — именно город базирования бренда (Москва, Киев, Милан…), НЕ страна и НЕ регион.
+- founding_year — только если год явно указан в тексте; 4 цифры, иначе null. Не угадывай.
+- Значения короткие, в нижнем регистре (кроме размеров и года).
 EOT;
 
         $response = $this->generate($prompt, local: true, think: false, timeout: 180);
@@ -554,6 +558,11 @@ EOT;
             $v = is_string($v) ? trim($v) : '';
             return ($v === '' || strtolower($v) === 'null') ? null : mb_substr($v, 0, 100);
         };
+        // Год основания — только правдоподобный 4-значный год (1800–2029), иначе null (анти-галлюцинация).
+        $year = static function ($v): ?string {
+            $v = (is_string($v) || is_int($v)) ? trim((string) $v) : '';
+            return preg_match('/^(1[89]\d{2}|20[0-2]\d)$/', $v) ? $v : null;
+        };
 
         return [
             'styles'        => array_slice($arr($d['styles'] ?? null), 0, 10),
@@ -563,7 +572,44 @@ EOT;
             'materials'     => array_slice($arr($d['materials'] ?? null), 0, 15),
             'price_segment' => $str($d['price_segment'] ?? null),
             'geo'           => $str($d['geo'] ?? null),
+            'city'          => $str($d['city'] ?? null),
+            'founding_year' => $year($d['founding_year'] ?? null),
         ];
+    }
+
+    /**
+     * Адаптивный промпт для генератора изображений из текста поста (caption).
+     * Локальная модель (.119) переводит смысл поста в англоязычный визуальный промпт.
+     * null при пустом тексте/ошибке/мусоре → вызывающий падает на статический промпт.
+     */
+    public function imagePromptFromCaption(string $caption, string $rubric = ''): ?string
+    {
+        $caption = mb_substr(trim($caption), 0, 1200);
+        if ($caption === '') {
+            return null;
+        }
+
+        $prompt = <<<EOT
+По тексту поста соцсети российского бренда одежды придумай ОДИН промпт для генератора изображений (Flux).
+Требования: на АНГЛИЙСКОМ, одной строкой, 15–30 слов; эстетичная фотореалистичная редакторская сцена,
+отражающая смысл поста; muted tones, natural light; БЕЗ текста, букв, логотипов, водяных знаков, без лиц крупным планом.
+Выведи ТОЛЬКО промпт, без кавычек и пояснений.
+
+Текст поста:
+{$caption}
+EOT;
+
+        try {
+            $resp = $this->generate($prompt, local: true, think: false, timeout: 60);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        // Одна строка, без markdown/кавычек.
+        $line = trim((string) preg_replace('/\s+/', ' ', strip_tags($resp)));
+        $line = trim($line, "\"'`* ");
+
+        return ($line !== '' && mb_strlen($line) >= 10) ? mb_substr($line, 0, 500) : null;
     }
 
     private function extractJson(string $response): ?array

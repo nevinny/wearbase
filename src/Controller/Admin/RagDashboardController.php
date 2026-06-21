@@ -161,12 +161,15 @@ class RagDashboardController extends AbstractController
                 "SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
                  WHERE b.status IN ('active','new') AND p.discovered_at IS NOT NULL AND p.crawl_status IS NULL"
             )],
-            ['key' => 'fetch', 'label' => 'fetch', 'lane' => 'net', 'role' => 'main', 'next' => 'embed', 'stack' => $one(
-                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='pending'"
-            )],
-            ['key' => 'embed', 'label' => 'embed', 'lane' => 'gpu', 'role' => 'main', 'next' => 'generate', 'stack' => $one(
-                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='scraped'"
-            )],
+            ['key' => 'fetch', 'label' => 'fetch', 'lane' => 'net', 'role' => 'main', 'next' => 'embed',
+                // Реальная очередь fetch = бренды С pending-URL (а не все pipeline=pending: те
+                // включают застрявших без URL — ждут финализации/ре-дискавера, не работа fetch).
+                'stack' => $one("SELECT COUNT(DISTINCT brand_id) FROM brand_source_url WHERE status='pending'"),
+                'sub'   => ['n' => $one("SELECT COUNT(*) FROM brand_source_url WHERE status='pending'"), 'u' => 'URL']],
+            ['key' => 'embed', 'label' => 'embed', 'lane' => 'gpu', 'role' => 'main', 'next' => 'generate',
+                'stack' => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='scraped'"),
+                // Второе число — реальная работа embed: документы scraped-брендов (по ним и идёт эмбед).
+                'sub'   => ['n' => $one("SELECT COUNT(*) FROM brand_source_document d JOIN brand_rag_pipeline p ON p.brand_id=d.brand_id WHERE d.embedded=0 AND d.deleted_at IS NULL AND p.status='scraped'"), 'u' => 'док']],
             ['key' => 'generate', 'label' => 'generate', 'lane' => 'gpu', 'role' => 'main', 'next' => 'push', 'stack' => $one(
                 "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='embedded'"
             )],
@@ -176,6 +179,10 @@ class RagDashboardController extends AbstractController
             )],
             ['key' => 'review', 'label' => 'review', 'lane' => 'gpu', 'role' => 'outcome', 'next' => null, 'stack' => $one(
                 "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='review'"
+            )],
+            // Мёртвые: discover отработал, корпус собрать невозможно (источники мертвы/skipped). Терминал.
+            ['key' => 'dead', 'label' => 'dead', 'lane' => 'net', 'role' => 'outcome', 'next' => null, 'stack' => $one(
+                "SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='dead'"
             )],
             ['key' => 'enrich', 'label' => 'enrich', 'lane' => 'gpu', 'role' => 'side', 'next' => null, 'stack' => $one(
                 "SELECT COUNT(*) FROM brand WHERE status IN ('active','new') AND contact_enriched_at IS NULL"
@@ -224,7 +231,43 @@ class RagDashboardController extends AbstractController
             LIMIT 40
             SQL);
 
-        return ['stages' => $stages, 'recent' => $recent];
+        return ['stages' => $stages, 'recent' => $recent, 'processes' => $this->runningProcesses()];
+    }
+
+    /**
+     * Живые процессы конвейера на этом хосте (Mac): демоны app:rag:daemon (с разбором
+     * stages/shard/total) + активные дочерние стадии app:brand:*. Для индикатора «крутится/нет»
+     * и счётчика на /admin/rag/flow. На проде вернёт пусто (RAG-демоны живут на Mac).
+     *
+     * @return array{count:int, daemons:list<array{pid:int,stages:string,shard:int,total:int}>, stages:list<array{pid:int,name:string}>}
+     */
+    private function runningProcesses(): array
+    {
+        $out = (string) @shell_exec("pgrep -fl 'app:rag:daemon|app:brand:' 2>/dev/null");
+        $daemons = [];
+        $stages = [];
+        foreach (explode("\n", trim($out)) as $line) {
+            if ($line === '' || !preg_match('/^(\d+)\s+(.*)$/', $line, $m)) {
+                continue;
+            }
+            $pid = (int) $m[1];
+            $cmd = $m[2];
+            if (str_contains($cmd, 'app:rag:autoscale') || str_contains($cmd, 'pgrep')) {
+                continue; // контроллер/сам pgrep — не воркеры
+            }
+            if (str_contains($cmd, 'app:rag:daemon')) {
+                $daemons[] = [
+                    'pid'    => $pid,
+                    'stages' => preg_match('/--stages=(\S+)/', $cmd, $s) === 1 ? $s[1] : '?',
+                    'shard'  => preg_match('/--shard=(\d+)/', $cmd, $x) === 1 ? (int) $x[1] : 0,
+                    'total'  => preg_match('/--total=(\d+)/', $cmd, $t) === 1 ? (int) $t[1] : 1,
+                ];
+            } elseif (preg_match('/app:brand:(\S+)/', $cmd, $b) === 1) {
+                $stages[] = ['pid' => $pid, 'name' => $b[1]];
+            }
+        }
+
+        return ['count' => count($daemons) + count($stages), 'daemons' => $daemons, 'stages' => $stages];
     }
 
     /**
@@ -363,7 +406,8 @@ class RagDashboardController extends AbstractController
             'docs'       => $docs,
             'chunkCount' => $chunkCount,
             'urlTypes'   => [
-                BrandSourceUrl::TYPE_OWN_SITE, BrandSourceUrl::TYPE_MARKETPLACE,
+                BrandSourceUrl::TYPE_OWN_SITE, BrandSourceUrl::TYPE_OWN_PAGE,
+                BrandSourceUrl::TYPE_PRODUCT_SAMPLE, BrandSourceUrl::TYPE_MARKETPLACE,
                 BrandSourceUrl::TYPE_CATALOG, BrandSourceUrl::TYPE_ARTICLE_REVIEW,
                 BrandSourceUrl::TYPE_SOCIAL, BrandSourceUrl::TYPE_MENTION,
             ],
@@ -437,7 +481,8 @@ class RagDashboardController extends AbstractController
         }
 
         $allowed = [
-            BrandSourceUrl::TYPE_OWN_SITE, BrandSourceUrl::TYPE_MARKETPLACE,
+            BrandSourceUrl::TYPE_OWN_SITE, BrandSourceUrl::TYPE_OWN_PAGE,
+            BrandSourceUrl::TYPE_PRODUCT_SAMPLE, BrandSourceUrl::TYPE_MARKETPLACE,
             BrandSourceUrl::TYPE_CATALOG, BrandSourceUrl::TYPE_ARTICLE_REVIEW,
             BrandSourceUrl::TYPE_SOCIAL, BrandSourceUrl::TYPE_MENTION,
         ];
@@ -725,7 +770,7 @@ class RagDashboardController extends AbstractController
     private function tierForType(string $type): int
     {
         return match ($type) {
-            BrandSourceUrl::TYPE_OWN_SITE => BrandSourceUrl::TIER_OWN_SITE,
+            BrandSourceUrl::TYPE_OWN_SITE, BrandSourceUrl::TYPE_OWN_PAGE, BrandSourceUrl::TYPE_PRODUCT_SAMPLE => BrandSourceUrl::TIER_OWN_SITE,
             BrandSourceUrl::TYPE_SOCIAL, BrandSourceUrl::TYPE_MENTION => BrandSourceUrl::TIER_MENTIONS,
             default => BrandSourceUrl::TIER_CORPUS,
         };

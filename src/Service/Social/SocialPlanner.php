@@ -18,6 +18,9 @@ class SocialPlanner
 {
     private const BRAND_POOL = 40;
 
+    /** Авто-рубрики (template, без бренда) для дней, где в сетке только held-рубрики (UGC/lifestyle). */
+    private const AUTO_FALLBACK = ['manifesto', 'vs_marketplace', 'calculator'];
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly SocialPostRepository $posts,
@@ -43,8 +46,12 @@ class SocialPlanner
             $day = $today->modify("+{$offset} day");
             $weekday = (int) $day->format('N');
 
+            $hasAuto = false;
             foreach ($this->rubrics->forWeekday($weekday) as $rubric) {
                 $def = $this->rubrics->get($rubric);
+                if ($def['auto']) {
+                    $hasAuto = true;
+                }
                 $dayStart = \DateTime::createFromInterface($day);
 
                 if ($this->posts->existsForSlot($channel, $rubric, $dayStart)) {
@@ -75,6 +82,15 @@ class SocialPlanner
                 }
                 $created++;
             }
+
+            // День без авто-рубрик (только held UGC/lifestyle) → добиваем авто-постом, чтобы не пустовал.
+            // Рубрика детерминирована датой (idempotent: тот же день → тот же fallback → existsForSlot гейтит).
+            if (!$hasAuto) {
+                $fallback = self::AUTO_FALLBACK[(int) $day->format('z') % count(self::AUTO_FALLBACK)];
+                if ($this->planFallback($channel, $fallback, $day, $dryRun)) {
+                    $created++;
+                }
+            }
         }
 
         if (!$dryRun) {
@@ -82,5 +98,27 @@ class SocialPlanner
         }
 
         return $created;
+    }
+
+    /** Создаёт авто-fallback-пост (template-рубрика без бренда) для пустого дня. true если создан. */
+    private function planFallback(SocialChannel $channel, string $rubric, \DateTimeImmutable $day, bool $dryRun): bool
+    {
+        $def = $this->rubrics->get($rubric);
+        if ($def === null || $this->posts->existsForSlot($channel, $rubric, \DateTime::createFromInterface($day))) {
+            return false;
+        }
+
+        $post = (new SocialPost())
+            ->setChannel($channel)
+            ->setRubric($rubric)
+            ->setMediaType($def['media'])
+            ->setScheduledAt(\DateTime::createFromInterface($day->setTime($def['hour'], 0)))
+            ->setStatus(SocialPost::STATUS_PLANNED);
+
+        if (!$dryRun) {
+            $this->em->persist($post);
+        }
+
+        return true;
     }
 }

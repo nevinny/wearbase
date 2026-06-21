@@ -58,6 +58,7 @@ class ExtractBrandAttributesCommand extends Command
             ->addOption('id',      null, InputOption::VALUE_REQUIRED, 'Один бренд по ID')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Не сохранять, показать извлечённое')
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Переизвлечь (удалить enrichment-атрибуты)')
+            ->addOption('fields-only', null, InputOption::VALUE_NONE, 'Backfill только brand.city/foundingYear, атрибуты не трогать (без churn)')
             ->addOption('shard',   null, InputOption::VALUE_REQUIRED, 'Номер шарда', '0')
             ->addOption('total',   null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
         ;
@@ -70,6 +71,7 @@ class ExtractBrandAttributesCommand extends Command
         $brandId = $input->getOption('id');
         $dryRun  = (bool) $input->getOption('dry-run');
         $force   = (bool) $input->getOption('force');
+        $fieldsOnly = (bool) $input->getOption('fields-only');
         $shard   = (int) $input->getOption('shard');
         $total   = max(1, (int) $input->getOption('total'));
 
@@ -84,7 +86,7 @@ class ExtractBrandAttributesCommand extends Command
                 $io->error("Бренд ID {$brandId} не найден.");
                 return Command::FAILURE;
             }
-            $this->processBrand($brand, $io, $dryRun, $force);
+            $this->processBrand($brand, $io, $dryRun, $force, $fieldsOnly);
             $this->printResults($io);
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
         }
@@ -105,7 +107,7 @@ class ExtractBrandAttributesCommand extends Command
         foreach ($brandIds as $id) {
             $brand = $this->em->find(Brand::class, $id);
             if ($brand) {
-                $this->processBrand($brand, $io, $dryRun, $force);
+                $this->processBrand($brand, $io, $dryRun, $force, $fieldsOnly);
             }
             $io->progressAdvance();
             gc_collect_cycles();
@@ -117,7 +119,7 @@ class ExtractBrandAttributesCommand extends Command
         return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 
-    private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force): void
+    private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force, bool $fieldsOnly = false): void
     {
         $name = $brand->getTitle() ?? "ID:{$brand->getId()}";
 
@@ -142,10 +144,33 @@ class ExtractBrandAttributesCommand extends Command
             if ($a['price_segment']) { $pairs[] = [BrandAttribute::NAME_PRICE_SEGMENT, $a['price_segment']]; }
             if ($a['geo'])           { $pairs[] = [BrandAttribute::NAME_GEO, $a['geo']]; }
 
-            $io->text(sprintf('  → %s: %d атрибут(ов) [cat:%d size:%d style:%d mat:%d]',
-                $name, count($pairs), count($a['categories']), count($a['sizes']), count($a['styles']), count($a['materials'])));
+            // Первоклассные поля бренда из грунтованного extract: город базирования и год
+            // основания (geo-атрибут — это страна/регион, city — именно город для фактоида/хаба).
+            $brandFieldSet = false;
+            // City заполняем ТОЛЬКО если пуст: LLM возвращает разнобой форм («москва»/«московский»),
+            // перезапись консолидированных значений фрагментировала бы city-хабы (разные slug'и).
+            // Неверные значения правятся точечной курацией, не автоперезаписью.
+            if ($a['city'] && trim((string) $brand->getCity()) === '') {
+                $brand->setCity(mb_substr($a['city'], 0, 100));
+                $brandFieldSet = true;
+            }
+            if ($a['founding_year']) {
+                $brand->setFoundingYear($a['founding_year']);
+                $brandFieldSet = true;
+            }
 
-            if (!$dryRun) {
+            $io->text(sprintf('  → %s: %d атрибут(ов) [cat:%d size:%d style:%d mat:%d]%s%s',
+                $name, count($pairs), count($a['categories']), count($a['sizes']), count($a['styles']), count($a['materials']),
+                $a['city'] ? ' city:' . $a['city'] : '', $a['founding_year'] ? ' год:' . $a['founding_year'] : ''));
+
+            if (!$dryRun && $fieldsOnly) {
+                // Backfill: атрибуты не трогаем (нет churn/дублей), пишем только brand.city/foundingYear.
+                if ($brandFieldSet) {
+                    $this->setStatus($brand, BrandRagPipeline::ATTR_DONE, false); // flush + contentChanged → ре-доставка
+                } else {
+                    $this->em->clear();
+                }
+            } elseif (!$dryRun) {
                 /** @var BrandAttributeRepository $attrRepo */
                 $attrRepo = $this->em->getRepository(BrandAttribute::class);
                 if ($force) {
@@ -163,7 +188,8 @@ class ExtractBrandAttributesCommand extends Command
                         ->setName($n)
                         ->setValue(mb_substr($v, 0, 255)));
                 }
-                $this->setStatus($brand, $pairs === [] ? BrandRagPipeline::ATTR_SKIPPED : BrandRagPipeline::ATTR_DONE, false);
+                // ATTR_DONE (с пометкой ре-доставки) если есть атрибуты ИЛИ заполнены city/год.
+                $this->setStatus($brand, ($pairs === [] && !$brandFieldSet) ? BrandRagPipeline::ATTR_SKIPPED : BrandRagPipeline::ATTR_DONE, false);
             }
 
             $this->extracted += $pairs !== [] ? 1 : 0;

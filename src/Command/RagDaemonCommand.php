@@ -72,6 +72,8 @@ class RagDaemonCommand extends Command
                 'discover,crawl,fetch,embed,enrich,generate,faq,extract,push')
             ->addOption('sleep', null, InputOption::VALUE_REQUIRED, 'Пауза между циклами, сек', '60')
             ->addOption('once',  null, InputOption::VALUE_NONE,     'Один цикл и выход (для теста)')
+            ->addOption('shard', null, InputOption::VALUE_REQUIRED, 'Номер шарда (0..total-1) — прокидывается во все стадии', '0')
+            ->addOption('total', null, InputOption::VALUE_REQUIRED, 'Всего шардов (>1 → можно крутить параллельные демоны того же набора)', '1')
         ;
     }
 
@@ -80,6 +82,8 @@ class RagDaemonCommand extends Command
         $io    = new SymfonyStyle($input, $output);
         $sleep = max(1, (int) $input->getOption('sleep'));
         $once  = (bool) $input->getOption('once');
+        $shard = max(0, (int) $input->getOption('shard'));
+        $total = max(1, (int) $input->getOption('total'));
 
         $stages = $this->parseStages((string) $input->getOption('stages'), $io);
         if ($stages === null) {
@@ -91,6 +95,9 @@ class RagDaemonCommand extends Command
         // пока цикл занят сетью. Одинаковые наборы (независимо от лимитов) — коллизия.
         // ВАЖНО: наборы разных демонов не должны ПЕРЕСЕКАТЬСЯ (иначе двойная работа).
         $lockName = 'rag_daemon-' . implode('-', array_keys($stages));
+        if ($total > 1) {
+            $lockName .= "-s{$shard}of{$total}"; // шардированные демоны того же набора не коллизят
+        }
         if (!$this->acquireLock($lockName)) {
             $io->error(sprintf('Демон уже запущен (var/%s.lock). Второй экземпляр не нужен.', $lockName));
             return Command::FAILURE;
@@ -106,7 +113,7 @@ class RagDaemonCommand extends Command
             $io->section(sprintf('Цикл #%d · %s', $cycle, date('H:i:s')));
 
             foreach ($stages as $name => [$command, $args]) {
-                $this->runStage($name, $command, $args, $io, $output);
+                $this->runStage($name, $command, $args, $io, $output, $shard, $total);
             }
 
             if ($once) {
@@ -154,14 +161,17 @@ class RagDaemonCommand extends Command
         return $stages === [] ? null : $stages;
     }
 
-    private function runStage(string $name, string $command, array $args, SymfonyStyle $io, OutputInterface $output): void
+    private function runStage(string $name, string $command, array $args, SymfonyStyle $io, OutputInterface $output, int $shard = 0, int $total = 1): void
     {
-        $io->text(sprintf('<comment>▶ %s</comment> (%s %s)', $name, $command, implode(' ', $args)));
+        // Шардинг прокидываем во все стадии (все stage-команды поддерживают --shard/--total).
+        $shardArgs = $total > 1 ? ['--shard=' . $shard, '--total=' . $total] : [];
+
+        $io->text(sprintf('<comment>▶ %s</comment> (%s %s)', $name, $command, implode(' ', [...$args, ...$shardArgs])));
 
         // Свежий PHP-процесс на стадию: память ребёнка умирает вместе с ним.
         // --no-debug обязателен и тут — иначе dev-профайлер Doctrine копит SQL+backtrace.
         $process = new Process(
-            [PHP_BINARY, '-d', 'memory_limit=512M', 'bin/console', $command, ...$args, '--no-debug'],
+            [PHP_BINARY, '-d', 'memory_limit=512M', 'bin/console', $command, ...$args, ...$shardArgs, '--no-debug'],
             $this->projectDir,
             timeout: self::CHILD_TIMEOUT_SEC,
         );

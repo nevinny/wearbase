@@ -52,8 +52,10 @@ class FetchBrandSourcesCommand extends Command
     private int $fetched   = 0;
     private int $cached    = 0;   // переиспользовано из кеша (без скачивания)
     private int $empty     = 0;   // скачали, но текст < MIN / дубль
+    private int $skipped   = 0;   // недоступен/мёртв (null/≥400) → помечен неактивным
     private int $failed    = 0;
     private int $finalized = 0;   // брендов доведено до SCRAPED
+    private int $dead      = 0;   // брендов помечено DEAD (осушено, 0 корпуса)
 
     private EntityManagerInterface $em;
 
@@ -196,7 +198,7 @@ class FetchBrandSourcesCommand extends Command
         $createdAt = $existing?->getCreatedAt();
         if ($existing !== null && $createdAt !== null && $createdAt >= $cacheSince) {
             $this->cached++;
-            $this->markFetched($queued, $dryRun);
+            $this->markFetched($queued, $dryRun, $httpStatus);
             return;
         }
 
@@ -204,11 +206,20 @@ class FetchBrandSourcesCommand extends Command
         $type = $queued->getSourceType();
         $keepTables = in_array($type, [BrandSourceUrl::TYPE_OWN_PAGE, BrandSourceUrl::TYPE_PRODUCT_SAMPLE], true)
             || preg_match('~(size|razmer|таблиц)~iu', $url) === 1;
-        $text = $this->scraper->fetchCleanText($url, $keepTables);
+        $res = $this->scraper->fetchCleanTextWithStatus($url, $keepTables);
+        $text = $res['text'];
+        $httpStatus = $res['httpStatus'];
         if ($text === null || mb_strlen($text) < self::MIN_TEXT_CHARS) {
-            // Скачали, но мусор/пусто — URL обработан (не сбой), документа нет.
-            $this->empty++;
-            $this->markFetched($queued, $dryRun);
+            // Недоступен (DNS/timeout → null) или hard-ошибка (≥400) → SKIPPED (неактивный):
+            // в embed не попадёт (документа нет), fetch/crawl больше не берут (только pending),
+            // discover не продублирует (дедуп по url_hash). 2xx/3xx-но-пусто (JS) → fetched.
+            if ($httpStatus === null || $httpStatus >= 400) {
+                $this->skipped++;
+                $this->markSkipped($queued, $dryRun, $httpStatus);
+            } else {
+                $this->empty++;
+                $this->markFetched($queued, $dryRun, $httpStatus);
+            }
             return;
         }
 
@@ -217,13 +228,13 @@ class FetchBrandSourcesCommand extends Command
         // Контент по этому URL не изменился — оставляем как есть (без переэмбеда).
         if ($existing !== null && $existing->getContentHash() === $hash) {
             $this->fetched++;
-            $this->markFetched($queued, $dryRun);
+            $this->markFetched($queued, $dryRun, $httpStatus);
             return;
         }
         // Дубль с другого URL того же бренда.
         if ($existing === null && $docRepo->existsForBrandHash($brand, $hash)) {
             $this->empty++;
-            $this->markFetched($queued, $dryRun);
+            $this->markFetched($queued, $dryRun, $httpStatus);
             return;
         }
 
@@ -250,16 +261,30 @@ class FetchBrandSourcesCommand extends Command
         }
 
         $this->fetched++;
-        $this->markFetched($queued, $dryRun);
+        $this->markFetched($queued, $dryRun, $httpStatus);
     }
 
-    private function markFetched(BrandSourceUrl $queued, bool $dryRun): void
+    private function markFetched(BrandSourceUrl $queued, bool $dryRun, ?int $httpStatus = null): void
     {
         if ($dryRun) {
             return;
         }
         $queued->setStatus(BrandSourceUrl::STATUS_FETCHED)
             ->setFetchedAt(new \DateTime())
+            ->setHttpStatus($httpStatus)
+            ->setLastError(null);
+        $this->em->flush();
+    }
+
+    /** Мёртвый/недоступный URL → SKIPPED (неактивный): не embed, не re-fetch, остаётся для дедупа discover. */
+    private function markSkipped(BrandSourceUrl $queued, bool $dryRun, ?int $httpStatus = null): void
+    {
+        if ($dryRun) {
+            return;
+        }
+        $queued->setStatus(BrandSourceUrl::STATUS_SKIPPED)
+            ->setFetchedAt(new \DateTime())
+            ->setHttpStatus($httpStatus)
             ->setLastError(null);
         $this->em->flush();
     }
@@ -342,6 +367,22 @@ class FetchBrandSourcesCommand extends Command
                 return;
             }
 
+            // Оценка прямо в стадии: осушили очередь, 0 документов = корпус собрать не удалось
+            // (все источники мертвы/skipped) → бренд DEAD (терминально, исключён из стадий),
+            // не гоняем его впустую через embed→generate→deferred. Иначе → scraped.
+            if ($sourceCount === 0) {
+                $pipeline->setStatus(BrandRagPipeline::STATUS_DEAD)
+                    ->setScrapedAt(new \DateTime())
+                    ->setSourceCount(0)
+                    ->setHasOwnSite(false)
+                    ->setLastError('dead: нет корпуса (источники мертвы/skipped)');
+                $this->em->flush();
+                $this->dead++;
+                $io->text(sprintf('  ☠ бренд #%d → dead (0 корпуса)', $brandId));
+
+                return;
+            }
+
             $pipeline->setStatus(BrandRagPipeline::STATUS_SCRAPED)
                 ->setScrapedAt(new \DateTime())
                 ->setSourceCount($sourceCount)
@@ -376,8 +417,10 @@ class FetchBrandSourcesCommand extends Command
             ['Скачано/обновлено', $this->fetched],
             ['Переисп. из кеша',  $this->cached],
             ['Пусто/дубль',       $this->empty],
+            ['Skipped (мёртв)',   $this->skipped],
             ['Ошибок',            $this->failed],
             ['Финализировано',    $this->finalized],
+            ['Помечено dead',     $this->dead],
         ]);
     }
 }

@@ -2,9 +2,9 @@
 
 {% set page_locale = app.request.locale|default('ru') %}
 
-{% block title %}Бренды одежды {{ city }} — {{ brands|length }} местных марок с сайтами и контактами | WEARBASE{% endblock %}
+{% block title %}{% if hub and hub.metaTitle %}{{ hub.metaTitle }}{% else %}Бренды одежды {{ city }} — {{ brands|length }} местных марок с сайтами и контактами | WEARBASE{% endif %}{% endblock %}
 
-{% block meta_description %}Местные бренды одежды из города {{ city }}: {{ brands|length }} марок с сайтами, соцсетями и контактами. Покупайте у производителей города {{ city }} напрямую, без наценки маркетплейсов.{% endblock %}
+{% block meta_description %}{% if hub and hub.metaDescription %}{{ hub.metaDescription }}{% else %}Местные бренды одежды из города {{ city }}: {{ brands|length }} марок с сайтами, соцсетями и контактами. Покупайте у производителей города {{ city }} напрямую, без наценки маркетплейсов.{% endif %}{% endblock %}
 
 {% block meta_keywords %}бренды одежды {{ city|lower }}, бренд одежды {{ city|lower }}, местные бренды одежды {{ city|lower }}, локальные бренды {{ city|lower }}, российские бренды одежды{% endblock %}
 
@@ -56,8 +56,12 @@
             <span class="text-gray-900 font-medium">{{ city }}</span>
         </nav>
 
-        <h1 class="text-3xl md:text-4xl font-bold mb-3">Бренды одежды — {{ city }}</h1>
-        <p class="text-gray-600 max-w-2xl mb-10">{{ brands|length }} {{ brands|length == 1 ? 'местный бренд' : 'местных брендов' }} одежды из города {{ city }} в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей своего города напрямую: без комиссии маркетплейсов цена честнее, а в шоуруме можно примерить.</p>
+        <h1 class="text-3xl md:text-4xl font-bold mb-3">{% if hub and hub.h1 %}{{ hub.h1 }}{% else %}Бренды одежды — {{ city }}{% endif %}</h1>
+        {% if hub and hub.intro %}
+            <div class="prose prose-sm text-gray-600 max-w-2xl mb-10">{{ hub.intro|raw }}</div>
+        {% else %}
+            <p class="text-gray-600 max-w-2xl mb-10">{{ brands|length }} {{ brands|length == 1 ? 'местный бренд' : 'местных брендов' }} одежды из города {{ city }} в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей своего города напрямую: без комиссии маркетплейсов цена честнее, а в шоуруме можно примерить.</p>
+        {% endif %}
 
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
             {% for brand in brands %}

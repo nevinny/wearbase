@@ -65,6 +65,10 @@ class SocialPost
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $caption = null;
 
+    /** Промпт генерации изображения (адаптивный, из caption через LLM) — храним для разбора/улучшения. */
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $imagePrompt = null;
+
     #[ORM\Column(length: 20, options: ['default' => self::MEDIA_NONE])]
     private string $mediaType = self::MEDIA_NONE;
 
@@ -167,6 +171,17 @@ class SocialPost
     public function setCaption(?string $caption): self
     {
         $this->caption = $caption;
+        return $this;
+    }
+
+    public function getImagePrompt(): ?string
+    {
+        return $this->imagePrompt;
+    }
+
+    public function setImagePrompt(?string $imagePrompt): self
+    {
+        $this->imagePrompt = $imagePrompt;
         return $this;
     }
 
