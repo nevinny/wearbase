@@ -135,6 +135,9 @@
                             <span class="text-sm font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">−{{ firstVar.discountPercent }}%</span>
                         {% endif %}
                         <span class="text-3xl font-bold" id="current-price">{{ firstVar.priceFloat|price }}</span>
+                        {% if firstVar.comparePrice and firstVar.comparePrice > firstVar.price %}
+                            <span class="text-sm font-semibold text-green-600">Вы экономите {{ (firstVar.comparePrice - firstVar.price)|price }}</span>
+                        {% endif %}
                     </div>
                 {% else %}
                     <span class="text-3xl font-bold">—</span>
@@ -367,11 +370,13 @@
         var price = btn.getAttribute('data-price');
         var compare = btn.getAttribute('data-compare-price');
         var discountHtml = '';
+        var savingsHtml = '';
         if (compare && parseFloat(compare) > parseFloat(price)) {
             var pct = Math.round((1 - price / compare) * 100);
             discountHtml = '<span class="text-2xl text-gray-400 line-through">' + parseFloat(compare).toLocaleString('ru-RU') + ' ₽</span> <span class="text-sm font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">−' + pct + '%</span> ';
+            savingsHtml = ' <span class="text-sm font-semibold text-green-600">Вы экономите ' + (parseFloat(compare) - parseFloat(price)).toLocaleString('ru-RU') + ' ₽</span>';
         }
-        priceDisplay.innerHTML = '<div class="flex items-center gap-3 flex-wrap">' + discountHtml + '<span class="text-3xl font-bold" id="current-price">' + parseFloat(price).toLocaleString('ru-RU') + ' ₽</span></div>';
+        priceDisplay.innerHTML = '<div class="flex items-center gap-3 flex-wrap">' + discountHtml + '<span class="text-3xl font-bold" id="current-price">' + parseFloat(price).toLocaleString('ru-RU') + ' ₽</span>' + savingsHtml + '</div>';
     }
 
     // ── Color swatches ──

@@ -302,9 +302,15 @@
                         {% set mainImage = product.mainImage %}
                         {% set minPrice = product.minPrice %}
                         {% set hasDiscount = false %}
+                        {% set discCompare = null %}
+                        {% set discPct = 0 %}
                         {% for variant in product.variants %}
                             {% if variant.comparePrice is not null and variant.comparePrice > variant.price %}
                                 {% set hasDiscount = true %}
+                                {% if variant.price == minPrice %}
+                                    {% set discCompare = variant.comparePrice %}
+                                    {% set discPct = variant.discountPercent %}
+                                {% endif %}
                             {% endif %}
                         {% endfor %}
 
@@ -337,8 +343,12 @@
                                 <div class="text-xs text-gray-500 mb-0.5 truncate">{{ product.brand.title }}</div>
                                 <div class="text-sm font-medium leading-tight line-clamp-2">{{ product.title }}</div>
                                 {% if minPrice %}
-                                    <div class="mt-1.5 text-sm font-semibold text-gray-900">
-                                        {{ minPrice|price }}
+                                    <div class="mt-1.5 flex items-baseline gap-1.5 flex-wrap">
+                                        <span class="text-sm font-semibold text-gray-900">{{ minPrice|price }}</span>
+                                        {% if discCompare %}
+                                            <span class="text-xs text-gray-400 line-through">{{ discCompare|price }}</span>
+                                            <span class="text-xs font-bold text-red-500">−{{ discPct }}%</span>
+                                        {% endif %}
                                     </div>
                                 {% endif %}
                             </div>

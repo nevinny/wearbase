@@ -15,6 +15,9 @@
 | [marketing_email.md](marketing_email.md) | Email/воронка: двухстадийный ФЗ-38-гейт cold/warm, активационная серия free→paid, newsletter→движение |
 | [marketing_instagram.md](marketing_instagram.md) | Instagram-контент-план в авто-режиме (drip): рубрики, недельная сетка, конвейер автопубликации, ⚠️ Meta/РФ-рамка |
 | [competitors.md](competitors.md) | Разбор vitrine.market, лид-ген, moat «0% комиссии» |
+| [competitors_seo_audit.md](competitors_seo_audit.md) | SEO-аудит 6 конкурентов + план захвата трафика по одежде (4 слоя intent, приоритет 1-6). От 2026-06-17 |
+| [marketing_reality_check.md](marketing_reality_check.md) | Калибровка допущений стратегии об реальность (БД + рынок + конкуренты): willingness-to-pay, free-каталоги, honest moat. От 2026-06-17 |
+| [big_player_roadmap.md](big_player_roadmap.md) | Быть и вести себя как большой игрок: стратегия (быть/вести себя) → роадмап фазами → измеримые действия с KPI. От 2026-06-19 |
 | [seo_adoption_plan.md](seo_adoption_plan.md) | Что берём из пакета `_seo` (CLOSEDLOOP-SEO-FULL + SEO 4.9): GSC, индексация, link-graph, closed-loop |
 | [seo_rules.md](seo_rules.md) | **Канон SEO-правил (v3.0.0)** — единый: WEARBASE-константы + нормативные MUST/SHOULD/NICE + by-design принципы. Свёл в себя бывшие `seo_rules_2.3.0` и `seo_rules_SEO_GUIDE` |
 | [seo_tools.md](seo_tools.md) | Справочник SEO-инструментов (коммерческие + open-source, бюджеты) |
@@ -25,6 +28,7 @@
 | Документ | О чём |
 |---|---|
 | [rag_pipeline.md](rag_pipeline.md) | **Полный reference** RAG-конвейера: discover→fetch→embed→generate, статус-машина, gate качества |
+| [rag_pipeline_refactoring.md](rag_pipeline_refactoring.md) | План рефакторинга слоя данных конвейера (SOLID/KISS/DRY): дефекты, нарушения, направления |
 | [ad-description-flow.md](ad-description-flow.md) | Флоу генерации рекламного описания бренда |
 | [model-ab-bench.md](model-ab-bench.md) | Бенчмарк LLM-моделей генерации (вердикт: gemma4:26b) |
 

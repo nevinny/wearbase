@@ -211,6 +211,18 @@
                             <span id="order-total">{{ price(cart.total + initShipCost) }}</span>
                         </div>
 
+                        {# Доверие: снимаем страх потери перед оплатой (ЗоЗПП, ст.12) #}
+                        <div class="mb-4 space-y-2 rounded-xl bg-gray-50 p-3 text-xs text-gray-600">
+                            <div class="flex items-start gap-2">
+                                <span aria-hidden="true">↩️</span>
+                                <span><strong class="font-semibold text-gray-900">10 дней на возврат предоплаты.</strong> Если товар не передан в срок и вы отказались от заказа — вернём предоплату по <a href="{{ path('return_policy') }}" target="_blank" class="underline">закону о защите прав потребителей</a>.</span>
+                            </div>
+                            <div class="flex items-start gap-2">
+                                <span aria-hidden="true">🔒</span>
+                                <span>Оплата проходит напрямую бренду через защищённый платёжный шлюз.</span>
+                            </div>
+                        </div>
+
                         <button type="submit"
                                 class="w-full rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white hover:bg-black transition">
                             Подтвердить заказ
