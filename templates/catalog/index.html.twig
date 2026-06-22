@@ -12,11 +12,13 @@
     {% else %}Каталог товаров российских брендов одежды. {{ total }} позиций.{% endif %}
 {% endblock %}
 
-{% block meta_robots %}
-{% if filters.search or filters.brand or filters.category or filters.style or filters.size or filters.min_price or filters.max_price or page > 1 %}
-<meta name="robots" content="noindex, follow">
-{% endif %}
-{% endblock %}
+{# Каталог пока без товаров — закрываем от индексации целиком (follow, чтобы вес тёк дальше).
+   Когда появятся товары — вернуть сюда условный noindex только для фасетов/пагинации. #}
+{% block meta_robots %}<meta name="robots" content="noindex, follow">{% endblock %}
+
+{# Self-canonical на /catalog (200) вместо авто-canonical base.html → /ru/catalog (404):
+   роут catalog_index не имеет префикса локали. Заодно схлопывает фасеты (?sort/?sale/?gender) на базовый URL. #}
+{% block canonical_url %}{{ url('catalog_index') }}{% endblock %}
 
 {% block body %}
 {% set page_locale = app.request.locale|default('ru') %}
