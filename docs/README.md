@@ -18,6 +18,8 @@
 | [competitors_seo_audit.md](competitors_seo_audit.md) | SEO-аудит 6 конкурентов + план захвата трафика по одежде (4 слоя intent, приоритет 1-6). От 2026-06-17 |
 | [marketing_reality_check.md](marketing_reality_check.md) | Калибровка допущений стратегии об реальность (БД + рынок + конкуренты): willingness-to-pay, free-каталоги, honest moat. От 2026-06-17 |
 | [big_player_roadmap.md](big_player_roadmap.md) | Быть и вести себя как большой игрок: стратегия (быть/вести себя) → роадмап фазами → измеримые действия с KPI. От 2026-06-19 |
+| [monetization_economics.md](monetization_economics.md) | Юнит-экономика: себестоимость ≈0, маржа, сколько брендов до MRR, конверсия как связывающее ограничение; услуга 5000₽ vs подписка. От 2026-06-22 |
+| [sales_offer.md](sales_offer.md) | Оффер «Размещение под ключ» 5000₽ + шаблон холодного письма + плейбук продажи + критерии списка кандидатов (`_docs/cold-sales-candidates.csv`). От 2026-06-22 |
 | [seo_adoption_plan.md](seo_adoption_plan.md) | Что берём из пакета `_seo` (CLOSEDLOOP-SEO-FULL + SEO 4.9): GSC, индексация, link-graph, closed-loop |
 | [seo_rules.md](seo_rules.md) | **Канон SEO-правил (v3.0.0)** — единый: WEARBASE-константы + нормативные MUST/SHOULD/NICE + by-design принципы. Свёл в себя бывшие `seo_rules_2.3.0` и `seo_rules_SEO_GUIDE` |
 | [seo_tools.md](seo_tools.md) | Справочник SEO-инструментов (коммерческие + open-source, бюджеты) |
