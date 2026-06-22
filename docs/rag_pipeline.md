@@ -502,6 +502,40 @@ fashion/shop…). Если НЕТ ни одного — корпус почти 
 > помогает — это живые ссылки профайлера. Ручной долгий батч:
 > `php -d memory_limit=512M bin/console app:brand:keywords 6000 --no-debug`.
 
+### 7.1 Автоскейлер-супервизор (`app:rag:autoscale`)
+
+`RagAutoscaleCommand` — кроновый супервизор демонов (`*/3 * * * *`, Mac). Идемпотентный **реконсайл**:
+сверяет желаемое состояние с живыми `app:rag:daemon` (по `pgrep -fl`, разбор `--stages`/`--shard`) и
+доводит до него — спавнит недостающее, гасит лишнее, респаунит упавшее. `--dry-run` — показать план.
+
+**Baseline (всегда-живые, по 1 на набор):**
+- `BASELINE_NET = crawl,fetch,logo,push,enrich` — сеть/IO, gemma не трогает; живёт **всегда**.
+- `BASELINE_GPU = embed:200,generate,faq,extract` — поднимается **только при живом .119**
+  (TCP-проба host:port из `LOCAL_LLM_URL`). Мёртв → gpu гасится, остаётся net-only: не жжём
+  `generate`-attempts о недоступный сервер. `embed:200` — лимит 200 (мелкая qwen-0.6b давит backlog
+  документов, не ждёт медленные LLM-стадии). net∪gpu = полный конвейер (без `keywords` — отдельно).
+- Раздельны (а не один «полный» демон) → GPU не голодает, деля цикл с медленными net-стадиями.
+- Нераспознанный базовый набор (напр. ручной демон с другим составом) **прибивается** как чужой.
+
+**Burst (только net-стадии):** при заторе поднимает доп. шард-воркеры `ceil(queue/per)`, ≤ `max`,
+в рамках бюджета ядер (`nproc − резерв(1) − baseline(1)`). Сейчас активен только `fetch`
+(порог 2000 pending-URL, per 1500, max 3). Шарды дренят без коллизий через `claimPending`
+(`FOR UPDATE SKIP LOCKED`). **`generate`/embed НЕ бёрстятся** — один LLM-сервер, переподписка роняет
+gemma (см. [[llm-server-oversubscription]]).
+
+**discover ОТКЛЮЧЁН** в baseline и burst (Yandex Search API платный). Вернуть — раскомментить
+`discover,` в начале `BASELINE_NET` + блок в `BURST` (см. комментарии в коде).
+
+**health-gate:** при мёртвом .119, если в очереди есть embed/generate-работа — варнинг (иначе
+GPU-стадии «молча стоят»).
+
+> **⚠️ autoscale vs `bin/mac-rag-start.sh` — взаимоисключающие способы запуска.** Ручной скрипт
+> поднимает свою split-топологию (`embed,generate,enrich,faq,extract` ‖ `discover,crawl,fetch,logo,push`)
+> — наборы стадий НЕ совпадают с autoscale-baseline, поэтому при активном кроне autoscale прибьёт
+> ручные демоны как «нераспознанные». Использовать что-то одно: либо cron-autoscale (саморегулируется),
+> либо ручной скрипт (когда кроне autoscale не установлен). Проверить кто живёт: `pgrep -fl app:rag:daemon`.
+> Логи autoscale-воркеров: `var/log/autoscale-{baseline-net,baseline-gpu,burst-fetch-N}.log`.
+
 ---
 
 ## 8. Подводные камни (gotchas)
