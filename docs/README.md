@@ -15,7 +15,10 @@
 | [marketing_email.md](marketing_email.md) | Email/воронка: двухстадийный ФЗ-38-гейт cold/warm, активационная серия free→paid, newsletter→движение |
 | [marketing_instagram.md](marketing_instagram.md) | Instagram-контент-план в авто-режиме (drip): рубрики, недельная сетка, конвейер автопубликации, ⚠️ Meta/РФ-рамка |
 | [competitors.md](competitors.md) | Разбор vitrine.market, лид-ген, moat «0% комиссии» |
+| [global_analogs.md](global_analogs.md) | На какую зарубежную модель похож WEARBASE (NJAL/Lyst/W&B) + региональные аналоги (Европа/Латам/Азия) + **разбор кейса Musinsa под перенос**; какие фичи перенять по слоям; ключевая дыра — click-трекинг. От 2026-06-23 |
 | [competitors_seo_audit.md](competitors_seo_audit.md) | SEO-аудит 6 конкурентов + план захвата трафика по одежде (4 слоя intent, приоритет 1-6). От 2026-06-17 |
+| [competitors_global.md](competitors_global.md) | Реестр конкурентов и аналогов по регионам (РФ/Европа/СевАм/Латам/Азия): URL, тип модели, релевантность. От 2026-06-23 |
+| [competitors_ru.md](competitors_ru.md) | **Российский ландшафт целиком**: нишевые маркетплейсы (комиссия 30–67%), директории-аналоги (localbrands.pro), концепт-сторы, мейнстрим, рейтинги (РБК Fashion 500). Стратегические зазоры. От 2026-06-23 |
 | [marketing_reality_check.md](marketing_reality_check.md) | Калибровка допущений стратегии об реальность (БД + рынок + конкуренты): willingness-to-pay, free-каталоги, honest moat. От 2026-06-17 |
 | [big_player_roadmap.md](big_player_roadmap.md) | Быть и вести себя как большой игрок: стратегия (быть/вести себя) → роадмап фазами → измеримые действия с KPI. От 2026-06-19 |
 | [monetization_economics.md](monetization_economics.md) | Юнит-экономика: себестоимость ≈0, маржа, сколько брендов до MRR, конверсия как связывающее ограничение; услуга 5000₽ vs подписка. От 2026-06-22 |
