@@ -34,7 +34,7 @@ class BrandSourceUrlRepository extends ServiceEntityRepository
      * SELECT ... FOR UPDATE SKIP LOCKED (MySQL 9) → UPDATE status=claimed в одной транзакции,
      * чтобы параллельные воркеры не дрались за одни строки.
      *
-     * @return BrandSourceUrl[] заклейменные сущности (порядок tier ASC, relevance_score DESC)
+     * @return BrandSourceUrl[] заклейменные сущности (порядок priority DESC, tier ASC, relevance_score DESC)
      */
     public function claimPending(int $shard, int $total, int $batch): array
     {
@@ -45,7 +45,7 @@ class BrandSourceUrlRepository extends ServiceEntityRepository
             $ids = $conn->fetchFirstColumn(
                 'SELECT id FROM brand_source_url
                   WHERE status = :pending AND MOD(brand_id, :total) = :shard
-                  ORDER BY tier ASC, relevance_score DESC
+                  ORDER BY priority DESC, tier ASC, relevance_score DESC
                   LIMIT :batch
                   FOR UPDATE SKIP LOCKED',
                 [
@@ -78,7 +78,8 @@ class BrandSourceUrlRepository extends ServiceEntityRepository
             $rows = $this->createQueryBuilder('u')
                 ->where('u.id IN (:ids)')
                 ->setParameter('ids', $ids)
-                ->orderBy('u.tier', 'ASC')
+                ->orderBy('u.priority', 'DESC')
+                ->addOrderBy('u.tier', 'ASC')
                 ->addOrderBy('u.relevanceScore', 'DESC')
                 ->getQuery()
                 ->getResult();
@@ -115,6 +116,22 @@ class BrandSourceUrlRepository extends ServiceEntityRepository
                 'claimed' => \PDO::PARAM_STR,
                 'minutes' => \PDO::PARAM_INT,
             ],
+        );
+    }
+
+    /**
+     * Перекинуть приоритет бренда на его URL-очередь (денормализация для claimPending).
+     * Зовётся при изменении brand_rag_pipeline.priority уже отдискаверенного бренда —
+     * новые URL получают priority при enqueue в discover.
+     *
+     * @return int сколько строк обновлено
+     */
+    public function propagatePriority(Brand $brand, int $priority): int
+    {
+        return (int) $this->getEntityManager()->getConnection()->executeStatement(
+            'UPDATE brand_source_url SET priority = :priority WHERE brand_id = :brand',
+            ['priority' => $priority, 'brand' => $brand->getId()],
+            ['priority' => \PDO::PARAM_INT, 'brand' => \PDO::PARAM_INT],
         );
     }
 }

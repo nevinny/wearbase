@@ -42,6 +42,20 @@ class BrandSourceUrl
     public const TIER_CORPUS   = 2;
     public const TIER_MENTIONS = 3;
 
+    /**
+     * Канонные cap'ы по типу — сколько URL каждого типа держим в очереди у бренда.
+     * Единый источник правды: DiscoverBrandSourcesCommand (enqueue) и BrandSourceFinder
+     * (эмиссия по тирам) ссылаются СЮДА, а не держат свои копии (была рассинхронизация).
+     */
+    public const ENQUEUE_CAPS = [
+        self::TYPE_OWN_SITE       => 2,
+        self::TYPE_MARKETPLACE    => 5,
+        self::TYPE_CATALOG        => 6,
+        self::TYPE_ARTICLE_REVIEW => 5,
+        self::TYPE_SOCIAL         => 6,
+        self::TYPE_MENTION        => 6,
+    ];
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -66,6 +80,10 @@ class BrandSourceUrl
 
     #[ORM\Column(type: 'float', options: ['default' => 0])]
     private float $relevanceScore = 0.0;
+
+    /** Ручной приоритет fetch-очереди, перекинутый из brand_rag_pipeline.priority (чем больше — тем раньше). */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $priority = 0;
 
     #[ORM\Column(length: 12, options: ['default' => self::STATUS_PENDING])]
     private string $status = self::STATUS_PENDING;
@@ -175,6 +193,17 @@ class BrandSourceUrl
     public function setRelevanceScore(float $score): self
     {
         $this->relevanceScore = $score;
+        return $this;
+    }
+
+    public function getPriority(): int
+    {
+        return $this->priority;
+    }
+
+    public function setPriority(int $priority): self
+    {
+        $this->priority = $priority;
         return $this;
     }
 

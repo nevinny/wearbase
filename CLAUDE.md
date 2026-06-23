@@ -184,7 +184,7 @@ php -d memory_limit=512M bin/console app:brand:keywords 6000 --no-debug
 
 | Service | Location | Purpose |
 |---|---|---|
-| `BrandSourceFinder` | `src/Service/` | Tiered discovery URL-кандидатов (own_site→corpus→mentions), relevance-скоринг. ⚠️ cap'ы по типу живут здесь И в `DiscoverBrandSourcesCommand::CAPS` — менять синхронно |
+| `BrandSourceFinder` | `src/Service/` | Tiered discovery URL-кандидатов (own_site→corpus→mentions), relevance-скоринг. Cap'ы по типу — единый источник `BrandSourceUrl::ENQUEUE_CAPS` (и finder, и `DiscoverBrandSourcesCommand` ссылаются туда; mention в T2 — намеренный emission-headroom) |
 | `UrlFilter` | `src/Service/` | Единая точка исключений скрейпа: self-домены (wearbase.ru), job-/рекрутинг-хосты (`JOB_NOISE`), env `SCRAPE_EXCLUDED_DOMAINS`; suffix-match, fail-closed |
 | `WebScraperService` | `src/Service/` | Fetch + HTML→текст (trafilatura, fallback DomCrawler), кеш 30д |
 | `EmbeddingService` / `VectorStoreService` | `src/Service/` | ollama `/api/embed` → Qdrant (коллекция `brand_chunks`, payload brand_id/relevance) |

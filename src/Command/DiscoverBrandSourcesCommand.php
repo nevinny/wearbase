@@ -43,14 +43,7 @@ class DiscoverBrandSourcesCommand extends Command
     private const DEFAULT_MAX      = 50;    // максимум кандидатов на бренд (передаётся в discoverTiered)
 
     /** Cap по source_type: максимум URL данного типа в очереди у бренда (суммарно по запускам). */
-    private const CAPS = [
-        BrandSourceUrl::TYPE_OWN_SITE       => 2,
-        BrandSourceUrl::TYPE_MARKETPLACE    => 5,
-        BrandSourceUrl::TYPE_CATALOG        => 6,
-        BrandSourceUrl::TYPE_ARTICLE_REVIEW => 5,
-        BrandSourceUrl::TYPE_SOCIAL         => 6,
-        BrandSourceUrl::TYPE_MENTION        => 6,
-    ];
+    /** @see BrandSourceUrl::ENQUEUE_CAPS — единый источник правды по cap'ам типов. */
 
     /** Подряд брендов, у кого ОБА источника поиска (Yandex API + SearXNG) легли → стоп прогона.
      *  Падение только SearXNG при живом Yandex НЕ считается (Yandex — первичный источник). */
@@ -197,6 +190,8 @@ class DiscoverBrandSourcesCommand extends Command
             // на тип и декрементируем в памяти, иначе в рамках одного запуска перельём cap.
             $remaining = [];
             $newUrls = 0;
+            // Приоритет бренда «перекидываем» на его URL → fetch (claimPending) берёт высокоприоритетные первыми.
+            $brandPriority = $dryRun ? 0 : $this->pipeline($brand)->getPriority();
 
             foreach ($candidates as $d) {
                 $url  = mb_substr(rtrim((string) $d->url, '/'), 0, 1024);
@@ -211,7 +206,7 @@ class DiscoverBrandSourcesCommand extends Command
                 }
 
                 $type = $d->sourceType;
-                $cap  = self::CAPS[$type] ?? self::CAPS[BrandSourceUrl::TYPE_MENTION];
+                $cap  = BrandSourceUrl::ENQUEUE_CAPS[$type] ?? BrandSourceUrl::ENQUEUE_CAPS[BrandSourceUrl::TYPE_MENTION];
                 if (!isset($remaining[$type])) {
                     $remaining[$type] = max(0, $cap - $this->urlRepo->countByBrandType($brand, $type));
                 }
@@ -229,6 +224,7 @@ class DiscoverBrandSourcesCommand extends Command
                         ->setSourceType($type)
                         ->setTier($d->tier)
                         ->setRelevanceScore($d->relevanceScore)
+                        ->setPriority($brandPriority)
                         ->setStatus(BrandSourceUrl::STATUS_PENDING);
                     $this->em->persist($row);
                 }

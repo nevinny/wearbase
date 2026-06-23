@@ -144,6 +144,23 @@ review → admin /admin/rag/review → requeue (сброс в pending) | hide (i
 То есть FAQ может быть законно пропущен (нет ключевиков), а `keywords not_found` (нишевый бренд) не
 блокирует — но **опросить** Wordstat надо.
 
+### Приоритет очереди (`priority`)
+
+Ручной приоритет «чем больше — тем раньше» проходит бренд **сквозь все этапы**:
+
+- **`brand_rag_pipeline.priority`** (int, деф. 0) — приоритет на уровне бренда. Стадии
+  embed/extract/generate/keywords/crawl/faq/push выбираются через
+  `PipelineQueueRepository::finishStageQuery`, который сортирует `p.priority DESC` → бренд несёт
+  приоритет сквозь них автоматически (одна строка pipeline на бренд, статус меняется — priority нет).
+- **`brand_source_url.priority`** (int, деф. 0) — денормализация для **fetch**: он клеймит URL через
+  `claimPending` (сырой SQL по `brand_source_url`, **минует pipeline**), поэтому priority
+  «перекидывается» на URL. Проставляется при enqueue в discover (из priority бренда) и
+  пропагируется `BrandSourceUrlRepository::propagatePriority($brand, $p)` при смене приоритета уже
+  отдискаверенного бренда. `claimPending` сортирует `priority DESC, tier ASC, relevance_score DESC`.
+- **Кто ставит**: `EvaluateExperimentsCommand` (loss-ветка closed-loop → `max(50, …)`); ручные
+  батчи. Для НОВОГО высокоприоритетного бренда: выставить `pipeline.priority` до discover → URL
+  заштампуются приоритетом → fetch и далее все стадии возьмут его первым.
+
 ---
 
 ## 3. Этапы по порядку
@@ -168,8 +185,12 @@ Search API + DB-ссылки) находит URL-кандидаты бренда
   `discovered_at`. **Не трогает `pipeline.status`.**
 - **Параметры**: `limit` (брендов/запуск, деф. 50), `--id`, `--max` (кандидатов/бренд, деф. 50),
   `--shard`/`--total` (шардинг для параллельных процессов), `--dry-run`.
-- **CAPS** (макс. URL данного типа в очереди у бренда, суммарно по запускам, `DiscoverBrandSourcesCommand::CAPS`):
+- **CAPS** (макс. URL данного типа в очереди у бренда, суммарно по запускам): единый источник
+  `BrandSourceUrl::ENQUEUE_CAPS` (на него ссылаются и enqueue в команде, и `BrandSourceFinder`):
   `own_site=2`, `marketplace=5`, `catalog=6`, `article_review=5`, `social=6`, `mention=6`.
+  (T2-mention в finder = 8 — намеренный emission-headroom: эмитим больше, enqueue урезает до cap.)
+- **Priority**: при enqueue каждому URL проставляется `priority` бренда (из `brand_rag_pipeline.priority`)
+  → fetch берёт высокоприоритетные первыми. См. §«Приоритет очереди».
 - **Фейлы**: SearXNG лежит (движки suspended/CAPTCHA) → бренд **не** помечается discovered (иначе
   сгорит с пустыми тирами); **circuit breaker** — 3 бренда подряд с лежащим SearXNG → стоп всего
   прогона.
@@ -311,6 +332,7 @@ discover наполняет, fetch дренит.
 | `sourceType` | `own_site` / `own_page` / `product_sample` / `marketplace` / `catalog` / `article_review` / `social` / `mention` |
 | `tier` | `TIER_OWN_SITE=1` / `TIER_CORPUS=2` / `TIER_MENTIONS=3` |
 | `relevanceScore` | 0..1 (скоринг finder, carry-forward в документ) |
+| `priority` | int (деф. 0), перекинут из `brand_rag_pipeline.priority` → порядок `claimPending` (fetch) |
 | `urlHash` | sha256(нормализованный url: lowercase scheme/host, rtrim `/`) |
 | `attempts`, `lastError`, `discoveredAt`, `claimedAt`, `fetchedAt` | очередь/аудит |
 

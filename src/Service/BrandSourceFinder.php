@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Entity\Brand;
+use App\Entity\BrandSourceUrl;
 use App\Service\Discovery\DiscoveredUrl;
 use App\Service\Discovery\SourceTypeClassifier;
 use App\Service\SearxUnavailableException;
@@ -40,17 +41,19 @@ class BrandSourceFinder
     private const FLOOR = 0.35;        // ниже — не кладём в очередь (для корпуса)
     private const SEED_SCORE = 0.9;    // доверенные сиды (DB / slug-guess) — высокий baseline
 
-    private const T1_CAP = 2;              // own_site в очередь
+    // Cap'ы по типу — единый источник правды BrandSourceUrl::ENQUEUE_CAPS (enqueue в discover
+    // ссылается туда же), чтобы emission и enqueue не расходились.
+    private const T1_CAP = BrandSourceUrl::ENQUEUE_CAPS[BrandSourceUrl::TYPE_OWN_SITE]; // own_site в очередь
     private const T1_VERIFY_BUDGET = 5;    // макс. verifyUrl-вызовов в T1 (10s каждый)
 
     // T2 (corpus) — побольше товарных источников (особенно для брендов без своего сайта)
-    private const T2_MARKETPLACE_CAP = 5;
-    private const T2_MENTION_CAP     = 8;   // catalog свёрнут в mention
+    private const T2_MARKETPLACE_CAP = BrandSourceUrl::ENQUEUE_CAPS[BrandSourceUrl::TYPE_MARKETPLACE];
+    private const T2_MENTION_CAP     = 8;   // emission-headroom: эмитим больше, enqueue урежет до cap; catalog свёрнут в mention
 
     // T3 (mentions/social)
-    private const T3_SOCIAL_CAP  = 6;
-    private const T3_REVIEW_CAP  = 5;
-    private const T3_MENTION_CAP = 6;
+    private const T3_SOCIAL_CAP  = BrandSourceUrl::ENQUEUE_CAPS[BrandSourceUrl::TYPE_SOCIAL];
+    private const T3_REVIEW_CAP  = BrandSourceUrl::ENQUEUE_CAPS[BrandSourceUrl::TYPE_ARTICLE_REVIEW];
+    private const T3_MENTION_CAP = BrandSourceUrl::ENQUEUE_CAPS[BrandSourceUrl::TYPE_MENTION];
 
     /** fashion-термины для co-occurrence (имя бренда + ≥1 термин). */
     private const FASHION_TERMS = [
