@@ -4,7 +4,6 @@ namespace App\Command;
 
 use App\Entity\Brand;
 use Doctrine\ORM\EntityManagerInterface;
-use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -172,10 +171,9 @@ class PublishTickCommand extends Command
             if ($brand === null) {
                 continue;
             }
-            $brand->setStatus(Statuses::Active)
-                ->setPublishPending(false)
-                // МСК, как и граница дня в published_today — иначе на UTC-проде счёт съезжает на 3ч
-                ->setPublishedAt(new \DateTime('now', $tz));
+            // Доменный переход new → active. МСК, как и граница дня в published_today —
+            // иначе на UTC-проде счёт published_today съезжает на 3ч.
+            $brand->publish(new \DateTime('now', $tz));
             $this->em->flush();
 
             // Вплетение в жёсткий граф перелинковки: исходящие рёбра + гарантия

@@ -211,7 +211,7 @@ class ImportBrandMediaCommand extends Command
         }
 
         $brand->setDescription($productData['props']['pageProps']['brand']['description'] ?? '');
-        $brand->setStatus(Statuses::Active);
+        $brand->publish();   // доменный переход → active (published_at = МСК now)
         $this->alphabetManagerService->handleBrandUpdate($brand);
 
         return $result;
