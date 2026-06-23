@@ -43,25 +43,30 @@ class BuildLinkGraphCommand extends Command
     protected function configure(): void
     {
         $this->addOption('rebuild', null, InputOption::VALUE_NONE, 'Снести граф и построить заново');
+        $this->addOption('dead-only', null, InputOption::VALUE_NONE, 'Только чистка мёртвых рёбер + балансировка in-degree (без Qdrant) — для крона на проде');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        $deadOnly = (bool) $input->getOption('dead-only');
 
         if ($input->getOption('rebuild')) {
             $this->db->executeStatement('DELETE FROM brand_related');
             $io->warning('Граф снесён (--rebuild).');
         }
 
+        // --- Этап 1: исходящие рёбра (embedding → SQL fallback) ---
+        // Пропускаем при --dead-only: этап требует Qdrant (на проде его нет — граф
+        // строится офлайн на LLM-сервере и доезжает агент-API; на проде нужна только чистка).
+        $embedded = $fallback = $skipped = 0;
+        if (!$deadOnly) {
         $activeIds = array_map('intval', $this->db->fetchFirstColumn(
             "SELECT id FROM brand WHERE status = 'active' ORDER BY id",
         ));
         $activeSet = array_flip($activeIds);
         $io->text(sprintf('Активных брендов: %d', count($activeIds)));
 
-        // --- Этап 1: исходящие рёбра (embedding → SQL fallback) ---
-        $embedded = $fallback = $skipped = 0;
         foreach ($activeIds as $i => $brandId) {
             if ($this->graph->outDegree($brandId) >= BrandLinkGraphService::OUT_DEGREE) {
                 $skipped++;
@@ -91,6 +96,7 @@ class BuildLinkGraphCommand extends Command
             }
         }
         $io->text(sprintf('Исходящие: embedding %d · fallback %d · уже полные %d', $embedded, $fallback, $skipped));
+        }
 
         // --- Этап 2: рёбра на неактивные + гарантия входящих ---
         $dead = $this->graph->replaceDeadEdges();
