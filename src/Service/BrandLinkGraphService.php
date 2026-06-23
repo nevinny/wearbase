@@ -265,8 +265,8 @@ class BrandLinkGraphService
         // Источник станет active → weave() пересоберёт его исходящие, поэтому удаляем.
         // Делаем первым, чтобы ниже не тратить fallback-подбор на рёбра мёртвых источников.
         $replaced = (int) $this->db->executeStatement(
-            "DELETE r FROM brand_related r JOIN brand b ON b.id = r.brand_id
-             WHERE b.status != 'active'",
+            "DELETE FROM brand_related
+             WHERE brand_id IN (SELECT id FROM brand WHERE status != 'active')",
         );
 
         // Сторона ТАРГЕТА: ребро НА non-active бренд — заменяем живым кандидатом
