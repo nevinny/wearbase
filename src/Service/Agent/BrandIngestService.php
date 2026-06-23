@@ -362,28 +362,34 @@ class BrandIngestService
     private function replaceRelated(Brand $brand, array $rows): void
     {
         $db = $this->em->getConnection();
-        $db->executeStatement('DELETE FROM brand_related WHERE brand_id = :id', ['id' => $brand->getId()]);
 
-        foreach (array_slice($rows, 0, \App\Service\BrandLinkGraphService::OUT_DEGREE) as $row) {
-            $slug = trim((string) ($row['slug'] ?? ''));
-            $position = (int) ($row['position'] ?? 0);
-            if ($slug === '' || $slug === $brand->getSlug() || $position < 1) {
-                continue;
+        // DELETE + повторная вставка — в одной транзакции: иначе при сбое (или
+        // наложении weave() из publish-tick на тот же brand_id) бренд может
+        // остаться с пустыми исходящими рёбрами между DELETE и INSERT.
+        $db->transactional(function () use ($db, $brand, $rows): void {
+            $db->executeStatement('DELETE FROM brand_related WHERE brand_id = :id', ['id' => $brand->getId()]);
+
+            foreach (array_slice($rows, 0, \App\Service\BrandLinkGraphService::OUT_DEGREE) as $row) {
+                $slug = trim((string) ($row['slug'] ?? ''));
+                $position = (int) ($row['position'] ?? 0);
+                if ($slug === '' || $slug === $brand->getSlug() || $position < 1) {
+                    continue;
+                }
+                $targetId = $db->fetchOne('SELECT id FROM brand WHERE slug = :slug', ['slug' => $slug]);
+                if ($targetId === false) {
+                    continue;
+                }
+                $db->executeStatement(
+                    'INSERT IGNORE INTO brand_related (brand_id, related_brand_id, position, source)
+                     VALUES (:brand, :related, :pos, :source)',
+                    [
+                        'brand'   => $brand->getId(),
+                        'related' => (int) $targetId,
+                        'pos'     => min($position, \App\Service\BrandLinkGraphService::OUT_DEGREE),
+                        'source'  => mb_substr((string) ($row['source'] ?? 'embedding'), 0, 20),
+                    ],
+                );
             }
-            $targetId = $db->fetchOne('SELECT id FROM brand WHERE slug = :slug', ['slug' => $slug]);
-            if ($targetId === false) {
-                continue;
-            }
-            $db->executeStatement(
-                'INSERT IGNORE INTO brand_related (brand_id, related_brand_id, position, source)
-                 VALUES (:brand, :related, :pos, :source)',
-                [
-                    'brand'   => $brand->getId(),
-                    'related' => (int) $targetId,
-                    'pos'     => min($position, \App\Service\BrandLinkGraphService::OUT_DEGREE),
-                    'source'  => mb_substr((string) ($row['source'] ?? 'embedding'), 0, 20),
-                ],
-            );
-        }
+        });
     }
 }

@@ -259,13 +259,24 @@ class BrandLinkGraphService
      */
     public function replaceDeadEdges(): int
     {
+        // Сторона ИСТОЧНИКА: ребро ИЗ non-active бренда. На рендере не участвует
+        // (страница источника отдаёт 404), но искажает inDegree таргета — активный
+        // бренд думает, что входящих хватает, хотя одно ведёт с мёртвой страницы.
+        // Источник станет active → weave() пересоберёт его исходящие, поэтому удаляем.
+        // Делаем первым, чтобы ниже не тратить fallback-подбор на рёбра мёртвых источников.
+        $replaced = (int) $this->db->executeStatement(
+            "DELETE r FROM brand_related r JOIN brand b ON b.id = r.brand_id
+             WHERE b.status != 'active'",
+        );
+
+        // Сторона ТАРГЕТА: ребро НА non-active бренд — заменяем живым кандидатом
+        // (источник сохраняет out-degree), а если кандидата нет — удаляем.
         $dead = $this->db->fetchAllAssociative(
             "SELECT r.id, r.brand_id FROM brand_related r
              JOIN brand b ON b.id = r.related_brand_id
              WHERE b.status != 'active'",
         );
 
-        $replaced = 0;
         foreach ($dead as $edge) {
             $brandId = (int) $edge['brand_id'];
             $linked  = array_map('intval', $this->db->fetchFirstColumn(

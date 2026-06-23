@@ -16,6 +16,9 @@ use Symfony\Component\Routing\Annotation\Route;
 
 class BrandsController extends AbstractController
 {
+    /** Минимум ссылок в блоке «похожие бренды» — чтобы страница не была тупиком для PageRank. */
+    private const MIN_SIMILAR_BRANDS = 6;
+
     #[Route('/{_locale}/brands', name: 'brand_index', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
     public function brand_index(Request $request, BrandRepository $repo): Response
     {
@@ -260,8 +263,23 @@ class BrandsController extends AbstractController
         }
 
         $demoProducts = $this->createDemoProducts($brand);
-        // Жёсткий граф перелинковки; динамический подбор — только пока граф не построен
-        $similarBrands = $brandRepo->findRelatedHard($brand) ?: $brandRepo->findSimilarBrands($brand, 8);
+        // Жёсткий граф перелинковки (только active-таргеты). Если граф дал недобор
+        // (часть рёбер ведёт на ещё не опубликованные new-бренды → отфильтрованы),
+        // добиваем до минимума active-кандидатами, чтобы страница не становилась
+        // тупиком для внутреннего PageRank. Добор детерминирован (created_at DESC).
+        $similarBrands = $brandRepo->findRelatedHard($brand);
+        if (count($similarBrands) < self::MIN_SIMILAR_BRANDS) {
+            $seen = array_map(static fn ($b) => $b->getId(), $similarBrands);
+            foreach ($brandRepo->findSimilarBrands($brand, self::MIN_SIMILAR_BRANDS + count($seen)) as $cand) {
+                if (count($similarBrands) >= self::MIN_SIMILAR_BRANDS) {
+                    break;
+                }
+                if (!in_array($cand->getId(), $seen, true)) {
+                    $similarBrands[] = $cand;
+                    $seen[] = $cand->getId();
+                }
+            }
+        }
 
         $brandStyles = $brand->getStyles()->toArray();
         $brandCity = $brand->getCity();
