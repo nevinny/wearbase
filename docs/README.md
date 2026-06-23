@@ -23,6 +23,7 @@
 | [seo_adoption_plan.md](seo_adoption_plan.md) | Что берём из пакета `_seo` (CLOSEDLOOP-SEO-FULL + SEO 4.9): GSC, индексация, link-graph, closed-loop |
 | [seo_rules.md](seo_rules.md) | **Канон SEO-правил (v3.0.0)** — единый: WEARBASE-константы + нормативные MUST/SHOULD/NICE + by-design принципы. Свёл в себя бывшие `seo_rules_2.3.0` и `seo_rules_SEO_GUIDE` |
 | [seo_tools.md](seo_tools.md) | Справочник SEO-инструментов (коммерческие + open-source, бюджеты) |
+| [ahrefs.md](ahrefs.md) | Ahrefs: доступ к проекту, как читать аудит (Error vs Notice), инвентарь проблем + приоритеты, другие инструменты. От 2026-06-22 |
 | [agent_readiness.md](agent_readiness.md) | Техническое SEO под AI-агентов (isitagentready.com): robots.txt+Content Signals, llms.txt, Link header, Markdown negotiation, API Catalog. От 2026-06-18 |
 
 ## RAG-конвейер, LLM, контент
