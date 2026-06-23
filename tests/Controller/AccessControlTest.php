@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
@@ -20,9 +21,7 @@ class AccessControlTest extends WebTestCase
 {
     // ── Protected: /account/* ─────────────────────────────────────────────────
 
-    /**
-     * @dataProvider accountRoutesProvider
-     */
+    #[DataProvider('accountRoutesProvider')]
     public function testAccountRouteRedirectsGuest(string $path): void
     {
         $client = static::createClient();
@@ -46,9 +45,7 @@ class AccessControlTest extends WebTestCase
 
     // ── Protected: /brand/* ───────────────────────────────────────────────────
 
-    /**
-     * @dataProvider brandRoutesProvider
-     */
+    #[DataProvider('brandRoutesProvider')]
     public function testBrandRouteRedirectsGuest(string $path): void
     {
         $client = static::createClient();
@@ -84,9 +81,7 @@ class AccessControlTest extends WebTestCase
 
     // ── Public: auth pages accessible without login ───────────────────────────
 
-    /**
-     * @dataProvider publicRoutesProvider
-     */
+    #[DataProvider('publicRoutesProvider')]
     public function testPublicRouteIsAccessibleWithoutLogin(string $path): void
     {
         $client = static::createClient();

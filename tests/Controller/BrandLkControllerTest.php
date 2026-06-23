@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
@@ -39,9 +40,7 @@ class BrandLkControllerTest extends WebTestCase
 
     // ── Access control: guests redirect (no DB needed) ────────────────────────
 
-    /**
-     * @dataProvider brandPathsProvider
-     */
+    #[DataProvider('brandPathsProvider')]
     public function testGuestIsRedirectedToLogin(string $path): void
     {
         $client = static::createClient();
@@ -62,9 +61,7 @@ class BrandLkControllerTest extends WebTestCase
 
     // ── Access control: customer gets 403 ────────────────────────────────────
 
-    /**
-     * @dataProvider brandPathsProvider
-     */
+    #[DataProvider('brandPathsProvider')]
     public function testCustomerCannotAccessBrandArea(string $path): void
     {
         if (!static::$dbAvailable) {
