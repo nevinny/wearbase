@@ -11,6 +11,7 @@ use Nevinny\AdminCoreBundle\Entity\Trait\Created;
 use Nevinny\AdminCoreBundle\Entity\Trait\DefaultFields;
 use Nevinny\AdminCoreBundle\Entity\Trait\Owner;
 use Nevinny\AdminCoreBundle\Entity\Trait\Status;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 use Vich\UploaderBundle\Mapping\Annotation as Vich;
 use Symfony\Component\HttpFoundation\File\File;
@@ -822,6 +823,67 @@ class Brand
     public function setPublishedAt(?\DateTimeInterface $at): static
     {
         $this->publishedAt = $at;
+
+        return $this;
+    }
+
+    // ─── Машина состояний бренда: доменные переходы статуса ───────────────────
+    // Инвариант перехода держим здесь (по образцу BrandRagPipeline::markEmbedded —
+    // «setStatus() напрямую размазывал машину состояний, инварианты не держались»).
+    // Побочные эффекты (граф перелинковки, прод-синк, IndexNow) — на стороне
+    // вызывающих: они контекстно-зависимы (fail-open weave в дрипе vs транзакция
+    // в агент-ingest), и засовывать их в общий метод протекло бы абстракцией.
+
+    /** В очередь дрип-публикации: → new (создание/возврат в очередь). */
+    public function queue(): static
+    {
+        $this->setStatus(Statuses::New);
+        $this->publishPending = true;
+
+        return $this;
+    }
+
+    /**
+     * Опубликовать: new|disabled → active. Идемпотентно (повтор на active — no-op).
+     *
+     * @param \DateTimeInterface|null $at время публикации; по умолчанию — сейчас по МСК
+     *        (publish-tick считает published_today по нему — иначе на UTC-проде счёт съезжает на 3ч).
+     * @return bool true, если статус реально сменился
+     * @throws \DomainException из deleted/system публиковать нельзя (нужно явное восстановление)
+     */
+    public function publish(?\DateTimeInterface $at = null): bool
+    {
+        $status = $this->getStatus();
+        if ($status === Statuses::Active) {
+            return false;
+        }
+        if (!in_array($status, [Statuses::New, Statuses::Disabled], true)) {
+            throw new \DomainException(sprintf('Нельзя опубликовать бренд из статуса "%s"', $status?->value ?? 'null'));
+        }
+        $this->setStatus(Statuses::Active);
+        $this->publishPending = false;
+        $this->publishedAt = $at ?? new \DateTime('now', new \DateTimeZone('Europe/Moscow'));
+
+        return true;
+    }
+
+    /** Снять с публикации: → disabled. Идемпотентно (повтор на disabled — no-op). */
+    public function unpublish(): bool
+    {
+        if ($this->getStatus() === Statuses::Disabled) {
+            return false;
+        }
+        $this->setStatus(Statuses::Disabled);
+        $this->publishPending = false;
+
+        return true;
+    }
+
+    /** Мягкое удаление: → deleted (политика проекта — без физического DELETE). */
+    public function softDelete(): static
+    {
+        $this->setStatus(Statuses::Deleted);
+        $this->publishPending = false;
 
         return $this;
     }

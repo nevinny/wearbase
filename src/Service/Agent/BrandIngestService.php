@@ -50,10 +50,7 @@ class BrandIngestService
             }
 
             if ($isNew) {
-                $brand = (new Brand())
-                    ->setSlug($slug)
-                    ->setStatus(Statuses::New)   // скрыт до дрип-публикации (каталог фильтрует active)
-                    ->setPublishPending(true);
+                $brand = (new Brand())->setSlug($slug)->queue();   // → new, скрыт до дрип-публикации
                 $this->em->persist($brand);
             }
 
@@ -168,8 +165,7 @@ class BrandIngestService
                 return ['status' => 'not_found', 'brand_id' => null];
             }
 
-            $brand->setStatus(Statuses::Disabled)
-                ->setPublishPending(false);
+            $brand->unpublish();
             $this->em->flush();
 
             return ['status' => 'unpublished', 'brand_id' => $brand->getId()];
@@ -207,9 +203,7 @@ class BrandIngestService
                 return ['status' => 'already_published', 'brand_id' => $brand->getId(), 'url' => $url];
             }
 
-            $brand->setStatus(Statuses::Active)
-                ->setPublishPending(false)
-                ->setPublishedAt(new \DateTime('now', new \DateTimeZone('Europe/Moscow')));
+            $brand->publish();   // new|disabled → active, published_at = МСК now
             $this->em->flush();
 
             return ['status' => 'published', 'brand_id' => $brand->getId(), 'url' => $url];

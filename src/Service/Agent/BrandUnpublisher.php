@@ -4,7 +4,6 @@ namespace App\Service\Agent;
 
 use App\Entity\Brand;
 use Doctrine\ORM\EntityManagerInterface;
-use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -44,8 +43,8 @@ class BrandUnpublisher
         $slug  = (string) $brand->getSlug();
 
         // 1) Локальный soft-hide (никогда не физический DELETE — политика проекта).
-        // Статус — backed-enum Statuses; «скрыт» = Disabled (как в agent-API unpublish).
-        $brand->setStatus(Statuses::Disabled)->setPublishPending(false);
+        // «Скрыт» = Disabled (доменный переход brand->unpublish(), как в agent-API unpublish).
+        $brand->unpublish();
         $this->em->flush();
 
         // 2) Снять с прод-каталога.

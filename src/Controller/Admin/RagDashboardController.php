@@ -317,9 +317,14 @@ class RagDashboardController extends AbstractController
             );
             $this->addFlash('success', "Бренд #{$id} отправлен на переобогащение");
         } else { // hide
-            // Soft-hide локально (политика soft-delete) + снятие с публикации на проде.
-            $slug = (string) $this->db->fetchOne("SELECT slug FROM brand WHERE id=:id", ['id' => $id]);
-            $this->db->executeStatement("UPDATE brand SET status='disabled', publish_pending=0 WHERE id=:id", ['id' => $id]);
+            // Soft-hide локально (доменный переход brand->unpublish(), политика soft-delete)
+            // + снятие с публикации на проде.
+            $brand = $this->em->find(\App\Entity\Brand::class, (int) $id);
+            $slug = (string) ($brand?->getSlug() ?? '');
+            if ($brand !== null) {
+                $brand->unpublish();
+                $this->em->flush();
+            }
             $this->db->executeStatement("UPDATE brand_rag_pipeline SET last_error='review: скрыт вручную' WHERE brand_id=:id", ['id' => $id]);
             $this->addFlash('success', "Бренд #{$id} скрыт из каталога");
 
