@@ -133,6 +133,34 @@ class BrandRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
+    /**
+     * Конкуренты для листикла «ТОП-N в нише» (app:seo:listicle): активные бренды
+     * того же стиля (ниша = BrandStyle, т.к. category в каталоге не заполнена) с
+     * непустым описанием (есть факты для секции), кроме целевого. Сортировка по
+     * длине описания DESC — берём бренды с самым богатым фактическим материалом,
+     * чтобы рейтинг не получился из пустышек.
+     *
+     * @return Brand[]
+     */
+    public function findListicleCompetitors(int $styleId, int $excludeBrandId, int $limit = 4): array
+    {
+        return $this->createQueryBuilder('b')
+            ->innerJoin('b.styles', 's')
+            ->where('s.id = :styleId')
+            ->andWhere('b.status = :status')
+            ->andWhere('b.id != :excludeId')
+            ->andWhere('b.description IS NOT NULL')
+            ->andWhere('LENGTH(b.description) > 100')
+            ->setParameter('styleId', $styleId)
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('excludeId', $excludeBrandId)
+            ->groupBy('b.id')
+            ->orderBy('LENGTH(b.description)', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     public function findFeaturedBrands(int $limit = 12, bool $withLogo = false): array
     {
         // Сначала пытаемся найти бренды с описанием (для лучшего UX)

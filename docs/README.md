@@ -36,6 +36,7 @@
 | [rag_pipeline.md](rag_pipeline.md) | **Полный reference** RAG-конвейера: discover→fetch→embed→generate, статус-машина, gate качества |
 | [rag_pipeline_refactoring.md](rag_pipeline_refactoring.md) | План рефакторинга слоя данных конвейера (SOLID/KISS/DRY): дефекты, нарушения, направления |
 | [ad-description-flow.md](ad-description-flow.md) | Флоу генерации рекламного описания бренда |
+| [seo_boost.md](seo_boost.md) | **`app:seo:listicle`**: GEO-листиклы «ТОП-N в нише» (целевой бренд №1) — свой аналог КП ContentMagic. Grounded, Article+ItemList+FAQPage, персоны/площадки/`--variants`. Ниша = `BrandStyle`. От 2026-06-24 |
 | [model-ab-bench.md](model-ab-bench.md) | Бенчмарк LLM-моделей генерации (вердикт: gemma4:26b) |
 
 ## Продукт и фичи

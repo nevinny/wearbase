@@ -1,6 +1,6 @@
 # Справочник console-команд WEARBASE
 
-Ревизия на 2026-06-13. Всего **40** команд (`src/Command/*.php`).
+Ревизия на 2026-06-24. Всего **41** команда (`src/Command/*.php`).
 
 ## Как читать
 
@@ -138,6 +138,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:google:index-ping` | Google Indexing API: пинг карточек активных брендов (приоритет свежим, cooldown 14 дней) → `google_index_ping`. Единственный Google-канал (anti-trifecta: Яндекс/Bing — IndexNow). `--limit` (default 180, потолок 200), `--dry-run`. Fail-open: креды `GSC_CREDENTIALS_PATH` только на Mac. | ⏰ `0 7 * * *` | 🍎 Mac |
 | `app:seo:meta-repair` | Ремонт дефектной SEO-meta (пустая / title>60 / desc>155): собирает/тримит по границе слова (`SeoMetaService::fit`), приоритет по показам GSC. `--dry-run`, `--limit`, `--min-impressions`. Чинит только дефектные поля. | 👆 по запросу / периодически | 🍎 .43 (GSC+brand-слой); ☁️ prod для прямой починки live-meta |
 | `app:seo:near-dup` | Аудит near-duplicate описаний (Jaccard по word-shingles, DROP≥0.85 / WARN≥0.60). Read-only отчёт, `--threshold`, `--export`. Дубли в генерации уже ловит `NearDuplicateDetector` в generate-content. | 👆 по запросу | 🖥/🍎 |
+| `app:seo:listicle` | **SEO Boost / GEO**: статья-рейтинг «ТОП-N в нише» с целевым брендом №1 + реальные конкуренты той же ниши; grounded (описание+RAG), JSON-LD Article+ItemList+FAQPage, для внешней публикации (vc.ru/dtf.ru/Пикабу). `<brand_id> [niche]`, `--top --platform --persona --variants --no-faq --out`. Свой аналог КП ContentMagic. Полный reference — [seo_boost.md](seo_boost.md). | 👆 по запросу | 🖥/🍎 (нужна локальная LLM) |
 
 ---
 
