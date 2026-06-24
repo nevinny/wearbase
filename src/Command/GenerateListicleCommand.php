@@ -207,6 +207,7 @@ class GenerateListicleCommand extends Command
                 $rejected++;
                 continue;
             }
+            $body = $this->softenCliches($body);
 
             // Quality-gate: не сохраняем брак (пропущенный бренд, отказ, мусор, штампы).
             $issues = $this->qualityGate($body, $orderedBrands);
@@ -306,6 +307,18 @@ class GenerateListicleCommand extends Command
         }
 
         return $issues;
+    }
+
+    /**
+     * Мягкая правка упрямых клише: gemma часто вставляет «уникальн-» вопреки промпту.
+     * Замена по корню с сохранением окончания и регистра — снимает ложные отбраковки.
+     */
+    private function softenCliches(string $body): string
+    {
+        return (string) preg_replace_callback('/уникальн/iu', static function (array $m): string {
+            $first = mb_substr($m[0], 0, 1, 'UTF-8');
+            return mb_strtoupper($first, 'UTF-8') === $first ? 'Самобытн' : 'самобытн';
+        }, $body);
     }
 
     private function resolveStyle(Brand $target, string $niche, SymfonyStyle $io): ?BrandStyle

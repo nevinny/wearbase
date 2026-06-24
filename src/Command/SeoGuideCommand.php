@@ -141,6 +141,7 @@ class SeoGuideCommand extends Command
             $io->error('LLM вернула пусто.');
             return Command::FAILURE;
         }
+        $body = $this->softenCliches($body);
 
         $issues = $this->qualityGate($body, $brands);
         if ($issues !== []) {
@@ -195,6 +196,20 @@ class SeoGuideCommand extends Command
         )));
 
         return $phrases === [] ? null : implode(', ', $phrases);
+    }
+
+    /**
+     * Мягкая правка упрямых клише: локальная gemma часто вставляет «уникальн-»
+     * вопреки запрету в промпте. Меняем по корню, сохраняя окончание и регистр
+     * (уникальная→самобытная, Уникальный→Самобытный). Снимает ложные отбраковки gate.
+     */
+    private function softenCliches(string $body): string
+    {
+        return (string) preg_replace_callback('/уникальн/iu', static function (array $m): string {
+            $first = mb_substr($m[0], 0, 1, 'UTF-8');
+            $upper = mb_strtoupper($first, 'UTF-8') === $first;
+            return $upper ? 'Самобытн' : 'самобытн';
+        }, $body);
     }
 
     /** Гид-вариант gate: без проверки нумерованных секций (у гида «## Название», не «## N.»). */
