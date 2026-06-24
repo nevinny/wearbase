@@ -356,13 +356,22 @@ class SeoGuideCommand extends Command
         MD;
     }
 
+    /** Кириллица → latin-slug для имени файла (москва→moskva, санкт→sankt). */
+    private function translit(string $s): string
+    {
+        $map = ['а'=>'a','б'=>'b','в'=>'v','г'=>'g','д'=>'d','е'=>'e','ё'=>'e','ж'=>'zh','з'=>'z','и'=>'i','й'=>'y','к'=>'k','л'=>'l','м'=>'m','н'=>'n','о'=>'o','п'=>'p','р'=>'r','с'=>'s','т'=>'t','у'=>'u','ф'=>'f','х'=>'h','ц'=>'ts','ч'=>'ch','ш'=>'sh','щ'=>'sch','ъ'=>'','ы'=>'y','ь'=>'','э'=>'e','ю'=>'yu','я'=>'ya'];
+        $s = strtr(mb_strtolower(trim($s), 'UTF-8'), $map);
+
+        return trim((string) preg_replace('/[^a-z0-9]+/', '-', $s), '-');
+    }
+
     private function saveDocument(string $outDir, BrandStyle $style, ?string $city, string $platform, string $document, SymfonyStyle $io): string
     {
         if (!is_dir($outDir) && !@mkdir($outDir, 0775, true) && !is_dir($outDir)) {
             $io->warning("Не удалось создать {$outDir} — пишу в текущую папку.");
             $outDir = '.';
         }
-        $citySlug = $city ? '-' . preg_replace('/[^a-z0-9]+/u', '', mb_strtolower((string) $city, 'UTF-8')) : '';
+        $citySlug = $city ? '-' . $this->translit((string) $city) : '';
         $file = sprintf('%s/guide-%s%s-%s.md', rtrim($outDir, '/'), $style->getSlug(), $citySlug, $platform);
         file_put_contents($file, $document);
 
