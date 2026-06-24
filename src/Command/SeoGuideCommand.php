@@ -141,6 +141,7 @@ class SeoGuideCommand extends Command
             $io->error('LLM вернула пусто.');
             return Command::FAILURE;
         }
+        $body = $this->applyProofread($body, $io);   // корректорский проход (обязательный)
         $body = $this->softenCliches($body);
 
         $issues = $this->qualityGate($body, $brands);
@@ -196,6 +197,28 @@ class SeoGuideCommand extends Command
         )));
 
         return $phrases === [] ? null : implode(', ', $phrases);
+    }
+
+    /**
+     * Корректорский LLM-проход (обязательный): чинит опечатки/грамматику до линковки.
+     * Гард: пустой/заметно короче оригинала → откат к оригиналу.
+     */
+    private function applyProofread(string $body, SymfonyStyle $io): string
+    {
+        try {
+            $clean = $this->llm->proofread($body);
+        } catch (\Throwable $e) {
+            $io->note('  proofread: ошибка (' . $e->getMessage() . ') — оригинал');
+            return $body;
+        }
+        $before = (int) preg_match_all('/\p{L}+/u', $body);
+        $after  = (int) preg_match_all('/\p{L}+/u', $clean);
+        if (trim($clean) === '' || $after < (int) ($before * 0.8)) {
+            $io->note(sprintf('  proofread: подозрительно (%d→%d слов) — оригинал', $before, $after));
+            return $body;
+        }
+
+        return $clean;
     }
 
     /**

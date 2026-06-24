@@ -71,6 +71,7 @@ class GenerateListicleCommand extends Command
         'press'  => 'официальный пресс-релиз, нейтрально и сдержанно',
         'blog'   => 'личный блог, рефлексивно и доверительно',
         'dzen'   => 'статья для Яндекс.Дзена: информативно и экспертно, но живым языком, с пользой и вовлечением читателя',
+        'site'   => 'редакционная статья каталога WEARBASE для собственного блога: информативно, по-доброму экспертно, без рекламного давления',
     ];
 
     public function __construct(
@@ -207,6 +208,7 @@ class GenerateListicleCommand extends Command
                 $rejected++;
                 continue;
             }
+            $body = $this->applyProofread($body, $io);   // корректорский проход (обязательный)
             $body = $this->softenCliches($body);
 
             // Quality-gate: не сохраняем брак (пропущенный бренд, отказ, мусор, штампы).
@@ -307,6 +309,29 @@ class GenerateListicleCommand extends Command
         }
 
         return $issues;
+    }
+
+    /**
+     * Корректорский LLM-проход (обязательный): чинит опечатки/грамматику до линковки.
+     * Гард: если результат заметно короче оригинала (модель «съела» текст) или пуст —
+     * откат к оригиналу. Запускается ДО softenCliches/линковки (на голом тексте).
+     */
+    private function applyProofread(string $body, SymfonyStyle $io): string
+    {
+        try {
+            $clean = $this->llm->proofread($body);
+        } catch (\Throwable $e) {
+            $io->note('  proofread: ошибка (' . $e->getMessage() . ') — оставлен оригинал');
+            return $body;
+        }
+        $before = (int) preg_match_all('/\p{L}+/u', $body);
+        $after  = (int) preg_match_all('/\p{L}+/u', $clean);
+        if (trim($clean) === '' || $after < (int) ($before * 0.8)) {
+            $io->note(sprintf('  proofread: подозрительный результат (%d→%d слов) — оставлен оригинал', $before, $after));
+            return $body;
+        }
+
+        return $clean;
     }
 
     /**
@@ -447,9 +472,17 @@ class GenerateListicleCommand extends Command
         return (string) json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    /** URL карточки бренда в каталоге с UTM-меткой (бэклинк + атрибуция в Метрике). */
+    /**
+     * URL карточки бренда. Для своего блога (`site`) — внутренняя ссылка БЕЗ UTM
+     * (UTM на собственном домене ломает атрибуцию сессий в Метрике). Для внешних
+     * площадок — с UTM (бэклинк + атрибуция переходов).
+     */
     private function brandUrl(Brand $b, string $platform, string $campaign): string
     {
+        if ($platform === 'site') {
+            return self::SITE_BASE . '/ru/brands/' . $b->getSlug();
+        }
+
         return sprintf(
             '%s/ru/brands/%s?utm_source=%s&utm_medium=article&utm_campaign=%s',
             self::SITE_BASE,
@@ -481,10 +514,15 @@ class GenerateListicleCommand extends Command
                 continue;
             }
             $url = $this->brandUrl($b, $platform, $campaign);
-            $pat = '/(?<![\p{L}\d\/\[\]])' . preg_quote($name, '/') . '(?![\p{L}\d\]\)])/u';
+            // Регистронезависимо (модель часто пишет имя строчными, напр. «tvoe»), но
+            // НЕ трогаем уже-ссылки: пропускаем строки с разметкой ссылки на этот бренд.
+            $pat = '/(?<![\p{L}\d\/\[\]])' . preg_quote($name, '/') . '(?![\p{L}\d\]\)])/iu';
 
             foreach ($lines as $idx => $line) {
                 if ($line === '' || $line[0] === '#') {       // пропускаем заголовки
+                    continue;
+                }
+                if (str_contains($line, '](')) {              // в строке уже есть ссылка — не плодим
                     continue;
                 }
                 if (preg_match($pat, $line)) {
