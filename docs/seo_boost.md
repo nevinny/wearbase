@@ -171,6 +171,26 @@ php bin/console app:seo:listicle 354 auto --no-faq --out=-
 php bin/console app:seo:listicle 205 streetwear --city=москва --platform=dzen --top=5 --out=var/seo/dzen
 ```
 
+## Инфо-гиды (`app:seo:guide`, P2)
+
+Для **длинного хвоста**, где брендов мало для рейтинга (83 ячейки стиль×город из 102 —
+1 бренд): информационный гид-обзор без «ТОП-N» и целевого №1, охватывает всех брендов ниши.
+
+```bash
+php bin/console app:seo:guide streetwear                       # нишевый гид (все города)
+php bin/console app:seo:guide casual --city=москва --limit=8   # гео-гид
+```
+
+Структура (та же P1-анатомия): вступление → «На что обращать внимание при выборе» →
+секции брендов «## {название}» → «Где и как купить» → вывод. Оглавление, in-text
+ссылки+UTM, CTA на каталог, JSON-LD Article+ItemList. Объём 1300–2000, gate-floor 700,
+gate без проверки нумерованных секций (у гида заголовки без номера). LLM-метод —
+`LlmService::generateGuide`. Опции: `--city --limit --platform --persona --force --out`
+(default `var/seo/guides`).
+
+> Когда что: **листикл** — ячейки с ≥3 брендами (рейтинг); **гид** — остальной хвост
+> (нишевые обзоры и гео-гиды, где рейтинг не собрать).
+
 ## Важно: ниша = стиль (`BrandStyle`), не категория
 
 Ниша берётся из **`BrandStyle`**, а не из `Category`: таблица `brand_category` в
