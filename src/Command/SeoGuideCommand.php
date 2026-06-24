@@ -157,7 +157,7 @@ class SeoGuideCommand extends Command
         $title    = $cityDisp
             ? sprintf('%s: гид по брендам в городе %s, %s', $style->getTitle(), $cityDisp, date('Y'))
             : sprintf('%s: гид по российским брендам %s', $style->getTitle(), date('Y'));
-        $campaign = sprintf('guide-%s%s-%s', $style->getSlug(), $city ? '-' . mb_strtolower((string) $city, 'UTF-8') : '', $platform);
+        $campaign = sprintf('guide-%s%s-%s', $style->getSlug(), $city ? '-' . $this->translit((string) $city) : '', $platform);
 
         $linkedBody = $this->linkifyBody($body, $brands, $platform, $campaign);
         $toc        = $this->buildToc($linkedBody);
