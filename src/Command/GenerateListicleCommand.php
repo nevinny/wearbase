@@ -49,7 +49,9 @@ class GenerateListicleCommand extends Command
 {
     private const SITE_BASE = 'https://wearbase.ru';
     private const MAX_FACTS_PER_BRAND = 2500; // символов фактов на бренд в промпте
-    private const MIN_BODY_WORDS = 200;       // quality-gate: минимум слов в теле статьи
+    private const MIN_BODY_WORDS = 700;       // gate-floor (ловит обрезку); цель промпта — 1300–2000.
+                                              // 700, а не 900: ячейки из 3 брендов дают короче, но валидно.
+    private const MAX_INTEXT_LINKS = 4;       // in-text ссылок на каталог (с UTM), как у конкурента (3–4)
 
     /** Авторы-персоны (разный голос → 20 статей не близнецы). Индекс — опция --persona. */
     private const PERSONAS = [
@@ -68,6 +70,7 @@ class GenerateListicleCommand extends Command
         'pikabu' => 'личный опыт простым разговорным языком (UGC), от первого лица',
         'press'  => 'официальный пресс-релиз, нейтрально и сдержанно',
         'blog'   => 'личный блог, рефлексивно и доверительно',
+        'dzen'   => 'статья для Яндекс.Дзена: информативно и экспертно, но живым языком, с пользой и вовлечением читателя',
     ];
 
     public function __construct(
@@ -84,6 +87,7 @@ class GenerateListicleCommand extends Command
         $this
             ->addArgument('brand', InputArgument::REQUIRED, 'ID целевого бренда (место №1)')
             ->addArgument('niche', InputArgument::OPTIONAL, 'Slug стиля-ниши (или auto — из стиля бренда)', 'auto')
+            ->addOption('city',     null, InputOption::VALUE_REQUIRED, 'Гео-срез: конкуренты только из этого города (для «ТОП {стиль} {город}»)')
             ->addOption('top',      null, InputOption::VALUE_REQUIRED, 'Сколько мест в рейтинге (2..10)', '5')
             ->addOption('platform', null, InputOption::VALUE_REQUIRED, 'Площадка/тон: ' . implode('|', array_keys(self::PLATFORM_TONES)), 'vc')
             ->addOption('persona',  null, InputOption::VALUE_REQUIRED, 'Индекс автора-персоны (0..' . (count(self::PERSONAS) - 1) . ')', '0')
@@ -107,6 +111,7 @@ class GenerateListicleCommand extends Command
         $withFaq    = !$input->getOption('no-faq');
         $force      = (bool) $input->getOption('force');
         $outDir     = (string) $input->getOption('out');
+        $city       = $input->getOption('city');
 
         if (!isset(self::PLATFORM_TONES[$platform])) {
             $io->error("Неизвестная площадка «{$platform}». Доступно: " . implode(', ', array_keys(self::PLATFORM_TONES)));
@@ -127,21 +132,27 @@ class GenerateListicleCommand extends Command
 
         /** @var BrandRepository $brandRepo */
         $brandRepo   = $this->em->getRepository(Brand::class);
-        $competitors = $brandRepo->findListicleCompetitors((int) $style->getId(), $brandId, $top - 1);
+        $competitors = $brandRepo->findListicleCompetitors((int) $style->getId(), $brandId, $top - 1, $city);
 
         if ($competitors === []) {
             $io->error(sprintf(
-                'В нише «%s» нет конкурентов с описанием, кроме целевого бренда. Выберите другую нишу.',
+                'В нише «%s»%s нет конкурентов с описанием, кроме целевого бренда. Выберите другую нишу/город.',
                 $style->getTitle(),
+                $city ? " (город «{$city}»)" : '',
             ));
             return Command::FAILURE;
         }
 
-        $nicheTitle = (string) $style->getTitle();
+        // city×style: заголовок включает город. nicheTitle НЕ содержит «брендов» —
+        // его подставляет шаблон title («ТОП-N брендов {nicheTitle}»), иначе дублируется.
+        $nicheTitle = $city
+            ? sprintf('%s — %s', $style->getTitle(), mb_convert_case(trim((string) $city), MB_CASE_TITLE, 'UTF-8'))
+            : (string) $style->getTitle();
 
         $io->title('SEO Boost · листикл «ТОП-N в нише»');
         $io->definitionList(
             ['Ниша'     => $nicheTitle],
+            ['Город'    => $city ?: '— (все)'],
             ['Целевой'  => $target->getTitle()],
             ['Мест'     => 1 + count($competitors)],
             ['Вариантов' => $variants],
@@ -211,9 +222,16 @@ class GenerateListicleCommand extends Command
             }
 
             $title    = sprintf('ТОП-%d брендов %s: рейтинг %s', count($orderedBrands), $nicheTitle, date('Y'));
-            $faqMd    = $this->buildFaqMarkdown($faq);
-            $jsonLd   = $this->buildJsonLd($title, $orderedBrands, $vPersona, $faq);
-            $document = $this->renderDocument($title, $vPersona, $vPlatform, $body, $faqMd, $jsonLd);
+            $campaign = sprintf('%s-%s-%s', $style->getSlug(), $target->getSlug(), $vPlatform);
+
+            // P1-методология: in-text ссылки на каталог с UTM (ссылка в 1-м абзаце —
+            // целевой бренд идёт первым), оглавление, CTA-блок, UTM в JSON-LD.
+            $linkedBody = $this->linkifyBody($body, $orderedBrands, $vPlatform, $campaign);
+            $toc        = $this->buildToc($linkedBody);
+            $cta        = $this->buildCta($target, $vPlatform, $campaign);
+            $faqMd      = $this->buildFaqMarkdown($faq);
+            $jsonLd     = $this->buildJsonLd($title, $orderedBrands, $vPersona, $faq, $vPlatform, $campaign);
+            $document   = $this->renderDocument($title, $vPersona, $vPlatform, $toc, $linkedBody, $faqMd, $cta, $jsonLd);
 
             if ($outDir === '-') {
                 $output->writeln($document);
@@ -273,8 +291,14 @@ class GenerateListicleCommand extends Command
             }
         }
 
-        // AI-штампы (запрещены промптом — ловим протечки).
+        // AI-штампы (запрещены промптом — ловим протечки). «отличается»/«выделяется»
+        // исключены: в статьях-сравнениях это нормальные слова, не клише (давали ложные
+        // отбраковки). Оставляем настоящие маркеры: уникальный/инновационный/передовой/…
+        $overBroad = ['отличается', 'выделяется'];
         foreach ($this->validator->getAiPhrases() as $phrase) {
+            if (in_array($phrase, $overBroad, true)) {
+                continue;
+            }
             if (mb_stripos($body, $phrase) !== false) {
                 $issues[] = "AI-штамп: «{$phrase}»";
                 break;
@@ -375,7 +399,7 @@ class GenerateListicleCommand extends Command
      * @param Brand[]                                            $ordered
      * @param array<int,array{question:string,answer:string}>   $faq
      */
-    private function buildJsonLd(string $title, array $ordered, string $persona, array $faq = []): string
+    private function buildJsonLd(string $title, array $ordered, string $persona, array $faq, string $platform, string $campaign): string
     {
         $items = [];
         foreach ($ordered as $i => $b) {
@@ -383,7 +407,7 @@ class GenerateListicleCommand extends Command
                 '@type'    => 'ListItem',
                 'position' => $i + 1,
                 'name'     => $b->getTitle(),
-                'url'      => self::SITE_BASE . '/ru/brands/' . $b->getSlug(),
+                'url'      => $this->brandUrl($b, $platform, $campaign),
             ];
         }
 
@@ -410,16 +434,91 @@ class GenerateListicleCommand extends Command
         return (string) json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    private function renderDocument(string $title, string $persona, string $platform, string $body, string $faqMd, string $jsonLd): string
+    /** URL карточки бренда в каталоге с UTM-меткой (бэклинк + атрибуция в Метрике). */
+    private function brandUrl(Brand $b, string $platform, string $campaign): string
     {
+        return sprintf(
+            '%s/ru/brands/%s?utm_source=%s&utm_medium=article&utm_campaign=%s',
+            self::SITE_BASE,
+            $b->getSlug(),
+            rawurlencode($platform),
+            rawurlencode($campaign),
+        );
+    }
+
+    /**
+     * In-text ссылки на каталог (P1-методология): линкуем ПЕРВОЕ упоминание каждого
+     * бренда по имени на его карточку с UTM. Целевой идёт первым → его ссылка
+     * попадает в первый абзац («ссылка в первом абзаце»). Заголовки не трогаем
+     * (там якоря оглавления), максимум MAX_INTEXT_LINKS ссылок.
+     *
+     * @param Brand[] $ordered
+     */
+    private function linkifyBody(string $body, array $ordered, string $platform, string $campaign): string
+    {
+        $lines  = explode("\n", $body);
+        $linked = 0;
+
+        foreach ($ordered as $b) {
+            if ($linked >= self::MAX_INTEXT_LINKS) {
+                break;
+            }
+            $name = trim((string) $b->getTitle());
+            if ($name === '') {
+                continue;
+            }
+            $url = $this->brandUrl($b, $platform, $campaign);
+            $pat = '/(?<![\p{L}\d\/\[\]])' . preg_quote($name, '/') . '(?![\p{L}\d\]\)])/u';
+
+            foreach ($lines as $idx => $line) {
+                if ($line === '' || $line[0] === '#') {       // пропускаем заголовки
+                    continue;
+                }
+                if (preg_match($pat, $line)) {
+                    $lines[$idx] = preg_replace_callback($pat, static fn($m) => "[{$m[0]}]({$url})", $line, 1);
+                    $linked++;
+                    break;
+                }
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** Оглавление из H2-секций статьи (UX + анкоры). */
+    private function buildToc(string $body): string
+    {
+        if (!preg_match_all('/^##\s+(.+?)\s*$/mu', $body, $m) || count($m[1]) < 2) {
+            return '';
+        }
+        $items = array_map(static fn(string $h) => '- ' . $h, $m[1]);
+
+        return "## Содержание\n\n" . implode("\n", $items);
+    }
+
+    /** CTA-блок со ссылкой на каталог (целевой бренд) с отдельной UTM-кампанией cta-. */
+    private function buildCta(Brand $target, string $platform, string $campaign): string
+    {
+        $url = $this->brandUrl($target, $platform, 'cta-' . $campaign);
+
+        return "## С чего начать\n\n"
+            . "Сравните ассортимент и актуальные цены брендов в каталоге WEARBASE — "
+            . "там карточки, контакты и ссылки на официальные магазины.\n\n"
+            . "[Смотреть бренды в каталоге →]({$url})";
+    }
+
+    private function renderDocument(string $title, string $persona, string $platform, string $toc, string $body, string $faqMd, string $cta, string $jsonLd): string
+    {
+        $tocSection = $toc === '' ? '' : "{$toc}\n\n";
         $faqSection = $faqMd === '' ? '' : "\n\n{$faqMd}";
+        $ctaSection = $cta === '' ? '' : "\n\n{$cta}";
 
         return <<<MD
         <!-- площадка: {$platform} · автор-персона: {$persona} -->
 
         # {$title}
 
-        {$body}{$faqSection}
+        {$tocSection}{$body}{$faqSection}{$ctaSection}
 
         ---
 

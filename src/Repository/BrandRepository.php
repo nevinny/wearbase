@@ -142,9 +142,9 @@ class BrandRepository extends ServiceEntityRepository
      *
      * @return Brand[]
      */
-    public function findListicleCompetitors(int $styleId, int $excludeBrandId, int $limit = 4): array
+    public function findListicleCompetitors(int $styleId, int $excludeBrandId, int $limit = 4, ?string $city = null): array
     {
-        return $this->createQueryBuilder('b')
+        $qb = $this->createQueryBuilder('b')
             ->innerJoin('b.styles', 's')
             ->where('s.id = :styleId')
             ->andWhere('b.status = :status')
@@ -156,9 +156,15 @@ class BrandRepository extends ServiceEntityRepository
             ->setParameter('excludeId', $excludeBrandId)
             ->groupBy('b.id')
             ->orderBy('LENGTH(b.description)', 'DESC')
-            ->setMaxResults($limit)
-            ->getQuery()
-            ->getResult();
+            ->setMaxResults($limit);
+
+        // Гео-срез (для city×style листиклов «ТОП-N {стиль} брендов {город}»).
+        if ($city !== null && trim($city) !== '') {
+            $qb->andWhere('LOWER(b.city) LIKE :city')
+               ->setParameter('city', '%' . mb_strtolower(trim($city), 'UTF-8') . '%');
+        }
+
+        return $qb->getQuery()->getResult();
     }
 
     public function findFeaturedBrands(int $limit = 12, bool $withLogo = false): array
