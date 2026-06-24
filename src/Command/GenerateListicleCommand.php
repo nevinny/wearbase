@@ -8,6 +8,7 @@ use App\Entity\BrandStyle;
 use App\Repository\BrandKeywordRepository;
 use App\Repository\BrandRepository;
 use App\Service\BrandRagService;
+use App\Service\ContentValidator;
 use App\Service\LlmService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -48,6 +49,7 @@ class GenerateListicleCommand extends Command
 {
     private const SITE_BASE = 'https://wearbase.ru';
     private const MAX_FACTS_PER_BRAND = 2500; // символов фактов на бренд в промпте
+    private const MIN_BODY_WORDS = 200;       // quality-gate: минимум слов в теле статьи
 
     /** Авторы-персоны (разный голос → 20 статей не близнецы). Индекс — опция --persona. */
     private const PERSONAS = [
@@ -72,6 +74,7 @@ class GenerateListicleCommand extends Command
         private readonly EntityManagerInterface $em,
         private readonly LlmService             $llm,
         private readonly BrandRagService        $rag,
+        private readonly ContentValidator       $validator,
     ) {
         parent::__construct();
     }
@@ -86,7 +89,8 @@ class GenerateListicleCommand extends Command
             ->addOption('persona',  null, InputOption::VALUE_REQUIRED, 'Индекс автора-персоны (0..' . (count(self::PERSONAS) - 1) . ')', '0')
             ->addOption('variants', null, InputOption::VALUE_REQUIRED, 'Сколько статей сгенерить (ротация персон/площадок/порядка)', '1')
             ->addOption('no-faq',   null, InputOption::VALUE_NONE,     'Не добавлять FAQ-блок и FAQPage JSON-LD')
-            ->addOption('out',      null, InputOption::VALUE_REQUIRED, 'Папка для сохранения .md (по умолчанию — только вывод в консоль)')
+            ->addOption('force',    null, InputOption::VALUE_NONE,     'Сохранять даже при провале quality-gate (с предупреждением)')
+            ->addOption('out',      null, InputOption::VALUE_REQUIRED, 'Папка для сохранения .md (- = вывод в консоль)', 'var/seo')
         ;
     }
 
@@ -101,7 +105,8 @@ class GenerateListicleCommand extends Command
         $personaIdx = (int) $input->getOption('persona');
         $variants   = max(1, (int) $input->getOption('variants'));
         $withFaq    = !$input->getOption('no-faq');
-        $outDir     = $input->getOption('out');
+        $force      = (bool) $input->getOption('force');
+        $outDir     = (string) $input->getOption('out');
 
         if (!isset(self::PLATFORM_TONES[$platform])) {
             $io->error("Неизвестная площадка «{$platform}». Доступно: " . implode(', ', array_keys(self::PLATFORM_TONES)));
@@ -169,6 +174,8 @@ class GenerateListicleCommand extends Command
         $platformKeys = array_keys(self::PLATFORM_TONES);
         $startPlat    = array_search($platform, $platformKeys, true) ?: 0;
         $compCount    = count($compEntries);
+        $ok = 0;
+        $rejected = 0;
 
         for ($i = 0; $i < $variants; $i++) {
             $vPlatform = $variants > 1 ? $platformKeys[($startPlat + $i) % count($platformKeys)] : $platform;
@@ -186,7 +193,21 @@ class GenerateListicleCommand extends Command
             $body = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords);
             if (trim($body) === '') {
                 $io->warning('  LLM вернула пустой результат — вариант пропущен.');
+                $rejected++;
                 continue;
+            }
+
+            // Quality-gate: не сохраняем брак (пропущенный бренд, отказ, мусор, штампы).
+            $issues = $this->qualityGate($body, $orderedBrands);
+            if ($issues !== []) {
+                if ($force) {
+                    $io->note('  quality-gate (проигнорирован --force): ' . implode('; ', $issues));
+                } else {
+                    $io->warning('  Отбраковано quality-gate:');
+                    $io->listing($issues);
+                    $rejected++;
+                    continue;
+                }
             }
 
             $title    = sprintf('ТОП-%d брендов %s: рейтинг %s', count($orderedBrands), $nicheTitle, date('Y'));
@@ -194,15 +215,73 @@ class GenerateListicleCommand extends Command
             $jsonLd   = $this->buildJsonLd($title, $orderedBrands, $vPersona, $faq);
             $document = $this->renderDocument($title, $vPersona, $vPlatform, $body, $faqMd, $jsonLd);
 
-            if ($outDir !== null) {
-                $path = $this->saveDocument((string) $outDir, $style, $target, $vPlatform, $personaIdx + $i, $document, $io);
-                $io->success("Сохранено: {$path}");
-            } else {
+            if ($outDir === '-') {
                 $output->writeln($document);
+            } else {
+                $path = $this->saveDocument($outDir, $style, $target, $vPlatform, $personaIdx + $i, $document, $io);
+                $io->success("Сохранено: {$path}");
+            }
+            $ok++;
+        }
+
+        $io->newLine();
+        $io->table(['Результат', 'Кол-во'], [
+            ['Готово',                $ok],
+            ['Отбраковано/пусто',     $rejected],
+        ]);
+
+        return $ok > 0 ? Command::SUCCESS : Command::FAILURE;
+    }
+
+    /**
+     * Quality-gate готовой статьи: возвращает список проблем (пусто = прошёл).
+     * Бракуем то, что бессмысленно или вредно публиковать: отказ модели, остаток
+     * markdown-обёртки, слишком короткий текст, пропущенный/слитый бренд, не
+     * упомянутый по имени бренд (особенно целевой №1), AI-штампы.
+     *
+     * @param Brand[] $brands
+     * @return string[]
+     */
+    private function qualityGate(string $body, array $brands): array
+    {
+        $issues = [];
+
+        if ($this->validator->isRefusal($body)) {
+            $issues[] = 'модель вернула отказ (нет фактов / чужой корпус)';
+        }
+
+        if (str_contains($body, '```')) {
+            $issues[] = 'в теле осталась markdown-обёртка ```';
+        }
+
+        $words = (int) preg_match_all('/\p{L}+/u', $body);
+        if ($words < self::MIN_BODY_WORDS) {
+            $issues[] = sprintf('мало слов: %d < %d', $words, self::MIN_BODY_WORDS);
+        }
+
+        // Каждый бренд должен иметь секцию «## N. …» — иначе модель слила/пропустила.
+        $sections = (int) preg_match_all('/^##\s+\d+\./mu', $body);
+        if ($sections < count($brands)) {
+            $issues[] = sprintf('секций брендов %d < %d (бренд пропущен или слит)', $sections, count($brands));
+        }
+
+        // Каждый бренд упомянут по имени; целевой (первый) — критично.
+        foreach ($brands as $idx => $b) {
+            $name = (string) $b->getTitle();
+            if ($name !== '' && mb_stripos($body, $name) === false) {
+                $issues[] = ($idx === 0 ? 'ЦЕЛЕВОЙ бренд' : 'бренд') . " «{$name}» не упомянут по имени";
             }
         }
 
-        return Command::SUCCESS;
+        // AI-штампы (запрещены промптом — ловим протечки).
+        foreach ($this->validator->getAiPhrases() as $phrase) {
+            if (mb_stripos($body, $phrase) !== false) {
+                $issues[] = "AI-штамп: «{$phrase}»";
+                break;
+            }
+        }
+
+        return $issues;
     }
 
     private function resolveStyle(Brand $target, string $niche, SymfonyStyle $io): ?BrandStyle
