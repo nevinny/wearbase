@@ -57,6 +57,18 @@ class WordstatClient implements KeywordProviderInterface
             if ($status === 429 || str_contains($body, 'quota limit exceed') || str_contains($body, 'RESOURCE_EXHAUSTED')) {
                 throw new WordstatQuotaException('Wordstat hourly quota (100/час) exceeded');
             }
+            // Невалидный/удалённый ключ: HTTP 401/403 или gRPC code 16 UNAUTHENTICATED
+            // («Unknown api key»). Это глобальная проблема — не глотаем как «нет
+            // результатов», иначе прогон молча пометит все бренды пустыми.
+            if ($status === 401 || $status === 403
+                || str_contains($body, 'Unknown api key')
+                || str_contains($body, 'UNAUTHENTICATED')
+                || str_contains($body, '"code": 16')) {
+                throw new WordstatAuthException(sprintf(
+                    'Wordstat: невалидный API-ключ (HTTP %d) — пересоздай WORDSTAT_API_KEY в Yandex Cloud. Ответ: %s',
+                    $status, mb_substr(trim($body), 0, 200),
+                ));
+            }
             if ($status >= 400) {
                 return [];
             }

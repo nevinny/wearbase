@@ -9,6 +9,7 @@ use App\Repository\BrandKeywordRepository;
 use App\Repository\BrandRagPipelineRepository;
 use App\Repository\BrandRepository;
 use App\Service\Keyword\KeywordService;
+use App\Service\Keyword\WordstatAuthException;
 use App\Service\Keyword\WordstatQuotaException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -100,7 +101,12 @@ class CollectBrandKeywordsCommand extends Command
                 $io->error("Бренд ID {$brandId} не найден.");
                 return Command::FAILURE;
             }
-            $this->processWithQuotaPause((int) $brandId, $io, $dryRun, $force);
+            try {
+                $this->processWithQuotaPause((int) $brandId, $io, $dryRun, $force);
+            } catch (WordstatAuthException $e) {
+                $io->error($e->getMessage());
+                return Command::FAILURE;
+            }
             $this->printResults($io);
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
         }
@@ -122,7 +128,14 @@ class CollectBrandKeywordsCommand extends Command
         $io->progressStart(count($brandIds));
 
         foreach ($brandIds as $id) {
-            $this->processWithQuotaPause((int) $id, $io, $dryRun, $force);
+            try {
+                $this->processWithQuotaPause((int) $id, $io, $dryRun, $force);
+            } catch (WordstatAuthException $e) {
+                $io->progressFinish();
+                $io->error($e->getMessage());
+                $this->printResults($io);
+                return Command::FAILURE;
+            }
             $io->progressAdvance();
             gc_collect_cycles(); // после em->clear() циклические ссылки Doctrine иначе текут
             if ($this->quotaExhausted) {  // сработал предохранитель QUOTA_MAX_PAUSES
@@ -241,6 +254,10 @@ class CollectBrandKeywordsCommand extends Command
             }
         } catch (WordstatQuotaException $e) {
             // Часовая квота — не ошибка: пробрасываем в обёртку (пауза + повтор).
+            $this->em->clear();
+            throw $e;
+        } catch (WordstatAuthException $e) {
+            // Дохлый ключ — глобальная проблема: пробрасываем, прогон остановится.
             $this->em->clear();
             throw $e;
         } catch (\Throwable $e) {
