@@ -138,7 +138,8 @@ class BrandRepository extends ServiceEntityRepository
      * того же стиля (ниша = BrandStyle, т.к. category в каталоге не заполнена) с
      * непустым описанием (есть факты для секции), кроме целевого. Сортировка по
      * длине описания DESC — берём бренды с самым богатым фактическим материалом,
-     * чтобы рейтинг не получился из пустышек.
+     * чтобы рейтинг не получился из пустышек. Офф-ниша (мебель/аптеки и т.п., попавшие
+     * по ошибочному стилю) отсеивается по «одёжным» сигналам в описании.
      *
      * @return Brand[]
      */
@@ -156,7 +157,7 @@ class BrandRepository extends ServiceEntityRepository
             ->setParameter('excludeId', $excludeBrandId)
             ->groupBy('b.id')
             ->orderBy('LENGTH(b.description)', 'DESC')
-            ->setMaxResults($limit);
+            ->setMaxResults($limit * 5 + 10);   // запас под отсев офф-ниши
 
         // Гео-срез (для city×style листиклов «ТОП-N {стиль} брендов {город}»).
         if ($city !== null && trim($city) !== '') {
@@ -164,7 +165,44 @@ class BrandRepository extends ServiceEntityRepository
                ->setParameter('city', '%' . mb_strtolower(trim($city), 'UTF-8') . '%');
         }
 
-        return $qb->getQuery()->getResult();
+        $brands = $qb->getQuery()->getResult();
+        $fashion = array_values(array_filter($brands, static fn(Brand $b) => self::looksLikeApparel((string) $b->getDescription())));
+
+        return array_slice($fashion, 0, $limit);
+    }
+
+    /**
+     * Похоже ли описание на бренд ОДЕЖДЫ — отсев офф-ниши (мебель/аптека/авто и пр.,
+     * затесавшиеся по ошибочному стилю). Сначала дени-лист явной офф-ниши (надёжнее
+     * подстрок: «бель» матчит «меБЕЛЬ», «мода» — «коМОДА»), затем одёжные сигналы.
+     */
+    private static function looksLikeApparel(string $text): bool
+    {
+        $t = mb_strtolower($text, 'UTF-8');
+
+        foreach ([
+            'мебел', 'шкаф', 'диван', 'кухн', 'перегородк', 'межкомнатн', 'раздвижн', 'гардеробн комнат',
+            'аптек', 'лекарств', 'фармац', ' бад', 'витамин',
+            'автомобил', 'запчаст', 'шиномонт', 'недвижим', 'ремонт кварт', 'строительн',
+        ] as $bad) {
+            if (mb_strpos($t, $bad) !== false) {
+                return false;
+            }
+        }
+
+        foreach ([
+            'одежд', 'ткан', 'носить', 'пошив', 'лукбук', 'модн', 'фасон',
+            'футболк', 'платье', 'платья', 'куртк', 'джинс', 'обув', 'худи', 'свитшот', 'кроссовк',
+            'трикотаж', 'пальто', 'юбк', 'брюк', 'рубашк', 'пиджак', 'костюм', 'бомбер', 'свитер',
+            'джемпер', 'лонгслив', 'шорт', 'толстовк', 'гардероб одежд',
+            'fashion', 'wear', 'clothing', 'apparel', 'sneaker', 'outfit',
+        ] as $sig) {
+            if (mb_strpos($t, $sig) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function findFeaturedBrands(int $limit = 12, bool $withLogo = false): array
