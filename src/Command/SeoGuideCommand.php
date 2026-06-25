@@ -42,6 +42,7 @@ class SeoGuideCommand extends Command
     private const MAX_FACTS_PER_BRAND = 2000;
     private const MIN_BODY_WORDS = 700;
     private const MAX_INTEXT_LINKS = 5;
+    private const MAX_GEN_ATTEMPTS = 3;       // self-heal: попыток с точечной правкой по gate
 
     private const PERSONAS = [
         'независимый fashion-стилист из Москвы',
@@ -137,24 +138,36 @@ class SeoGuideCommand extends Command
         $keywords = $this->keywordsFor($brands[0]);
 
         $io->section('Генерация гида (локальная LLM)');
-        $body = $this->llm->generateGuide($nicheTitle, $cityDisp, $llmBrands, $persona, $tone, $keywords);
-        if (trim($body) === '') {
-            $io->error('LLM вернула пусто.');
+        // Self-heal: до MAX_GEN_ATTEMPTS попыток, на провал гейта чиним findings (не ре-ролл),
+        // температура 0.7→0.6→0.5. Корректура — раз, на принятом черновике.
+        $temps = [0.7, 0.6, 0.5];
+        $fixHint = null;
+        $body = null;
+        $issues = ['пусто'];
+        for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
+            $raw = $this->llm->generateGuide($nicheTitle, $cityDisp, $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5);
+            if (trim($raw) === '') {
+                $issues = ['LLM вернула пусто'];
+                continue;
+            }
+            $raw = $this->softenCliches($raw);
+            $issues = $this->qualityGate($raw, $brands, $keywords);
+            $body = $raw;
+            if ($issues === []) {
+                break;
+            }
+            $fixHint = implode('; ', $issues);
+            $io->text(sprintf('  попытка %d/%d → gate: %s', $att + 1, self::MAX_GEN_ATTEMPTS, $fixHint));
+        }
+
+        if ($body === null || ($issues !== [] && !$force)) {
+            $io->warning('Отбраковано после ' . self::MAX_GEN_ATTEMPTS . ' попыток: ' . implode('; ', $issues));
             return Command::FAILURE;
         }
-        $body = $this->applyProofread($body, $io);   // корректорский проход (обязательный)
-        $body = $this->softenCliches($body);
-
-        $issues = $this->qualityGate($body, $brands, $keywords);
-        if ($issues !== []) {
-            if ($force) {
-                $io->note('quality-gate (--force): ' . implode('; ', $issues));
-            } else {
-                $io->warning('Отбраковано quality-gate:');
-                $io->listing($issues);
-                return Command::FAILURE;
-            }
+        if ($issues !== [] && $force) {
+            $io->note('quality-gate (--force): ' . implode('; ', $issues));
         }
+        $body = $this->softenCliches($this->applyProofread($body, $io));
 
         $title    = $cityDisp
             ? sprintf('%s: гид по брендам в городе %s, %s', $style->getTitle(), $cityDisp, date('Y'))

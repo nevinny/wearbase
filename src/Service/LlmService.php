@@ -24,7 +24,7 @@ class LlmService
      *
      * @param int|null $maxTokens переопределить лимит токенов (null = DEFAULT_MAX_TOKENS)
      */
-    public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null, int $timeout = 120, ?int $maxTokens = null, bool $local = false, bool $think = true): string
+    public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null, int $timeout = 120, ?int $maxTokens = null, bool $local = false, bool $think = true, ?float $temperature = null): string
     {
         $messages = [];
         if ($systemPrompt !== null) {
@@ -33,7 +33,7 @@ class LlmService
         $messages[] = ['role' => 'user', 'content' => $prompt];
 
         return $local
-            ? $this->generateLocal($messages, $model ?? $this->localModel, $timeout, $think)
+            ? $this->generateLocal($messages, $model ?? $this->localModel, $timeout, $think, $temperature)
             : $this->generateRemote($messages, $model ?? $this->model, $timeout, $maxTokens);
     }
 
@@ -43,7 +43,7 @@ class LlmService
      * reasoning в message.thinking, чистый текст в message.content; вызов идёт минуты.
      * $think=false (meta — просто JSON): размышления не нужны, ответ за секунды.
      */
-    private function generateLocal(array $messages, string $model, int $timeout, bool $think = true): string
+    private function generateLocal(array $messages, string $model, int $timeout, bool $think = true, ?float $temperature = null): string
     {
         $payload = [
             'model'    => $model,
@@ -52,6 +52,9 @@ class LlmService
         ];
         if (!$think) {
             $payload['think'] = false;
+        }
+        if ($temperature !== null) {
+            $payload['options'] = ['temperature' => $temperature];
         }
 
         try {
@@ -526,6 +529,8 @@ EOT;
         string $persona,
         string $platformTone,
         ?string $keywords = null,
+        ?string $fixHint = null,
+        ?float $temperature = null,
     ): string {
         $n = count($brands);
 
@@ -570,7 +575,19 @@ EOT;
 Формат: только markdown-тело статьи.
 EOT;
 
-        return trim($this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 600));
+        $prompt = $this->withFixHint($prompt, $fixHint);
+
+        return trim($this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 600, temperature: $temperature));
+    }
+
+    /** Self-heal: дописывает в промпт точечную правку по findings гейта (если есть). */
+    private function withFixHint(string $prompt, ?string $fixHint): string
+    {
+        if ($fixHint === null || trim($fixHint) === '') {
+            return $prompt;
+        }
+
+        return $prompt . "\n\nВАЖНО: предыдущая версия НЕ прошла проверку. Исправь ИМЕННО это и не повторяй (остальное сохрани): {$fixHint}";
     }
 
     /**
@@ -616,6 +633,8 @@ EOT;
         string $persona,
         string $tone,
         ?string $keywords = null,
+        ?string $fixHint = null,
+        ?float $temperature = null,
     ): string {
         $blocks = [];
         foreach ($brands as $b) {
@@ -657,7 +676,9 @@ EOT;
 Формат: только markdown-тело.
 EOT;
 
-        return trim($this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 600));
+        $prompt = $this->withFixHint($prompt, $fixHint);
+
+        return trim($this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 600, temperature: $temperature));
     }
 
     /**
@@ -759,6 +780,54 @@ EOT;
         $line = trim($line, "\"'`* ");
 
         return ($line !== '' && mb_strlen($line) >= 10) ? mb_substr($line, 0, 500) : null;
+    }
+
+    /**
+     * LLM-судья перед авто-публикацией (по мотивам seoloop assess_autopublish):
+     * придирчивый редактор оценивает честность и пригодность. Fail-safe: при любой
+     * ошибке/непарсе → fabrication=true/publishable=false (статья уходит в черновик).
+     *
+     * @return array{fabrication:bool,publishable:bool,score:int,issues:string[]}
+     */
+    public function judgeArticle(string $title, string $content): array
+    {
+        $systemPrompt = 'Ты — придирчивый главный редактор каталога одежды. Статья рассматривается для '
+            . 'АВТОМАТИЧЕСКОЙ публикации (без правки человеком). Оцени честно и строго. Отвечаешь только JSON.';
+
+        $body = mb_substr($content, 0, 9000);
+        $prompt = <<<EOT
+Заголовок: {$title}
+
+Статья:
+{$body}
+
+Оцени:
+- "fabrication": true, если есть выдуманные факты/цифры/цитаты или выдуманный «личный опыт» (которых в обзоре каталога быть не должно).
+- "publishable": true, если статья реально по теме, полезна, не вода и читается как редакторский обзор.
+При сомнении ставь fabrication=true и publishable=false.
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{"fabrication": true|false, "publishable": true|false, "score": 0-100, "issues": ["кратко"]}
+EOT;
+
+        try {
+            $resp = $this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 180);
+        } catch (\Throwable) {
+            return ['fabrication' => true, 'publishable' => false, 'score' => 0, 'issues' => ['судья недоступен']];
+        }
+        $d = $this->extractJson($resp);
+        if ($d === null) {
+            return ['fabrication' => true, 'publishable' => false, 'score' => 0, 'issues' => ['судья: не распарсил JSON']];
+        }
+
+        return [
+            'fabrication' => (bool) ($d['fabrication'] ?? true),
+            'publishable' => (bool) ($d['publishable'] ?? false),
+            'score'       => (int) ($d['score'] ?? 0),
+            'issues'      => is_array($d['issues'] ?? null)
+                ? array_slice(array_map(static fn($x) => (string) $x, $d['issues']), 0, 5)
+                : [],
+        ];
     }
 
     private function extractJson(string $response): ?array

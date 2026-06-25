@@ -40,6 +40,7 @@ class SeoPublishBlogCommand extends Command
         private readonly EntityManagerInterface $em,
         private readonly ArticleRepository      $articles,
         private readonly SluggerInterface       $slugger,
+        private readonly \App\Service\LlmService $llm,
     ) {
         parent::__construct();
     }
@@ -53,6 +54,7 @@ class SeoPublishBlogCommand extends Command
             ->addOption('locale',  null, InputOption::VALUE_REQUIRED, 'Локаль', 'ru')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Показать план без записи')
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Перезаписать контент существующих slug')
+            ->addOption('no-judge', null, InputOption::VALUE_NONE,    'Без LLM-судьи (по умолчанию судья включён)')
         ;
     }
 
@@ -64,6 +66,7 @@ class SeoPublishBlogCommand extends Command
         $locale  = (string) $input->getOption('locale');
         $dryRun  = (bool) $input->getOption('dry-run');
         $force   = (bool) $input->getOption('force');
+        $judge   = !$input->getOption('no-judge');
 
         $files = glob($dir . '/*.md') ?: [];
         if ($files === []) {
@@ -86,7 +89,7 @@ class SeoPublishBlogCommand extends Command
             count($files), $perDay, $start->format('Y-m-d'), $locale, $dryRun ? ' · DRY-RUN' : ''));
 
         $rows = [];
-        $created = $updated = $skipped = 0;
+        $created = $updated = $skipped = $drafted = 0;
         foreach (array_values($files) as $i => $file) {
             $md = (string) file_get_contents($file);
             $parsed = $this->parse($md);
@@ -114,13 +117,31 @@ class SeoPublishBlogCommand extends Command
                 $skipped++;
                 continue;
             }
-            $article = $existing ?? (new Article())->setSlug($slug)->setLocale($locale)->setStatus(Statuses::Active);
+
+            // LLM-судья перед live: не прошёл → новый идёт в ЧЕРНОВИК (status disabled, без
+            // publishedAt), не в дрип. У существующих статус/дату не трогаем (только контент).
+            $draft = false;
+            if ($judge && !$existing) {
+                $v = $this->llm->judgeArticle($title, $contentHtml);
+                if ($v['fabrication'] || !$v['publishable']) {
+                    $draft = true;
+                    $io->text(sprintf('  ⚠ %s → черновик (score %d): %s', $slug, $v['score'],
+                        $v['issues'] !== [] ? implode('; ', $v['issues']) : 'судья отклонил'));
+                }
+            }
+
+            $article = $existing ?? (new Article())->setSlug($slug)->setLocale($locale);
             $article->setTitle($title)->setExcerpt($excerpt)->setContent($contentHtml)->setSourceFile(basename($file));
             if (!$existing) {
-                $article->setPublishedAt($publishAt);   // дату ставим только новым (не сдвигаем уже live)
+                $article->setStatus($draft ? Statuses::Disabled : Statuses::Active);
+                $article->setPublishedAt($draft ? null : $publishAt);   // дату/статус ставим только новым
             }
             $this->em->persist($article);
-            $existing ? $updated++ : $created++;
+            if ($draft) {
+                $drafted++;
+            } else {
+                $existing ? $updated++ : $created++;
+            }
         }
 
         if (!$dryRun) {
@@ -128,7 +149,8 @@ class SeoPublishBlogCommand extends Command
         }
 
         $io->table(['publishedAt', 'slug', 'title'], $rows);
-        $io->success(sprintf('Создано: %d · обновлено: %d · пропущено: %d', $created, $updated, $skipped));
+        $io->success(sprintf('Создано (live-дрип): %d · в черновик судьёй: %d · обновлено: %d · пропущено: %d',
+            $created, $drafted, $updated, $skipped));
 
         return Command::SUCCESS;
     }

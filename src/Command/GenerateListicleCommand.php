@@ -52,6 +52,7 @@ class GenerateListicleCommand extends Command
     private const MIN_BODY_WORDS = 700;       // gate-floor (ловит обрезку); цель промпта — 1300–2000.
                                               // 700, а не 900: ячейки из 3 брендов дают короче, но валидно.
     private const MAX_INTEXT_LINKS = 4;       // in-text ссылок на каталог (с UTM), как у конкурента (3–4)
+    private const MAX_GEN_ATTEMPTS = 3;       // self-heal: попыток генерации с точечной правкой по gate
 
     /** Авторы-персоны (разный голос → 20 статей не близнецы). Индекс — опция --persona. */
     private const PERSONAS = [
@@ -202,27 +203,42 @@ class GenerateListicleCommand extends Command
             $llmBrands     = array_merge([$targetLlm], array_map(static fn($e) => $e['llm'], $rotComp));
 
             $io->section(sprintf('Вариант %d/%d · %s · %s', $i + 1, $variants, $vPlatform, $vPersona));
-            $body = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords);
-            if (trim($body) === '') {
-                $io->warning('  LLM вернула пустой результат — вариант пропущен.');
+
+            // Self-heal: до MAX_GEN_ATTEMPTS попыток; на провал гейта чиним ИМЕННО findings
+            // (не ре-ролл с нуля), температура снижается 0.7→0.6→0.5. Корректуру (applyProofread)
+            // делаем один раз — на принятом черновике (она чинит опечатки, gate-критерии не ломает).
+            $temps = [0.7, 0.6, 0.5];
+            $fixHint = null;
+            $body = null;
+            $issues = ['пусто'];
+            for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
+                $raw = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords, $fixHint, $temps[$att] ?? 0.5);
+                if (trim($raw) === '') {
+                    $issues = ['LLM вернула пусто'];
+                    continue;
+                }
+                $raw = $this->softenCliches($raw);
+                $issues = $this->qualityGate($raw, $orderedBrands, $keywords);
+                $body = $raw;
+                if ($issues === []) {
+                    break;
+                }
+                $fixHint = implode('; ', $issues);
+                $io->text(sprintf('  попытка %d/%d → gate: %s', $att + 1, self::MAX_GEN_ATTEMPTS, $fixHint));
+            }
+
+            if ($body === null || ($issues !== [] && !$force)) {
+                $io->warning('  Отбраковано после ' . self::MAX_GEN_ATTEMPTS . ' попыток: ' . implode('; ', $issues));
                 $rejected++;
                 continue;
             }
-            $body = $this->applyProofread($body, $io);   // корректорский проход (обязательный)
-            $body = $this->softenCliches($body);
-
-            // Quality-gate: не сохраняем брак (пропущенный бренд, отказ, мусор, штампы).
-            $issues = $this->qualityGate($body, $orderedBrands, $keywords);
-            if ($issues !== []) {
-                if ($force) {
-                    $io->note('  quality-gate (проигнорирован --force): ' . implode('; ', $issues));
-                } else {
-                    $io->warning('  Отбраковано quality-gate:');
-                    $io->listing($issues);
-                    $rejected++;
-                    continue;
-                }
+            if ($issues !== [] && $force) {
+                $io->note('  quality-gate (проигнорирован --force): ' . implode('; ', $issues));
             }
+
+            // Корректура — один раз на принятом черновике (+ повторный softenCliches на случай,
+            // если корректор вернул «уникальн»).
+            $body = $this->softenCliches($this->applyProofread($body, $io));
 
             $title    = sprintf('ТОП-%d брендов %s: рейтинг %s', count($orderedBrands), $nicheTitle, date('Y'));
             $campaign = sprintf('%s-%s-%s', $style->getSlug(), $target->getSlug(), $vPlatform);
