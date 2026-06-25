@@ -137,6 +137,19 @@ class SocialPostRepository extends ServiceEntityRepository
             ->getSingleScalarResult();
     }
 
+    /**
+     * Сколько постов с брендом уже создано — стартовое смещение ротации пула брендов
+     * в планировщике (иначе курсор сбрасывался в 0 на каждом прогоне → один и тот же бренд).
+     */
+    public function countWithBrand(): int
+    {
+        return (int) $this->createQueryBuilder('p')
+            ->select('COUNT(p.id)')
+            ->where('p.brand IS NOT NULL')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
     /** Уже есть пост этой рубрики на этот день у канала? (дедуп при планировании). */
     public function existsForSlot(SocialChannel $channel, string $rubric, \DateTimeInterface $dayStart): bool
     {

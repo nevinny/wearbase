@@ -39,7 +39,9 @@ class SocialPlanner
 
         /** @var Brand[] $pool пул брендов с логотипом для брендовых рубрик */
         $pool = $this->brands->findFeaturedBrands(self::BRAND_POOL, true);
-        $brandCursor = 0;
+        // Стартуем с числа уже созданных брендовых постов — курсор продвигается между прогонами,
+        // иначе он сбрасывался в 0 и каждый запуск брал pool[0] (одни и те же бренды повторялись).
+        $brandCursor = $this->posts->countWithBrand();
         $created = 0;
 
         for ($offset = 0; $offset < $days; $offset++) {

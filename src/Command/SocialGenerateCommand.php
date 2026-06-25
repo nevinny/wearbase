@@ -67,7 +67,8 @@ class SocialGenerateCommand extends Command
 
             try {
                 $this->captions->compose($post, $def);
-                $post->setAiGenerated($def['source'] === SocialRubrics::SOURCE_LLM);
+                // Все подписи теперь пишет LLM (ядро — на привязанных фактах, бренд — из описания).
+                $post->setAiGenerated(true);
                 $post->setGenerateAttempts($post->getGenerateAttempts() + 1);
 
                 $mediaPath = $this->media->render($post);
