@@ -376,7 +376,7 @@ class GenerateListicleCommand extends Command
         if (!preg_match('/^##\s+(?:Корот|Крат)/mui', $body)) {
             return ['нет лид-блока «## Коротко» (answer-nugget для AI Overview)'];
         }
-        if (preg_match('/^##\s+(?:Корот|Крат)\p{L}*\s*(.+?)(?=\n##\s|\z)/sui', $body, $m)) {
+        if (preg_match('/^##\s+(?:Корот|Крат)\p{L}*\s*(.+?)(?=\n##\s|\z)/smui', $body, $m)) {
             $lead = mb_strtolower($m[1], 'UTF-8');
             if (preg_match('/(?<![\p{L}])(ниже|далее|выше|смотрите|см\.|читайте|в этой статье|в статье|в обзоре|в этом гиде|в гиде|в таблице)(?![\p{L}])/u', $lead, $mm)) {
                 return ["лид-блок не самодостаточен: отсылка «{$mm[1]}» (невытаскиваемо в сниппет)"];
