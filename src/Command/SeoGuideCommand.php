@@ -59,6 +59,7 @@ class SeoGuideCommand extends Command
         'press'  => 'нейтрально и сдержанно',
         'blog'   => 'личный блог, доверительно',
         'dzen'   => 'статья для Яндекс.Дзена: информативно и экспертно, живым языком, с пользой для читателя',
+        'site'   => 'редакционная статья каталога WEARBASE для собственного блога: информативно, по-доброму экспертно, без рекламного давления',
     ];
 
     public function __construct(
@@ -275,6 +276,10 @@ class SeoGuideCommand extends Command
 
     private function brandUrl(Brand $b, string $platform, string $campaign): string
     {
+        if ($platform === 'site') {                          // свой блог — внутренняя ссылка без UTM
+            return self::SITE_BASE . '/ru/brands/' . $b->getSlug();
+        }
+
         return sprintf(
             '%s/ru/brands/%s?utm_source=%s&utm_medium=article&utm_campaign=%s',
             self::SITE_BASE,
@@ -325,8 +330,10 @@ class SeoGuideCommand extends Command
 
     private function buildCta(string $platform, string $campaign): string
     {
-        $url = sprintf('%s/ru/brands?utm_source=%s&utm_medium=article&utm_campaign=cta-%s',
-            self::SITE_BASE, rawurlencode($platform), rawurlencode($campaign));
+        $url = $platform === 'site'
+            ? self::SITE_BASE . '/ru/brands'
+            : sprintf('%s/ru/brands?utm_source=%s&utm_medium=article&utm_campaign=cta-%s',
+                self::SITE_BASE, rawurlencode($platform), rawurlencode($campaign));
 
         return "## С чего начать\n\n"
             . "Сравните бренды, ассортимент и цены в каталоге WEARBASE — карточки, контакты и ссылки на официальные магазины.\n\n"
