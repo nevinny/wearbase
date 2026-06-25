@@ -179,8 +179,14 @@ class BrandRepository extends ServiceEntityRepository
             if (!self::looksLikeApparel((string) $b->getDescription())) {
                 continue;
             }
-            if (self::isLikelyForeign((string) $b->getTitle(), (string) $b->getDescription())) {
-                continue;   // решение B: только локальные бренды в подборках
+            // решение B: только локальные. Если country заполнен (после app:brand:extract) —
+            // это авторитет; иначе эвристика по имени/описанию.
+            $country = mb_strtolower(trim((string) $b->getCountry()), 'UTF-8');
+            $isForeign = $country !== ''
+                ? (mb_strpos($country, 'росси') === false && mb_strpos($country, 'russia') === false)
+                : self::isLikelyForeign((string) $b->getTitle(), (string) $b->getDescription());
+            if ($isForeign) {
+                continue;
             }
             $key = self::normName((string) $b->getTitle());
             if ($key === '' || isset($seen[$key])) {

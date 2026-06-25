@@ -154,6 +154,12 @@ class ExtractBrandAttributesCommand extends Command
                 $brand->setCity(mb_substr($a['city'], 0, 100));
                 $brandFieldSet = true;
             }
+            // Страна происхождения → brand.country (для решения B: фильтр иностранных в SEO-подборках).
+            // Заполняем только если пуст (как city — без автоперезаписи курированных значений).
+            if (($a['country'] ?? null) && trim((string) $brand->getCountry()) === '') {
+                $brand->setCountry(mb_substr($a['country'], 0, 50));
+                $brandFieldSet = true;
+            }
             if ($a['founding_year']) {
                 $brand->setFoundingYear($a['founding_year']);
                 $brandFieldSet = true;
