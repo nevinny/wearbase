@@ -37,6 +37,7 @@ class SyncGscCommand extends Command
     private const INSPECT_DAILY_CAP = 1500;  // лимит Google 2000/день, держим запас
     private const ANALYTICS_DAYS    = 7;     // тянем окно (upsert — повторы дёшевы)
     private const FRESH_DAYS        = 7;     // «свежие» для приоритета и алертов
+    private const BLOG_WATCH_CAP    = 50;    // блог-статей инспектировать за прогон (closed-loop → Дзен)
 
     public function __construct(
         private readonly GscClient  $gsc,
@@ -244,6 +245,12 @@ class SyncGscCommand extends Command
         $alerts = [];
         $lines  = [];
 
+        // Closed-loop «блог→Дзен»: свежепроиндексированные блог-статьи → строки в TG.
+        $blogReady = $this->checkBlogIndex();
+        foreach ($blogReady as $bl) {
+            $io->text($bl);
+        }
+
         // Общая индексация проверенных
         $total = $this->db->fetchAssociative('SELECT COUNT(*) c, COALESCE(SUM(indexed),0) idx FROM gsc_index_status');
         if ($total && (int) $total['c'] > 0) {
@@ -325,14 +332,78 @@ class SyncGscCommand extends Command
             $io->warning($alert);
         }
 
-        // Телеграм: алерты всегда, ежедневная сводка — вместе с ними
-        if ($alerts !== [] && $this->notifier->isEnabled()) {
+        // Телеграм: шлём при алертах ИЛИ при новых проиндексированных блог-статьях
+        // (последние — позитивный сигнал «можно публиковать Дзен-вариант»).
+        if (($alerts !== [] || $blogReady !== []) && $this->notifier->isEnabled()) {
             try {
-                $this->notifier->send("<b>GSC wearbase.ru</b>\n" . implode("\n", array_merge($alerts, $lines)));
+                $this->notifier->send("<b>GSC wearbase.ru</b>\n" . implode("\n", array_merge($blogReady, $alerts, $lines)));
             } catch (\Throwable) {
                 // нотификация не должна ронять синк
             }
         }
+    }
+
+    /**
+     * Closed-loop «блог→Дзен»: инспектирует live блог-статьи из конвейера (source_file),
+     * ещё не сигнализированные; попавшим в индекс ставит indexed_at/indexed_notified_at
+     * и возвращает строки «готово к Дзену» для TG. Без TG-канала — не трогаем (иначе
+     * потеряли бы сигнал). @return string[]
+     */
+    private function checkBlogIndex(): array
+    {
+        if (!$this->notifier->isEnabled()) {
+            return [];
+        }
+        $rows = $this->db->fetchAllAssociative(
+            "SELECT id, slug, locale, title, source_file FROM article
+             WHERE status = 'active' AND published_at IS NOT NULL AND published_at <= NOW()
+               AND source_file IS NOT NULL AND indexed_notified_at IS NULL
+             ORDER BY published_at ASC LIMIT " . self::BLOG_WATCH_CAP,
+        );
+
+        $lines = [];
+        foreach ($rows as $r) {
+            $url = sprintf('https://wearbase.ru/%s/blog/%s', $r['locale'], $r['slug']);
+            try {
+                $res = $this->gsc->inspectUrl($url);
+            } catch (\Throwable $e) {
+                if (str_contains($e->getMessage(), '429')) {
+                    break;  // квота — до завтра
+                }
+                continue;
+            }
+            if (!$res['indexed']) {
+                usleep(300_000);
+                continue;
+            }
+            $this->db->executeStatement(
+                'UPDATE article SET indexed_at = COALESCE(indexed_at, NOW()), indexed_notified_at = NOW() WHERE id = :id',
+                ['id' => $r['id']],
+            );
+            $lines[] = sprintf('✅ Проиндексирована: «%s» (%s) → публикуй Дзен-вариант: %s',
+                mb_substr((string) $r['title'], 0, 80), $url, $this->dzenHint($r['source_file']));
+            usleep(300_000);
+        }
+
+        return $lines;
+    }
+
+    /** Путь Дзен-варианта по имени блог-файла (swap -site→-dzen; персона листикла может отличаться → glob). */
+    private function dzenHint(?string $sf): string
+    {
+        if ($sf === null || $sf === '') {
+            return 'var/seo/dzen|guides/';
+        }
+        if (str_starts_with($sf, 'listicle-')) {
+            $prefix = preg_replace('/-site-p\d+\.md$/', '', $sf);
+            $f = glob("var/seo/dzen/{$prefix}-dzen-*.md") ?: [];
+            return $f !== [] ? basename($f[0]) : "var/seo/dzen/{$prefix}-dzen-*.md";
+        }
+        if (str_starts_with($sf, 'guide-')) {
+            return 'var/seo/guides/' . str_replace('-site.md', '-dzen.md', $sf);
+        }
+
+        return $sf;
     }
 
     /** /{locale}/brands/{slug} → brand.id (суммирует локали; null для прочих страниц). */

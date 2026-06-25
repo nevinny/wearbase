@@ -49,6 +49,18 @@ class Article
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTime $publishedAt = null;
 
+    /** Имя исходного .md (var/seo/blog/...) — для вывода пути Дзен-варианта в closed-loop */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $sourceFile = null;
+
+    /** Когда GSC-вотчер впервые увидел страницу в индексе */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $indexedAt = null;
+
+    /** Когда отправлено TG «готово к Дзену» (антиповтор) */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $indexedNotifiedAt = null;
+
     public function getId(): ?int { return $this->id; }
 
     public function getTitle(): string { return $this->title; }
@@ -68,6 +80,15 @@ class Article
 
     public function getPublishedAt(): ?\DateTime { return $this->publishedAt; }
     public function setPublishedAt(?\DateTime $publishedAt): static { $this->publishedAt = $publishedAt; return $this; }
+
+    public function getSourceFile(): ?string { return $this->sourceFile; }
+    public function setSourceFile(?string $sourceFile): static { $this->sourceFile = $sourceFile; return $this; }
+
+    public function getIndexedAt(): ?\DateTime { return $this->indexedAt; }
+    public function setIndexedAt(?\DateTime $indexedAt): static { $this->indexedAt = $indexedAt; return $this; }
+
+    public function getIndexedNotifiedAt(): ?\DateTime { return $this->indexedNotifiedAt; }
+    public function setIndexedNotifiedAt(?\DateTime $at): static { $this->indexedNotifiedAt = $at; return $this; }
 
     public function __toString(): string
     {

@@ -115,7 +115,7 @@ class SeoPublishBlogCommand extends Command
                 continue;
             }
             $article = $existing ?? (new Article())->setSlug($slug)->setLocale($locale)->setStatus(Statuses::Active);
-            $article->setTitle($title)->setExcerpt($excerpt)->setContent($contentHtml);
+            $article->setTitle($title)->setExcerpt($excerpt)->setContent($contentHtml)->setSourceFile(basename($file));
             if (!$existing) {
                 $article->setPublishedAt($publishAt);   // дату ставим только новым (не сдвигаем уже live)
             }
