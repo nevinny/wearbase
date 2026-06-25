@@ -212,7 +212,16 @@ class GenerateListicleCommand extends Command
             $body = null;
             $issues = ['пусто'];
             for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
-                $raw = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords, $fixHint, $temps[$att] ?? 0.5);
+                try {
+                    $raw = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords, $fixHint, $temps[$att] ?? 0.5);
+                } catch (\Throwable $e) {
+                    // LLM-блип (gemma под майнингом перезапускается) — не рушим батч,
+                    // ждём и ретраим: транзиентный сбой переживём, не теряем остаток прогона.
+                    $issues = ['LLM ошибка: ' . mb_substr($e->getMessage(), 0, 80)];
+                    $io->text(sprintf('  попытка %d/%d → LLM недоступна, пауза 15с…', $att + 1, self::MAX_GEN_ATTEMPTS));
+                    sleep(15);
+                    continue;
+                }
                 if (trim($raw) === '') {
                     $issues = ['LLM вернула пусто'];
                     continue;
