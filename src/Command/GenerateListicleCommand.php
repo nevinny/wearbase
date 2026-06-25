@@ -134,7 +134,7 @@ class GenerateListicleCommand extends Command
 
         /** @var BrandRepository $brandRepo */
         $brandRepo   = $this->em->getRepository(Brand::class);
-        $competitors = $brandRepo->findListicleCompetitors((int) $style->getId(), $brandId, $top - 1, $city);
+        $competitors = $brandRepo->findListicleCompetitors((int) $style->getId(), $brandId, $top - 1, $city, $target->getTitle());
 
         if ($competitors === []) {
             $io->error(sprintf(

@@ -143,7 +143,7 @@ class BrandRepository extends ServiceEntityRepository
      *
      * @return Brand[]
      */
-    public function findListicleCompetitors(int $styleId, int $excludeBrandId, int $limit = 4, ?string $city = null): array
+    public function findListicleCompetitors(int $styleId, int $excludeBrandId, int $limit = 4, ?string $city = null, ?string $excludeTitle = null): array
     {
         $qb = $this->createQueryBuilder('b')
             ->innerJoin('b.styles', 's')
@@ -167,9 +167,38 @@ class BrandRepository extends ServiceEntityRepository
         }
 
         $brands = $qb->getQuery()->getResult();
-        $fashion = array_values(array_filter($brands, static fn(Brand $b) => self::looksLikeApparel((string) $b->getDescription())));
 
-        return array_slice($fashion, 0, $limit);
+        // Отсев офф-ниши + дедуп по нормализованному имени (ТВОЕ↔Tvoe — дубли карточек
+        // одного бренда; целевой тоже исключаем по имени, чтобы не попал в конкуренты).
+        $seen = [];
+        if ($excludeTitle !== null && trim($excludeTitle) !== '') {
+            $seen[self::normName($excludeTitle)] = true;
+        }
+        $out = [];
+        foreach ($brands as $b) {
+            if (!self::looksLikeApparel((string) $b->getDescription())) {
+                continue;
+            }
+            $key = self::normName((string) $b->getTitle());
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $b;
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /** Нормализованное имя бренда для дедупа: транслит кириллицы → latin + только alnum. */
+    private static function normName(string $s): string
+    {
+        static $map = ['а'=>'a','б'=>'b','в'=>'v','г'=>'g','д'=>'d','е'=>'e','ё'=>'e','ж'=>'zh','з'=>'z','и'=>'i','й'=>'y','к'=>'k','л'=>'l','м'=>'m','н'=>'n','о'=>'o','п'=>'p','р'=>'r','с'=>'s','т'=>'t','у'=>'u','ф'=>'f','х'=>'h','ц'=>'ts','ч'=>'ch','ш'=>'sh','щ'=>'sch','ъ'=>'','ы'=>'y','ь'=>'','э'=>'e','ю'=>'yu','я'=>'ya'];
+
+        return (string) preg_replace('/[^a-z0-9]+/', '', strtr(mb_strtolower(trim($s), 'UTF-8'), $map));
     }
 
     /**
