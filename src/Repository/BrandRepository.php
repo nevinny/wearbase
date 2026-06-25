@@ -152,6 +152,7 @@ class BrandRepository extends ServiceEntityRepository
             ->andWhere('b.id != :excludeId')
             ->andWhere('b.description IS NOT NULL')
             ->andWhere('LENGTH(b.description) > 100')
+            ->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != 'off'")  // ниша-гейт: не берём off
             ->setParameter('styleId', $styleId)
             ->setParameter('status', Statuses::Active)
             ->setParameter('excludeId', $excludeBrandId)
