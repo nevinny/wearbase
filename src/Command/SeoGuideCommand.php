@@ -271,7 +271,43 @@ class SeoGuideCommand extends Command
             }
         }
 
+        // verify-standalone + verify-factual-density (DrMax-движок → наш gate).
+        $issues = array_merge($issues, $this->verifyLead($body));
+        $issues = array_merge($issues, $this->verifyFactualDensity($body, $words));
+
         return $issues;
+    }
+
+    /** verify-standalone: лид-блок «## Коротко» присутствует и самодостаточен. @return string[] */
+    private function verifyLead(string $body): array
+    {
+        if (!preg_match('/^##\s+(?:Корот|Крат)/mui', $body)) {
+            return ['нет лид-блока «## Коротко» (answer-nugget для AI Overview)'];
+        }
+        if (preg_match('/^##\s+(?:Корот|Крат)\p{L}*\s*(.+?)(?=\n##\s|\z)/sui', $body, $m)) {
+            $lead = mb_strtolower($m[1], 'UTF-8');
+            if (preg_match('/(?<![\p{L}])(ниже|далее|выше|смотрите|см\.|читайте|в этой статье|в статье|в обзоре|в этом гиде|в гиде|в таблице)(?![\p{L}])/u', $lead, $mm)) {
+                return ["лид-блок не самодостаточен: отсылка «{$mm[1]}»"];
+            }
+        }
+
+        return [];
+    }
+
+    /** verify-factual-density: доля «фактовых» токенов (числа + латиница + CAPS-кириллица). @return string[] */
+    private function verifyFactualDensity(string $body, int $words): array
+    {
+        if ($words <= 0) {
+            return [];
+        }
+        $facts = (int) preg_match_all('/\d+/', $body)
+            + (int) preg_match_all('/[A-Za-z]{2,}/', $body)
+            + (int) preg_match_all('/[А-ЯЁ]{2,}/u', $body);
+        if ($facts / $words < 0.02) {
+            return [sprintf('низкая плотность фактов (%.1f%% < 2%%) — похоже на воду', 100 * $facts / $words)];
+        }
+
+        return [];
     }
 
     private function brandUrl(Brand $b, string $platform, string $campaign): string

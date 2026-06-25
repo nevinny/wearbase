@@ -308,7 +308,52 @@ class GenerateListicleCommand extends Command
             }
         }
 
+        // verify-standalone (DrMax): лид-блок «## Коротко» обязан быть и быть самодостаточным
+        // (его тащит AI Overview/сниппет) — без отсылок к остальному тексту.
+        $issues = array_merge($issues, $this->verifyLead($body));
+
+        // verify-factual-density (DrMax): минимум конкретики (числа + латиница/CAPS — бренды,
+        // продукты, цены, размеры). Режет «воду». Порог низкий — не бьёт grounded-тексты.
+        $issues = array_merge($issues, $this->verifyFactualDensity($body, $words));
+
         return $issues;
+    }
+
+    /**
+     * verify-standalone: лид-блок «## Коротко/Кратко» присутствует и самодостаточен
+     * (нет отсылок «ниже/далее/в статье/см.» — иначе невытаскиваемо в сниппет/AIO).
+     * @return string[]
+     */
+    private function verifyLead(string $body): array
+    {
+        if (!preg_match('/^##\s+(?:Корот|Крат)/mui', $body)) {
+            return ['нет лид-блока «## Коротко» (answer-nugget для AI Overview)'];
+        }
+        if (preg_match('/^##\s+(?:Корот|Крат)\p{L}*\s*(.+?)(?=\n##\s|\z)/sui', $body, $m)) {
+            $lead = mb_strtolower($m[1], 'UTF-8');
+            if (preg_match('/(?<![\p{L}])(ниже|далее|выше|смотрите|см\.|читайте|в этой статье|в статье|в обзоре|в этом гиде|в гиде|в таблице)(?![\p{L}])/u', $lead, $mm)) {
+                return ["лид-блок не самодостаточен: отсылка «{$mm[1]}» (невытаскиваемо в сниппет)"];
+            }
+        }
+
+        return [];
+    }
+
+    /** verify-factual-density: доля «фактовых» токенов (числа + латиница + CAPS-кириллица). @return string[] */
+    private function verifyFactualDensity(string $body, int $words): array
+    {
+        if ($words <= 0) {
+            return [];
+        }
+        $facts = (int) preg_match_all('/\d+/', $body)
+            + (int) preg_match_all('/[A-Za-z]{2,}/', $body)
+            + (int) preg_match_all('/[А-ЯЁ]{2,}/u', $body);
+        $density = $facts / $words;
+        if ($density < 0.02) {
+            return [sprintf('низкая плотность фактов (%.1f%% < 2%%) — похоже на воду', 100 * $density)];
+        }
+
+        return [];
     }
 
     /**
