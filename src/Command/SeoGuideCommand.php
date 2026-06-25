@@ -145,7 +145,7 @@ class SeoGuideCommand extends Command
         $body = $this->applyProofread($body, $io);   // корректорский проход (обязательный)
         $body = $this->softenCliches($body);
 
-        $issues = $this->qualityGate($body, $brands);
+        $issues = $this->qualityGate($body, $brands, $keywords);
         if ($issues !== []) {
             if ($force) {
                 $io->note('quality-gate (--force): ' . implode('; ', $issues));
@@ -237,7 +237,7 @@ class SeoGuideCommand extends Command
     }
 
     /** Гид-вариант gate: без проверки нумерованных секций (у гида «## Название», не «## N.»). */
-    private function qualityGate(string $body, array $brands): array
+    private function qualityGate(string $body, array $brands, ?string $keywords = null): array
     {
         $issues = [];
         if ($this->validator->isRefusal($body)) {
@@ -271,9 +271,47 @@ class SeoGuideCommand extends Command
             }
         }
 
-        // verify-standalone + verify-factual-density (DrMax-движок → наш gate).
+        // verify-standalone + verify-factual-density + intent-coverage (DrMax → наш gate).
         $issues = array_merge($issues, $this->verifyLead($body));
         $issues = array_merge($issues, $this->verifyFactualDensity($body, $words));
+        $issues = array_merge($issues, $this->intentCoverage($body, $keywords));
+
+        return $issues;
+    }
+
+    /** intent-coverage (DrMax intent-gap): спросовый интент из Wordstat должен быть раскрыт. @return string[] */
+    private function intentCoverage(string $body, ?string $keywords): array
+    {
+        if ($keywords === null || trim($keywords) === '') {
+            return [];
+        }
+        $kw = mb_strtolower($keywords, 'UTF-8');
+        $bd = mb_strtolower($body, 'UTF-8');
+        $intents = [
+            'цена/покупка'        => [['цена', 'цены', 'купить', 'стоимост', 'сколько стоит', 'заказать'],
+                                      ['₽', 'руб', 'цена', 'цены', 'стоит', 'стоимост', 'купить', 'заказа', 'прайс']],
+            'где купить/локально' => [['где купить', 'адрес', 'шоурум', 'магазин', 'рядом'],
+                                      ['магазин', 'шоурум', 'адрес', 'доставк', 'купить', 'на сайте', 'официальн']],
+            'размеры'             => [['размер', 'ростовк', 'размерная'],
+                                      ['размер', 'ростовк', 'xs', 'xl', '42', '44', '46', '48']],
+        ];
+        $issues = [];
+        foreach ($intents as $name => [$demand, $covered]) {
+            $isDemanded = false;
+            foreach ($demand as $d) {
+                if (mb_strpos($kw, $d) !== false) { $isDemanded = true; break; }
+            }
+            if (!$isDemanded) {
+                continue;
+            }
+            $isCovered = false;
+            foreach ($covered as $c) {
+                if (mb_strpos($bd, $c) !== false) { $isCovered = true; break; }
+            }
+            if (!$isCovered) {
+                $issues[] = "интент «{$name}» в спросе, но не раскрыт";
+            }
+        }
 
         return $issues;
     }

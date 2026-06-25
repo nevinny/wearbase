@@ -212,7 +212,7 @@ class GenerateListicleCommand extends Command
             $body = $this->softenCliches($body);
 
             // Quality-gate: не сохраняем брак (пропущенный бренд, отказ, мусор, штампы).
-            $issues = $this->qualityGate($body, $orderedBrands);
+            $issues = $this->qualityGate($body, $orderedBrands, $keywords);
             if ($issues !== []) {
                 if ($force) {
                     $io->note('  quality-gate (проигнорирован --force): ' . implode('; ', $issues));
@@ -263,7 +263,7 @@ class GenerateListicleCommand extends Command
      * @param Brand[] $brands
      * @return string[]
      */
-    private function qualityGate(string $body, array $brands): array
+    private function qualityGate(string $body, array $brands, ?string $keywords = null): array
     {
         $issues = [];
 
@@ -315,6 +315,53 @@ class GenerateListicleCommand extends Command
         // verify-factual-density (DrMax): минимум конкретики (числа + латиница/CAPS — бренды,
         // продукты, цены, размеры). Режет «воду». Порог низкий — не бьёт grounded-тексты.
         $issues = array_merge($issues, $this->verifyFactualDensity($body, $words));
+
+        // intent-coverage (DrMax intent-gap): спросовые интенты из Wordstat должны быть раскрыты.
+        $issues = array_merge($issues, $this->intentCoverage($body, $keywords));
+
+        return $issues;
+    }
+
+    /**
+     * intent-coverage / intent-gap (DrMax): если интент есть в реальном спросе (Wordstat-ключи
+     * бренда), он должен быть раскрыт в статье. Лениво: флагуем, только если спрос ЕСТЬ, а в
+     * тексте НЕТ ни одного маркера покрытия (маркеры широкие → почти не даёт ложных).
+     * @return string[]
+     */
+    private function intentCoverage(string $body, ?string $keywords): array
+    {
+        if ($keywords === null || trim($keywords) === '') {
+            return [];
+        }
+        $kw = mb_strtolower($keywords, 'UTF-8');
+        $bd = mb_strtolower($body, 'UTF-8');
+
+        $intents = [
+            'цена/покупка'      => [['цена', 'цены', 'купить', 'стоимост', 'сколько стоит', 'заказать'],
+                                    ['₽', 'руб', 'цена', 'цены', 'стоит', 'стоимост', 'купить', 'заказа', 'прайс']],
+            'где купить/локально' => [['где купить', 'адрес', 'шоурум', 'магазин', 'рядом'],
+                                    ['магазин', 'шоурум', 'адрес', 'доставк', 'купить', 'на сайте', 'официальн']],
+            'размеры'           => [['размер', 'ростовк', 'размерная'],
+                                    ['размер', 'ростовк', 'xs', 'xl', '42', '44', '46', '48']],
+        ];
+
+        $issues = [];
+        foreach ($intents as $name => [$demand, $covered]) {
+            $isDemanded = false;
+            foreach ($demand as $d) {
+                if (mb_strpos($kw, $d) !== false) { $isDemanded = true; break; }
+            }
+            if (!$isDemanded) {
+                continue;
+            }
+            $isCovered = false;
+            foreach ($covered as $c) {
+                if (mb_strpos($bd, $c) !== false) { $isCovered = true; break; }
+            }
+            if (!$isCovered) {
+                $issues[] = "интент «{$name}» в спросе, но не раскрыт в статье";
+            }
+        }
 
         return $issues;
     }
