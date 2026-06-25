@@ -42,6 +42,17 @@ class TelegramController extends AbstractController
         $chatId   = (string) ($message['chat']['id'] ?? '');
         $text     = trim($message['text'] ?? '');
         $username = $message['from']['username'] ?? '';
+        $isAdmin  = $adminNotifier->isAdminChat($chatId);
+
+        // Контакт-воронка, обратная сторона: админ отвечает REPLY на пересланное
+        // сообщение визитёра (с меткой [#chatId]) → бот релеит ответ визитёру.
+        // Личный аккаунт админа не раскрывается — визитёр видит только бота.
+        if ($isAdmin && $text !== '' && isset($message['reply_to_message']['text'])
+            && preg_match('/\[#(-?\d+)\]/', (string) $message['reply_to_message']['text'], $mm)) {
+            $telegramNotifier->send($mm[1], "💬 <b>Ответ от WEARBASE</b>\n\n" . htmlspecialchars($text));
+            $telegramNotifier->send($chatId, '✅ Отправлено визитёру.');
+            return new JsonResponse(['ok' => true]);
+        }
 
         if (str_starts_with($text, '/start ')) {
             $token = substr($text, 7);
@@ -55,13 +66,25 @@ class TelegramController extends AbstractController
                 $telegramNotifier->send($chatId, '❌ Ссылка устарела. Сгенерируйте новую в настройках безопасности на сайте.');
             }
         } elseif ($text === '/start') {
-            $telegramNotifier->send($chatId, 'Добро пожаловать в WEARBASE! 🎉
+            $telegramNotifier->send($chatId, 'WEARBASE — каталог российских брендов одежды. 👋
 
-Для привязки Telegram к вашему аккаунту:
-1. Откройте настройки безопасности на сайте
-2. Нажмите «Привязать Telegram»
+Просто напишите сюда сообщение — мы получим его и ответим здесь же. Без звонков.
 
-После этого вы будете получать уведомления о заказах и других событиях.');
+Если вы бренд и хотите привязать аккаунт для уведомлений — это в настройках безопасности на сайте.');
+        } elseif (!$isAdmin && $text !== '' && !str_starts_with($text, '/')) {
+            // Контакт-воронка, входящая сторона: любое сообщение от не-админа →
+            // пересылаем админу (с меткой для reply-релея) + подтверждаем визитёру.
+            $from  = $message['from'] ?? [];
+            $name  = trim(($from['first_name'] ?? '') . ' ' . ($from['last_name'] ?? ''));
+            $uname = $username !== '' ? '@' . $username : 'без username';
+            $adminNotifier->send(sprintf(
+                "✉️ <b>Сообщение в бот WEARBASE</b>\nОт: %s (%s)\n[#%s]\n\n%s\n\n<i>Ответьте reply на это сообщение — бот перешлёт ответ визитёру.</i>",
+                htmlspecialchars($name !== '' ? $name : 'аноним'),
+                htmlspecialchars($uname),
+                $chatId,
+                htmlspecialchars(mb_substr($text, 0, 3000)),
+            ));
+            $telegramNotifier->send($chatId, 'Спасибо! Получили ваше сообщение — ответим здесь же. Можно ничего больше не писать. 🙌');
         }
 
         return new JsonResponse(['ok' => true]);
