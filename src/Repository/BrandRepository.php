@@ -179,6 +179,9 @@ class BrandRepository extends ServiceEntityRepository
             if (!self::looksLikeApparel((string) $b->getDescription())) {
                 continue;
             }
+            if (self::isLikelyForeign((string) $b->getTitle(), (string) $b->getDescription())) {
+                continue;   // решение B: только локальные бренды в подборках
+            }
             $key = self::normName((string) $b->getTitle());
             if ($key === '' || isset($seen[$key])) {
                 continue;
@@ -191,6 +194,37 @@ class BrandRepository extends ServiceEntityRepository
         }
 
         return $out;
+    }
+
+    /** Список известных глобальных брендов в каталоге (нацпризнака в описании может не быть). */
+    private const FOREIGN_DENYLIST = [
+        'uniqlo', 'bershka', 'bettybarclay', 'anta', 'alessandromanzoni', 'bikkembergs', 'apc',
+        'mango', 'zara', 'hm', 'pullandbear', 'massimodutti', 'oysho', 'stradivarius', 'cos', 'monki',
+        'lacoste', 'levis', 'nike', 'adidas', 'puma', 'reebok', 'newbalance', 'columbia',
+    ];
+
+    /**
+     * Бренд скорее иностранный (решение B — в подборках только локальные). По убыванию
+     * надёжности: курируемый список глобалов → явный RU-маркер (тогда НЕ иностранный) →
+     * явный нац-маркер происхождения в описании. Бренды без маркеров считаем локальными
+     * (каталог преимущественно российский — не режем по умолчанию).
+     */
+    private static function isLikelyForeign(string $title, string $description): bool
+    {
+        if (in_array(self::normName($title), self::FOREIGN_DENYLIST, true)) {
+            return true;
+        }
+        $t = mb_strtolower($description, 'UTF-8');
+        foreach (['российск', 'русск', 'отечественн', 'локальн', 'из росси', 'московск', 'петербург', 'питерск'] as $ru) {
+            if (mb_strpos($t, $ru) !== false) {
+                return false;   // явно наш
+            }
+        }
+        // нац-признак происхождения рядом с «марк/бренд/производ/мастер/мод/компан/дом»
+        return (bool) preg_match(
+            '/(японск|китайск|итальянск|испанск|француз|немецк|британск|английск|американск|корейск|турецк|европейск|финск|шведск|польск|вьетнамск)\w*\s+\w*\s*(марк|бренд|производ|мастер|мод|компан|дом|наслед)/u',
+            $t,
+        );
     }
 
     /** Нормализованное имя бренда для дедупа: транслит кириллицы → latin + только alnum. */
