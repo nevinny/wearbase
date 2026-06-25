@@ -213,6 +213,11 @@ class BrandIngestService
     /** Лого хранятся плоско в public_html/images/logos (см. vich_uploader.yaml). */
     private function applyLogo(Brand $brand, string $filename, string $base64): void
     {
+        // Логотип закреплён оператором вручную (пик на карточке) → пуш его не трогает.
+        if ($brand->isLogoLocked()) {
+            return;
+        }
+
         $bytes = base64_decode($base64, true);
         if ($bytes === false || $bytes === '') {
             throw new \InvalidArgumentException('logo.content_base64 не декодируется');

@@ -39,6 +39,10 @@ class Brand
     #[Vich\UploadableField(mapping: 'brand_logo', fileNameProperty: 'logo')]
     private ?File $logoFile = null;
 
+    /** Логотип закреплён оператором вручную → агент-пуш его не перезаписывает. */
+    #[ORM\Column(options: ['default' => false])]
+    private bool $logoLocked = false;
+
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $anons = null;
 
@@ -300,6 +304,18 @@ class Brand
     public function setLogo(?string $logo): static
     {
         $this->logo = $logo;
+
+        return $this;
+    }
+
+    public function isLogoLocked(): bool
+    {
+        return $this->logoLocked;
+    }
+
+    public function setLogoLocked(bool $locked): static
+    {
+        $this->logoLocked = $locked;
 
         return $this;
     }

@@ -4,11 +4,9 @@ namespace App\Command;
 
 use App\Entity\Brand;
 use App\Entity\BrandRagPipeline;
-use App\Entity\BrandSourceUrl;
 use App\Repository\BrandRepository;
-use App\Service\LogoExtractor;
+use App\Service\LogoCandidateService;
 use App\Service\LogoFetcher;
-use App\Service\WebScraperService;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -42,8 +40,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class FetchBrandLogoCommand extends Command
 {
-    /** Сколько страниц перебрать на бренд (own_site обычно достаточно). */
-    private const MAX_PAGES = 4;
     /** Сколько кандидатов попытаться скачать на бренд (по убыванию score). */
     private const MAX_DOWNLOADS = 6;
     private const SLEEP_BETWEEN_MS = 800;
@@ -56,10 +52,9 @@ class FetchBrandLogoCommand extends Command
     private EntityManagerInterface $em;
 
     public function __construct(
-        private readonly ManagerRegistry   $managerRegistry,
-        private readonly WebScraperService $scraper,
-        private readonly LogoExtractor     $extractor,
-        private readonly LogoFetcher       $fetcher,
+        private readonly ManagerRegistry        $managerRegistry,
+        private readonly LogoCandidateService   $candidateService,
+        private readonly LogoFetcher            $fetcher,
     ) {
         parent::__construct();
         $this->em = $this->managerRegistry->getManager();
@@ -146,15 +141,14 @@ class FetchBrandLogoCommand extends Command
         }
 
         try {
-            $pages = $this->candidatePages($brand);
-            if (count($pages) === 0) {
+            if (count($this->candidateService->candidatePages($brand)) === 0) {
                 $io->text('    ⊘ нет URL-кандидатов (own_site/website/marketplace)');
                 $this->finish($brand, BrandRagPipeline::LOGO_SKIPPED, $dryRun);
                 $this->skipped++;
                 return;
             }
 
-            $picked = $this->findLogo($pages, $io);
+            $picked = $this->findLogo($brand);
 
             if ($picked === null) {
                 $io->text('    ⊘ годного логотипа не нашлось');
@@ -194,86 +188,34 @@ class FetchBrandLogoCommand extends Command
     }
 
     /**
-     * Перебирает страницы, на каждой извлекает кандидатов (отсортированы по score),
-     * качает по убыванию score до первого валидного логотипа. Лимит скачиваний на бренд.
+     * Берёт кандидатов (отсортированы по score) из LogoCandidateService, качает по
+     * убыванию score до первого валидного логотипа. Лимит скачиваний на бренд.
      *
-     * @param list<string> $pages
      * @return array{url:string, source:string, width:int, height:int, data:array{bytes:string,ext:string,width:int,height:int}}|null
      */
-    private function findLogo(array $pages, SymfonyStyle $io): ?array
+    private function findLogo(Brand $brand): ?array
     {
         $downloads = 0;
-        $tried = [];
 
-        foreach ($pages as $page) {
-            $fetched = $this->scraper->fetch($page);
-            $html = $fetched['html'] ?? '';
-            if ($html === '') {
-                continue;
+        foreach ($this->candidateService->listCandidates($brand) as $cand) {
+            if ($downloads >= self::MAX_DOWNLOADS) {
+                return null;
             }
+            $downloads++;
 
-            foreach ($this->extractor->extract($html, $page) as $cand) {
-                if (isset($tried[$cand['url']])) {
-                    continue;
-                }
-                $tried[$cand['url']] = true;
-
-                if ($downloads >= self::MAX_DOWNLOADS) {
-                    return null;
-                }
-                $downloads++;
-
-                $data = $this->fetcher->download($cand['url'], $cand['favicon']);
-                if ($data !== null) {
-                    return [
-                        'url'    => $cand['url'],
-                        'source' => $cand['source'],
-                        'width'  => $data['width'],
-                        'height' => $data['height'],
-                        'data'   => $data,
-                    ];
-                }
+            $data = $this->fetcher->download($cand['url'], $cand['favicon']);
+            if ($data !== null) {
+                return [
+                    'url'    => $cand['url'],
+                    'source' => $cand['source'],
+                    'width'  => $data['width'],
+                    'height' => $data['height'],
+                    'data'   => $data,
+                ];
             }
         }
 
         return null;
-    }
-
-    /**
-     * URL-кандидаты страниц с логотипом в порядке приоритета: own_site → website-ссылка
-     * → marketplace. Дедуп, cap MAX_PAGES.
-     *
-     * @return list<string>
-     */
-    private function candidatePages(Brand $brand): array
-    {
-        $urls = [];
-
-        $bySource = function (string $type) use ($brand): array {
-            return $this->em->getRepository(BrandSourceUrl::class)->findBy(
-                ['brand' => $brand, 'sourceType' => $type, 'status' => BrandSourceUrl::STATUS_FETCHED],
-                ['relevanceScore' => 'DESC'],
-                self::MAX_PAGES,
-            );
-        };
-
-        foreach ($bySource(BrandSourceUrl::TYPE_OWN_SITE) as $u) {
-            $urls[] = $u->getUrl();
-        }
-
-        // website-ссылка бренда (если discover не клал own_site, но контакты нашли сайт)
-        foreach ($brand->getLinks() as $link) {
-            if ($link->getLinkType() === 'website' && $link->getLinkUrl()) {
-                $urls[] = $link->getLinkUrl();
-            }
-        }
-
-        foreach ($bySource(BrandSourceUrl::TYPE_MARKETPLACE) as $u) {
-            $urls[] = $u->getUrl();
-        }
-
-        // дедуп с сохранением порядка, cap
-        return array_slice(array_values(array_unique($urls)), 0, self::MAX_PAGES);
     }
 
     private function finish(Brand $brand, string $status, bool $dryRun): void

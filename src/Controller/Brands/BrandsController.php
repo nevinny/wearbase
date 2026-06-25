@@ -10,6 +10,11 @@ use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use App\Service\Agent\BrandUnpublisher;
+use App\Service\AdminAccess;
+use App\Service\LogoCandidateService;
+use App\Service\LogoFetcher;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -241,6 +246,91 @@ class BrandsController extends AbstractController
             $res['ok'] ? sprintf('Бренд «%s» скрыт. %s', $res['title'] ?? '', $res['message'] ?? '') : ($res['message'] ?? 'Не удалось скрыть.'));
 
         return $this->redirectToRoute('brand_index', ['_locale' => $request->getLocale()]);
+    }
+
+    /**
+     * Кандидаты логотипа для инлайн-пикера оператора на карточке бренда.
+     * Live-скрейп страниц бренда (own_site/website/marketplace) → LogoExtractor.
+     * Гейт — AdminAccess (main ROLE_ADMIN или admincore-сессия), как у brand_hide.
+     */
+    #[Route('/{_locale}/brands/{slug}/logo-candidates',
+        name: 'brand_logo_candidates',
+        requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'],
+        defaults: ['_locale' => 'ru'],
+        methods: ['GET'])]
+    public function logoCandidates(
+        #[MapEntity(mapping: ['slug' => 'slug'])] Brand $brand,
+        AdminAccess $adminAccess,
+        LogoCandidateService $candidates,
+    ): JsonResponse {
+        if (!$adminAccess->isAdmin()) {
+            throw $this->createAccessDeniedException();
+        }
+
+        $list = array_map(static fn (array $c): array => [
+            'url'    => $c['url'],
+            'source' => $c['source'],
+            'score'  => $c['score'],
+        ], $candidates->listCandidates($brand));
+
+        return $this->json(['candidates' => $list]);
+    }
+
+    /**
+     * Закрепить выбранный/загруженный логотип бренда (ручной пик оператора).
+     * Принимает либо `url` (кандидат или вставленный вручную), либо файл `logo`.
+     * Ставит logoLocked=true → агент-пуш больше не перезапишет (BrandIngestService).
+     */
+    #[Route('/{_locale}/brands/{slug}/logo',
+        name: 'brand_logo_set',
+        requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'],
+        defaults: ['_locale' => 'ru'],
+        methods: ['POST'])]
+    public function logoSet(
+        #[MapEntity(mapping: ['slug' => 'slug'])] Brand $brand,
+        Request $request,
+        AdminAccess $adminAccess,
+        LogoFetcher $fetcher,
+        EntityManagerInterface $em,
+    ): JsonResponse {
+        if (!$adminAccess->isAdmin()) {
+            throw $this->createAccessDeniedException();
+        }
+        if (!$this->isCsrfTokenValid('brand_logo_' . $brand->getId(), (string) $request->request->get('_token'))) {
+            return $this->json(['ok' => false, 'error' => 'Неверный токен — обновите страницу.'], 400);
+        }
+
+        $upload = $request->files->get('logo');
+        $url    = trim((string) $request->request->get('url'));
+
+        if ($upload !== null) {
+            $ext = strtolower($upload->getClientOriginalExtension() ?: $upload->guessExtension() ?: '');
+            $ext = $ext === 'jpeg' ? 'jpg' : $ext;
+            if (!in_array($ext, ['png', 'jpg', 'webp', 'gif', 'svg'], true)) {
+                return $this->json(['ok' => false, 'error' => 'Допустимы png/jpg/webp/gif/svg.'], 422);
+            }
+            if ($upload->getSize() > 5 * 1024 * 1024) {
+                return $this->json(['ok' => false, 'error' => 'Файл больше 5 МБ.'], 422);
+            }
+            $bytes = (string) file_get_contents($upload->getPathname());
+        } elseif ($url !== '') {
+            // Ручной пик оператора → лояльный порог (favicon=true): мелкие логотипы тоже ок.
+            $data = $fetcher->download($url, true);
+            if ($data === null) {
+                return $this->json(['ok' => false, 'error' => 'Не удалось загрузить картинку по URL (битая/слишком вытянутая/не изображение).'], 422);
+            }
+            $bytes = $data['bytes'];
+            $ext   = $data['ext'];
+        } else {
+            return $this->json(['ok' => false, 'error' => 'Не передан ни URL, ни файл.'], 400);
+        }
+
+        $filename = $fetcher->save($bytes, $ext, $brand->getId());
+        $brand->setLogo($filename);
+        $brand->setLogoLocked(true);
+        $em->flush();
+
+        return $this->json(['ok' => true, 'logo' => $filename, 'src' => '/images/logos/' . $filename]);
     }
 
     #[Route('/{_locale}/brands/{slug}',
