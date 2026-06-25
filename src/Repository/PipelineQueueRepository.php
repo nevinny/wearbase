@@ -264,6 +264,12 @@ class PipelineQueueRepository
 
     private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total, bool $oldestFirst = false, bool $leastAttemptsFirst = false): array
     {
+        // Подтверждённо вне ниши (app:brand:niche-check) — не готовим, не пушим, не публикуем.
+        // NULL (не проверен) и 'in' проходят: иначе гейт застопорит весь конвейер до прогона
+        // классификатора. Единая точка для всех stage-finder'ов (scrape/embed/generate/push/…).
+        $qb->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != :nicheOff")
+            ->setParameter('nicheOff', 'off');
+
         if ($total > 1) {
             $qb->andWhere('MOD(b.id, :total) = :shard')
                 ->setParameter('total', $total)

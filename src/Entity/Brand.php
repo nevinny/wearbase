@@ -190,6 +190,32 @@ class Brand
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTimeInterface $publishedAt = null;
 
+    // ---- Жизненный цикл: ниша + закрытие ----
+
+    /**
+     * Вердикт классификатора ниши (app:brand:niche-check):
+     * NULL — не проверен; 'in' — в нише (одежда+обувь+аксессуары+мода+косметика/уход/парфюм);
+     * 'off' — чужая ниша (аптека, техника, авто, продукты, мебель, гигиена рта, БАД).
+     * 'off' гейтит конвейер (PipelineQueueRepository) и дрип-публикацию (publish-tick).
+     */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $nicheStatus = null;
+
+    /** Короткое обоснование вердикта (для ручного ревью): 'marker:пылесос' или фраза от LLM. */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $nicheReason = null;
+
+    /** Когда классификатор последний раз выносил вердикт (NULL = ещё не проверялся). */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $nicheCheckedAt = null;
+
+    /**
+     * Бренд прекратил работу (tombstone). NULL = действующий. Если задан у active-бренда —
+     * страница остаётся 200/индексируется, но показывает плашку «закрылся» + альтернативы.
+     */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $closedAt = null;
+
     /** Sequence-версия доставки в агент-API: прод пропускает payload с версией ≤ текущей.
      *  ⚠️ Это НЕ версионирование контента (для истории текста см. BrandContentRevision). */
     #[ORM\Column(options: ['default' => 0])]
@@ -900,6 +926,68 @@ class Brand
     {
         $this->setStatus(Statuses::Deleted);
         $this->publishPending = false;
+
+        return $this;
+    }
+
+    // ─── Ниша (вердикт классификатора) ────────────────────────────────────────
+
+    public function getNicheStatus(): ?string
+    {
+        return $this->nicheStatus;
+    }
+
+    public function getNicheReason(): ?string
+    {
+        return $this->nicheReason;
+    }
+
+    public function getNicheCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->nicheCheckedAt;
+    }
+
+    /** Подтверждённо вне ниши WEARBASE (гейтит конвейер и публикацию). */
+    public function isOffNiche(): bool
+    {
+        return $this->nicheStatus === 'off';
+    }
+
+    /** Зафиксировать вердикт классификатора: 'in' | 'off' + обоснование. */
+    public function markNiche(string $verdict, ?string $reason, \DateTimeInterface $at): static
+    {
+        $this->nicheStatus    = $verdict;
+        $this->nicheReason    = $reason !== null ? mb_substr($reason, 0, 255) : null;
+        $this->nicheCheckedAt = $at;
+
+        return $this;
+    }
+
+    // ─── Закрытие бренда (tombstone) ──────────────────────────────────────────
+
+    public function getClosedAt(): ?\DateTimeInterface
+    {
+        return $this->closedAt;
+    }
+
+    /** Бренд прекратил работу (страница-надгробие). */
+    public function isClosed(): bool
+    {
+        return $this->closedAt !== null;
+    }
+
+    /** Пометить закрывшимся: страница остаётся 200, но с плашкой «закрылся». */
+    public function close(?\DateTimeInterface $at = null): static
+    {
+        $this->closedAt = $at ?? new \DateTime('now', new \DateTimeZone('Europe/Moscow'));
+
+        return $this;
+    }
+
+    /** Снять пометку закрытия (бренд возобновил работу). */
+    public function reopen(): static
+    {
+        $this->closedAt = null;
 
         return $this;
     }

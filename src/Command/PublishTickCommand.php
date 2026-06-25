@@ -153,8 +153,11 @@ class PublishTickCommand extends Command
         }
 
         // --- Случайные готовые бренды ---
+        // niche_status='off' (app:brand:niche-check) НЕ публикуем — чужая ниша. NULL/'in' проходят
+        // (иначе гейт застопорит дрип до прогона классификатора → порядок cron: niche-check → publish-tick).
         $ids = $this->em->getConnection()->fetchFirstColumn(
-            "SELECT id FROM brand WHERE status = 'new' AND publish_pending = 1 ORDER BY RAND() LIMIT " . $n,
+            "SELECT id FROM brand WHERE status = 'new' AND publish_pending = 1"
+            . " AND (niche_status IS NULL OR niche_status <> 'off') ORDER BY RAND() LIMIT " . $n,
         );
 
         if ($ids === []) {

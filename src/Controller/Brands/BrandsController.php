@@ -345,10 +345,19 @@ class BrandsController extends AbstractController
             $isMemberOfThisBrand = $brandUserRepo->findOneBy(['brand' => $brand, 'user' => $this->getUser()]) !== null;
         }
 
-        // Неактивные бренды (new = в очереди дрип-публикации, disabled/deleted) публично
-        // не существуют — 404, как в каталоге/sitemap. Участникам бренда — превью.
-        // Админу (main ROLE_ADMIN или admincore-сессия) — превью любого бренда.
-        if ($brand->getStatus() !== \Nevinny\AdminCoreBundle\Enum\Statuses::Active && !$isMemberOfThisBrand && !$adminAccess->isAdmin()) {
+        // HTTP-семантика по статусу. Привилегированным (участник бренда / админ) — превью любого.
+        $isPrivileged = $isMemberOfThisBrand || $adminAccess->isAdmin();
+        $status = $brand->getStatus();
+
+        // deleted = удалён навсегда → 410 Gone (чёткий сигнал на деиндексацию, быстрее 404).
+        if ($status === Statuses::Deleted && !$isPrivileged) {
+            return $this->render('tailwind/brand/gone.html.twig', ['brand' => $brand])
+                ->setStatusCode(Response::HTTP_GONE);
+        }
+
+        // new (в очереди дрип-публикации) / disabled (скрыт) / system публично не существуют —
+        // 404, как в каталоге/sitemap (это НЕ «удалено навсегда»: бренд может опубликоваться).
+        if ($status !== Statuses::Active && !$isPrivileged) {
             throw $this->createNotFoundException('Бренд не опубликован');
         }
 
@@ -447,6 +456,8 @@ class BrandsController extends AbstractController
             // «родительская категория» по правилу 2.12). null если города нет.
             'citySlug' => ($c = trim((string) $brandCity)) !== '' ? $citySlugger->slugify($c) : null,
             'isMemberOfThisBrand' => $isMemberOfThisBrand,
+            // Бренд закрылся (tombstone): страница остаётся 200/индексируется, но с плашкой.
+            'brand_closed' => $brand->isClosed(),
             'faqs' => $faqs,
             'hiddenDp' => $hiddenDp,
             'attrGroups' => $attrGroups,

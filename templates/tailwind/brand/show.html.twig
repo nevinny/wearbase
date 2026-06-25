@@ -189,6 +189,14 @@
             <span class="text-gray-900 font-medium">{{ _bt }}</span>
         </nav>
 
+        {# --- Tombstone: бренд прекратил работу (страница жива/индексируется, но честная плашка) --- #}
+        {% if brand_closed|default(false) %}
+            <div class="mb-6 rounded-xl bg-gray-100 px-4 py-3 text-sm ring-1 ring-gray-200">
+                <span class="font-semibold text-gray-900">Бренд прекратил работу{% if brand.closedAt %} ({{ brand.closedAt|date('Y') }}){% endif %}.</span>
+                <span class="text-gray-600">Информация сохранена для справки. Загляните в раздел действующих брендов ниже.</span>
+            </div>
+        {% endif %}
+
         {# --- Админ-панель: скрыть бренд из каталога (main ROLE_ADMIN или admincore-сессия) --- #}
         {% if is_platform_admin() %}
             <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm ring-1 ring-amber-200">

@@ -1,0 +1,25 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set _bt = brand_t(brand, 'title') ?: brand.title %}
+
+{% block title %}{{ _bt }} — страница удалена | WEARBASE{% endblock %}
+{% block meta_description %}Страница бренда «{{ _bt }}» удалена. Смотрите действующие российские бренды одежды в каталоге WEARBASE.{% endblock %}
+{# Удалён навсегда — из индекса убираем (410 + noindex). #}
+{% block meta_robots %}<meta name="robots" content="noindex, follow">{% endblock %}
+
+{% block body %}
+    {% set show_locale = app.request.locale|default('ru') %}
+    <div class="container mx-auto px-4 py-20">
+        <div class="mx-auto max-w-xl text-center">
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Страница удалена</p>
+            <h1 class="mt-3 text-2xl font-bold text-gray-900">«{{ _bt }}» больше нет в каталоге</h1>
+            <p class="mt-4 text-gray-600">Эта страница удалена и недоступна. Возможно, бренд не относился к нише WEARBASE или был объединён с другим.</p>
+            <div class="mt-8 flex flex-wrap justify-center gap-3">
+                <a href="{{ path('brand_index', {_locale: show_locale}) }}"
+                   class="rounded-xl bg-gray-900 px-5 py-2.5 font-semibold text-white hover:bg-black">Все бренды</a>
+                <a href="{{ path('home_hub', {_locale: show_locale}) }}"
+                   class="rounded-xl border border-gray-200 px-5 py-2.5 font-semibold text-gray-900 hover:bg-gray-50">На главную</a>
+            </div>
+        </div>
+    </div>
+{% endblock %}
