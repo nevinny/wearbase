@@ -47,6 +47,18 @@ class ArticleRepository extends ServiceEntityRepository
             ->getOneOrNullResult();
     }
 
+    /** @return Article[] */
+    public function findPublishedByAuthor(int $authorId, string $locale, int $limit = 50): array
+    {
+        return $this->publishedQb($locale)
+            ->andWhere('a.author = :author')
+            ->setParameter('author', $authorId)
+            ->orderBy('a.publishedAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     private function publishedQb(string $locale): \Doctrine\ORM\QueryBuilder
     {
         return $this->createQueryBuilder('a')

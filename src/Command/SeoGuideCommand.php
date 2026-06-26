@@ -185,6 +185,8 @@ class SeoGuideCommand extends Command
         $linkedBody = $this->linkifyBody($body, $brands, $platform, $campaign);
         $toc        = $this->buildToc($linkedBody);
         $cta        = $this->buildCta($platform, $campaign);
+        // Article+author даёт шаблон блога. В контент цементируем снимок рейтинга (ItemList) —
+        // без узла Article (иначе дубль). buildJsonLd сам отдаёт вариант по платформе.
         $jsonLd     = $this->buildJsonLd($title, $brands, $persona, $platform, $campaign);
         $document   = $this->renderDocument($title, $persona, $platform, $toc, $linkedBody, $cta, $jsonLd);
 
@@ -447,15 +449,23 @@ class SeoGuideCommand extends Command
                 'url'      => $this->brandUrl($b, $platform, $campaign),
             ];
         }
-        $data = [
-            '@context' => 'https://schema.org',
-            '@graph'   => [[
+        if ($platform === 'site') {
+            // Свой блог: Article+author даёт шаблон. Цементируем только снимок рейтинга (ItemList).
+            // Инфо-гид без брендов → схему не вшиваем (renderDocument пропустит пустую).
+            if ($items === []) {
+                return '';
+            }
+            $graph = [['@type' => 'ItemList', 'itemListElement' => $items]];
+        } else {
+            $graph = [[
                 '@type'      => 'Article',
                 'headline'   => $title,
-                'author'     => ['@type' => 'Person', 'name' => mb_convert_case($persona, MB_CASE_TITLE, 'UTF-8')],
+                'author'     => ['@type' => 'Organization', 'name' => 'WEARBASE', 'url' => 'https://wearbase.ru'],
                 'mainEntity' => ['@type' => 'ItemList', 'itemListElement' => $items],
-            ]],
-        ];
+            ]];
+        }
+
+        $data = ['@context' => 'https://schema.org', '@graph' => $graph];
 
         return (string) json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
@@ -463,6 +473,7 @@ class SeoGuideCommand extends Command
     private function renderDocument(string $title, string $persona, string $platform, string $toc, string $body, string $cta, string $jsonLd): string
     {
         $tocSection = $toc === '' ? '' : "{$toc}\n\n";
+        $ld = $jsonLd === '' ? '' : "\n\n---\n\n<script type=\"application/ld+json\">\n{$jsonLd}\n</script>";
 
         return <<<MD
         <!-- площадка: {$platform} · автор-персона: {$persona} · формат: гид -->
@@ -471,13 +482,7 @@ class SeoGuideCommand extends Command
 
         {$tocSection}{$body}
 
-        {$cta}
-
-        ---
-
-        <script type="application/ld+json">
-        {$jsonLd}
-        </script>
+        {$cta}{$ld}
         MD;
     }
 

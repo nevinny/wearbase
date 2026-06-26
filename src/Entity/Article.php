@@ -61,7 +61,15 @@ class Article
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTime $indexedNotifiedAt = null;
 
+    /** Автор (E-E-A-T): байлайн + Person schema. Nullable — старые статьи без автора. */
+    #[ORM\ManyToOne(targetEntity: Author::class)]
+    #[ORM\JoinColumn(name: 'author_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Author $author = null;
+
     public function getId(): ?int { return $this->id; }
+
+    public function getAuthor(): ?Author { return $this->author; }
+    public function setAuthor(?Author $author): static { $this->author = $author; return $this; }
 
     public function getTitle(): string { return $this->title; }
     public function setTitle(string $title): static { $this->title = $title; return $this; }

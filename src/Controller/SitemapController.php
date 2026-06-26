@@ -13,7 +13,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class SitemapController extends AbstractController
 {
     #[Route('/sitemap.xml', name: 'sitemap_xml', defaults: ['_format' => 'xml'])]
-    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Service\CitySlugger $citySlugger, UrlGeneratorInterface $urlGenerator): Response
+    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Repository\AuthorRepository $authorRepo, \App\Service\CitySlugger $citySlugger, UrlGeneratorInterface $urlGenerator): Response
     {
         $urls = [];
 
@@ -140,6 +140,19 @@ class SitemapController extends AbstractController
                 'changefreq' => 'monthly',
                 'priority' => '0.7',
                 'lastmod' => $article->getUpdatedAt()?->format('Y-m-d'),
+            ];
+        }
+
+        // Страницы авторов (E-E-A-T) — supporting-страницы
+        foreach ($authorRepo->findActive() as $author) {
+            $urls[] = [
+                'loc' => $this->generateUrl('author_show', [
+                    '_locale' => 'ru',
+                    'slug' => $author->getSlug(),
+                ], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'monthly',
+                'priority' => '0.5',
+                'lastmod' => $author->getUpdatedAt()?->format('Y-m-d'),
             ];
         }
 

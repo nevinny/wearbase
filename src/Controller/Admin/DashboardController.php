@@ -3,6 +3,7 @@
 namespace App\Controller\Admin;
 
 use App\Entity\Article;
+use App\Entity\Author;
 use App\Entity\Brand;
 use App\Entity\BrandAudience;
 use App\Entity\BrandImage;
@@ -77,6 +78,7 @@ class DashboardController extends AbstractDashboardController
 
         yield MenuItem::section('Контент');
         yield MenuItem::linkToCrud('Статьи блога', 'fas fa-newspaper', Article::class);
+        yield MenuItem::linkToCrud('Авторы', 'fas fa-user-pen', Author::class);
         yield MenuItem::linkToCrud('SEO города (хабы)', 'fas fa-city', CityHub::class);
 
         yield MenuItem::section('Dictionaries');

@@ -1,0 +1,74 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+{% set author_url = url('author_show', {_locale: page_locale, slug: author.slug}) %}
+
+{% block title %}{{ author.name }} — автор WEARBASE{% endblock %}
+{% block meta_description %}{{ author.name }}: {{ author.jobTitle }}. {{ author.bio|striptags|slice(0, 120) }}{% endblock %}
+{% block og_title %}{{ author.name }} — автор WEARBASE{% endblock %}
+{% block og_description %}{{ author.jobTitle }}{% endblock %}
+{% block og_image %}{{ author.photo ? absolute_url('/images/authors/' ~ author.photo) : absolute_url('/og-image.svg') }}{% endblock %}
+
+{% block body %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "@id": "{{ author_url }}",
+    "url": "{{ author_url }}",
+    "name": {{ author.name|json_encode|raw }},
+    "jobTitle": {{ author.jobTitle|json_encode|raw }},
+    "description": {{ author.bio|striptags|json_encode|raw }},
+    {% if author.photo %}"image": "{{ absolute_url('/images/authors/' ~ author.photo) }}",{% endif %}
+    {% if author.schoolName %}"alumniOf": {"@type": "EducationalOrganization", "name": {{ author.schoolName|json_encode|raw }}{% if author.schoolUrl %}, "url": {{ author.schoolUrl|json_encode|raw }}{% endif %}},{% endif %}
+    "worksFor": {"@type": "Organization", "name": "WEARBASE", "url": "https://wearbase.ru"},
+    "knowsAbout": ["российские бренды одежды","капсульный гардероб","осознанный шопинг","соотношение цены и качества"]{% if author.instagramUrl %},
+    "sameAs": [{{ author.instagramUrl|json_encode|raw }}]{% endif %}
+}
+</script>
+
+<div class="container mx-auto px-4 py-10 max-w-3xl">
+    <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+        <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+        <span class="mx-2 text-gray-400">/</span>
+        <span class="text-gray-900 font-medium">{{ author.name }}</span>
+    </nav>
+
+    <div class="rounded-2xl bg-white shadow-sm border border-gray-100 p-6 md:p-8">
+        <div class="flex flex-col sm:flex-row gap-6 items-start">
+            {% if author.photo %}
+            <img src="/images/authors/{{ author.photo }}" alt="{{ author.name }}"
+                 class="w-40 h-52 flex-none rounded-2xl object-cover border border-gray-100"
+                 style="object-position:50% 12%" width="160" height="208" loading="eager">
+            {% endif %}
+            <div class="flex-1">
+                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Автор · {{ author.jobTitle }}</p>
+                <h1 class="text-2xl md:text-3xl font-bold mt-1 mb-3">{{ author.name }}</h1>
+                <div class="prose prose-sm max-w-none text-gray-700">{{ author.bio|raw }}</div>
+                <ul class="mt-4 space-y-2 text-sm text-gray-700">
+                    {% if author.schoolName %}<li>🎓 Обучение: {% if author.schoolUrl %}<a href="{{ author.schoolUrl }}" target="_blank" rel="noopener" class="underline">{{ author.schoolName }}</a>{% else %}{{ author.schoolName }}{% endif %}</li>{% endif %}
+                    <li>✅ Курирует и проверяет подборки брендов в WEARBASE</li>
+                </ul>
+                {% if author.instagramUrl %}
+                <div class="mt-4 text-sm">
+                    <a href="{{ author.instagramUrl }}" target="_blank" rel="noopener me"
+                       class="inline-block rounded-full border border-gray-200 px-3 py-1 text-gray-700 hover:bg-gray-50">Instagram</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if articles %}
+    <h2 class="text-lg font-bold mt-10 mb-4">Статьи автора</h2>
+    <ul class="divide-y divide-gray-100">
+        {% for a in articles %}
+        <li class="py-3">
+            <a href="{{ path('blog_show', {_locale: page_locale, slug: a.slug}) }}" class="text-gray-900 hover:underline font-medium">{{ a.title }}</a>
+            <span class="block text-xs text-gray-400 mt-0.5">{{ a.publishedAt|date('d.m.Y') }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endblock %}

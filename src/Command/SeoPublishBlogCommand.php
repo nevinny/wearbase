@@ -39,6 +39,7 @@ class SeoPublishBlogCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly ArticleRepository      $articles,
+        private readonly \App\Repository\AuthorRepository $authorsRepo,
         private readonly SluggerInterface       $slugger,
         private readonly \App\Service\LlmService $llm,
     ) {
@@ -55,6 +56,7 @@ class SeoPublishBlogCommand extends Command
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Показать план без записи')
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Перезаписать контент существующих slug')
             ->addOption('no-judge', null, InputOption::VALUE_NONE,    'Без LLM-судьи (по умолчанию судья включён)')
+            ->addOption('author',  null, InputOption::VALUE_REQUIRED, 'Slug автора (байлайн + Person schema)', 'anna-semyannikova')
         ;
     }
 
@@ -67,6 +69,10 @@ class SeoPublishBlogCommand extends Command
         $dryRun  = (bool) $input->getOption('dry-run');
         $force   = (bool) $input->getOption('force');
         $judge   = !$input->getOption('no-judge');
+        $author  = $this->authorsRepo->findOneActiveBySlug((string) $input->getOption('author'));
+        if (!$author) {
+            $io->warning(sprintf('Автор «%s» не найден — статьи будут без байлайна.', $input->getOption('author')));
+        }
 
         $files = glob($dir . '/*.md') ?: [];
         if ($files === []) {
@@ -132,6 +138,9 @@ class SeoPublishBlogCommand extends Command
 
             $article = $existing ?? (new Article())->setSlug($slug)->setLocale($locale);
             $article->setTitle($title)->setExcerpt($excerpt)->setContent($contentHtml)->setSourceFile(basename($file));
+            if ($author && $article->getAuthor() === null) {
+                $article->setAuthor($author);   // только если автор не задан (не затираем ручной выбор в EA)
+            }
             if (!$existing) {
                 $article->setStatus($draft ? Statuses::Disabled : Statuses::Active);
                 $article->setPublishedAt($draft ? null : $publishAt);   // дату/статус ставим только новым
@@ -213,7 +222,9 @@ class SeoPublishBlogCommand extends Command
         $scripts = [];
         $md = preg_replace_callback('/<script type="application\/ld\+json">.*?<\/script>/s', function ($m) use (&$scripts) {
             $scripts[] = $m[0];
-            return "\x00SCRIPT" . (count($scripts) - 1) . "\x00";
+            // Токен БЕЗ null-байта: PHP trim() по умолчанию режет \0 → старый "\x00SCRIPTn\x00"
+            // не распознавался и JSON-LD выпадал из контента.
+            return "@@LDJSON" . (count($scripts) - 1) . "@@";
         }, $md);
 
         $lines = preg_split('/\r?\n/', (string) $md);
@@ -227,7 +238,7 @@ class SeoPublishBlogCommand extends Command
             if (trim($line) === '') { $i++; continue; }
 
             // JSON-LD плейсхолдер
-            if (preg_match('/^\x00SCRIPT(\d+)\x00$/', trim($line), $sm)) {
+            if (preg_match('/^@@LDJSON(\d+)@@$/', trim($line), $sm)) {
                 $html[] = $scripts[(int) $sm[1]];
                 $i++;
                 continue;
@@ -257,7 +268,7 @@ class SeoPublishBlogCommand extends Command
             }
             // абзац: до пустой строки
             $para = [];
-            while ($i < $n && trim($lines[$i]) !== '' && !preg_match('/^(#{1,3}\s|[-*]\s|\||\*\*\*|---|___|\x00SCRIPT)/', ltrim($lines[$i]))) {
+            while ($i < $n && trim($lines[$i]) !== '' && !preg_match('/^(#{1,3}\s|[-*]\s|\||\*\*\*|---|___|@@LDJSON)/', ltrim($lines[$i]))) {
                 $para[] = trim($lines[$i]); $i++;
             }
             if ($para !== []) {

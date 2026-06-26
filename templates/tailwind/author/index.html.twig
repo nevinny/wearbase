@@ -1,0 +1,36 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+
+{% block title %}Авторы WEARBASE{% endblock %}
+{% block meta_description %}Авторы и редакция WEARBASE — кто отбирает и проверяет подборки российских брендов.{% endblock %}
+
+{% block body %}
+<div class="container mx-auto px-4 py-10 max-w-3xl">
+    <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+        <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+        <span class="mx-2 text-gray-400">/</span>
+        <span class="text-gray-900 font-medium">Авторы</span>
+    </nav>
+
+    <h1 class="text-2xl md:text-3xl font-bold mb-6">Авторы WEARBASE</h1>
+
+    <ul class="space-y-4">
+        {% for author in authors %}
+        <li>
+            <a href="{{ path('author_show', {_locale: page_locale, slug: author.slug}) }}"
+               class="flex items-center gap-4 rounded-2xl bg-white shadow-sm border border-gray-100 p-4 no-underline group">
+                {% if author.photoSm %}
+                <span class="block flex-none" aria-hidden="true"
+                      style="width:72px;height:72px;border-radius:9999px;background-image:url('/images/authors/{{ author.photoSm }}');background-repeat:no-repeat;background-size:250% auto;background-position:50% 4%"></span>
+                {% endif %}
+                <span>
+                    <span class="block font-semibold text-gray-900 group-hover:underline">{{ author.name }}</span>
+                    <span class="block text-sm text-gray-500">{{ author.jobTitle }}</span>
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

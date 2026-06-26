@@ -258,6 +258,8 @@ class GenerateListicleCommand extends Command
             $toc        = $this->buildToc($linkedBody);
             $cta        = $this->buildCta($target, $vPlatform, $campaign);
             $faqMd      = $this->buildFaqMarkdown($faq);
+            // Article+author даёт шаблон. В контент цементируем снимок рейтинга (ItemList+FAQ),
+            // без узла Article. buildJsonLd отдаёт нужный вариант по платформе.
             $jsonLd     = $this->buildJsonLd($title, $orderedBrands, $vPersona, $faq, $vPlatform, $campaign);
             $document   = $this->renderDocument($title, $vPersona, $vPlatform, $toc, $linkedBody, $faqMd, $cta, $jsonLd);
 
@@ -566,12 +568,17 @@ class GenerateListicleCommand extends Command
             ];
         }
 
-        $graph = [[
-            '@type'      => 'Article',
-            'headline'   => $title,
-            'author'     => ['@type' => 'Person', 'name' => mb_convert_case($persona, MB_CASE_TITLE, 'UTF-8')],
-            'mainEntity' => ['@type' => 'ItemList', 'itemListElement' => $items],
-        ]];
+        if ($platform === 'site') {
+            // Свой блог: Article+author даёт шаблон. Цементируем снимок рейтинга (ItemList) + FAQ.
+            $graph = [['@type' => 'ItemList', 'itemListElement' => $items]];
+        } else {
+            $graph = [[
+                '@type'      => 'Article',
+                'headline'   => $title,
+                'author'     => ['@type' => 'Organization', 'name' => 'WEARBASE', 'url' => 'https://wearbase.ru'],
+                'mainEntity' => ['@type' => 'ItemList', 'itemListElement' => $items],
+            ]];
+        }
 
         if ($faq !== []) {
             $graph[] = [
@@ -680,19 +687,14 @@ class GenerateListicleCommand extends Command
         $tocSection = $toc === '' ? '' : "{$toc}\n\n";
         $faqSection = $faqMd === '' ? '' : "\n\n{$faqMd}";
         $ctaSection = $cta === '' ? '' : "\n\n{$cta}";
+        $ld = $jsonLd === '' ? '' : "\n\n---\n\n<script type=\"application/ld+json\">\n{$jsonLd}\n</script>";
 
         return <<<MD
         <!-- площадка: {$platform} · автор-персона: {$persona} -->
 
         # {$title}
 
-        {$tocSection}{$body}{$faqSection}{$ctaSection}
-
-        ---
-
-        <script type="application/ld+json">
-        {$jsonLd}
-        </script>
+        {$tocSection}{$body}{$faqSection}{$ctaSection}{$ld}
         MD;
     }
 

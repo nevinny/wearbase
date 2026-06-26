@@ -7,6 +7,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
@@ -43,6 +44,8 @@ class ArticleCrudController extends DefaultCrudController
             ->setHelp('URL статьи: /ru/blog/&lt;слаг&gt;. Только строчные латинские буквы, цифры, дефисы.');
         yield ChoiceField::new('locale', 'Локаль')
             ->setChoices(['Русский' => 'ru', 'English' => 'en']);
+        yield AssociationField::new('author', 'Автор')
+            ->setHelp('Байлайн + Person schema (E-E-A-T)');
         yield ChoiceField::new('status', 'Статус')
             ->setChoices(Statuses::choices())
             ->onlyOnForms();
