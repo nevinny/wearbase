@@ -56,9 +56,11 @@ class ExtractBrandAttributesCommand extends Command
         $this
             ->addArgument('limit', InputArgument::OPTIONAL, 'Максимум брендов за запуск', 50)
             ->addOption('id',      null, InputOption::VALUE_REQUIRED, 'Один бренд по ID')
+            ->addOption('ids',     null, InputOption::VALUE_REQUIRED, 'Список ID через запятую (точечный набор, минуя finder)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Не сохранять, показать извлечённое')
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Переизвлечь (удалить enrichment-атрибуты)')
             ->addOption('fields-only', null, InputOption::VALUE_NONE, 'Backfill только brand.city/foundingYear, атрибуты не трогать (без churn)')
+            ->addOption('published-missing', null, InputOption::VALUE_NONE, 'Только опубликованные на проде (done+pushed) с пустыми city/country/год — для бэкафилла live-брендов')
             ->addOption('shard',   null, InputOption::VALUE_REQUIRED, 'Номер шарда', '0')
             ->addOption('total',   null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
         ;
@@ -91,9 +93,19 @@ class ExtractBrandAttributesCommand extends Command
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
         }
 
-        /** @var \App\Repository\BrandRepository $repo */
-        $repo = $this->em->getRepository(Brand::class);
-        $brandIds = array_map(static fn(Brand $b) => $b->getId(), $repo->findForExtract($limit, $shard, $total));
+        $publishedMissing = (bool) $input->getOption('published-missing');
+        $idsOpt = $input->getOption('ids');
+
+        if ($idsOpt) {
+            // Точечный набор ID (минуя finder): для бэкафилла конкретного списка (напр. live-бренды прода).
+            $brandIds = array_values(array_filter(array_map('intval', explode(',', (string) $idsOpt))));
+        } else {
+            /** @var \App\Repository\BrandRepository $repo */
+            $repo = $this->em->getRepository(Brand::class);
+            $brandIds = array_map(static fn(Brand $b) => $b->getId(), $publishedMissing
+                ? $repo->findPublishedMissingFields($limit, $shard, $total)
+                : $repo->findForExtract($limit, $shard, $total));
+        }
 
         if ($brandIds === []) {
             $io->success('Нет брендов на извлечение.');

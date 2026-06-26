@@ -60,6 +60,7 @@ class BrandIngestService
             // Скалярные поля — только присланные (не затираем не-присланное null'ами).
             foreach ([
                 'city'         => 'setCity',
+                'country'      => 'setCountry',
                 'foundingYear' => 'setFoundingYear',
                 'description'  => 'setDescription',
                 'anons'        => 'setAnons',

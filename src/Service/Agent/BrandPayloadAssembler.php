@@ -27,6 +27,7 @@ class BrandPayloadAssembler
             'slug'            => $brand->getSlug(),
             'title'           => $brand->getTitle(),
             'city'            => $brand->getCity(),
+            'country'         => $brand->getCountry(),
             'foundingYear'    => $brand->getFoundingYear(),
             'description'     => $brand->getDescription(),
             'anons'           => $brand->getAnons(),

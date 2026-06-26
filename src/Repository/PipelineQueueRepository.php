@@ -137,6 +137,25 @@ class PipelineQueueRepository
     }
 
     /**
+     * Бэкафилл полей у УЖЕ опубликованных на проде брендов (done + pushed), у которых
+     * пусто city/country/foundingYear. attributesStatus у них = 'done' (findForExtract их
+     * не берёт), поэтому отдельный селектор. Гонится с --fields-only (без churn атрибутов);
+     * заполнение пустых полей выставит content_changed → бренд станет re-push eligible.
+     */
+    public function findPublishedMissingFields(int $limit, int $shard = 0, int $total = 1): array
+    {
+        $qb = $this->qb()
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.status = :done')
+            ->andWhere('p.pushedAt IS NOT NULL')
+            ->andWhere('p.sourceCount > 0')
+            ->andWhere("((b.country IS NULL OR b.country = '') OR (b.city IS NULL OR b.city = '') OR (b.foundingYear IS NULL OR b.foundingYear = ''))")
+            ->setParameter('done', BrandRagPipeline::STATUS_DONE);
+
+        return $this->finishStageQuery($qb, $limit, $shard, $total);
+    }
+
+    /**
      * Бренды на ингест Wildberries: wb_status IS NULL, статус active/new.
      */
     public function findForWbEnrich(int $limit, int $shard = 0, int $total = 1): array
