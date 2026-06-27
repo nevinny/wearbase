@@ -47,7 +47,9 @@ first-party факты, которых нет в одной выдаче), WEARB
 
 ## Quick wins (дёшево)
 
-1. Убрать FAQPage из JSON-LD там, где нет реального `brand_faq` (`show.html.twig:132-169`) — рендерить схему только при `faq_status=done`.
+1. ✅ **Сделано.** Убрана boilerplate-FAQPage из JSON-LD (`show.html.twig`): FAQPage-узел в `@graph` эмитится
+   только при непустом `faqs` (реальный `brand_faq`, locale='ru'). Видимый HTML-аккордеон оставлен. Проверено:
+   бренд с FAQ → реальный FAQPage; без FAQ → узла нет; JSON-LD валиден в обоих случаях.
 2. Вычистить тест-мусор в `brand_faq` одним SQL-проходом.
 3. Деиндексировать тонкие/`grounded=0` карточки (`noindex,follow` + убрать из sitemap; `base.html.twig` + `SitemapController.php:166-181`).
 4. Чинить `Org.url/sameAs` — `own_site` детерминированно; добавить Instagram в `sameAs`.

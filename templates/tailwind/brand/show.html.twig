@@ -112,7 +112,9 @@
                 "image": "{{ _org_image }}",
                 "sameAs": {{ sameAsLinks|json_encode|raw }}
             }
-            {# FAQPage — реальный из brand_faq или boilerplate #}
+            {# FAQPage — ТОЛЬКО реальный из brand_faq. Boilerplate-заглушку убрали: пустая FAQ-разметка
+               на тысячах страниц = риск spam-structured-data (markup≠контент) + zero-click (AI Overview
+               вытаскивает generic-ответ прямо в выдачу). Видимый HTML-аккордеон ниже остаётся как есть. #}
             {% if faqs is defined and faqs|length > 0 %},
             {
                 "@type": "FAQPage",
@@ -127,44 +129,6 @@
                         }
                     }{% if not loop.last %},{% endif %}
                     {% endfor %}
-                ]
-            }
-            {% elseif faqs is not defined or faqs|length == 0 %},
-            {
-                "@type": "FAQPage",
-                "mainEntity": [
-                    {
-                        "@type": "Question",
-                        "name": "Где купить одежду бренда {{ _bt }}?",
-                        "acceptedAnswer": {
-                            "@type": "Answer",
-                            "text": "Одежду бренда {{ _bt }} можно приобрести на официальном сайте бренда или в фирменных магазинах.{{ brand.city ? ' Бренд базируется в городе ' ~ brand.city ~ '.' : '' }}"
-                        }
-                    },
-                    {
-                        "@type": "Question",
-                        "name": "Какой стиль у бренда {{ _bt }}?",
-                        "acceptedAnswer": {
-                            "@type": "Answer",
-                            "text": "{% if brand.styles|length > 0 %}{{ brand.styles|map(s => s.title)|join(', ') }}.{% else %}Бренд предлагает актуальную одежду в современном стиле.{% endif %}"
-                        }
-                    },
-                    {
-                        "@type": "Question",
-                        "name": "Доставляет ли {{ _bt }} заказы по России?",
-                        "acceptedAnswer": {
-                            "@type": "Answer",
-                            "text": "Для получения актуальной информации о доставке рекомендуем посетить официальный сайт бренда."
-                        }
-                    },
-                    {
-                        "@type": "Question",
-                        "name": "Есть ли у бренда {{ _bt }} размеры для больших размеров?",
-                        "acceptedAnswer": {
-                            "@type": "Answer",
-                            "text": "{% if brand.sizes|length > 0 %}Доступные размеры: {{ brand.sizes|map(s => s.title)|join(', ') }}.{% else %}Информацию о размерах смотрите на сайте бренда.{% endif %}"
-                        }
-                    }
                 ]
             }
             {% endif %}
