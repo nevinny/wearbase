@@ -14,7 +14,8 @@ use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpExceptionIn
  *        НЕ Wordstat-ключ; сервис-аккаунту нужна роль search-api.webSearch.user).
  *  Body: {query:{searchType,queryText}, folderId, responseFormat:FORMAT_XML, groupSpec}.
  *  Resp: {rawData: base64(XML)} — XML формата Yandex (yandexsearch>...>doc).
- *  Лимит: 10k запросов/мес бесплатно.
+ *  ⚠️ ПЛАТНЫЙ: тарификация по числу инициированных запросов/мес (~0.49 ₽/запрос днём,
+ *     ночь дешевле). Учёт и дневной потолок — YandexSearchMeter.
  *
  * Интерфейс совместим с SearxClient::search() — drop-in доп-источник для discover.
  */
@@ -26,6 +27,7 @@ class YandexSearchClient
         private readonly HttpClientInterface $httpClient,
         private readonly string $apiKey,
         private readonly string $folderId = '',
+        private readonly ?YandexSearchMeter $meter = null,
     ) {
     }
 
@@ -40,6 +42,10 @@ class YandexSearchClient
     public function search(string $query, int $limit = 20): array
     {
         if (!$this->isConfigured() || trim($query) === '') {
+            return [];
+        }
+        // Дневной потолок расхода — fail-closed: до платного API не доходим.
+        if ($this->meter !== null && !$this->meter->allowed()) {
             return [];
         }
 
@@ -64,6 +70,9 @@ class YandexSearchClient
                 ],
                 'timeout' => 30,
             ]);
+
+            // Запрос инициирован → тарифицируется Яндексом (даже при 4xx). Фиксируем расход.
+            $this->meter?->record();
 
             if ($response->getStatusCode() >= 400) {
                 return [];

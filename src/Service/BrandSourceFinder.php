@@ -36,7 +36,16 @@ class BrandSourceFinder
 
     // Пауза МЕЖДУ поисковыми запросами: ~8 запросов/бренд подряд без паузы → движки
     // SearXNG ловят CAPTCHA/too-many-requests, тиры пустеют (инцидент 2026-06-04).
-    private const QUERY_SLEEP_MS = 1500;
+    // Пауза + джиттер. Тяжёлый троттлинг бесполезен: Google банит SearXNG по fingerprint
+    // после ~5 запросов независимо от темпа (#2515), а медленный discover ГОЛОДИТ
+    // последовательный net-демон (crawl/fetch ждут) → конвейер встаёт. Умеренно + джиттер
+    // (разрыв регулярного паттерна), на бан Google полагаемся на bing+Brave-fallback.
+    private const QUERY_SLEEP_MS  = 1800;
+    private const QUERY_JITTER_MS = 1200;
+
+    // Brave API — бюджетный fallback: добираем, только если основные дали < N результатов
+    // (free-tier 1000/мес, ~8 запросов/бренд → без экономии выжрется за пару часов).
+    private const BRAVE_FALLBACK_MIN = 3;
 
     private const FLOOR = 0.35;        // ниже — не кладём в очередь (для корпуса)
     private const SEED_SCORE = 0.9;    // доверенные сиды (DB / slug-guess) — высокий baseline
@@ -70,6 +79,7 @@ class BrandSourceFinder
         private readonly SourceTypeClassifier $classifier,
         private readonly ContactVerifier $verifier,
         private readonly YandexSearchClient $yandex,
+        private readonly BraveSearchClient $brave,
     ) {
     }
 
@@ -81,7 +91,7 @@ class BrandSourceFinder
      */
     private function searchPaced(string $query): array
     {
-        usleep(self::QUERY_SLEEP_MS * 1000);
+        usleep((self::QUERY_SLEEP_MS + random_int(0, self::QUERY_JITTER_MS)) * 1000);
 
         // ПЕРВИЧНЫЙ источник — официальный Yandex Search API (Yandex Cloud, внешний, не зависит
         // от .43). SearXNG — ВСПОМОГАТЕЛЬНЫЙ: дополняет выдачу и НЕ фатален, если Yandex отработал
@@ -111,6 +121,20 @@ class BrandSourceFinder
             // SearXNG лёг — ок, если Yandex дал результат; иначе сигналим брейкеру (оба источника мертвы)
             if (!$yandexOk) {
                 throw $e;
+            }
+        }
+
+        // Brave API — бюджетный fallback-добор: только когда основные дали мало (экономим
+        // 1000/мес). Клиент сам вернёт [] при исчерпании квоты или если не сконфигурирован.
+        if (count($results) < self::BRAVE_FALLBACK_MIN && $this->brave->isConfigured() && $this->brave->allowed()) {
+            $seen = [];
+            foreach ($results as $r) {
+                $seen[rtrim($r['url'], '/')] = true;
+            }
+            foreach ($this->brave->search($query, self::PER_QUERY) as $r) {
+                if (!isset($seen[rtrim($r['url'], '/')])) {
+                    $results[] = $r;
+                }
             }
         }
 

@@ -9,6 +9,7 @@ use App\Entity\BrandSourceUrl;
 use App\Repository\BrandRepository;
 use App\Service\Agent\BrandPayloadAssembler;
 use App\Service\VectorStoreService;
+use App\Service\YandexSearchMeter;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Option\EA;
@@ -32,6 +33,7 @@ class RagDashboardController extends AbstractController
         private readonly BrandRepository $brands,
         private readonly BrandPayloadAssembler $payloadAssembler,
         private readonly VectorStoreService $vectors,
+        private readonly YandexSearchMeter $yandexMeter,
         private readonly AdminContextFactory $adminContextFactory,
         private readonly DashboardController $dashboard,
         private readonly \Symfony\Contracts\HttpClient\HttpClientInterface $httpClient,
@@ -117,7 +119,14 @@ class RagDashboardController extends AbstractController
         // --- Outreach (письма) — данные на ПРОДЕ, тянем через агент-API ---
         $outreach = $this->prodOutreach();
 
-        return $this->render('admin/rag_dashboard.html.twig', $this->viewParams($brandStatuses, $pipeline, $urlQueue, $stages, $readiness, $gsc, $outreach));
+        // --- Yandex Search API (платный) — расход за сегодня + дневной потолок ---
+        $yandex = [
+            'запросов сегодня' => $this->yandexMeter->todayCount(),
+            'дневной лимит'    => $this->yandexMeter->dailyCap() > 0 ? $this->yandexMeter->dailyCap() : '∞',
+            '≈ ₽ сегодня'      => $this->yandexMeter->estimatedCostRub(),
+        ];
+
+        return $this->render('admin/rag_dashboard.html.twig', $this->viewParams($brandStatuses, $pipeline, $urlQueue, $stages, $readiness, $gsc, $outreach, $yandex));
     }
 
     /**
@@ -906,7 +915,7 @@ class RagDashboardController extends AbstractController
     }
 
     /** @return array<string,mixed> */
-    private function viewParams(array $brandStatuses, array $pipeline, array $urlQueue, array $stages, array $readiness, array $gsc, array $outreach = []): array
+    private function viewParams(array $brandStatuses, array $pipeline, array $urlQueue, array $stages, array $readiness, array $gsc, array $outreach = [], array $yandex = []): array
     {
         return [
             'brandStatuses' => $brandStatuses,
@@ -916,6 +925,7 @@ class RagDashboardController extends AbstractController
             'readiness'     => $readiness,
             'gsc'           => $gsc,
             'outreach'      => $outreach,
+            'yandex'        => $yandex,
         ];
     }
 }

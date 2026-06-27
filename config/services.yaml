@@ -28,6 +28,12 @@ parameters:
     # Нужен ОТДЕЛЬНЫЙ ключ Yandex Cloud (роль search-api.webSearch.user) + folderId.
     env(YANDEX_SEARCH_API_KEY): ''
     env(YANDEX_SEARCH_FOLDER_ID): ''
+    # Дневной потолок запросов к платному Yandex Search API (fail-closed). 0 = без лимита.
+    env(YANDEX_SEARCH_DAILY_CAP): '2000'
+    # Brave Search API (доп-источник discover, fallback-добор). Пусто = выключен.
+    # Free-tier 1000 запросов/МЕСЯЦ (сброс ежемесячно) → строгий месячный потолок.
+    env(BRAVE_SEARCH_API_KEY): ''
+    env(BRAVE_SEARCH_MONTHLY_CAP): '1000'
     # QA-гейт сгенерированного контента (article-qa-toolkit). '0' = выключить.
     env(ARTICLE_QA_ENABLED): '1'
     # Канонический хост сайта для canonical/hreflang (не зависит от request-хоста)
@@ -82,10 +88,22 @@ services:
             $projectDir: '%kernel.project_dir%'
             $enabled: '%env(bool:ARTICLE_QA_ENABLED)%'
 
+    App\Service\YandexSearchMeter:
+        arguments:
+            $dailyCap: '%env(int:YANDEX_SEARCH_DAILY_CAP)%'
+
     App\Service\YandexSearchClient:
         arguments:
             $apiKey: '%env(YANDEX_SEARCH_API_KEY)%'
             $folderId: '%env(YANDEX_SEARCH_FOLDER_ID)%'
+
+    App\Service\BraveSearchMeter:
+        arguments:
+            $monthlyCap: '%env(int:BRAVE_SEARCH_MONTHLY_CAP)%'
+
+    App\Service\BraveSearchClient:
+        arguments:
+            $apiKey: '%env(BRAVE_SEARCH_API_KEY)%'
 
     App\Service\SearxClient:
         arguments:
