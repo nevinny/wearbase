@@ -24,10 +24,22 @@ class BrandRagPipelineRepository extends ServiceEntityRepository
     public function getOrCreate(Brand $brand): BrandRagPipeline
     {
         $pipeline = $this->findOneBy(['brand' => $brand]);
-        if ($pipeline === null) {
-            $pipeline = (new BrandRagPipeline())->setBrand($brand);
-            $this->getEntityManager()->persist($pipeline);
+        if ($pipeline !== null) {
+            return $pipeline;
         }
+
+        // findOneBy запрашивает БД и НЕ видит persisted-но-не-flushed сущность: при повторном
+        // вызове в одном юните работы создалась бы ВТОРАЯ строка → flush → 1062
+        // uniq_brand_rag_brand (откат всего батча discover → конвейер встаёт). Проверяем
+        // запланированные вставки UoW и переиспользуем уже созданную для этого бренда.
+        foreach ($this->getEntityManager()->getUnitOfWork()->getScheduledEntityInsertions() as $scheduled) {
+            if ($scheduled instanceof BrandRagPipeline && $scheduled->getBrand() === $brand) {
+                return $scheduled;
+            }
+        }
+
+        $pipeline = (new BrandRagPipeline())->setBrand($brand);
+        $this->getEntityManager()->persist($pipeline);
 
         return $pipeline;
     }

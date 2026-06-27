@@ -160,10 +160,13 @@ class PipelineQueueRepository
      */
     public function findForWbEnrich(int $limit, int $shard = 0, int $total = 1): array
     {
+        // p.id IS NOT NULL: enrich НЕ создаёт пайплайн-строки новым брендам (это работа discover) —
+        // иначе getOrCreate здесь и в discover гонятся за одним brand_id → 1062 uniq_brand_rag_brand,
+        // откат батча discover, net встаёт. Обогащаем только уже открытые бренды (есть строка).
         $qb = $this->qb()
-            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
             ->where('b.status IN (:statuses)')
-            ->andWhere('p.id IS NULL OR p.wbStatus IS NULL')
+            ->andWhere('p.wbStatus IS NULL')
             ->setParameter('statuses', [Statuses::Active, Statuses::New]);
 
         return $this->finishStageQuery($qb, $limit, $shard, $total);

@@ -380,6 +380,19 @@ class GenerateBrandContentCommand extends Command
             if (!empty($descErrors)) {
                 $io->warning(sprintf('Валидация description не прошла для "%s": %s', $brandName, implode(', ', $descErrors)));
                 $this->validationFailed++;
+                // НЕ оставляем в 'embedded': findForGeneration перевыбирал бы бренд КАЖДЫЙ цикл
+                // (предикат берёт все embedded без учёта попыток) → бесконечный burn-loop gemma на
+                // одном бренде. Помечаем generate_failed + инкремент → после maxAttempts выпадает.
+                if (!$dryRun) {
+                    /** @var \App\Repository\BrandRagPipelineRepository $repo */
+                    $repo = $this->em->getRepository(BrandRagPipeline::class);
+                    $p = $repo->getOrCreate($brand);
+                    $p->setStatus(BrandRagPipeline::STATUS_GENERATE_FAILED)
+                        ->setLastError('validateDescription: ' . mb_substr(implode(', ', $descErrors), 0, 200))
+                        ->setGenerateAttempts($p->getGenerateAttempts() + 1);
+                    $this->em->flush();
+                    $this->em->clear();
+                }
                 return;
             }
 
