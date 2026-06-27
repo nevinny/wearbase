@@ -9,6 +9,7 @@ Allow: /
 Disallow: /admin/
 Disallow: /_profiler/
 Disallow: /_wdt/
+Disallow: /go/
 # Tracking parameters — экономим краул-бюджет на UTM/ref вариантах
 Disallow: /*?utm_*
 Disallow: /*?ref=*
@@ -34,6 +35,7 @@ Allow: /
 Disallow: /admin/
 Disallow: /_profiler/
 Disallow: /_wdt/
+Disallow: /go/
 
 # Sitemap и LLM-индекс
 Sitemap: https://wearbase.ru/sitemap.xml

@@ -314,7 +314,7 @@
             {% if brand.links|length > 0 %}
             <div class="flex flex-wrap gap-2 mt-3">
                 {% for link in brand.links %}
-                <a href="{{ link.linkUrl }}" target="_blank" rel="noopener"
+                <a href="{{ path('brand_outbound_click', {id: link.id}) }}" target="_blank" rel="nofollow noopener"
                    class="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition">
                     {% if link.linkType == 'website' %}🌐{% elseif link.linkType == 'instagram' %}📷{% elseif link.linkType == 'telegram' %}✈️{% elseif link.linkType == 'vk' %}💙{% elseif link.linkType == 'youtube' %}▶️{% elseif link.linkType == 'tiktok' %}🎵{% else %}🔗{% endif %}
                     {{ link.linkType|capitalize }}

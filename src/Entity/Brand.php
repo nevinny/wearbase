@@ -180,6 +180,10 @@ class Brand
     #[ORM\Column(options: ['default' => 0])]
     private int $contactAttempts = 0;
 
+    /** Денормализованный счётчик исходящих кликов на ссылки бренда (через /go/{id}); сортировка по популярности. */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $outboundClickCount = 0;
+
     // ---- Дрип-публикация (прод) ----
 
     /** В очереди на дрип-публикацию (status='new' + publish_pending=1 → publish-tick активирует). */
@@ -841,6 +845,18 @@ class Brand
     public function setContactAttempts(int $contactAttempts): static
     {
         $this->contactAttempts = $contactAttempts;
+
+        return $this;
+    }
+
+    public function getOutboundClickCount(): int
+    {
+        return $this->outboundClickCount;
+    }
+
+    public function setOutboundClickCount(int $outboundClickCount): static
+    {
+        $this->outboundClickCount = $outboundClickCount;
 
         return $this;
     }

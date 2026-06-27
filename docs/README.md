@@ -28,6 +28,7 @@
 | [seo_tools.md](seo_tools.md) | Справочник SEO-инструментов (коммерческие + open-source, бюджеты) |
 | [ahrefs.md](ahrefs.md) | Ahrefs: доступ к проекту, как читать аудит (Error vs Notice), инвентарь проблем + приоритеты, другие инструменты. От 2026-06-22 |
 | [agent_readiness.md](agent_readiness.md) | Техническое SEO под AI-агентов (isitagentready.com): robots.txt+Content Signals, llms.txt, Link header, Markdown negotiation, API Catalog. От 2026-06-18 |
+| [ai_search_impact.md](ai_search_impact.md) | Влияние майского AI-сдвига Google (AI Mode + Core Update) на WEARBASE: моат grounded-RAG, топ-риски (boilerplate-FAQ/листиклы/индексация), где видео переоценивает риск для одежды; **реализован click-трекинг `/go/{id}`**. От 2026-06-27 |
 
 ## RAG-конвейер, LLM, контент
 

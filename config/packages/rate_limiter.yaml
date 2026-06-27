@@ -17,3 +17,9 @@ framework:
             policy: sliding_window
             limit: 120
             interval: '1 minute'
+
+        # Трекинг исходящих кликов на ссылки бренда (/go/*): анти-долбёжка по IP.
+        outbound_click:
+            policy: sliding_window
+            limit: 120
+            interval: '1 minute'
