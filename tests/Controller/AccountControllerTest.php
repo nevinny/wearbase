@@ -4,43 +4,20 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
-use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
-
 /**
  * Integration tests for the customer account area: /account/*
  *
  * These tests log in as a customer and verify that pages render without errors.
  * A test database is required (dbname_suffix: '_test' — see doctrine.yaml).
  *
- * Setup:
- *   php bin/console doctrine:database:create --env=test
- *   php bin/console doctrine:migrations:migrate --env=test --no-interaction
- *
  * Run with: php bin/phpunit tests/Controller/AccountControllerTest.php
  */
-class AccountControllerTest extends WebTestCase
+class AccountControllerTest extends DatabaseDependentWebTestCase
 {
-    private static bool $dbAvailable = false;
-
-    public static function setUpBeforeClass(): void
-    {
-        parent::setUpBeforeClass();
-        try {
-            $client = static::createClient();
-            $em = $client->getContainer()->get('doctrine.orm.entity_manager');
-            $em->getConnection()->executeQuery('SELECT 1');
-            static::$dbAvailable = true;
-        } catch (\Throwable) {
-            static::$dbAvailable = false;
-        }
-    }
-
     protected function setUp(): void
     {
         parent::setUp();
-        if (!static::$dbAvailable) {
-            $this->markTestSkipped('Test database not available. Run: bin/console doctrine:database:create --env=test');
-        }
+        $this->skipIfNoDatabase(); // все тесты класса требуют БД
     }
 
     // ── Authenticated pages ───────────────────────────────────────────────────

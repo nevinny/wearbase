@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use PHPUnit\Framework\Attributes\DataProvider;
-use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
  * Integration tests for the brand personal account area: /brand/*
@@ -15,29 +14,10 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *  - Regular customers → 403 Forbidden
  *  - Brand managers → 200 OK
  *
- * Setup for integration tests:
- *   php bin/console doctrine:database:create --env=test
- *   php bin/console doctrine:migrations:migrate --env=test --no-interaction
- *
  * Run with: php bin/phpunit tests/Controller/BrandLkControllerTest.php
  */
-class BrandLkControllerTest extends WebTestCase
+class BrandLkControllerTest extends DatabaseDependentWebTestCase
 {
-    private static bool $dbAvailable = false;
-
-    public static function setUpBeforeClass(): void
-    {
-        parent::setUpBeforeClass();
-        try {
-            $client = static::createClient();
-            $em = $client->getContainer()->get('doctrine.orm.entity_manager');
-            $em->getConnection()->executeQuery('SELECT 1');
-            static::$dbAvailable = true;
-        } catch (\Throwable) {
-            static::$dbAvailable = false;
-        }
-    }
-
     // ── Access control: guests redirect (no DB needed) ────────────────────────
 
     #[DataProvider('brandPathsProvider')]
@@ -64,9 +44,7 @@ class BrandLkControllerTest extends WebTestCase
     #[DataProvider('brandPathsProvider')]
     public function testCustomerCannotAccessBrandArea(string $path): void
     {
-        if (!static::$dbAvailable) {
-            $this->markTestSkipped('Test database not available.');
-        }
+        $this->skipIfNoDatabase();
 
         $client = static::createClient();
         $client->loginUser(UserFactory::makeCustomer());
@@ -79,9 +57,7 @@ class BrandLkControllerTest extends WebTestCase
 
     public function testBrandDashboardLoads(): void
     {
-        if (!static::$dbAvailable) {
-            $this->markTestSkipped('Test database not available.');
-        }
+        $this->skipIfNoDatabase();
 
         $client = static::createClient();
         $client->loginUser(UserFactory::makeBrandManager());
@@ -93,9 +69,7 @@ class BrandLkControllerTest extends WebTestCase
 
     public function testBrandProfileLoads(): void
     {
-        if (!static::$dbAvailable) {
-            $this->markTestSkipped('Test database not available.');
-        }
+        $this->skipIfNoDatabase();
 
         $client = static::createClient();
         $client->loginUser(UserFactory::makeBrandManager());
@@ -107,9 +81,7 @@ class BrandLkControllerTest extends WebTestCase
 
     public function testBrandProductsLoads(): void
     {
-        if (!static::$dbAvailable) {
-            $this->markTestSkipped('Test database not available.');
-        }
+        $this->skipIfNoDatabase();
 
         $client = static::createClient();
         $client->loginUser(UserFactory::makeBrandManager());
@@ -120,9 +92,7 @@ class BrandLkControllerTest extends WebTestCase
 
     public function testBrandOrdersLoads(): void
     {
-        if (!static::$dbAvailable) {
-            $this->markTestSkipped('Test database not available.');
-        }
+        $this->skipIfNoDatabase();
 
         $client = static::createClient();
         $client->loginUser(UserFactory::makeBrandManager());
@@ -133,9 +103,7 @@ class BrandLkControllerTest extends WebTestCase
 
     public function testBrandTeamLoads(): void
     {
-        if (!static::$dbAvailable) {
-            $this->markTestSkipped('Test database not available.');
-        }
+        $this->skipIfNoDatabase();
 
         $client = static::createClient();
         $client->loginUser(UserFactory::makeBrandManager());
@@ -147,9 +115,7 @@ class BrandLkControllerTest extends WebTestCase
 
     public function testBrandNewProductFormLoads(): void
     {
-        if (!static::$dbAvailable) {
-            $this->markTestSkipped('Test database not available.');
-        }
+        $this->skipIfNoDatabase();
 
         $client = static::createClient();
         $client->loginUser(UserFactory::makeBrandManager());
