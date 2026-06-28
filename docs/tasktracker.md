@@ -774,7 +774,7 @@ brand_source_url(id, brand_id, url VARCHAR(1024), url_hash CHAR(64), source_type
 2. **Деплой unpublish на прод.** Endpoint `/api/v1/brands/unpublish` есть только на dev (прод → 404). Задеплоить (полный rsync, см. «Грабли деплоя») + cache:clear, иначе «Скрыть» в админке работает только локально (fail-soft).
 3. **Запуск/рестарт RAG-демона** для пересбора 55 сброшенных. Долгоживущий демон — рестарт, чтобы подхватил `SCRAPE_EXCLUDED_DOMAINS=majestic.com` (env читается на старте процесса).
 4. **E: email-домен-guard** перед outreach — `Brand.email` может быть от чужой сущности (как majestic.com), нет проверки соответствия домену бренда.
-5. **GenerateBrandContentCommand:425** ещё режет metaTitle до 60 (безвреден — вход уже ≤48 из LlmService); при желании привести к 48.
+5. ~~**GenerateBrandContentCommand:425** ещё режет metaTitle до 60~~ ✅ ЗАКРЫТО (2026-06-24): жёсткого обреза нет — title идёт через `SeoMetaService::fitTitleForRender()` (word-boundary трим, render-safe ≤60 с учётом ` | WEARBASE`). Пункт про «48» устарел (двойной хвост решён иначе).
 6. **Сольная WIP-ветка:** правки переплетены с незакоммиченным WIP (contacts:refresh: `findForContactRefresh`/`extractContactsFromContext`/`BrandRefreshContactsCommand`, prodOutreach-рефактор) — въехали в коммиты вместе (интерактивный `git add -p` в среде недоступен).
 
 ## SEO-контур: блог, городские посадочные, единый шаблон, мобильная шапка (2026-06-12)
@@ -793,7 +793,7 @@ brand_source_url(id, brand_id, url VARCHAR(1024), url_hash CHAR(64), source_type
 3. `cache:clear --no-debug`.
 4. Смоук: /ru/blog, /ru/cities, /ru/cities/moskva, 301 у /ru/marketplace-commissions, бургер на мобильном.
 
-**Открыто:** падения PHPUnit (31) — предсуществующие (битые data providers «0 passed, 1 expected», БД-зависимые тесты), к этому релизу не относятся, чинить отдельно. Instagram-ссылка в подвале — решить про дисклеймер Meta.
+**Открыто:** падения PHPUnit. Прогресс 2026-06-24: убраны 2 ложных **ERROR** «the kernel should only be booted once» (проба БД в `setUpBeforeClass` бутила kernel и не гасила его) — добавлен `ensureKernelShutdown()`; DRY-рефактор: проба БД + skip-guard вынесены в базовый `tests/Controller/DatabaseDependentWebTestCase.php` (Account/BrandLk наследуют, 7 инлайн-guard'ов BrandLk → один `skipIfNoDatabase()`). Suite теперь доходит до конца без OOM/ERROR: **0 errors, 26 failures**. Остаток (26) — единый корень: `loginUser()` на non-persisted `UserFactory`-стабе → `EntityUserProvider` не может refresh'нуть юзера без id; нужна персистенция тест-юзера в `*_test` БД + очистка (отдельная инфра-задача, не правка одной строки). Instagram-ссылка в подвале — решить про дисклеймер Meta.
 
 ---
 
@@ -1044,3 +1044,156 @@ SEO-страницы по стилям (раньше «Стили» вели н�
 - [x] `POST /{_locale}/brands/{slug}/hide` (`brand_hide`) — веб-кнопка «🚫 Скрыть бренд» прямо на
       странице бренда, CSRF-гейт, через `BrandUnpublisher::hide` (soft-hide `Disabled` + снятие с прода).
       **Замена сломанной TG-кнопки** (вебхук Telegram→прод таймаутит).
+
+---
+
+## 2026-06-25 — Ниша-гейт брендов + HTTP-семантика (410/tombstone)
+
+Повод: `apadent` 404 на проде → оказалось, это японская **зубная паста**, случайно затянутая
+импортом лидов в каталог одежды. Аудит: ≥759 из 6724 `new` и ≥29 `active` брендов — не из ниши
+(аптека «Апрель» 755k показов, пылесосы, смартфоны, матрасы). Полный reference —
+[brand_lifecycle.md](brand_lifecycle.md). Ветка `task-20`.
+
+**Сделано:**
+- [x] Миграция `Version20260624_brand_lifecycle`: `brand.niche_status/niche_reason/niche_checked_at`
+      + `closed_at` (+ индекс). Хелперы на `Brand`: `isOffNiche/markNiche/isClosed/close/reopen`.
+- [x] `app:brand:niche-check` — классификатор ниши (мода+красота = `in`): фаст-путь по маркерам +
+      локальная LLM (JSON). Недеструктивен; `--set=in|off|closed|reopen|delete` (с `--id`).
+- [x] Гейт `off`: единая точка `PipelineQueueRepository::finishStageQuery` (весь конвейер) +
+      raw-SQL в `PublishTickCommand` (дрип). `NULL`/`in` проходят.
+- [x] HTTP в `BrandsController::show()`: `deleted`→410 (`gone.html.twig`, noindex), `active`+`closed_at`
+      →200+tombstone-плашка, `new`/`disabled`→404. Тест `NicheLifecycleControllerTest` (3 кейса) зелёный.
+- [x] Доки: `brand_lifecycle.md` + индекс + `commands.md` (cron-порядок).
+
+**Открыто / next:**
+- [ ] **Бэкафилл всего каталога** (когда дойдут руки): `php -d memory_limit=512M bin/console
+      app:brand:niche-check 7000 --no-debug`. ~7k LLM-вызовов на локальном сервере (IP непостоянен) —
+      долго; фаз-путь по маркерам срежет часть. Сначала разгрести живые: `--status=active 500`.
+- [ ] Ручное ревью списка **active-off-niche** из вывода → решить `--set=delete`/оставить (29 живых в индексе).
+- [ ] Закоммитить ветку `task-20` (изменения готовы, но не закоммичены).
+- [ ] Прогнать `niche-check` в cron **перед** `publish-tick` (порядок важен — гейт пропускает непроверённые).
+
+---
+
+## 2026-06-28 — Аудит размещения этапов конвейера (9 агентов-архитекторов) + баг гонки keywords
+
+Повод: вынос RAG-конвейера в отдельный проект **seo-factory** (вертикальная хореография — каждый этап
+независимый воркер, дренаж status-очередей). По одному агенту-архитектору на этап: отделяли
+*реальную зависимость данных* (что команда читает) от *места в оркестрации* (на каком статусе дёргается).
+Полный разбор — в памяти `seo-factory-pipeline-architecture`. Триггер-кейс: `extract` казался поздним
+(после `done`), но читает `clean_text` напрямую → зависит только от `scraped`.
+
+**Что в wearbase реально сломано vs нет (проверено по `RagDaemonCommand`/`PipelineQueueRepository`):**
+- ✅ `logo` НЕ сломан — `STAGES` гонит его ДО generate (стр.47), finder не гейтит на `done`.
+- ✅ `extract` НЕ сломан — `findForExtract` уже принимает `STATUS_SCRAPED` (+EMBEDDED/DONE/DEFERRED),
+      триггерится с корпуса. (Первый Explore-агент ошибся, не дочитав finder.)
+- ✅ push re-delivery работает — extract (ATTR_DONE) и logo (`markContentChanged`) бампают
+      `contentChangedAt`, push переотправляет по `contentChangedAt > pushedAt`.
+
+**🔴 Единственный реальный баг — гонка keywords (correctness, тихий):**
+`generate-content` вплетает Wordstat-фразы в title/description/meta (`rankedKeywords`, `LlmService:142-144`),
+но `keywords` — отдельный медленный демон (`STAGES:52`, не в основном цикле, квота ≤97/час). Основной цикл
+доводит бренд до `done` задолго до keywords → контент цементируется БЕЗ ключей, авто-регена нет.
+Показательно: `faq` от этого защищён (`findForFaq` требует `keywordsStatus IS NOT NULL`), а `findForGeneration` — нет.
+
+**Открыто / next:**
+- [ ] **Замерить масштаб порчи:** `SELECT COUNT(*) FROM brand_rag_pipeline p JOIN brand_keyword k ON
+      k.brand_id=p.brand_id WHERE p.status='done' AND p.generated_at < k.created_at;`
+- [ ] **Фикс self-heal (~4 строки):** в `CollectBrandKeywordsCommand` (~стр.188, у `setKeywordsStatus`) —
+      если `status==KW_FOUND && pipeline.status==STATUS_DONE` → `setRegenRequestedAt(now)`. Реген-машинерия
+      уже есть: `findRegenFlagged` (`PipelineQueueRepository:41`) → `generate-content --regen-flagged`
+      (сбрасывает флаг). Сейчас флаг ставит только `EvaluateExperimentsCommand`.
+- [ ] Добавить периодический `generate-content --regen-flagged` в демон (отдельной стадией / после keywords-батча).
+- [ ] НЕ делать жёсткий гейт (зеркало `faq`: `keywordsStatus IS NOT NULL` в `findForGeneration`) — посадит
+      throughput всего контента на квоту Wordstat ≤97/час.
+- [ ] Разово прогнать `--regen-flagged` по бэклогу испорченных после фикса.
+- [ ] **Операционный:** `OLLAMA_NUM_PARALLEL=4→1` в systemd на LLM-сервере — снимает краш gemma
+      (оверсабскрипшн) уже сейчас, до seo-factory.
+
+**Для seo-factory (не баги wearbase, на будущее):** дубль предиката готовности ×3
+(`isPublishReady`/`readyToPushQb`/`--id`) → 1 спека; `findForGeneration` без `SKIP LOCKED` (для верт.воркеров);
+embed делит ollama с gemma (`keep_alive=30m` hack) → решается пиннингом моделей по картам.
+
+---
+
+## 2026-06-28 — AI-сдвиг Google: разбор влияния + click-трекинг + чистка JSON-LD/FAQ
+
+Повод: транскрипт видео Rush Agency (Google I/O 19 мая: AI Mode >1 млрд MAU + May Core Update) →
+многоагентный разбор (12 агентов: инвентаризация поверхностей → оценка по 6 осям тезисов видео → синтез).
+Полный анализ — **[ai_search_impact.md](ai_search_impact.md)**. Вердикт: **moderate-risk с наполовину
+готовым моатом** — grounded-RAG защищает (97% брендов `grounded=1`, AI-выдача не заменяет first-party
+факты), недозащищены click-трекинг и generic-слой (boilerplate-FAQ / тонкие заглушки / фейк-рейтинги
+листиклов). Нюанс: видео ПЕРЕоценивает риск для одежды (визуально-транзакционный интент плохо закрывается
+текстовым AI-ответом) и НЕДОоценивает устойчивость бренд-навигации.
+
+**Сделано (ветка task-20):**
+- [x] **Click-трекинг исходящих переходов `/go/{id}`** (коммит 52cb428) — закрывает приоритет №1 из
+      `global_analogs.md`. Редирект-прокладка: цель из БД (open-redirect невозможен), боты не учитываются,
+      `brand.outbound_click_count` + append-only лог `brand_outbound_click` (+ `topBrands`/`countForBrand`).
+      По образцу `OutreachController` (stateless, нативный SQL, rate-limit, `X-Robots-Tag: noindex` +
+      `Referrer-Policy: no-referrer`, `ua_hash` без PII). Все исходящие ссылки бренда (links-партиал, CTA,
+      товарная карточка) через прокладку; `Disallow: /go/` в robots. E2E-проверено (302 + учёт; бот → без учёта).
+- [x] **Убрана boilerplate-FAQPage из JSON-LD** карточки бренда (коммит ffa4624) — риск №2. FAQPage в `@graph`
+      теперь только при непустом `brand_faq` (раньше при пустом лились 4 шаблонных Q&A на ~4300 страниц =
+      spam-structured-data + zero-click). Видимый HTML-аккордеон оставлен без schema. Проверено: с FAQ →
+      реальный FAQPage; без → узла нет; JSON-LD валиден в обоих случаях.
+- [x] **Чистка тест-мусора в `brand_faq`** (коммит c87ff8d) — миграция удалила «Что это? → Тест агент-API.»
+      на фикстур-бренде `test-ingest-brand`. Скоуп по slug; `brightest` (реальный бренд, «test» — случайная
+      подстрока) не тронут. 12918→12917, маркер 0.
+
+**Открыто / next (из `ai_search_impact.md`, по убыванию приоритета):**
+- [ ] **Деиндексация тонких/`grounded=0` карточек** (quick-win №3): `noindex,follow` при `descLen<400` +
+      убрать из sitemap до дозревания RAG (`base.html.twig` + `SitemapController:166-181`).
+- [ ] Чинить `Org.url`/`sameAs` = `brand.links|first` → `own_site` детерминированно; добавить Instagram в `sameAs`.
+- [ ] Обрезать `anons` по границе слова (`GenerateBrandContentCommand:471`).
+- [ ] GSC-сегментация по типу страницы: позиция-vs-CTR (отделить Core Update от AI Mode).
+- [ ] Сдвиг индексного дрипа с по-дате на по-ценности (потолок ~5.3%, 2389 grounded ждут).
+- [ ] **Стратегия:** собственные первичные данные (цены/наличие/deep-link на товар как Lyst/Musinsa);
+      переформат листиклов из фейк-рейтингов «ТОП-N 2026» в честные гиды + anti-fabrication судья на внешние
+      площадки (vc/dtf/pikabu сейчас без судьи → риск Manual Action); бренд-спрос/упоминания.
+- [ ] **Связанная находка:** фикстур-бренд `test-ingest-brand` (status=new, публично 404) остаётся в каталоге;
+      проверить, не пишет ли агент-API-тест в реальную БД (корень происхождения мусора).
+
+---
+
+## 2026-06-28 — E-E-A-T авторство + доставка country + фиксы конвейера + Brave-источник
+
+Коммиты в `task-20` (запушено): `4c82399` авторство/схемы, `6d63145` country+extract,
+`414f259` фиксы конвейера, `863d116` метеринг источников поиска.
+
+**✅ E-E-A-T авторство (живо на проде):** сущность `Author` + Анна Семянникова (автор-куратор), страница
+`/ru/author/{slug}` (Person JSON-LD: alumniOf Школа шопинга, sameAs Instagram) + индекс `/ru/author`,
+байлайн в блоге, EasyAdmin CRUD «Авторы» + поле автора в карточке статьи, авторы в sitemap. Из генераторов
+убрана **фейк-персона** в JSON-LD. Схема статей: `Article`+author даёт шаблон (реальный Person), а
+`ItemList(+FAQPage)` **цементируется в content** (генераторы site → graph без Article). Память:
+`author-eeat-implementation`, `blog-publish-to-prod`. ⚠️ rsync фото с правами **644** (иначе 403).
+
+**✅ Доставка country на прод:** `BrandPayloadAssembler`+`BrandIngestService` шлют/принимают `country`;
+`extract --published-missing`/`--ids=CSV` — бэкафилл city/country у живых брендов. country на проде растёт.
+
+**🔴→✅ Инцидент «конвейер встал» (3 причины, все исправлены, коммит 414f259):**
+- `getOrCreate` 1062: `findOneBy` не видел persisted-но-не-flushed строку → 2-й INSERT в юните →
+  `uniq_brand_rag_brand` → откат батча discover. Фикс: проверка `getScheduledEntityInsertions`.
+- `findForWbEnrich` брал `p.id IS NULL` (создавал строки новым брендам) → гонка с discover за brand_id.
+  Фикс: `innerJoin` (только открытые).
+- burn-loop генерации: провал `validateDescription` оставлял бренд в `embedded` → `findForGeneration`
+  перевыбирал каждый цикл, жёг gemma. Фикс: → `generate_failed`+инкремент.
+- ⚠️ грабли: **`cache:clear` при живых демонах ломает их дочерние процессы** (`Failed opening required
+  ContainerXXX.php`) → конвейер встаёт. Правило: после `cache:clear`/деплоя — рестарт демонов. Память
+  `llm-server-oversubscription`. Ловушка диагностики: очередь fetch = `brand_source_url.status`, НЕ `http_status`.
+
+**✅ Источники поиска (метеринг/cap, коммит 863d116):** Yandex Search API стал платным → `YandexSearchMeter`
+(дневной cap, fail-closed) + панель на дашборде + `api_usage_daily`. **Brave API** как бесплатный
+fallback-добор (1000/мес, `BraveSearchMeter` месячный cap; зовётся только когда основные дали < N).
+discover throttle + джиттер (антибан). google в SEARX_ENGINES включён. Инструмент **`bin/captcha-proxy.sh`**
+— решать капчу Google для SearXNG через winproxy-egress (память `llm-ollama-server`).
+
+**Открыто / next:**
+- [ ] **WB-enrich не подключён:** 5143 брендов eligible (`wb_status IS NULL`), но стадии `wb` нет ни в одном
+      демоне (`enrich` в наборе = enrich-contacts, не Wildberries). Решить: подключать WB-ингест или выключено намеренно.
+- [ ] **country у ~4240 done-брендов:** `extract --published-missing` покрыл живые; для остальных done с пустым
+      `country` нужен `extract --fields-only --force` (дороже по GPU). Когда понадобится фильтр иностранных шире.
+- [ ] **~12 отбракованных gate'ом ячеек** SEO-статей (casual/СПб и др., «лид-блок не самодостаточен» 3/3) — догенерить.
+- [ ] **«О проекте»** с владельцем-основателем (Trust площадки, E-E-A-T) — отложено.
+- [ ] Brave-панель на RAG-дашборд (как Yandex) — опц., по аналогии.
+- [ ] Wordstat-ключ пересоздать (Yandex Cloud) при возврате к платным ключевикам (память `wordstat-dead-key-gotcha`).

@@ -1,6 +1,6 @@
 # Справочник console-команд WEARBASE
 
-Ревизия на 2026-06-24. Всего **41** команда (`src/Command/*.php`).
+Ревизия на 2026-06-24. Всего **42** команды (`src/Command/*.php`).
 
 ## Как читать
 
@@ -87,6 +87,9 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:brand:wb-enrich` | Ингест товаров с Wildberries в корпус + переэмбедд + регенерация grounded-описания. | 👆 по запросу |
 | `app:brand:ask` | **Диагностика**: задать вопрос про бренд через RAG (Qdrant+LLM). Проверить, что в корпусе. | 👆 по запросу |
 | `app:brand:pipeline:reset-phantoms` | **Ремонт**: сброс фантомных pipeline-статусов (прогресс заявлен, документов нет). Dry-run по умолчанию. | 👆 по запросу |
+| `app:brand:niche-check` | **Ниша-гейт**: классифицирует бренд (мода+красота = `in`, аптека/техника/авто/продукты/гигиена рта/БАД = `off`) фаст-путём по маркерам + локальной LLM → `brand.niche_status`. `off` исключает бренд из всего конвейера (`PipelineQueueRepository`) и дрип-публикации. Недеструктивен; `--set=in\|off\|closed\|reopen\|delete` (с `--id`) — ручное действие/override. Active off-niche только помечает (ручное ревью). Большие батчи: `-d memory_limit=512M … --no-debug`. | ⏰ перед `publish-tick` / 👆 бэкафилл |
+
+> **Порядок cron:** `app:brand:niche-check` должен идти **перед** `app:brand:publish-tick` — гейт пропускает непроверённые (`niche_status IS NULL`), чтобы не стопорить дрип; пометка `off` должна успеть до публикации. Бэкафилл всего каталога — разовым батчем: `php -d memory_limit=512M bin/console app:brand:niche-check 7000 --no-debug`.
 
 ---
 
@@ -138,7 +141,8 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:google:index-ping` | Google Indexing API: пинг карточек активных брендов (приоритет свежим, cooldown 14 дней) → `google_index_ping`. Единственный Google-канал (anti-trifecta: Яндекс/Bing — IndexNow). `--limit` (default 180, потолок 200), `--dry-run`. Fail-open: креды `GSC_CREDENTIALS_PATH` только на Mac. | ⏰ `0 7 * * *` | 🍎 Mac |
 | `app:seo:meta-repair` | Ремонт дефектной SEO-meta (пустая / title>60 / desc>155): собирает/тримит по границе слова (`SeoMetaService::fit`), приоритет по показам GSC. `--dry-run`, `--limit`, `--min-impressions`. Чинит только дефектные поля. | 👆 по запросу / периодически | 🍎 .43 (GSC+brand-слой); ☁️ prod для прямой починки live-meta |
 | `app:seo:near-dup` | Аудит near-duplicate описаний (Jaccard по word-shingles, DROP≥0.85 / WARN≥0.60). Read-only отчёт, `--threshold`, `--export`. Дубли в генерации уже ловит `NearDuplicateDetector` в generate-content. | 👆 по запросу | 🖥/🍎 |
-| `app:seo:listicle` | **SEO Boost / GEO**: статья-рейтинг «ТОП-N в нише» с целевым брендом №1 + реальные конкуренты той же ниши; grounded (описание+RAG), JSON-LD Article+ItemList+FAQPage, quality-gate перед сохранением (бренд не пропущен/отказ/штампы). По умолчанию пишет в `var/seo/`. `<brand_id> [niche]`, `--top --platform --persona --variants --no-faq --force --out`. Свой аналог КП ContentMagic. Полный reference — [seo_boost.md](seo_boost.md). | 👆 по запросу | 🖥/🍎 (нужна локальная LLM) |
+| `app:seo:listicle` | **SEO Boost / GEO**: статья-рейтинг «ТОП-N в нише» с целевым брендом №1 + реальные конкуренты той же ниши; grounded (описание+RAG), JSON-LD Article+ItemList+FAQPage, quality-gate перед сохранением (бренд не пропущен/отказ/штампы). По умолчанию пишет в `var/seo/`. `<brand_id> [niche]`, `--city` (гео-срез «ТОП {стиль} {город}»), `--top --platform`(vc/dtf/pikabu/press/blog/**dzen**)` --persona --variants --no-faq --force --out`. Свой аналог КП ContentMagic. Полный reference — [seo_boost.md](seo_boost.md). | 👆 по запросу | 🖥/🍎 (нужна локальная LLM) |
+| `app:seo:ranking` | Рейтинги брендов по поисковому спросу (`brand_keyword.monthly_shows`, Wordstat): **бренд→город** + **матрица стиль×город→топ брендов**, CSV+MD в `var/seo/`. Срез в консоль: `--style --city --top`. `--min-kw` режет омоним-хвост. Без LLM. Питает выбор ячеек для листиклов. | 👆 по запросу | 🖥/🍎 |
 
 ---
 

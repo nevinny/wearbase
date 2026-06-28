@@ -37,13 +37,16 @@
 | [rag_pipeline.md](rag_pipeline.md) | **Полный reference** RAG-конвейера: discover→fetch→embed→generate, статус-машина, gate качества |
 | [rag_pipeline_refactoring.md](rag_pipeline_refactoring.md) | План рефакторинга слоя данных конвейера (SOLID/KISS/DRY): дефекты, нарушения, направления |
 | [ad-description-flow.md](ad-description-flow.md) | Флоу генерации рекламного описания бренда |
-| [seo_boost.md](seo_boost.md) | **`app:seo:listicle`**: GEO-листиклы «ТОП-N в нише» (целевой бренд №1) — свой аналог КП ContentMagic. Grounded, Article+ItemList+FAQPage, персоны/площадки/`--variants`. Ниша = `BrandStyle`. От 2026-06-24 |
+| [seo_boost.md](seo_boost.md) | **`app:seo:listicle`** + **`app:seo:ranking`**: GEO-листиклы «ТОП-N в нише/городе» (целевой бренд №1) + рейтинги спроса (бренд→город, матрица стиль×город). Grounded, Article+ItemList+FAQPage, quality-gate. Ниша = `BrandStyle`. От 2026-06-24 |
+| [seo_publishing_platforms.md](seo_publishing_platforms.md) | Полный список площадок для публикации листиклов (20 из КП + Дзен): категории, эффект SEO/GEO, реалистичность автоматизации (API/браузер/ручками), приоритет запуска. От 2026-06-24 |
+| [dzen_seo_methodology.md](dzen_seo_methodology.md) | Реверс методологии конкурента (транскрипт видео + разбор реальной Dzen-статьи + КП): анатомия статьи (TOC, ссылки+UTM, CTA, FAQ, Schema, 1300–2000 слов), gap-анализ под `app:seo:listicle`, приоритеты внедрения. От 2026-06-24 |
 | [model-ab-bench.md](model-ab-bench.md) | Бенчмарк LLM-моделей генерации (вердикт: gemma4:26b) |
 
 ## Продукт и фичи
 
 | Документ | О чём |
 |---|---|
+| [brand_lifecycle.md](brand_lifecycle.md) | **Ниша-гейт + HTTP-семантика бренда**: классификатор `app:brand:niche-check` (мода+красота vs off-niche), гейт конвейера/публикации, 410 для deleted + tombstone для закрывшихся. От 2026-06-24 |
 | [international.md](international.md) | Международные рынки: 9 локалей, валюты, SEO непереведённых локалей (noindex) |
 | [payments.md](payments.md) | Платежи, провайдеры, юр-слой (оферты/юрлица/возврат предоплаты) |
 | [brand-claim-verification.md](brand-claim-verification.md) | Методы подтверждения владения брендом |
