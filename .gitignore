@@ -98,3 +98,14 @@
 
 # Случайные локальные загрузки
 /public/downloads/
+
+# Бэкапы .env (СОДЕРЖАТ СЕКРЕТЫ — никогда не коммитить)
+.env.local.bak*
+# Obsidian / scratch-заметки в docs
+docs/.obsidian/
+docs/*.scratch.md
+# Авто-генерёные картинки соц-постов (бинарники, ~8М)
+/public_html/images/social/
+# Лид-выгрузки/кандидаты (рабочие данные, возможны контакты/PII) — не в git
+/_docs/*.csv
+/_docs/*.tsv
