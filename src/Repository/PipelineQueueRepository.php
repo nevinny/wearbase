@@ -163,11 +163,15 @@ class PipelineQueueRepository
         // p.id IS NOT NULL: enrich НЕ создаёт пайплайн-строки новым брендам (это работа discover) —
         // иначе getOrCreate здесь и в discover гонятся за одним brand_id → 1062 uniq_brand_rag_brand,
         // откат батча discover, net встаёт. Обогащаем только уже открытые бренды (есть строка).
+        // WB-enrich имеет смысл только для брендов, у кого в источниках есть wildberries-ссылка
+        // (discover нашёл их на WB) — иначе тратим WB-поиск по имени на бренды не из WB.
         $qb = $this->qb()
             ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
             ->where('b.status IN (:statuses)')
             ->andWhere('p.wbStatus IS NULL')
-            ->setParameter('statuses', [Statuses::Active, Statuses::New]);
+            ->andWhere('EXISTS (SELECT 1 FROM App\Entity\BrandSourceUrl su WHERE su.brand = b AND su.url LIKE :wb)')
+            ->setParameter('statuses', [Statuses::Active, Statuses::New])
+            ->setParameter('wb', '%wildberries%');
 
         return $this->finishStageQuery($qb, $limit, $shard, $total);
     }
