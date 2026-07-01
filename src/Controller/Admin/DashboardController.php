@@ -77,6 +77,7 @@ class DashboardController extends AbstractDashboardController
          yield MenuItem::linkToCrud('Brands', 'fas fa-list', Brand::class);
 
         yield MenuItem::section('Контент');
+        yield MenuItem::linkToRoute('Клики по брендам', 'fas fa-arrow-up-right-from-square', 'admin_clicks');
         yield MenuItem::linkToCrud('Статьи блога', 'fas fa-newspaper', Article::class);
         yield MenuItem::linkToCrud('Авторы', 'fas fa-user-pen', Author::class);
         yield MenuItem::linkToCrud('SEO города (хабы)', 'fas fa-city', CityHub::class);

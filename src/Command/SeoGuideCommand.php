@@ -78,6 +78,7 @@ class SeoGuideCommand extends Command
             ->addArgument('niche', InputArgument::REQUIRED, 'Slug стиля-ниши')
             ->addOption('city',     null, InputOption::VALUE_REQUIRED, 'Гео-срез: бренды только из этого города')
             ->addOption('limit',    null, InputOption::VALUE_REQUIRED, 'Сколько брендов осветить', '8')
+            ->addOption('brands',   null, InputOption::VALUE_REQUIRED, 'Курированный список slug\'ов через запятую (вместо спросового топа ниши, порядок сохраняется)')
             ->addOption('platform', null, InputOption::VALUE_REQUIRED, 'Площадка/тон: ' . implode('|', array_keys(self::PLATFORM_TONES)), 'dzen')
             ->addOption('persona',  null, InputOption::VALUE_REQUIRED, 'Индекс автора-персоны (0..' . (count(self::PERSONAS) - 1) . ')', '0')
             ->addOption('force',    null, InputOption::VALUE_NONE,     'Сохранять вопреки quality-gate')
@@ -109,8 +110,27 @@ class SeoGuideCommand extends Command
         }
 
         /** @var BrandRepository $repo */
-        $repo   = $this->em->getRepository(Brand::class);
-        $brands = $repo->findListicleCompetitors((int) $style->getId(), 0, $limit, $city); // excludeId=0 → все
+        $repo    = $this->em->getRepository(Brand::class);
+        $curated = array_filter(array_map('trim', explode(',', (string) $input->getOption('brands'))));
+        if ($curated !== []) {
+            // Курированный список: порядок и состав задаём вручную (напр. под запрос-выдачу
+            // ChatGPT), а не спросовым топом. Пропущенные/пустые-описанием slug'и — предупреждаем.
+            $brands = [];
+            foreach ($curated as $slug) {
+                $brand = $repo->findOneBy(['slug' => $slug]);
+                if ($brand === null) {
+                    $io->warning("Slug «{$slug}» не найден — пропускаю.");
+                    continue;
+                }
+                if (trim((string) $brand->getDescription()) === '') {
+                    $io->warning("У «{$slug}» пустое описание (не grounded) — пропускаю.");
+                    continue;
+                }
+                $brands[] = $brand;
+            }
+        } else {
+            $brands = $repo->findListicleCompetitors((int) $style->getId(), 0, $limit, $city); // excludeId=0 → все
+        }
         if ($brands === []) {
             $io->error('Нет брендов с описанием в этой нише/городе.');
             return Command::FAILURE;
