@@ -1189,11 +1189,43 @@ discover throttle + джиттер (антибан). google в SEARX_ENGINES в�
 — решать капчу Google для SearXNG через winproxy-egress (память `llm-ollama-server`).
 
 **Открыто / next:**
-- [ ] **WB-enrich не подключён:** 5143 брендов eligible (`wb_status IS NULL`), но стадии `wb` нет ни в одном
-      демоне (`enrich` в наборе = enrich-contacts, не Wildberries). Решить: подключать WB-ингест или выключено намеренно.
+- [x] **WB-enrich — выключен НАМЕРЕННО (28.06): WB блокирует скрейп.** Побочная стадия, ничего не гейтит
+      (`wb_status` не смотрит ни один finder). `search.wb.ru` режет ботов: Mac→WB **HTTP 429**, мобильный
+      winproxy-egress (92.36.x) → пусто/блок. Обход (ротация резидентных прокси + фингерпринт) — арм-рейс,
+      ради побочной стадии не стоит. Код готов и в репо (`6c5e262`): `findForWbEnrich` сужен до брендов с
+      wildberries-ссылкой (~1832), стадия `wb`=`app:brand:wb-enrich` в карте демона, но НЕ в net-наборе.
+      Включать `php bin/console app:brand:wb-enrich N`, ЕСЛИ появится рабочий доступ (офиц./партнёрский WB-API).
+      3 бренда `wb_status=error` — терминальны (finder берёт только NULL).
 - [ ] **country у ~4240 done-брендов:** `extract --published-missing` покрыл живые; для остальных done с пустым
       `country` нужен `extract --fields-only --force` (дороже по GPU). Когда понадобится фильтр иностранных шире.
 - [ ] **~12 отбракованных gate'ом ячеек** SEO-статей (casual/СПб и др., «лид-блок не самодостаточен» 3/3) — догенерить.
 - [ ] **«О проекте»** с владельцем-основателем (Trust площадки, E-E-A-T) — отложено.
 - [ ] Brave-панель на RAG-дашборд (как Yandex) — опц., по аналогии.
 - [ ] Wordstat-ключ пересоздать (Yandex Cloud) при возврате к платным ключевикам (память `wordstat-dead-key-gotcha`).
+
+---
+
+## Сессия 01.07 — GEO под ChatGPT + дашборд кликов
+
+Повод: запрос в ChatGPT «российские бренды одежды» → разложить его ответ по нашему каталогу и «подготовиться под него».
+
+**✅ Дашборд исходящих кликов** — `/admin/clicks` (`ClickDashboardController` + `admin/click_dashboard.html.twig`,
+пункт меню «Клики по брендам»). KPI по окнам (7/30/90/365), график по дням, топ-50 брендов, разбивка по типу
+ссылки и хостам (поверх `BrandOutboundClickRepository::topBrands`). На проде.
+
+**✅ Бренды из ответа ChatGPT** (22 имени сверены с каталогом):
+- 6 grounded-флагманов были 404 → адресно опубликованы (`push --id --publish`, минуя дрип): LIME, LOVE REPUBLIC,
+  2MOOD, You Wanna, Alexander Terekhov, Present & Simple.
+- 3 тонких через RAG (discover→embed→generate): **Befree**, **Walk of Shame** → grounded + опубликованы.
+  **Gloria Jeans** — застряла (8 источников < gate; WB-enrich упал по таймауту WB API) → TODO отдельный сбор.
+
+**✅ 4 статьи блога (курированы под бренды ChatGPT)** — `var/seo/blog-chatgpt/`, опубликованы дрипом на проде:
+хаб «Российские бренды одежды 2026» (5 сегментов + перелинковка) · Премиум/Люкс (4 люкс-имени) · Минимализм ·
+Уличный стиль. Добавлен флаг **`app:seo:guide --brands=slug1,slug2`** (курированный список вместо спросового
+топа — иначе в «российский» гид лез амстердамский A-dam).
+
+**✅ CLI memory_limit** — Homebrew дефолт 128M мал для `cache:clear` (Twig-варммер, пик ~140M) →
+`/opt/homebrew/etc/php/8.4/conf.d/zz-cli-memory.ini` = 512M (вне репо).
+
+**Открыто:** Gloria Jeans (сбор источников) · дрип-даты минимализм 07-09 / streetwear 07-12 (унаследованы от старых
+`-site`-версий, можно сдвинуть) · Wordstat-ключ протух (блокирует FAQ/keywords).
