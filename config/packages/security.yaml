@@ -42,6 +42,10 @@ security:
                 secret: '%kernel.secret%'
                 lifetime: 604800
                 path: /admin
+                # Отдельное имя cookie: иначе на /admin браузер шлёт и фронтовый
+                # REMEMBERME (path=/), и админский, а $_COOKIE оставляет одно значение —
+                # админская валидация ловит чужой токен и «запомнить меня» не работает.
+                name: REMEMBERME_ADMIN
 
         # Основной front-end firewall (покупатели + менеджеры брендов)
         main:
@@ -82,7 +86,6 @@ security:
         - { path: ^/brand-data,   roles: PUBLIC_ACCESS } # голоса краудсорс-валидации (анонимы; ДО ^/brand — префикс!)
         - { path: ^/e/,           roles: PUBLIC_ACCESS } # outreach-трекинг: пиксель/клик/отписка из писем
         - { path: ^/go/,          roles: PUBLIC_ACCESS } # трекинг исходящих кликов на ссылки бренда (редирект-прокладка)
-        - { path: ^/brand/login,  roles: PUBLIC_ACCESS }
         - { path: ^/brand-claim,  roles: ROLE_USER }
         - { path: ^/brands,       roles: PUBLIC_ACCESS } # публичный A-Z индекс /brands/a-z (ДО ^/brand — префикс!)
         - { path: ^/brand,        roles: ROLE_BRAND_MANAGER }
