@@ -357,7 +357,8 @@
                 {# --- Похожие бренды --- #}
                 {% if similarBrands is defined and similarBrands|length > 0 %}
                     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
-                        <h2 class="text-2xl font-semibold mb-6">Похожие бренды</h2>
+                        <h2 class="text-2xl font-semibold mb-1">Аналоги {{ _bt }}</h2>
+                        <p class="text-sm text-gray-500 mb-6">Российские бренды в похожем стиле — чем можно заменить {{ _bt }}</p>
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                             {% for similar in similarBrands %}
                                 <a href="{{ path('brand_show', {slug: similar.slug}) }}"
