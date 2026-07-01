@@ -9,6 +9,7 @@ use App\Entity\BrandSourceDocument;
 use App\Repository\BrandAttributeRepository;
 use App\Repository\BrandRagPipelineRepository;
 use App\Repository\BrandSourceDocumentRepository;
+use App\Service\Agent\BrandPayloadAssembler;
 use App\Service\LlmService;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -46,6 +47,14 @@ class ExtractBrandAttributesCommand extends Command
     public function __construct(
         private readonly ManagerRegistry $managerRegistry,
         private readonly LlmService      $llm,
+        private readonly BrandPayloadAssembler $assembler,
+        private readonly \Symfony\Contracts\HttpClient\HttpClientInterface $httpClient,
+        #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::PROD_API_URL)%')]
+        private readonly ?string $prodApiUrl,
+        #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::AGENT_API_TOKEN)%')]
+        private readonly ?string $apiToken,
+        #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(default::AGENT_API_SECRET)%')]
+        private readonly ?string $apiSecret,
     ) {
         parent::__construct();
         $this->em = $this->managerRegistry->getManager();
@@ -61,6 +70,7 @@ class ExtractBrandAttributesCommand extends Command
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Переизвлечь (удалить enrichment-атрибуты)')
             ->addOption('fields-only', null, InputOption::VALUE_NONE, 'Backfill только brand.city/foundingYear, атрибуты не трогать (без churn)')
             ->addOption('published-missing', null, InputOption::VALUE_NONE, 'Только опубликованные на проде (done+pushed) с пустыми city/country/год — для бэкафилла live-брендов')
+            ->addOption('push', null, InputOption::VALUE_NONE, 'После обогащения city/country/год сразу доставить бренд на прод (agent-API upsert)')
             ->addOption('shard',   null, InputOption::VALUE_REQUIRED, 'Номер шарда', '0')
             ->addOption('total',   null, InputOption::VALUE_REQUIRED, 'Всего шардов', '1')
         ;
@@ -74,6 +84,7 @@ class ExtractBrandAttributesCommand extends Command
         $dryRun  = (bool) $input->getOption('dry-run');
         $force   = (bool) $input->getOption('force');
         $fieldsOnly = (bool) $input->getOption('fields-only');
+        $push    = (bool) $input->getOption('push');
         $shard   = (int) $input->getOption('shard');
         $total   = max(1, (int) $input->getOption('total'));
 
@@ -88,7 +99,7 @@ class ExtractBrandAttributesCommand extends Command
                 $io->error("Бренд ID {$brandId} не найден.");
                 return Command::FAILURE;
             }
-            $this->processBrand($brand, $io, $dryRun, $force, $fieldsOnly);
+            $this->processBrand($brand, $io, $dryRun, $force, $fieldsOnly, $push);
             $this->printResults($io);
             return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
         }
@@ -119,7 +130,7 @@ class ExtractBrandAttributesCommand extends Command
         foreach ($brandIds as $id) {
             $brand = $this->em->find(Brand::class, $id);
             if ($brand) {
-                $this->processBrand($brand, $io, $dryRun, $force, $fieldsOnly);
+                $this->processBrand($brand, $io, $dryRun, $force, $fieldsOnly, $push);
             }
             $io->progressAdvance();
             gc_collect_cycles();
@@ -131,7 +142,7 @@ class ExtractBrandAttributesCommand extends Command
         return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 
-    private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force, bool $fieldsOnly = false): void
+    private function processBrand(Brand $brand, SymfonyStyle $io, bool $dryRun, bool $force, bool $fieldsOnly = false, bool $push = false): void
     {
         $name = $brand->getTitle() ?? "ID:{$brand->getId()}";
 
@@ -210,12 +221,49 @@ class ExtractBrandAttributesCommand extends Command
                 $this->setStatus($brand, ($pairs === [] && !$brandFieldSet) ? BrandRagPipeline::ATTR_SKIPPED : BrandRagPipeline::ATTR_DONE, false);
             }
 
+            // --push: сразу доставить обогащённый бренд на прод (город/страна/год попадут в live).
+            if ($push && $brandFieldSet && !$dryRun) {
+                $this->pushBrand($brand, $io);
+            }
+
             $this->extracted += $pairs !== [] ? 1 : 0;
             $this->attrs += count($pairs);
         } catch (\Throwable $e) {
             $io->warning(sprintf('    Ошибка «%s»: %s', $name, $e->getMessage()));
             $this->failed++;
             $this->recoverEm();
+        }
+    }
+
+    /** Доставка обогащённого бренда на прод (agent-API upsert, HMAC). Fail-open: сбой не рушит extract. */
+    private function pushBrand(Brand $brand, SymfonyStyle $io): void
+    {
+        if (trim((string) $this->prodApiUrl) === '' || trim((string) $this->apiToken) === '' || trim((string) $this->apiSecret) === '') {
+            $io->warning('    --push: PROD_API_URL/AGENT_API_TOKEN/SECRET не заданы — пропуск.');
+            return;
+        }
+        try {
+            $payload = $this->assembler->assemble($brand);
+            $body    = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            $resp    = $this->httpClient->request('POST', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/brands/upsert', [
+                'headers' => [
+                    'Content-Type'  => 'application/json',
+                    'X-Agent-Token' => (string) $this->apiToken,
+                    'X-Signature'   => hash_hmac('sha256', $body, (string) $this->apiSecret),
+                ],
+                'body'    => $body,
+                'timeout' => 60,
+            ]);
+            $data = $resp->getStatusCode() === 200 ? $resp->toArray(false) : ['status' => 'http_' . $resp->getStatusCode()];
+            if (in_array($data['status'] ?? '', ['created', 'updated', 'skipped'], true)) {
+                $brand->setAgentSyncVersion((int) $payload['agent_sync_version']);
+                $this->em->flush();
+                $io->text(sprintf('    → прод: %s (city:%s)', $data['status'], $brand->getCity() ?: '—'));
+            } else {
+                $io->warning('    → пуш не прошёл: ' . json_encode($data, JSON_UNESCAPED_UNICODE));
+            }
+        } catch (\Throwable $e) {
+            $io->warning('    → пуш-ошибка: ' . mb_substr($e->getMessage(), 0, 150));
         }
     }
 
