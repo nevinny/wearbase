@@ -109,6 +109,14 @@ class PublishTickCommand extends Command
             $target = max(1, (int) floor($target * $health));
         }
 
+        // Авто-guard на ЖИВОЙ индекс Яндекса (Mac→прод через drip_health): усваивает ли Яндекс
+        // новые страницы (динамика pages-in-search). Растёт → ×1.0, стоит → ×0.5, падает → ×0.25.
+        // Заменяет инертный GSC-guard (покрытие Google заморожено). Fail-open: нет/протух сигнал → 1.0.
+        $yaHealth = $this->yandexDripMultiplier();
+        if ($yaHealth < 1.0) {
+            $target = max(1, (int) floor($target * $yaHealth));
+        }
+
         // Hard index-guard (доктрина пакета _seo / LESSONS_FROM_HISTORY: index-guards
         // indexed-ratio <5% → 0 new, <10% → cap 1): когорта показывает динамику свежих,
         // а это — здоровье ВСЕГО домена. На слабом index-rate новые страницы лишь растят
@@ -135,6 +143,8 @@ class PublishTickCommand extends Command
             $note = sprintf(' (index-guard: потолок %d — индексация домена < %d%%)', $indexCap, $indexCap === 0 ? 5 : 10);
         } elseif ($health < 1.0) {
             $note = sprintf(' (заторможен ×%.2f: индексация когорты проседает)', $health);
+        } elseif ($yaHealth < 1.0) {
+            $note = sprintf(' (Яндекс-guard ×%.2f: страницы в поиске не растут)', $yaHealth);
         }
 
         $io->text(sprintf(
@@ -237,6 +247,28 @@ class PublishTickCommand extends Command
      * gsc_index_status; если проверено ≥10 и indexed-доля < 10% → ×0.25,
      * < 30% → ×0.5. Любые отсутствующие данные → 1.0 (fail-open).
      */
+    /**
+     * Множитель темпа по ЖИВОМУ индексу Яндекса (drip_health, пуш Mac-синка app:yandex:sync).
+     * Свежесть сигнала < 4 дней, иначе fail-open (1.0) — бэкап-предохранитель человек (панель
+     * «Динамика Яндекс» + дневной TG-отчёт). Это рабочая замена инертному GSC-guard'у.
+     */
+    private function yandexDripMultiplier(): float
+    {
+        try {
+            $row = $this->em->getConnection()->fetchAssociative('SELECT multiplier, updated_at FROM drip_health WHERE id = 1');
+        } catch (\Throwable) {
+            return 1.0; // таблицы нет / БД-сбой — не тормозим
+        }
+        if (!$row || ($row['updated_at'] ?? null) === null) {
+            return 1.0;
+        }
+        if (strtotime((string) $row['updated_at']) < time() - 4 * 86400) {
+            return 1.0; // сигнал протух — доверяем ramp'у, человек видит в панели/отчёте
+        }
+
+        return max(0.0, min(1.0, (float) $row['multiplier']));
+    }
+
     private function dripHealthMultiplier(): float
     {
         try {

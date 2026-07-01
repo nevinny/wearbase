@@ -10,6 +10,8 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Синк Яндекс.Вебмастера (cron 1 раз в день) — RU-аналог app:gsc:sync:
@@ -34,6 +36,13 @@ class SyncYandexWebmasterCommand extends Command
         private readonly YandexWebmasterClient $ya,
         private readonly Connection $db,
         private readonly \App\Notification\AdminNotifier $notifier,
+        private readonly HttpClientInterface $httpClient,
+        #[Autowire('%env(default::PROD_API_URL)%')]
+        private readonly ?string $prodApiUrl,
+        #[Autowire('%env(default::AGENT_API_TOKEN)%')]
+        private readonly ?string $agentToken,
+        #[Autowire('%env(default::AGENT_API_SECRET)%')]
+        private readonly ?string $agentSecret,
     ) {
         parent::__construct();
     }
@@ -66,6 +75,7 @@ class SyncYandexWebmasterCommand extends Command
                 $this->syncQueries($io);
             }
             $this->syncHistory($io);
+            $this->pushDripHealth($io);
             if ($input->getOption('report')) {
                 $this->report($io);
             }
@@ -155,6 +165,45 @@ class SyncYandexWebmasterCommand extends Command
             $n++;
         }
         $io->text("История: {$n} дней в yandex_history");
+    }
+
+    /**
+     * Авто-guard дрипа: считает multiplier по динамике pages_in_search (усваивает ли Яндекс
+     * новые страницы) и пушит на прод (drip_health) через agent-API. Дрип на проде троттлит темп.
+     * Растёт → ×1.0; стоит → ×0.5; падает → ×0.25. Мало данных / прод не настроен → не пушим (fail-open).
+     */
+    private function pushDripHealth(SymfonyStyle $io): void
+    {
+        if (trim((string) $this->prodApiUrl) === '' || trim((string) $this->agentToken) === '') {
+            return;
+        }
+        $latest = $this->db->fetchOne('SELECT pages_in_search FROM yandex_history WHERE pages_in_search IS NOT NULL ORDER BY day DESC LIMIT 1');
+        $prior  = $this->db->fetchOne('SELECT pages_in_search FROM yandex_history WHERE pages_in_search IS NOT NULL AND day <= DATE_SUB(CURDATE(), INTERVAL 14 DAY) ORDER BY day DESC LIMIT 1');
+        if ($latest === false || $prior === false || (int) $prior === 0) {
+            $io->text('Drip-health: недостаточно данных — не пушим (дрип fail-open).');
+            return;
+        }
+        $latest = (int) $latest;
+        $prior  = (int) $prior;
+        $delta  = $latest - $prior;
+        $multiplier = $delta > 0 ? 1.0 : ($delta === 0 ? 0.5 : 0.25);
+        $note = sprintf('pages %d→%d (%+d за 14д)', $prior, $latest, $delta);
+
+        $body = json_encode(['multiplier' => $multiplier, 'pages_in_search' => $latest, 'note' => $note], JSON_UNESCAPED_UNICODE);
+        try {
+            $resp = $this->httpClient->request('POST', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/drip-health', [
+                'headers' => [
+                    'Content-Type'  => 'application/json',
+                    'X-Agent-Token' => (string) $this->agentToken,
+                    'X-Signature'   => hash_hmac('sha256', $body, (string) $this->agentSecret),
+                ],
+                'body'    => $body,
+                'timeout' => 15,
+            ]);
+            $io->text(sprintf('Drip-health → прод: ×%.2f (%s) [HTTP %d]', $multiplier, $note, $resp->getStatusCode()));
+        } catch (\Throwable $e) {
+            $io->warning('Drip-health push не прошёл: ' . mb_substr($e->getMessage(), 0, 120));
+        }
     }
 
     private function report(SymfonyStyle $io): void

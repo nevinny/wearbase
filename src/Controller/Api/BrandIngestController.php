@@ -4,6 +4,7 @@ namespace App\Controller\Api;
 
 use App\Entity\Brand;
 use App\Service\Agent\BrandIngestService;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -193,6 +194,38 @@ class BrandIngestController extends AbstractController
         ]);
 
         return $this->json($result);
+    }
+
+    /**
+     * Сигнал здоровья индексации Mac→прод: локальный синк Яндекс.Вебмастера считает multiplier
+     * по динамике yandex_history (усваивает ли Яндекс новые страницы) и пушит сюда. Дрип на проде
+     * читает drip_health и троттлит темп. Та же auth (X-Agent-Token + HMAC).
+     */
+    #[Route('/drip-health', name: 'api_drip_health', methods: ['POST'])]
+    public function dripHealth(Request $request, RateLimiterFactory $agentApiLimiter, Connection $db): JsonResponse
+    {
+        if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
+            return $deny;
+        }
+
+        $payload = json_decode((string) $request->getContent(), true);
+        if (!is_array($payload)) {
+            return $this->json(['error' => 'invalid json'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $multiplier = max(0.0, min(1.0, (float) ($payload['multiplier'] ?? 1.0)));
+        $db->executeStatement(
+            'INSERT INTO drip_health (id, multiplier, pages_in_search, note, updated_at)
+             VALUES (1, :m, :p, :n, NOW())
+             ON DUPLICATE KEY UPDATE multiplier = :m, pages_in_search = :p, note = :n, updated_at = NOW()',
+            [
+                'm' => $multiplier,
+                'p' => isset($payload['pages_in_search']) ? (int) $payload['pages_in_search'] : null,
+                'n' => mb_substr((string) ($payload['note'] ?? ''), 0, 255),
+            ],
+        );
+
+        return $this->json(['status' => 'ok', 'multiplier' => $multiplier]);
     }
 
     /**
