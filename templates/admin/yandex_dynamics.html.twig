@@ -1,0 +1,56 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block page_title %}Динамика Яндекс{% endblock %}
+
+{% block main %}
+<style>
+    .yd-wrap { max-width: 980px; }
+    table.yd { width: 100%; font-size: 14px; border-collapse: collapse; margin: 12px 0; }
+    table.yd th, table.yd td { padding: 8px 12px; border-bottom: 1px solid var(--border-color, #333); text-align: right; }
+    table.yd th:first-child, table.yd td:first-child { text-align: left; }
+    table.yd th { font-size: 12px; text-transform: uppercase; opacity: .6; }
+    table.yd td.num { font-variant-numeric: tabular-nums; }
+    .yd-up { color: #198754; } .yd-down { color: #dc3545; }
+    .yd-chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; margin: 10px 0 4px; }
+    .yd-chart .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
+    .yd-chart .bar { width: 60%; background: #0d6efd; border-radius: 3px 3px 0 0; min-height: 2px; }
+    .yd-chart .lbl { font-size: 10px; opacity: .6; }
+    .yd-note { opacity: .6; font-size: 12px; margin-top: 10px; }
+    h3.yd { font-size: 13px; text-transform: uppercase; opacity: .65; margin: 22px 0 4px; }
+</style>
+
+<div class="yd-wrap">
+<h1 class="title" style="margin-bottom:4px">Динамика в Яндексе <span style="font-size:14px;opacity:.6">по данным Вебмастера</span></h1>
+<p class="yd-note">Страниц в поиске (на конец месяца) · показы и клики (сумма за месяц) · CTR. Эффект правок сайта.</p>
+
+<h3 class="yd">Показы по месяцам</h3>
+<div class="yd-chart">
+    {% for m in monthly %}
+        <div class="col">
+            <div class="bar" style="height: {{ (m.shows / maxShows * 110)|round }}px" title="{{ m.mo }}: {{ m.shows }} показов"></div>
+            <div class="lbl">{{ m.mo|slice(5) }}</div>
+        </div>
+    {% endfor %}
+</div>
+
+<table class="yd">
+    <thead><tr><th>Месяц</th><th>Страниц в поиске</th><th>Показы</th><th>Клики</th><th>CTR</th></tr></thead>
+    <tbody>
+        {% for m in monthly %}
+            {% set prev = monthly[loop.index0 - 1] ?? null %}
+            <tr>
+                <td>{{ m.mo }}</td>
+                <td class="num">{{ m.pages|number_format(0, '.', ' ') }}</td>
+                <td class="num">{{ m.shows|number_format(0, '.', ' ') }}{% if prev and m.shows > prev.shows %} <span class="yd-up">▲</span>{% elseif prev and m.shows < prev.shows %} <span class="yd-down">▼</span>{% endif %}</td>
+                <td class="num">{{ m.clicks|number_format(0, '.', ' ') }}</td>
+                <td class="num">{{ m.ctr }}%</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" style="opacity:.55">Нет данных (yandex_history пуста — запусти app:yandex:sync на Mac).</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p class="yd-note">⚠️ CTR падает при росте показов = набираем видимость на позициях, что не конвертируют в клик (навигационный SERP). Baseline рефрейма — {{ 'now'|date('m.Y') }}.</p>
+</div>
+{% endblock %}

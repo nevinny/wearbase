@@ -65,6 +65,7 @@ class SyncYandexWebmasterCommand extends Command
             if (!$input->getOption('urls-only')) {
                 $this->syncQueries($io);
             }
+            $this->syncHistory($io);
             if ($input->getOption('report')) {
                 $this->report($io);
             }
@@ -127,6 +128,33 @@ class SyncYandexWebmasterCommand extends Command
             $upserted++;
         }
         $io->text("Upsert в yandex_query_stats: {$upserted}");
+    }
+
+    /** Дневной ряд (страницы в поиске + показы/клики) → yandex_history. Окно 400 дн (upsert). */
+    private function syncHistory(SymfonyStyle $io): void
+    {
+        $to   = new \DateTime('today');
+        $from = (new \DateTime('today'))->modify('-400 days');
+        $pages  = $this->ya->inSearchHistory($from, $to);
+        $totals = $this->ya->queryTotalsHistory($from, $to);
+
+        $days = array_unique(array_merge(array_keys($pages), array_keys($totals['shows']), array_keys($totals['clicks'])));
+        $n = 0;
+        foreach ($days as $day) {
+            if ($day === '') {
+                continue;
+            }
+            $this->db->executeStatement(
+                'INSERT INTO yandex_history (day, pages_in_search, shows, clicks) VALUES (:d, :p, :s, :c)
+                 ON DUPLICATE KEY UPDATE
+                     pages_in_search = COALESCE(:p, pages_in_search),
+                     shows = COALESCE(:s, shows),
+                     clicks = COALESCE(:c, clicks)',
+                ['d' => $day, 'p' => $pages[$day] ?? null, 's' => $totals['shows'][$day] ?? null, 'c' => $totals['clicks'][$day] ?? null],
+            );
+            $n++;
+        }
+        $io->text("История: {$n} дней в yandex_history");
     }
 
     private function report(SymfonyStyle $io): void

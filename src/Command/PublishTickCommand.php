@@ -23,8 +23,8 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  *  1. Окно бодрствования 9–23 МСК (явная TZ — прод-сервер может жить в UTC).
  *  2. sleep(rand(0..45мин)) — публикации не по ровным часам (--no-wait для теста).
  *  3. Ramp-up БЕЗ хранимого состояния: w = недель с PUBLISH_LAUNCH_DATE (env);
- *     дневной таргет T(w) = min(CAP, round(START * (1+G)^w)) — старт 5/день,
- *     +12.5%/нед, потолок 28/день.
+ *     дневной таргет T(w) = min(CAP, round(START * (1+G)^w)) — старт 10/день,
+ *     +18%/нед, потолок 80/день (разгон под живой индекс Яндекса, см. RATE_* ниже).
  *  4. Самокоррекция: p = (T - published_today) / оставшихся_тиков;
  *     за тик публикуем n = floor(p) + Bernoulli(frac(p)) — иначе CAP недостижим
  *     (15 тиков/день < 28 публикаций при «1 за тик»).
@@ -41,9 +41,12 @@ class PublishTickCommand extends Command
     private const HOUR_FROM   = 9;    // первый тик дня
     private const HOUR_TO     = 22;   // последний тик дня (sleep до 45м удержит публикацию до ~23)
     private const MAX_SLEEP   = 2700; // 45 мин
-    private const RATE_START  = 3.0;  // брендов/день на старте (слабый домен: 21/357 наших страниц в индексе — начинаем тише)
-    private const RATE_GROWTH = 0.125;// +12.5% в неделю
-    private const RATE_CAP    = 28;   // потолок брендов/день
+    // Разгон 02.07: Яндекс усваивает страницы (pages-in-search 339→494 май→июль, показы ×2),
+    // покрытие НЕ заморожено (в отличие от Google), а в очереди дрипа ~3000 grounded-брендов.
+    // Подняли потолок 28→80 и ускорили ramp — под наблюдением yandex_history/панели «Динамика Яндекс».
+    private const RATE_START  = 10.0; // брендов/день на старте
+    private const RATE_GROWTH = 0.18; // +18% в неделю
+    private const RATE_CAP    = 80;   // потолок брендов/день
 
     public function __construct(
         private readonly EntityManagerInterface $em,

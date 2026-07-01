@@ -135,6 +135,49 @@ class YandexWebmasterClient
         return $out;
     }
 
+    /**
+     * История числа страниц В ПОИСКЕ Яндекса по дням (search-urls/in-search/history).
+     *
+     * @return array<string,int> Y-m-d => количество
+     */
+    public function inSearchHistory(\DateTimeInterface $from, \DateTimeInterface $to): array
+    {
+        $data = $this->get(
+            self::BASE . '/user/' . $this->userId() . '/hosts/' . $this->hostId() . '/search-urls/in-search/history',
+            ['date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')],
+        );
+        $out = [];
+        foreach (($data['history'] ?? []) as $r) {
+            $out[substr((string) ($r['date'] ?? ''), 0, 10)] = (int) round((float) ($r['value'] ?? 0));
+        }
+
+        return $out;
+    }
+
+    /**
+     * История суммарных показов/кликов по дням (search-queries/all/history).
+     *
+     * @return array{shows:array<string,int>,clicks:array<string,int>}
+     */
+    public function queryTotalsHistory(\DateTimeInterface $from, \DateTimeInterface $to): array
+    {
+        // query_indicator повторяется — собираем query-строку вручную (см. popularQueries).
+        $qs = http_build_query(['date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d')])
+            . '&query_indicator=TOTAL_SHOWS&query_indicator=TOTAL_CLICKS';
+        $data = $this->get(
+            self::BASE . '/user/' . $this->userId() . '/hosts/' . $this->hostId() . '/search-queries/all/history?' . $qs,
+        );
+        $pick = function (string $key) use ($data): array {
+            $out = [];
+            foreach (($data['indicators'][$key] ?? []) as $r) {
+                $out[substr((string) ($r['date'] ?? ''), 0, 10)] = (int) round((float) ($r['value'] ?? 0));
+            }
+            return $out;
+        };
+
+        return ['shows' => $pick('TOTAL_SHOWS'), 'clicks' => $pick('TOTAL_CLICKS')];
+    }
+
     /** Остаток дневной квоты на переобход. @return array{daily:int,remaining:int} */
     public function recrawlQuota(): array
     {
