@@ -1229,3 +1229,25 @@ discover throttle + джиттер (антибан). google в SEARX_ENGINES в�
 
 **Открыто:** Gloria Jeans (сбор источников) · дрип-даты минимализм 07-09 / streetwear 07-12 (унаследованы от старых
 `-site`-версий, можно сдвинуть) · Wordstat-ключ протух (блокирует FAQ/keywords).
+
+### Продолжение 01.07 — тот же запрос от Алисы (Яндекс) + правило про --force
+
+Повод: тот же вопрос «российские бренды одежды», но от **Алисы**. Отличие от ChatGPT — Алиса **цитирует источники**
+(halvacard/lenta/**dzen**/market.yandex.journal/rbc/lamoda) → **Dzen (площадка Яндекса) = прямой канал в цитирование**.
+
+**✅ Бренды Алисы** (13 новых имён сверх ChatGPT): опубликованы 7 grounded (Oodji, Aim Clo, Ushatáva, Monochrome,
+COCOS, DIVNO, Lesyanebo) + **BLCV** через полный RAG. Уже были живы: Namelazz, Alena Akhmadullina, Yanina Couture,
+Vika Gazinskaya, ТВОЕ. Gloria Jeans — по-прежнему блок WB.
+
+**✅ Статьи:** женский хаб «Российские женские бренды одежды 2026» (blog, новый slug) + дизайнерский гид «Авангард»
+(Dzen; blog-версия ПРОПУЩЕНА — на проде уже был `avangard-...`, сохранён). Dzen-файлы для ручного постинга:
+`var/seo/dzen/guide-avantgarde-dzen.md`, `var/seo/dzen/hub-zhenskie-rossijskie-brendy-2026.md`.
+
+**⚠️ Правило (обратная связь владельца):** готовый опубликованный контент **НЕ перезаписывать `--force`** при
+совпадении slug. Новый повод → новый slug. (Память `no-force-overwrite-ready-articles`.) По этому правилу:
+minimalism/streetwear — **оригиналы восстановлены** (`-site`, slug `minimalizm-gid-…`/`ulichnyi-stil-…`), а
+курированные версии размещены под **новыми** slug (`rossiiskii-minimalizm-brendy-osoznannogo-garderoba-2026`,
+`rossiiskii-stritvir-brendy-ulichnoi-mody-2026`) — обе версии сосуществуют.
+
+**Инфра:** `.env` пропадал при переключении веток (удалён из git в `41ae581`) → восстановлен из истории (untracked,
+секреты в `.env.local`). Осторожно с checkout на коммиты до `41ae581`.
