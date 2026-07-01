@@ -662,6 +662,29 @@ class Brand
         return $this->links;
     }
 
+    /**
+     * Ссылки без дублей по нормализованному URL (в brand_link встречаются повторы,
+     * напр. один и тот же wa.me дважды). Порядок сохраняется. Дедуп на уровне модели,
+     * чтобы представление (шаблон/JSON-LD) не занималось этой логикой.
+     *
+     * @return list<BrandLink>
+     */
+    public function getUniqueLinks(): array
+    {
+        $seen = [];
+        $out  = [];
+        foreach ($this->links as $link) {
+            $key = mb_strtolower(rtrim((string) $link->getLinkUrl(), '/'));
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $link;
+        }
+
+        return $out;
+    }
+
     public function addLink(BrandLink $link): static
     {
         if (!$this->links->contains($link)) {
