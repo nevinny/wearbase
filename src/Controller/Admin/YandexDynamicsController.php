@@ -2,6 +2,7 @@
 
 namespace App\Controller\Admin;
 
+use App\Service\Seo\TrafficPotentialCalculator;
 use Doctrine\DBAL\Connection;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Option\EA;
 use EasyCorp\Bundle\EasyAdminBundle\Factory\AdminContextFactory;
@@ -22,6 +23,7 @@ class YandexDynamicsController extends AbstractController
         private readonly Connection $db,
         private readonly AdminContextFactory $adminContextFactory,
         private readonly DashboardController $dashboard,
+        private readonly TrafficPotentialCalculator $trafficPotential,
     ) {
     }
 
@@ -50,9 +52,10 @@ class YandexDynamicsController extends AbstractController
         unset($m);
 
         return $this->render('admin/yandex_dynamics.html.twig', [
-            'monthly'  => $monthly,
-            'maxShows' => max(1, ...array_map(static fn($m) => (int) $m['shows'], $monthly ?: [['shows' => 1]])),
-            'maxPages' => max(1, ...array_map(static fn($m) => (int) $m['pages'], $monthly ?: [['pages' => 1]])),
+            'monthly'   => $monthly,
+            'maxShows'  => max(1, ...array_map(static fn($m) => (int) $m['shows'], $monthly ?: [['shows' => 1]])),
+            'maxPages'  => max(1, ...array_map(static fn($m) => (int) $m['pages'], $monthly ?: [['pages' => 1]])),
+            'potential' => $this->trafficPotential->compute(),
         ]);
     }
 }

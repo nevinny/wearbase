@@ -52,5 +52,43 @@
 </table>
 
 <p class="yd-note">⚠️ CTR падает при росте показов = набираем видимость на позициях, что не конвертируют в клик (навигационный SERP). Baseline рефрейма — {{ 'now'|date('m.Y') }}.</p>
+
+{% if potential %}
+<h3 class="yd" style="margin-top:28px">Потенциал трафика — что недобираем</h3>
+<p class="yd-note">Окно {{ potential.window }} · {{ potential.queries }} запросов, где уже ранжируемся. Трафик = клики (не CTR); потенциал = показы × CTR целевой позиции.</p>
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin:12px 0">
+    <div style="border:1px solid var(--border-color,#444);border-radius:8px;padding:12px 16px;min-width:150px">
+        <div style="font-size:26px;font-weight:700">{{ potential.captured }}</div>
+        <div style="font-size:12px;opacity:.6">Captured (клики сейчас)</div>
+    </div>
+    <div style="border:1px solid var(--border-color,#444);border-radius:8px;padding:12px 16px;min-width:150px">
+        <div style="font-size:26px;font-weight:700">{{ potential.potentialTop3 }}</div>
+        <div style="font-size:12px;opacity:.6">Потенциал при топ-3</div>
+    </div>
+    <div style="border:1px solid #dc3545;border-radius:8px;padding:12px 16px;min-width:150px">
+        <div style="font-size:26px;font-weight:700;color:#dc3545">+{{ potential.missed }} <span style="font-size:15px">×{{ potential.factor }}</span></div>
+        <div style="font-size:12px;opacity:.6">Упущено (позиции 9–13)</div>
+    </div>
+    <div style="border:1px solid var(--border-color,#444);border-radius:8px;padding:12px 16px;min-width:150px">
+        <div style="font-size:26px;font-weight:700">{{ potential.addressable|number_format(0,'.',' ') }}</div>
+        <div style="font-size:12px;opacity:.6">Адресуемый/мес (верх. предел)</div>
+    </div>
+</div>
+<table class="yd">
+    <thead><tr><th>Запрос (дожать позицию)</th><th>Показы</th><th>Поз</th><th>Сейчас~</th><th>Топ-3~</th><th>+Упущено</th></tr></thead>
+    <tbody>
+        {% for o in potential.opportunities|slice(0, 15) %}
+            <tr>
+                <td>{{ o.q }}</td>
+                <td class="num">{{ o.shows }}</td>
+                <td class="num">{{ o.pos }}</td>
+                <td class="num">{{ o.now }}</td>
+                <td class="num">{{ o.top3 }}</td>
+                <td class="num yd-up">+{{ o.missed }}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
 </div>
 {% endblock %}
