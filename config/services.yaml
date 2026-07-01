@@ -143,6 +143,11 @@ services:
         arguments:
             $credentialsPath: '%env(default::GSC_CREDENTIALS_PATH)%'
 
+    App\Service\Yandex\YandexWebmasterClient:
+        arguments:
+            $apiKey: '%env(default::YANDEX_WEBMASTER_API_KEY)%'
+            $host:   '%env(default::YANDEX_WEBMASTER_HOST)%'
+
     App\Command\PushBrandsCommand:
         arguments:
             $prodApiUrl: '%env(default::PROD_API_URL)%'
