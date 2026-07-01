@@ -29,6 +29,7 @@
 | [ahrefs.md](ahrefs.md) | Ahrefs: доступ к проекту, как читать аудит (Error vs Notice), инвентарь проблем + приоритеты, другие инструменты. От 2026-06-22 |
 | [agent_readiness.md](agent_readiness.md) | Техническое SEO под AI-агентов (isitagentready.com): robots.txt+Content Signals, llms.txt, Link header, Markdown negotiation, API Catalog. От 2026-06-18 |
 | [ai_search_impact.md](ai_search_impact.md) | Влияние майского AI-сдвига Google (AI Mode + Core Update) на WEARBASE: моат grounded-RAG, топ-риски (boilerplate-FAQ/листиклы/индексация), где видео переоценивает риск для одежды; **реализован click-трекинг `/go/{id}`**. От 2026-06-27 |
+| [seo_yandex_google_research.md](seo_yandex_google_research.md) | Исследование Яндекс+Google по данным Вебмастера/GSC: спрос ~100% навигационный (по имени бренда), CTR ~0.8% (мы на поз. 9–13), Яндекс индексирует 478 брендов против 81 в Google; быстрые победы + приоритеты. От 2026-07-02 |
 
 ## RAG-конвейер, LLM, контент
 
