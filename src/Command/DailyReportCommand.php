@@ -22,7 +22,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *   php bin/console app:report:daily            # снять + отправить в TG
  *   php bin/console app:report:daily --stdout-only
  */
-#[AsCommand(name: 'app:report:daily', description: 'Ежедневный дайджест (публикации прода + GSC) в Telegram — запускать с Mac')]
+#[AsCommand(name: 'app:report:daily', description: 'Ежедневный дайджест (публикации прода + GSC + Яндекс) в Telegram — запускать с Mac')]
 class DailyReportCommand extends Command
 {
     public function __construct(
@@ -74,6 +74,17 @@ class DailyReportCommand extends Command
             ? sprintf('%d/%d (%.0f%%)', $cohort['idx'], $cohort['checked'], 100 * $cohort['idx'] / max(1, (int) $cohort['checked']))
             : '— (нет когорты 14д+)';
 
+        // --- Яндекс.Вебмастер (локальная БД; синк крон Mac 07:00) ---
+        $yaInSearch = $one("SELECT COUNT(*) FROM yandex_index_status WHERE in_search = 1");
+        $yaLast     = $this->db->fetchOne("SELECT MAX(last_checked_at) FROM yandex_index_status") ?: '—';
+        $yaQ = $this->db->fetchAssociative(
+            "SELECT COUNT(*) c, COALESCE(SUM(shows),0) shows, COALESCE(SUM(clicks),0) clicks
+             FROM yandex_query_stats WHERE date_to = (SELECT MAX(date_to) FROM yandex_query_stats)",
+        ) ?: ['c' => 0, 'shows' => 0, 'clicks' => 0];
+        $yaQtxt = (int) $yaQ['c'] > 0
+            ? sprintf('%d фраз · показы %d · клики %d', $yaQ['c'], $yaQ['shows'], $yaQ['clicks'])
+            : '—';
+
         // --- Контакты (локальная БД) ---
         $contacts = $this->db->fetchAssociative(
             "SELECT
@@ -122,6 +133,8 @@ class DailyReportCommand extends Command
             "Последняя: %s\n\n" .
             "<b>GSC:</b> проверено %d · в индексе %d\n" .
             "Когорта 14д+ в индексе: %s\n" .
+            "Последняя проверка: %s\n\n" .
+            "<b>Яндекс:</b> в поиске %d брендов · запросы: %s\n" .
             "Последняя проверка: %s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
             $pub['published_today'], $pub['published_total'], $pub['queue_pending'],
@@ -129,6 +142,8 @@ class DailyReportCommand extends Command
             $gscChecked, $gscIndexed,
             $cohortTxt,
             $gscLast,
+            $yaInSearch, $yaQtxt,
+            $yaLast,
             $contactLine,
         );
 
