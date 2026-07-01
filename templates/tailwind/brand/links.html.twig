@@ -48,12 +48,17 @@
 {% set _social_rx = '/instagram\\.com|vk\\.com|vkontakte|t\\.me\\/|telegram\\.|youtu|tiktok\\.com|pinterest\\.|dzen\\.ru|zen\\.yandex|facebook\\.com|fb\\.com/' %}
 {% set _commercial = brand.links|filter(l => not ((l.linkUrl|lower) matches _social_rx)) %}
 {% set _social = brand.links|filter(l => (l.linkUrl|lower) matches _social_rx) %}
+{# дедуп по URL: в brand_link встречаются дубли (напр. один и тот же wa.me дважды) #}
+{% set _seen = [] %}
 
 {% if _commercial|length > 0 %}
     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
         <h3 class="text-xl font-semibold mb-4">Где купить {{ brand_t(brand, 'title') }}</h3>
         <div class="space-y-3">
             {% for link in _commercial %}
+                {% set _u = link.linkUrl|lower|trim('/') %}
+                {% if _u not in _seen %}
+                {% set _seen = _seen|merge([_u]) %}
                 {% set _h = link.linkUrl|lower %}
                 {% set _label = 'Официальный сайт' %}
                 {% set _isMp = false %}
@@ -73,6 +78,7 @@
                     {% endif %}
                     <span>{{ _label }}{% if _label == 'Официальный сайт' %} · {{ link.linkUrl|replace({'https://': '', 'http://': '', 'www.': ''})|trim('/') }}{% endif %}</span>
                 </a>
+                {% endif %}
             {% endfor %}
         </div>
     </section>
@@ -83,6 +89,9 @@
         <h3 class="text-xl font-semibold mb-4">{{ brand_t(brand, 'title') }} в соцсетях</h3>
         <div class="space-y-3">
             {% for link in _social %}
+                {% set _u = link.linkUrl|lower|trim('/') %}
+                {% if _u not in _seen %}
+                {% set _seen = _seen|merge([_u]) %}
                 {% set _h = link.linkUrl|lower %}
                 {% set _key = link.title %}
                 {% if 'instagram.com' in _h %}{% set _key = 'Instagram' %}
@@ -107,6 +116,7 @@
                         </svg>
                         <span>{{ social.title }}</span>
                     </a>
+                {% endif %}
                 {% endif %}
             {% endfor %}
         </div>
