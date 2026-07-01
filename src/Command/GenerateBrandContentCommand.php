@@ -70,13 +70,52 @@ class GenerateBrandContentCommand extends Command
     {
         /** @var \App\Repository\BrandKeywordRepository $repo */
         $repo = $this->em->getRepository(\App\Entity\BrandKeyword::class);
-        $rows = $repo->findByBrandRanked($brand, 8);
+        // берём с запасом — часть отсеет фильтр релевантности
+        $rows = $repo->findByBrandRanked($brand, 15);
         if ($rows === []) {
             return null;
         }
         $phrases = array_map(static fn(\App\Entity\BrandKeyword $k) => $k->getKeyword(), $rows);
+        $phrases = $this->filterRelevantKeywords($brand, $phrases);
+        if ($phrases === []) {
+            return null; // всё отсеяли (одноимённый шум) → пусть meta.keywords даст LLM
+        }
 
-        return mb_substr(implode(', ', $phrases), 0, 200);
+        return mb_substr(implode(', ', array_slice($phrases, 0, 8)), 0, 200);
+    }
+
+    /**
+     * Фильтр релевантности meta-ключей: Wordstat матчит запросы по токену имени, но тащит off-topic
+     * для неоднозначных названий (mysiberia → «купить квартиру в усолье», breakdownbrand → «broke down»).
+     * Нерелевантные ключи в meta опасны для Яндекса (он читает meta_keywords). Оставляем фразы,
+     * содержащие токен имени/слага бренда (Cyrillic + Latin). Нет токенов ≥3 → не фильтруем.
+     *
+     * @param string[] $phrases
+     * @return string[]
+     */
+    private function filterRelevantKeywords(Brand $brand, array $phrases): array
+    {
+        $raw    = mb_strtolower($brand->getTitle() . ' ' . str_replace('-', ' ', (string) $brand->getSlug()), 'UTF-8');
+        $tokens = [];
+        foreach (preg_split('/[^\p{L}\p{N}]+/u', $raw) ?: [] as $t) {
+            if (mb_strlen($t) >= 3) {
+                $tokens[$t] = true;
+            }
+        }
+        $tokens = array_keys($tokens);
+        if ($tokens === []) {
+            return $phrases; // короткое/числовое имя — нечем фильтровать, не режем
+        }
+
+        return array_values(array_filter($phrases, static function (string $p) use ($tokens): bool {
+            $pl = mb_strtolower($p, 'UTF-8');
+            foreach ($tokens as $t) {
+                if (mb_strpos($pl, $t) !== false) {
+                    return true;
+                }
+            }
+            return false;
+        }));
     }
 
     /** Заранее собранные ключевики (brand_keyword) перебивают LLM-вариант в meta.keywords. */

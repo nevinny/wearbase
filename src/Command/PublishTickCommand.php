@@ -29,7 +29,7 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  *     за тик публикуем n = floor(p) + Bernoulli(frac(p)) — иначе CAP недостижим
  *     (15 тиков/день < 28 публикаций при «1 за тик»).
  *  5. Выбор СЛУЧАЙНЫХ готовых брендов (status='new' AND publish_pending=1,
- *     ORDER BY RAND()) → status='active' + published_at (попадает в каталог/sitemap).
+ *     по СПРОСУ-НА-ПОКУПКУ: имя бренда + коммерч.модификатор) → active + published_at (в каталог/sitemap).
  */
 #[AsCommand(
     name: 'app:brand:publish-tick',
@@ -165,12 +165,25 @@ class PublishTickCommand extends Command
             sleep($delay);
         }
 
-        // --- Случайные готовые бренды ---
+        // --- Готовые бренды ПО СПРОСу (drip-by-demand) ---
         // niche_status='off' (app:brand:niche-check) НЕ публикуем — чужая ниша. NULL/'in' проходят
         // (иначе гейт застопорит дрип до прогона классификатора → порядок cron: niche-check → publish-tick).
+        // Порядок: спрос НА ПОКУПКУ бренда = SUM(monthly_shows) по ключам, где имя бренда СОЧЕТАЕТСЯ
+        // с коммерческим модификатором (одежда/бренд/купить/магазин/сайт). Так отсекается фейковый
+        // спрос общесловных имён («яндекс браузер», «форма для выпечки»), а distinctive-бренды
+        // (LIME/Sela/Zarina/Befree) выходят в индекс первыми — максимум трафика на страницу.
+        // Раньше был чистый RAND() → публиковали вслепую. RAND() теперь рвёт ничьи.
         $ids = $this->em->getConnection()->fetchFirstColumn(
-            "SELECT id FROM brand WHERE status = 'new' AND publish_pending = 1"
-            . " AND (niche_status IS NULL OR niche_status <> 'off') ORDER BY RAND() LIMIT " . $n,
+            "SELECT b.id FROM brand b
+              LEFT JOIN brand_keyword k ON k.brand_id = b.id
+             WHERE b.status = 'new' AND b.publish_pending = 1
+               AND (b.niche_status IS NULL OR b.niche_status <> 'off')
+             GROUP BY b.id
+             ORDER BY SUM(CASE WHEN LOWER(k.keyword) LIKE CONCAT('%', LOWER(b.title), '%')
+                        AND (k.keyword LIKE '%одежд%' OR k.keyword LIKE '%бренд%' OR k.keyword LIKE '%купить%'
+                          OR k.keyword LIKE '%магазин%' OR k.keyword LIKE '%официальн%' OR k.keyword LIKE '%сайт%')
+                       THEN k.monthly_shows ELSE 0 END) DESC, RAND()
+             LIMIT " . $n,
         );
 
         if ($ids === []) {
