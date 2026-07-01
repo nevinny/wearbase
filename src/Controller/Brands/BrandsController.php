@@ -632,6 +632,13 @@ class BrandsController extends AbstractController
             ->getQuery()
             ->getResult();
 
+        // Пустой стиль-хаб (0 опубликованных брендов) = нет контента → 404, а не пустая 200.
+        // Иначе soft-404 в sitemap жжёт индекс-бюджет (luxury/opium/beach/school/upcycle/y2k).
+        // Тонкие (1-2 бренда) остаются 200/индексируемыми — это НЕ про noindex.
+        if ($brands === []) {
+            throw $this->createNotFoundException('В этом стиле пока нет опубликованных брендов');
+        }
+
         return $this->render('tailwind/style.html.twig', [
             'style' => $style,
             'slug' => $slug,
