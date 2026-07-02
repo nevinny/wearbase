@@ -39,6 +39,8 @@ class BrandOutreachMailer
         private readonly ?string $trackBaseUrl,  // "https://wearbase.ru" (эндпоинты /e/* на проде)
         #[Autowire('%env(default::RUSENDER_API_KEY)%')]
         private readonly ?string $apiKey,
+        #[Autowire('%env(default::OUTREACH_REPLY_TO)%')]
+        private readonly ?string $replyTo,   // куда приходят ответы (продажи!); пусто = ответы на From
     ) {
     }
 
@@ -163,7 +165,12 @@ class BrandOutreachMailer
                         'subject' => sprintf('«%s» — ваша страница уже в каталоге Wearbase', $brand->getTitle()),
                         'html'    => $html,
                         'text'    => $text,
-                        'headers' => ['List-Unsubscribe' => sprintf('<%s/e/u/%s>', $base, $token)],
+                        'headers' => array_filter([
+                            'List-Unsubscribe' => sprintf('<%s/e/u/%s>', $base, $token),
+                            // Ответ на письмо = тёплый лид: без Reply-To ответы падают на From
+                            // (ящик рассылочного поддомена), где их никто не читает.
+                            'Reply-To' => trim((string) $this->replyTo) ?: null,
+                        ]),
                     ],
                 ],
                 'timeout' => 30,
