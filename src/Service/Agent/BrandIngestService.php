@@ -70,6 +70,16 @@ class BrandIngestService
                 }
             }
 
+            // Вердикт ниша-классификатора (Mac): прод сам не классифицирует, гейт дрипа
+            // (niche_status <> 'off') без синка слеп. NULL не затирает существующий вердикт.
+            if (in_array($payload['nicheStatus'] ?? null, ['in', 'off'], true)) {
+                $brand->markNiche(
+                    (string) $payload['nicheStatus'],
+                    isset($payload['nicheReason']) ? (string) $payload['nicheReason'] : null,
+                    new \DateTime(),
+                );
+            }
+
             $meta = $payload['meta'] ?? [];
             if (isset($meta['title'])) {
                 $brand->setMetaTitle((string) $meta['title']);

@@ -29,6 +29,9 @@ class BrandPayloadAssembler
             'city'            => $brand->getCity(),
             'country'         => $brand->getCountry(),
             'foundingYear'    => $brand->getFoundingYear(),
+            // Вердикт ниша-классификатора (считается на Mac): без синка прод-гейт дрипа слеп.
+            'nicheStatus'     => $brand->getNicheStatus(),
+            'nicheReason'     => $brand->getNicheReason(),
             'description'     => $brand->getDescription(),
             'anons'           => $brand->getAnons(),
             'meta'            => [
