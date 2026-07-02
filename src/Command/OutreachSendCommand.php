@@ -43,6 +43,7 @@ class OutreachSendCommand extends Command
         $this
             ->addArgument('limit', InputArgument::OPTIONAL, 'Сколько писем отправить', 10)
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Показать получателей, не слать')
+            ->addOption('slugs',   null, InputOption::VALUE_REQUIRED, 'Точечный батч: слаги через запятую (вычитанные кандидаты cold-эксперимента) вместо авто-когорты')
         ;
     }
 
@@ -58,6 +59,28 @@ class OutreachSendCommand extends Command
             return Command::FAILURE;
         }
 
+        // Точечный батч (--slugs): вычитанные кандидаты cold-эксперимента (sales_offer.md §5-6).
+        // Требования те же, что у когорты: active (страница живёт — об этом письмо) + email;
+        // suppression/дубль проверит mailer. Порядок слагов сохраняется.
+        $slugsOpt = array_values(array_filter(array_map('trim', explode(',', (string) $input->getOption('slugs')))));
+        if ($slugsOpt !== []) {
+            $ids = [];
+            foreach ($slugsOpt as $slug) {
+                $row = $this->em->getConnection()->fetchAssociative(
+                    "SELECT id, status, COALESCE(email,'') email FROM brand WHERE slug = :s", ['s' => $slug],
+                );
+                if ($row === false) {
+                    $io->text("  ✗ {$slug}: не найден — пропуск");
+                } elseif ($row['status'] !== 'active') {
+                    $io->text("  ✗ {$slug}: не опубликован (status={$row['status']}) — сначала push --publish");
+                } elseif ($row['email'] === '') {
+                    $io->text("  ✗ {$slug}: нет email — пропуск");
+                } else {
+                    $ids[] = (int) $row['id'];
+                }
+            }
+            $ids = array_slice($ids, 0, $limit);
+        } else {
         // Когорта: ОПУБЛИКОВАННЫЙ бренд (active — его страница реально живёт, об этом и
         // письмо) + есть email + не отправляли + адрес не суппрессирован. Магазины НЕ
         // требуем (на проде их нет, а крючок теперь каналы/ассортимент). Приоритет —
@@ -75,6 +98,7 @@ class OutreachSendCommand extends Command
                b.id ASC
              LIMIT " . $limit,
         );
+        }
 
         if ($ids === []) {
             $io->success('Когорта A исчерпана (или пока пуста).');
