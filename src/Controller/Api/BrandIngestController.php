@@ -296,10 +296,17 @@ class BrandIngestController extends AbstractController
             return $this->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $p = json_decode((string) $request->getContent(), true);
+        $raw = (string) $request->getContent();
+        $p = json_decode($raw, true);
         if (!is_array($p)) {
             return $this->json(['error' => 'invalid json'], Response::HTTP_BAD_REQUEST);
         }
+        // Диагностика формата: 34 вебхука RuSender прошли мимо маппинга молча (delivered_at
+        // оставался NULL). Логируем каждый payload, пока номенклатура не подтверждена.
+        // Прямо в файл: monolog-prod на хостинге не пишет app-канал (var/log/prod.log нет).
+        @file_put_contents(\dirname(__DIR__, 3) . '/var/log/webhook-payload.log',
+            date('c') . ' ' . mb_substr($raw, 0, 2000) . "\n", FILE_APPEND);
+        $this->logger->info('rusender webhook payload', ['body' => mb_substr($raw, 0, 2000)]);
         $events = isset($p['type']) || isset($p['event']) ? [$p] : ($p['events'] ?? $p['data'] ?? [$p]);
 
         $db = $em->getConnection();
@@ -307,8 +314,10 @@ class BrandIngestController extends AbstractController
             if (!is_array($e)) {
                 continue;
             }
-            $type   = strtolower((string) ($e['type'] ?? $e['event'] ?? $e['eventType'] ?? ''));
-            $email  = (string) ($e['email'] ?? $e['recipient'] ?? $e['to'] ?? ($e['data']['email'] ?? ''));
+            // Фактический формат RuSender (снят с прода 02.07.2026, var/log/webhook-payload.log):
+            // {"count":1,"events":[{"trigger":"external_mail.delivered","payload":{"email":"..."}}]}
+            $type   = strtolower((string) ($e['trigger'] ?? $e['type'] ?? $e['event'] ?? $e['eventType'] ?? ''));
+            $email  = (string) ($e['payload']['email'] ?? $e['email'] ?? $e['recipient'] ?? $e['to'] ?? ($e['data']['email'] ?? ''));
             $reason = mb_substr((string) ($e['reason'] ?? $e['description'] ?? $e['bounceType'] ?? ''), 0, 500);
             if ($email === '') {
                 continue;
@@ -320,7 +329,7 @@ class BrandIngestController extends AbstractController
                 || in_array($type, ['failed', 'dropped', 'rejected', 'undeliverable'], true)
                 || str_contains($type, 'не существует') || str_contains($type, 'not_exist') || str_contains($type, 'unknown_user')) {
                 $db->executeStatement('UPDATE brand_outreach SET bounced_at = COALESCE(bounced_at, NOW()) WHERE email = :e', ['e' => $email]);
-            } elseif (str_contains($type, 'bounce') || str_contains($type, 'deferred')
+            } elseif (str_contains($type, 'bounce') || str_contains($type, 'deferred') || str_contains($type, 'undeliver')
                 || str_contains($type, 'переполнен') || str_contains($type, 'недоступен')
                 || str_contains($type, 'overflow') || str_contains($type, 'unavailable')) {
                 $db->executeStatement('UPDATE brand_outreach SET last_error = :r WHERE email = :e', ['r' => 'soft bounce: ' . ($reason ?: $type), 'e' => $email]);
