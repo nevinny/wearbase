@@ -8,7 +8,9 @@ use App\Entity\Brand;
 use App\Entity\BrandClaim;
 use App\Entity\Notification;
 use App\Entity\User;
+use App\Notification\EmailNotifier;
 use App\Notification\NotificationDispatcher;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use App\Repository\BrandClaimRepository;
 use App\Repository\BrandUserRepository;
 use App\Service\BrandClaimService;
@@ -31,6 +33,9 @@ class BrandClaimController extends AbstractController
         private readonly BrandClaimService      $claimService,
         private readonly VkVerifier             $vkVerifier,
         private readonly NotificationDispatcher $notifier,
+        private readonly EmailNotifier          $emailNotifier,
+        #[Autowire('%env(default::ADMIN_EMAIL)%')]
+        private readonly ?string                $adminEmail,
     ) {}
 
     // ── Форма заявки (выбор метода) ──────────────────────────────────────────
@@ -391,6 +396,18 @@ class BrandClaimController extends AbstractController
         );
         // dispatch только persist'ит in-app — коммитим
         $this->em->flush();
+
+        // ⚠️ dispatch выше адресован ЗАЯВИТЕЛЮ (in-app след в его кабинете). Админ до 03.07.2026
+        // не узнавал о заявках вообще (только заглянув в /admin). Шлём письмо на ADMIN_EMAIL —
+        // TG с прода заблокирован, email через RuSender-транспорт работает. Soft-fail внутри send.
+        if (trim((string) $this->adminEmail) !== '') {
+            $this->emailNotifier->send(
+                (string) $this->adminEmail,
+                "Заявка на бренд «{$brand->getTitle()}» — {$label}",
+                'brand_claim_admin',
+                ['claim' => $claim],
+            );
+        }
     }
 
     private function notifyUser(BrandClaim $claim, bool $approved): void

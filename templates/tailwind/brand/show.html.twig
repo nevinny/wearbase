@@ -138,6 +138,22 @@
 {% endblock %}
 
 {% block body %}
+    {# Баннер для визитёров из outreach-письма (CTA «Забрать управление страницей»): без него
+       клик приземлялся на витрину, где claim-кнопку надо было искать (clicked=2/claimed=0).
+       Роботы utm-URL не видят (robots.txt: Disallow /*?utm_*) — клоакинга нет. #}
+    {% if app.request.query.get('utm_campaign') == 'brand_invite' and not (app.user and isMemberOfThisBrand) %}
+        <div class="bg-indigo-600">
+            <div class="container mx-auto px-4 py-3.5 flex flex-col sm:flex-row items-center justify-center gap-3 text-center">
+                <p class="text-white text-sm font-medium">
+                    Вы владелец «{{ _bt }}»? Заберите страницу под своё управление — это займёт пару минут.
+                </p>
+                <a href="{{ path('brand_claim_new', {id: brand.id}) }}"
+                   class="inline-flex items-center gap-2 shrink-0 px-4 py-2 rounded-lg bg-white text-indigo-700 text-sm font-semibold hover:bg-indigo-50 transition">
+                    Забрать страницу →
+                </a>
+            </div>
+        </div>
+    {% endif %}
     <div class="container mx-auto px-4 py-10">
         {# Хлебные крошки для SEO #}
         {% set show_locale = app.request.locale|default('ru') %}
