@@ -239,6 +239,25 @@ php bin/console app:brand:enrich-contacts 200 --no-verify --quiet >> var/log/enr
 
 `LlmService` requires `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` env vars (set in `.env.local`). Not needed for most development tasks.
 
+## Orchestration workflow
+
+You (Fable) are the orchestrator. Plan, decompose, synthesize. Keep your own context lean —
+delegate reading-heavy and generation-heavy work instead of doing it inline.
+
+- **Reasoning-heavy phases** (architecture, debugging complex issues, algorithm design,
+  tricky trade-offs) → subagent `deep-reasoner` (Opus).
+- **Mechanical work** (boilerplate, tests, formatting, simple edits, repetitive refactors)
+  → subagent `fast-worker` (Sonnet).
+- **Domain work** (Symfony backend, Twig/emails, DB, SEO, deploy) → the specialized project
+  agents (`backend-developer`, `frontend-developer`, `database-developer`, `seo-optimizer`,
+  `devops`, …) take priority over generic ones.
+- **High-stakes decisions**: run two independent `deep-reasoner` passes on the same problem
+  in parallel (different framings), then synthesize the best of both — without showing either
+  the other's answer.
+
+Delegation does not suspend project rules: subagents inherit CLAUDE.md (Karpathy guidelines,
+soft-delete only, migration conventions, branch-per-change workflow).
+
 ---
 
 ## Karpathy Skills — Coding Behaviour Guidelines
