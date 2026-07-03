@@ -18,10 +18,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Closed-loop тик: оценивает ревизии-эксперименты, чьё окно замера истекло, сверяя GSC
- * variant vs baseline (источник правды — GSC). Дерево решений (см. docs/rag_pipeline.md §10):
+ * Closed-loop тик: оценивает ревизии-эксперименты, чьё окно замера истекло, сверяя метрику
+ * variant vs baseline. С 2026-07-03 источник правды — Яндекс (in_search + матчированные
+ * запросы) + GSC вторично (см. BrandContentVersioner::gscSnapshot); покрытие Google
+ * заморожено с ~12.06. Дерево решений (см. docs/rag_pipeline.md §10):
  *
- *   not indexed / impr < MIN_SAMPLE → not_indexed (НЕ откат: Google не дал шанс)
+ *   не в индексе → not_indexed (НЕ откат: поиск не дал шанс)
+ *   в индексе, показов < MIN_SAMPLE → win, если вошла в индекс после ревизии, иначе not_indexed
  *   иначе с порогом (rel 20% + пол): loss / win / neutral
  *   loss → attempt < MAX_ATTEMPT и есть grounded-корпус → реген (флаг regen_requested_at)
  *          иначе → откат к лучшей прошлой ревизии (+ ре-доставка на прод)
@@ -63,16 +66,24 @@ class EvaluateExperimentsCommand extends Command
         $dryRun = (bool) $input->getOption('dry-run');
         $limit  = max(1, (int) $input->getOption('limit'));
 
-        // ГАРД свежести GSC: если gsc:sync молча сломался (креды/квота), данные устаревают,
-        // gscSnapshot вернёт нули → ВСЁ уйдёт в not_indexed (и теперь в вечный re-measure),
-        // маскируя поломку. Не судим по протухшим данным. GSC сам лагает ~2-3 дня, поэтому
-        // порог GSC_STALE_DAYS с запасом — ловим именно многодневный обрыв синка.
-        $lastGscDay = $this->db->fetchOne('SELECT MAX(day) FROM gsc_page_stats');
+        // ГАРД свежести ОБОИХ источников (Яндекс первичный, GSC вторичный): если какой-то
+        // синк молча сломался (креды/квота), его часть метрики уйдёт в ноль → ложные
+        // not_indexed/loss, маскирующие поломку. Не судим по протухшим данным. GSC сам
+        // лагает ~2-3 дня, поэтому порог GSC_STALE_DAYS с запасом — ловим обрыв синка.
         $staleBefore = (new \DateTime('-' . self::GSC_STALE_DAYS . ' days'))->format('Y-m-d');
+        $lastGscDay = $this->db->fetchOne('SELECT MAX(day) FROM gsc_page_stats');
         if ($lastGscDay === null || $lastGscDay < $staleBefore) {
             $io->error(sprintf(
                 'GSC-данные устарели (последний день: %s, порог: %s). Оценка ПРОПУЩЕНА — иначе ложный not_indexed по нулям. Проверь app:gsc:sync.',
                 $lastGscDay ?: 'нет данных', $staleBefore,
+            ));
+            return Command::FAILURE;
+        }
+        $lastYaCheck = $this->db->fetchOne('SELECT MAX(last_checked_at) FROM yandex_index_status');
+        if ($lastYaCheck === null || substr((string) $lastYaCheck, 0, 10) < $staleBefore) {
+            $io->error(sprintf(
+                'Яндекс-данные устарели (последняя проверка: %s, порог: %s). Оценка ПРОПУЩЕНА. Проверь app:yandex:sync.',
+                $lastYaCheck ?: 'нет данных', $staleBefore,
             ));
             return Command::FAILURE;
         }
@@ -86,9 +97,16 @@ class EvaluateExperimentsCommand extends Command
 
         $tally = ['win' => 0, 'loss' => 0, 'neutral' => 0, 'not_indexed' => 0, 'regen' => 0, 'rollback' => 0, 'remeasure' => 0, 'loss_tentative' => 0];
 
-        foreach ($due as $rev) {
-            $brand = $rev->getBrand();
-            if ($brand === null) {
+        // Только id: em->clear() в конце итерации отцепляет ВСЕ заранее выбранные сущности —
+        // мутации детачнутых ревизий flush молча игнорирует (до 2026-07-03 из-за этого
+        // персистился только ПЕРВЫЙ вердикт прогона). Перезагружаем каждую по id.
+        $dueIds = array_map(static fn(BrandContentRevision $r) => (int) $r->getId(), $due);
+        $this->em->clear();
+
+        foreach ($dueIds as $revId) {
+            $rev = $this->em->find(BrandContentRevision::class, $revId);
+            $brand = $rev?->getBrand();
+            if ($rev === null || $brand === null) {
                 continue;
             }
             $brandId = (int) $brand->getId();
@@ -182,9 +200,18 @@ class EvaluateExperimentsCommand extends Command
 
     private function judge(BrandContentRevision $rev, int $impr, int $clicks, bool $indexed): string
     {
-        // 1. Можно ли вообще судить? Не в индексе / мало показов → контент не виноват.
-        if (!$indexed || $impr < self::MIN_SAMPLE) {
+        // 1. Можно ли вообще судить? Не в индексе → контент не виноват, поиск не дал шанс.
+        if (!$indexed) {
             return BrandContentRevision::VERDICT_NOT_INDEXED;
+        }
+        $newlyIndexed = !($rev->getGscIndexedBefore() ?? false);
+        if ($impr < self::MIN_SAMPLE && ($rev->getGscImprBefore() ?? 0) < self::MIN_SAMPLE) {
+            // Трафика не было и нет, но страница ВОШЛА в индекс после ревизии — это и есть
+            // главный исход эксперимента (in_search Яндекса — живой критерий, покрытие
+            // Google заморожено). Иначе (была в индексе, показов нет) — судить нечем.
+            // Если baseline ≥ MIN_SAMPLE — НЕ сюда: обвал показов в ~0 должен судиться
+            // порогами ниже как loss, а не проскакивать в win по факту входа в индекс.
+            return $newlyIndexed ? BrandContentRevision::VERDICT_WIN : BrandContentRevision::VERDICT_NOT_INDEXED;
         }
 
         $imprBefore = $rev->getGscImprBefore() ?? 0;
@@ -195,7 +222,6 @@ class EvaluateExperimentsCommand extends Command
         $clicksDropped = $clicks < $clkBefore - $clkThr;
         $imprDropped   = $impr   < $imprBefore - $imprThr;
         $imprUp        = $impr   > $imprBefore + $imprThr;
-        $newlyIndexed  = $indexed && !($rev->getGscIndexedBefore() ?? false);
 
         if ($clicksDropped || $imprDropped) {
             return BrandContentRevision::VERDICT_LOSS;

@@ -146,8 +146,12 @@ class BrandContentVersioner
     }
 
     /**
-     * @return array{0:int,1:int,2:bool} [impressions, clicks, indexed] за последние WINDOW_DAYS.
-     * GSC-таблицы живут на Mac; на проде пусто → вернёт 0/false (эксперименты считаем на Mac).
+     * @return array{0:int,1:int,2:bool} [показы, клики, в индексе] за последние WINDOW_DAYS.
+     * С 2026-07-03 первичный сигнал — Яндекс (покрытие Google заморожено с ~12.06, судить
+     * по нему нечем): показы/клики = GSC + Яндекс-запросы, матчированные по имени бренда
+     * (yandex_query_stats — домен-wide топ без brand_id, LIKE-матч как в drip-by-demand);
+     * «в индексе» = in_search Яндекса ИЛИ indexed GSC. Поля ревизий gsc_* хранят эту
+     * комбинированную метрику. Таблицы живут на Mac; на проде пусто → 0/false.
      */
     public function gscSnapshot(int $brandId): array
     {
@@ -163,6 +167,32 @@ class BrandContentVersioner
             ['id' => $brandId],
         );
 
-        return [(int) $row['impr'], (int) $row['clicks'], $indexed];
+        // ТОЛЬКО последнее окно (date_to = MAX): синк ежедневно апсертит перекрывающиеся
+        // окна — SUM по date_to >= :since задвоил бы одни и те же показы. Окно Яндекса
+        // (~неделя) ≠ WINDOW_DAYS, но before/after сравниваются в одной шкале (rate-proxy).
+        // Имена короче 3 символов не матчим — LIKE-шум («Шu», «ТМ» и т.п.).
+        $ya = $this->db->fetchAssociative(
+            "SELECT SUM(q.shows) shows, SUM(q.clicks) clicks
+             FROM yandex_query_stats q
+             JOIN brand b ON b.id = :id AND CHAR_LENGTH(TRIM(b.title)) >= 3
+             WHERE q.date_to = (SELECT MAX(date_to) FROM yandex_query_stats)
+               AND LOWER(q.query_text) LIKE CONCAT('%', LOWER(TRIM(b.title)), '%')",
+            ['id' => $brandId],
+        ) ?: ['shows' => 0, 'clicks' => 0];
+        // Свежесть in_search: синк пишет только положительные метки и НЕ зануляет строки,
+        // выпавшие из поиска. Строка старше 3 дней от последнего прогона = не подтверждена.
+        $inSearch = (bool) $this->db->fetchOne(
+            'SELECT MAX(s.in_search) FROM yandex_index_status s
+             WHERE s.brand_id = :id
+               AND s.last_checked_at >= (SELECT DATE_SUB(MAX(i.last_checked_at), INTERVAL 3 DAY)
+                                         FROM yandex_index_status i)',
+            ['id' => $brandId],
+        );
+
+        return [
+            (int) $row['impr'] + (int) $ya['shows'],
+            (int) $row['clicks'] + (int) $ya['clicks'],
+            $indexed || $inSearch,
+        ];
     }
 }
