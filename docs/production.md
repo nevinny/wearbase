@@ -72,7 +72,9 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 - **`~/bin/forward-hello.php`** (на сервере, ВНЕ репо) + crontab `*/10` (лог
   `~/logs/forward-hello.log`): новые письма из `new/` пересылаются на `nevinny@gmail.com`
   **через RuSender HTTP API** (ключ читается из прод `.env.local`), успешные — в `cur/` как
-  прочитанные (`:2,S`), неуспешные остаются в `new/` (ретрай следующим тиком).
+  прочитанные (`:2,S`), неуспешные остаются в `new/` (ретрай следующим тиком). Пересылается
+  **декодированное** письмо (MIME: base64/quoted-printable, text/plain из multipart, encoded-word
+  темы) + ключевые заголовки — сырой RFC822 нечитаем (первый реальный тест пришёл base64-кашей).
 - **Анти-петля:** письма от `Mailer-Daemon*`/`hello@mail.wearbase.ru`/с `Auto-Submitted: auto-*`
   НЕ пересылаются (помечаются прочитанными).
 
