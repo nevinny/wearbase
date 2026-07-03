@@ -62,6 +62,28 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 - Ошибки отправки видны в `var/log/prod.log` (`Email notification failed`, с 2026-06-12).
 - **Бесплатный обход SMTP: кастомный транспорт `rusender+api://`** (`src/Mailer/RusenderApiTransport.php`, фабрика зарегистрирована в services.yaml). Отправляет через HTTP API тем же API-ключом из вкладки «Ключ» (активен на бесплатном тарифе, SMTP-активация не нужна). DSN: `MAILER_DSN=rusender+api://<API_KEY>@default?key_id=4487`. Один получатель = один запрос к API; ошибки API кидаются как HttpTransportException и ловятся логированием EmailNotifier.
 
+## Входящая почта hello@mail.wearbase.ru (форвардер на Gmail)
+
+Ящик `hello@mail.wearbase.ru` существует на хостинге reg.ru (Maildir:
+`/var/www/u3042786/data/email/mail.wearbase.ru/hello/.maildir/` — именно **`.maildir` с точкой**;
+`hello/new|cur` без точки — ловушка, туда ничего не падает). Сюда приходят ответы на outreach
+батчей 1–2 (без Reply-To) и любая почта на hello@. Читалки нет → **форвардер**:
+
+- **`~/bin/forward-hello.php`** (на сервере, ВНЕ репо) + crontab `*/10` (лог
+  `~/logs/forward-hello.log`): новые письма из `new/` пересылаются на `nevinny@gmail.com`
+  **через RuSender HTTP API** (ключ читается из прод `.env.local`), успешные — в `cur/` как
+  прочитанные (`:2,S`), неуспешные остаются в `new/` (ретрай следующим тиком).
+- **Анти-петля:** письма от `Mailer-Daemon*`/`hello@mail.wearbase.ru`/с `Auto-Submitted: auto-*`
+  НЕ пересылаются (помечаются прочитанными).
+
+**⚠️ Инцидент 02–03.07.2026 — почтовая петля (263 письма за сутки).** Первая версия форвардера
+слала через локальный `sendmail` от имени `hello@mail.wearbase.ru` → Gmail отбивал
+(`550-5.7.26 sender is unauthenticated`: SPF/DKIM домена подписаны только у RuSender, не у
+хостинга) → bounce падал обратно в hello@ → форвардер пересылал bounce → снова bounce → петля
+до остановки крона. Мусор в карантине `~/loop-bounces-20260703/`. Уроки: (1) с этого домена
+слать ТОЛЬКО через RuSender API; (2) форвардер обязан игнорировать Mailer-Daemon/своё/
+Auto-Submitted; (3) e2e-тест форвардера — синтетический файл в `new/` с внешним From.
+
 ## Turnstile (Cloudflare captcha)
 
 - Стоит на форме регистрации (`RegistrationFormType`, бандл pixelopen/cloudflare-turnstile-bundle).

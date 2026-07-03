@@ -1404,3 +1404,30 @@ BrandPayloadAssembler + markNiche в BrandIngestService (NULL не затира�
 
 **Остаток ручных шагов владельца:** платёжная ссылка YooKassa под 5000₽ · налоговый статус (НПД/УСН)
 · мониторить Gmail на ответы. Отложенные кандидаты: bailey, slava-zaitsev, dan4 (Киргизия).
+
+### 03.07 — авария форвардера hello@ (петля) + разбор флоу «Забрать страницу»
+
+**Авария (закрыта, детали в production.md «Входящая почта»):** первый форвардер (sendmail) дал
+почтовую петлю — Gmail отбивал пересылки (550 unauthenticated: SPF/DKIM только у RuSender), bounce
+возвращался в ящик, форвардер слал его снова → 263 письма за сутки. Фикс: форвардер переписан на
+PHP + RuSender API + анти-петля (Mailer-Daemon/своё/Auto-Submitted), мусор в карантине
+`~/loop-bounces-20260703/`, e2e-тест пройден. **Настоящих ответов брендов на 03.07 — ноль**;
+воронка: 41 sent · 15+ delivered · 5 opened (Bybiol, Grunge John, Mura Mura, Arshenova, Urban Soul)
+· **2 clicked (Bybiol — вернулся на 2-й день; BREGEDA — кликнул и отписался)** · 0 новых claim.
+
+**Флоу CTA «Забрать управление страницей» (прослежен код+прод), 6 шагов до владения:**
+1. Письмо → `/e/c/{token}` (`OutreachController::click`): rate-limit, бот-фильтр UA, `click_count++`
+   → 302 на **публичную карточку** `/ru/brands/{slug}?utm_source=outreach&utm_medium=email&utm_campaign=brand_invite`.
+2. На карточке — вторичная кнопка «Я владелец бренда» (hero) → `/brand-claim/{id}`.
+3. `IsGranted(ROLE_USER)` → аноним: 302 `/login` → регистрация `/register` (6 полей + Turnstile;
+   ⚠️ форма живёт БЕЗ локали — `/ru/register` = 404). Symfony вернёт на target после логина.
+4. Claim-страница: верификация владения — email-код на доменный ящик бренда ИЛИ VK OAuth.
+5. Заявка → ручная модерация в админке (approve/reject).
+6. Approve → бренд в ЛК владельца.
+
+**Точки трения (объясняют clicked=2 / claimed=0):** CTA обещает «забрать управление», а приземляет
+на витрину; кнопка claim вторичная; регистрация+Turnstile+верификация+ручной approve = длинный
+путь для холодного визитёра. **Бэклог-идеи (не строим без решения):** (а) баннер на карточке при
+`utm_campaign=brand_invite` «Вы владелец {бренд}? Заберите страницу — 2 минуты» с прямой ссылкой
+на claim; (б) click_url сразу в `/brand-claim/{id}` (интент сохранится через login target_path);
+(в) событие claim_started для трекинга шагов воронки.
