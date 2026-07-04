@@ -72,6 +72,7 @@
 | [bugtracker.md](bugtracker.md) | Баг-трекер (ЛК, уведомления, тарифы/биллинг) |
 | [bugtracker-status.md](bugtracker-status.md) | Статус исправлений по багам |
 | [changelog.md](changelog.md) | История релизов |
+| [session_friction_audit.md](session_friction_audit.md) | Аудит трения в сессиях Claude Code (19.06–04.07): 10 кластеров + план скиллов/автоматизаций/правок CLAUDE.md |
 
 ## Транскрипты и разборы
 
