@@ -37,9 +37,11 @@ RU-дрип только разогнался (Яндекс ×2, pages-in-search
 - N полных инстансов — N деплоев/кронов, смертельно соло уже на 3.
 - **Целевое: seo-factory (общий конвейер, одна ollama) + тонкие фронты на своих доменах/EU-хостингах.**
   Совпадает с уже существующим планом выноса конвейера.
-- Замены в конвейере для не-RU: discover — DataForSEO SERP / Brave Search API; ключевики — Google
-  Keyword Planner (валидация) + DataForSEO Labs (батч); trafilatura/embed/generate — язык-агностичны,
-  gemma4 на FR/DE достаточна.
+- Замены в конвейере для не-RU: discover — DataForSEO SERP / Brave Search API; **ключевики — из Google
+  (решение пользователя 2026-07-05)**: Google Keyword Planner (валидация) + DataForSEO/Google Ads API
+  (батч; выбор конкретного канала — по итогам ресёрча цен/порога входа); trafilatura/embed/generate —
+  язык-агностичны, gemma4 на FR/DE достаточна. В `KeywordService` при выносе в seo-factory закладывать
+  интерфейс источника (драйверы Wordstat | Google).
 - Отдельный чистый ccTLD без связи с wearbase.ru (российский след убивает доверие и claim);
   перелинковку и hreflang с wearbase.ru не делать.
 
