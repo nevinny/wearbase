@@ -38,10 +38,25 @@ RU-дрип только разогнался (Яндекс ×2, pages-in-search
 - **Целевое: seo-factory (общий конвейер, одна ollama) + тонкие фронты на своих доменах/EU-хостингах.**
   Совпадает с уже существующим планом выноса конвейера.
 - Замены в конвейере для не-RU: discover — DataForSEO SERP / Brave Search API; **ключевики — из Google
-  (решение пользователя 2026-07-05)**: Google Keyword Planner (валидация) + DataForSEO/Google Ads API
-  (батч; выбор конкретного канала — по итогам ресёрча цен/порога входа); trafilatura/embed/generate —
-  язык-агностичны, gemma4 на FR/DE достаточна. В `KeywordService` при выносе в seo-factory закладывать
-  интерфейс источника (драйверы Wordstat | Google).
+  (решение пользователя 2026-07-05)**; trafilatura/embed/generate — язык-агностичны, gemma4 на FR/DE
+  достаточна. В `KeywordService` при выносе в seo-factory закладывать интерфейс источника
+  (драйверы Wordstat | Google).
+
+### Источник Google-ключевиков (ресёрч 2026-07-05)
+
+- **Батч-конвейер: DataForSEO** — Keywords Data API «Google Ads search volume» (до 1000 ключевиков
+  за задачу, $0.06 standard queue → **~$6/100k точных объёмов**, не диапазонов) + Labs keyword ideas
+  (~$0.13/1000 идей) ≈ **$20/мес на 100k**. Депозит $50, pay-as-you-go. FR=location 2250, DE=2276.
+  Ложится в паттерн `WordstatClient` (батчи + статус-поле). ⚠️ Оплата только зарубежной картой
+  (Visa/MC РФ не работают, компания эстонско-украинская) — тот же биллинг-блокер, что и MoR.
+- **Разовая валидация**: Google Keyword Planner UI бесплатно (диапазонов хватит для sanity-check)
+  или Keywords Everywhere ($84/год, данные того же Keyword Planner).
+- **Google Ads API напрямую** — только если появится тратящий Ads-аккаунт: без расхода ~$50–100+
+  отдаёт диапазоны 1K–10K, а не точные объёмы; нужен MCC + developer token (модерация Basic access);
+  Ads в РФ приостановлен → аккаунт/биллинг только на нерезидента.
+- **Бесплатное дополнение**: Google Autocomplete (`suggestqueries.google.com`, hl/gl=fr) — расширение
+  «brand + модификатор» без объёмов, троттлинг ~1–2 rps. Trends API (alpha) — не для конвейера.
+- Serpstat (не обслуживает РФ) и SE Ranking (API от ~$239/мес) — не брать.
 - Отдельный чистый ccTLD без связи с wearbase.ru (российский след убивает доверие и claim);
   перелинковку и hreflang с wearbase.ru не делать.
 
