@@ -36,6 +36,13 @@ parameters:
     env(BRAVE_SEARCH_MONTHLY_CAP): '1000'
     # QA-гейт сгенерированного контента (article-qa-toolkit). '0' = выключить.
     env(ARTICLE_QA_ENABLED): '1'
+    # RAG-стек и Wordstat: живут в .env.local (на проде пустые) — дефолты, чтобы
+    # контейнер собирался и app:health:env работал без записей в .env
+    env(WORDSTAT_API_KEY): ''
+    env(LOCAL_LLM_URL): ''
+    env(QDRANT_URL): ''
+    env(QDRANT_API_KEY): ''
+    env(SEARXNG_URL): ''
     # Канонический хост сайта для canonical/hreflang (не зависит от request-хоста)
     env(SITE_BASE_URL): 'https://wearbase.ru'
     app.site_base_url: '%env(SITE_BASE_URL)%'
