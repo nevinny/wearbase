@@ -140,8 +140,9 @@
 {% block body %}
     {# Баннер для визитёров из outreach-письма (CTA «Забрать управление страницей»): без него
        клик приземлялся на витрину, где claim-кнопку надо было искать (clicked=2/claimed=0).
-       Роботы utm-URL не видят (robots.txt: Disallow /*?utm_*) — клоакинга нет. #}
-    {% if app.request.query.get('utm_campaign') == 'brand_invite' and not (app.user and isMemberOfThisBrand) %}
+       Роботы utm-URL не видят (robots.txt: Disallow /*?utm_*) — клоакинга нет.
+       Иностранным брендам claim отключён (docs/foreign_brands_policy.md). #}
+    {% if app.request.query.get('utm_campaign') == 'brand_invite' and not (app.user and isMemberOfThisBrand) and not brand.isForeignOrigin %}
         <div class="bg-indigo-600">
             <div class="container mx-auto px-4 py-3.5 flex flex-col sm:flex-row items-center justify-center gap-3 text-center">
                 <p class="text-white text-sm font-medium">
@@ -265,7 +266,7 @@
                                     </svg>
                                     Кабинет бренда
                                 </a>
-                            {% else %}
+                            {% elseif not brand.isForeignOrigin %}
                                 <a href="{{ path('brand_claim_new', {id: brand.id}) }}"
                                    class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-800 hover:border-gray-900 hover:text-gray-900 transition shadow-sm">
                                     <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">

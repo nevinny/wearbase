@@ -214,6 +214,23 @@ class Brand
     private ?\DateTimeInterface $nicheCheckedAt = null;
 
     /**
+     * Вердикт классификатора происхождения (app:brand:origin-check, docs/foreign_brands_policy.md):
+     * NULL — не проверен; 'ru' — российский; 'foreign' — иностранный/глобальный (Nike, Chanel…);
+     * 'unknown' — сомнение → ручной review. 'foreign' И 'unknown' гейтят конвейер
+     * (PipelineQueueRepository) и дрип-публикацию (publish-tick); NULL проходит.
+     */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $originStatus = null;
+
+    /** Короткое обоснование вердикта происхождения (для ручного ревью). */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $originReason = null;
+
+    /** Когда классификатор происхождения последний раз выносил вердикт (NULL = ещё не проверялся). */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $originCheckedAt = null;
+
+    /**
      * Бренд прекратил работу (tombstone). NULL = действующий. Если задан у active-бренда —
      * страница остаётся 200/индексируется, но показывает плашку «закрылся» + альтернативы.
      */
@@ -998,6 +1015,39 @@ class Brand
         $this->nicheStatus    = $verdict;
         $this->nicheReason    = $reason !== null ? mb_substr($reason, 0, 255) : null;
         $this->nicheCheckedAt = $at;
+
+        return $this;
+    }
+
+    // ─── Происхождение (вердикт классификатора, docs/foreign_brands_policy.md) ─
+
+    public function getOriginStatus(): ?string
+    {
+        return $this->originStatus;
+    }
+
+    public function getOriginReason(): ?string
+    {
+        return $this->originReason;
+    }
+
+    public function getOriginCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->originCheckedAt;
+    }
+
+    /** Подтверждённо иностранный бренд (гейтит конвейер, публикацию и claim). */
+    public function isForeignOrigin(): bool
+    {
+        return $this->originStatus === 'foreign';
+    }
+
+    /** Зафиксировать вердикт классификатора: 'ru' | 'foreign' | 'unknown' + обоснование (все null = сброс). */
+    public function markOrigin(?string $verdict, ?string $reason, ?\DateTimeInterface $at): static
+    {
+        $this->originStatus    = $verdict;
+        $this->originReason    = $reason !== null ? mb_substr($reason, 0, 255) : null;
+        $this->originCheckedAt = $at;
 
         return $this;
     }

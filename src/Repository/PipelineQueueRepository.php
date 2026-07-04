@@ -296,6 +296,13 @@ class PipelineQueueRepository
         $qb->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != :nicheOff")
             ->setParameter('nicheOff', 'off');
 
+        // Иностранное происхождение (app:brand:origin-check, docs/foreign_brands_policy.md) —
+        // не готовим, не пушим, не публикуем. Блокируем 'foreign' И 'unknown' (сомнение →
+        // ручной review, fail-safe); NULL (не проверен) и 'ru' проходят, чтобы гейт не
+        // застопорил конвейер до прогона классификатора.
+        $qb->andWhere("b.originStatus IS NULL OR b.originStatus NOT IN (:originBlocked)")
+            ->setParameter('originBlocked', ['foreign', 'unknown']);
+
         if ($total > 1) {
             $qb->andWhere('MOD(b.id, :total) = :shard')
                 ->setParameter('total', $total)

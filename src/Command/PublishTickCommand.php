@@ -168,6 +168,8 @@ class PublishTickCommand extends Command
         // --- Готовые бренды ПО СПРОСу (drip-by-demand) ---
         // niche_status='off' (app:brand:niche-check) НЕ публикуем — чужая ниша. NULL/'in' проходят
         // (иначе гейт застопорит дрип до прогона классификатора → порядок cron: niche-check → publish-tick).
+        // origin_status 'foreign'/'unknown' (app:brand:origin-check, docs/foreign_brands_policy.md)
+        // НЕ публикуем — иностранный бренд или сомнение (ручной review). NULL/'ru' проходят.
         // Порядок: спрос НА ПОКУПКУ бренда = SUM(monthly_shows) по ключам, где имя бренда СОЧЕТАЕТСЯ
         // с коммерческим модификатором (одежда/бренд/купить/магазин/сайт). Так отсекается фейковый
         // спрос общесловных имён («яндекс браузер», «форма для выпечки»), а distinctive-бренды
@@ -178,6 +180,7 @@ class PublishTickCommand extends Command
               LEFT JOIN brand_keyword k ON k.brand_id = b.id
              WHERE b.status = 'new' AND b.publish_pending = 1
                AND (b.niche_status IS NULL OR b.niche_status <> 'off')
+               AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign', 'unknown'))
              GROUP BY b.id
              ORDER BY SUM(CASE WHEN LOWER(k.keyword) LIKE CONCAT('%', LOWER(b.title), '%')
                         AND (k.keyword LIKE '%одежд%' OR k.keyword LIKE '%бренд%' OR k.keyword LIKE '%купить%'

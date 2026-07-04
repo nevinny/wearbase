@@ -44,6 +44,8 @@ class BrandClaimController extends AbstractController
     #[IsGranted('ROLE_USER')]
     public function new(Brand $brand): Response
     {
+        $this->denyIfForeign($brand);
+
         /** @var User $user */
         $user = $this->getUser();
 
@@ -63,6 +65,8 @@ class BrandClaimController extends AbstractController
     #[IsGranted('ROLE_USER')]
     public function emailSend(Brand $brand, Request $request): Response
     {
+        $this->denyIfForeign($brand);
+
         if (!$this->isCsrfTokenValid('brand_claim_email', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Недействительный токен');
             return $this->redirectToRoute('brand_claim_new', ['id' => $brand->getId()]);
@@ -88,6 +92,8 @@ class BrandClaimController extends AbstractController
     #[IsGranted('ROLE_USER')]
     public function emailVerify(Brand $brand, Request $request): Response
     {
+        $this->denyIfForeign($brand);
+
         if (!$this->isCsrfTokenValid('brand_claim_email', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Недействительный токен');
             return $this->redirectToRoute('brand_claim_new', ['id' => $brand->getId()]);
@@ -119,6 +125,8 @@ class BrandClaimController extends AbstractController
     #[IsGranted('ROLE_USER')]
     public function vkStart(Brand $brand, Request $request): Response
     {
+        $this->denyIfForeign($brand);
+
         if (!$this->vkVerifier->isConfigured()) {
             $this->addFlash('error', 'Подтверждение через VK временно недоступно. Используйте другой способ.');
             return $this->redirectToRoute('brand_claim_new', ['id' => $brand->getId()]);
@@ -187,6 +195,8 @@ class BrandClaimController extends AbstractController
     #[IsGranted('ROLE_USER')]
     public function manual(Brand $brand, Request $request): Response
     {
+        $this->denyIfForeign($brand);
+
         if (!$this->isCsrfTokenValid('brand_claim_manual', (string) $request->request->get('_token'))) {
             $this->addFlash('error', 'Недействительный токен');
             return $this->redirectToRoute('brand_claim_new', ['id' => $brand->getId()]);
@@ -276,6 +286,18 @@ class BrandClaimController extends AbstractController
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Иностранным брендам claim жёстко отключён (docs/foreign_brands_policy.md):
+     * коммерческая платформа + «заберите страницу Nike» = претензионный риск.
+     * 404 — не раскрываем механику; баннер/CTA в шаблоне тоже скрыты.
+     */
+    private function denyIfForeign(Brand $brand): void
+    {
+        if ($brand->isForeignOrigin()) {
+            throw $this->createNotFoundException('Заявка на владение недоступна для этого бренда');
+        }
+    }
 
     private function getOrCreateClaim(Brand $brand, User $user): BrandClaim
     {
