@@ -105,6 +105,30 @@ RU-дрип только разогнался (Яндекс ×2, pages-in-search
   лоб-в-лоб не входить. Недообслужены: generic «deutsche modemarken», города, streetwear,
   made-in-germany по вертикалям. getchanged.net мёртв, Fashion Changers — 45 брендов-активистов.
 
+### Keyword Planner: диапазоны частотностей (2026-07-05, аккаунт WGC-M-S-avtoevo)
+
+Снято через GKP UI («количество запросов и прогнозы», гео Франция/Германия, июнь 2025 – май 2026;
+аккаунт без активного расхода → диапазоны, не точные числа; в аккаунте остались два plan-черновика).
+
+| Франция | диапазон/мес | Германия | диапазон/мес |
+|---|---|---|---|
+| vêtements made in france | **1–10 тыс.** | deutsche modemarken | 100–1 тыс. |
+| chaussures made in france | **1–10 тыс.** | deutsche kleidungsmarken | 100–1 тыс. |
+| jean made in france | **1–10 тыс.** | deutsche streetwear marken | 100–1 тыс. |
+| t-shirt made in france | 100–1 тыс. | kleidung made in germany | 100–1 тыс. |
+| liste marque française vêtement | 100–1 тыс. | jeans made in germany | 100–1 тыс. |
+| maroquinerie française | 100–1 тыс. | schuhe made in germany | 100–1 тыс. |
+| marque(s) française(s) de vêtements | 100–1 тыс. ×2 | mode made in germany | 100–1 тыс. (-90% г/г) |
+| streetwear / éthique / homme / baskets / top 100 / mode MIF | 10–100 ×7 | modelabels / damen / herren / faire / nachhaltige | 10–100 ×5 |
+| annuaire / jeunes créateurs / femme / meilleures / de mode | нет данных | beste / junge / liste | нет данных |
+
+**Чтение**: у Франции три головных ключа 1–10 тыс./мес (продуктовые «made in france»), у Германии
+головных нет вообще — потолок 100–1 тыс. Сумма по 20-фразовой пробе: FR ≈ 4–35 тыс./мес,
+DE ≈ 1–7 тыс./мес — Франция ×3–5 ёмче на сопоставимой пробе. Проба — малая часть кластера
+(Primelis: 1200 ключевиков темы) → **порог 20k+/мес для FR реалистичен по полному кластеру;
+для DE — сомнителен**. Продуктовые MIF-запросы (обувь/джинсы/футболки) — самые ёмкие → в MVP
+нужны категорийные листиклы «chaussures made in France», не только бренд-каталог.
+
 ### Вердикт валидации
 
 **Гипотеза «модель реплицируема» подтверждена для обеих стран; Франция первая** (спрос ~×2 богаче,
