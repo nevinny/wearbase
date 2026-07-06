@@ -212,8 +212,7 @@ class SyncYandexWebmasterCommand extends Command
         $lines = [];
 
         $inSearch = (int) $this->db->fetchOne('SELECT COUNT(*) FROM yandex_index_status WHERE in_search = 1');
-        $active   = (int) $this->db->fetchOne("SELECT COUNT(*) FROM brand WHERE status = 'active'");
-        $lines[] = sprintf('В поиске Яндекса: %d брендов (из %d active)', $inSearch, $active);
+        $lines[]  = $this->activeCountLine($inSearch);
 
         $q = $this->db->fetchAssociative(
             'SELECT COUNT(*) c, COALESCE(SUM(shows),0) shows, COALESCE(SUM(clicks),0) clicks
@@ -234,6 +233,32 @@ class SyncYandexWebmasterCommand extends Command
                 // нотификация не должна ронять синк
             }
         }
+    }
+
+    /**
+     * Строка «В поиске Яндекса: N (из M active)» — знаменатель active берём с прода
+     * (agent-API, publish-stats.active_total): числитель (страницы прода) и знаменатель
+     * иначе оказываются из разных БД (dev vs прод). Прод недоступен/поля нет — честный
+     * fallback на локальный COUNT с явной подписью «в dev-БД».
+     */
+    private function activeCountLine(int $inSearch): string
+    {
+        if (trim((string) $this->prodApiUrl) !== '' && trim((string) $this->agentToken) !== '') {
+            try {
+                $d = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/publish-stats', [
+                    'headers' => ['X-Agent-Token' => (string) $this->agentToken],
+                    'timeout' => 8,
+                ])->toArray(false);
+                if (isset($d['active_total'])) {
+                    return sprintf('В поиске Яндекса: %d брендов (из %d active на проде)', $inSearch, (int) $d['active_total']);
+                }
+            } catch (\Throwable) {
+                // прод недоступен — fallback ниже
+            }
+        }
+
+        $active = (int) $this->db->fetchOne("SELECT COUNT(*) FROM brand WHERE status = 'active'");
+        return sprintf('В поиске Яндекса: %d брендов (из %d active в dev-БД)', $inSearch, $active);
     }
 
     /** /{locale}/brands/{slug} → brand.id (null для прочих страниц). */
