@@ -48,7 +48,7 @@ class DailyReportCommand extends Command
         $one = fn(string $sql) => (int) $this->db->fetchOne($sql);
 
         // --- Публикации с прода (агент-API; TG с прода недоступен — поэтому тянем сюда) ---
-        $pub = ['published_today' => '—', 'published_total' => '—', 'queue_pending' => '—', 'last_published' => '—'];
+        $pub = ['published_today' => '—', 'published_yesterday' => '—', 'published_total' => '—', 'queue_pending' => '—', 'last_published' => '—'];
         try {
             if (trim((string) $this->prodApiUrl) !== '') {
                 $d = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/publish-stats', [
@@ -63,12 +63,13 @@ class DailyReportCommand extends Command
 
         // --- GSC (локальная БД; синк делает крон .43) ---
         $cohort = $this->db->fetchAssociative(
-            "SELECT COUNT(s.id) checked, COALESCE(SUM(s.indexed),0) idx FROM brand b
+            "SELECT COUNT(s.id) checked, COALESCE(SUM(s.first_indexed_at IS NOT NULL),0) idx FROM brand b
              JOIN gsc_index_status s ON s.brand_id = b.id
              WHERE b.published_at IS NOT NULL AND b.published_at <= DATE_SUB(NOW(), INTERVAL 14 DAY)",
         ) ?: ['checked' => 0, 'idx' => 0];
         $gscChecked = $one("SELECT COUNT(*) FROM gsc_index_status");
         $gscIndexed = $one("SELECT COALESCE(SUM(indexed),0) FROM gsc_index_status");
+        $gscEver    = $one("SELECT COUNT(*) FROM gsc_index_status WHERE first_indexed_at IS NOT NULL");
         $gscLast    = $this->db->fetchOne("SELECT MAX(last_checked_at) FROM gsc_index_status") ?: '—';
         $cohortTxt  = (int) $cohort['checked'] > 0
             ? sprintf('%d/%d (%.0f%%)', $cohort['idx'], $cohort['checked'], 100 * $cohort['idx'] / max(1, (int) $cohort['checked']))
@@ -129,17 +130,17 @@ class DailyReportCommand extends Command
 
         $msg = sprintf(
             "<b>📅 Дайджест · %s</b>\n\n" .
-            "<b>Публикации (прод):</b> сегодня %s · всего %s · ждут %s\n" .
+            "<b>Публикации (прод):</b> вчера %s · всего %s · ждут %s\n" .
             "Последняя: %s\n\n" .
-            "<b>GSC:</b> проверено %d · в индексе %d\n" .
+            "<b>GSC:</b> проверено %d · в индексе сейчас %d · когда-либо %d\n" .
             "Когорта 14д+ в индексе: %s\n" .
             "Последняя проверка: %s\n\n" .
             "<b>Яндекс:</b> в поиске %d брендов · запросы: %s\n" .
             "Последняя проверка: %s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
-            $pub['published_today'], $pub['published_total'], $pub['queue_pending'],
+            $pub['published_yesterday'], $pub['published_total'], $pub['queue_pending'],
             $pub['last_published'],
-            $gscChecked, $gscIndexed,
+            $gscChecked, $gscIndexed, $gscEver,
             $cohortTxt,
             $gscLast,
             $yaInSearch, $yaQtxt,

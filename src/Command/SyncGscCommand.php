@@ -251,10 +251,13 @@ class SyncGscCommand extends Command
             $io->text($bl);
         }
 
-        // Общая индексация проверенных
-        $total = $this->db->fetchAssociative('SELECT COUNT(*) c, COALESCE(SUM(indexed),0) idx FROM gsc_index_status');
+        // Общая индексация проверенных: indexed — volatile (снимается при выпадении показов
+        // из 7-дневного окна SA), first_indexed_at — монотонная «когда-либо подтверждён».
+        $total = $this->db->fetchAssociative(
+            'SELECT COUNT(*) c, COALESCE(SUM(indexed),0) idx, SUM(first_indexed_at IS NOT NULL) ever FROM gsc_index_status',
+        );
         if ($total && (int) $total['c'] > 0) {
-            $lines[] = sprintf('Индексация: %d/%d (%.0f%%)', $total['idx'], $total['c'], 100 * $total['idx'] / $total['c']);
+            $lines[] = sprintf('Индексация: сейчас %d · когда-либо %d · из %d проверенных', $total['idx'], $total['ever'], $total['c']);
         }
 
         // Когорта «опубликовано ≥14 дней назад» — успели ли проиндексироваться за 14 дней
