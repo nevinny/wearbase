@@ -269,13 +269,16 @@ class BrandIngestController extends AbstractController
         }
 
         $db = $em->getConnection();
-        $todayMsk = (new \DateTime('today', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
+        $todayMsk     = (new \DateTime('today', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
+        $yesterdayMsk = (new \DateTime('yesterday', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
 
         return $this->json([
-            'published_total' => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at IS NOT NULL'),
-            'published_today' => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at >= ?', [$todayMsk]),
-            'queue_pending'   => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1"),
-            'last_published'  => $db->fetchOne('SELECT MAX(published_at) FROM brand') ?: null,
+            'published_total'     => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at IS NOT NULL'),
+            'published_today'     => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at >= ?', [$todayMsk]),
+            'published_yesterday' => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at >= ? AND published_at < ?', [$yesterdayMsk, $todayMsk]),
+            'queue_pending'       => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1"),
+            'last_published'      => $db->fetchOne('SELECT MAX(published_at) FROM brand') ?: null,
+            'active_total'        => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='active'"),
         ]);
     }
 
