@@ -383,6 +383,31 @@ class BrandIngestController extends AbstractController
         return $this->json(['cohorts' => $rows, 'note' => 'окна нарастающие (7⊂14⊂30); KPI — клики, opens завышены']);
     }
 
+    /**
+     * Статьи блога (для pull-конвейера closed-loop «индексация→Дзен»): `app:seo:publish-blog`
+     * публикует статьи НА ПРОДЕ, а GSC-вотчер (checkBlogIndex в SyncGscCommand) живёт на Mac
+     * и читает локальную таблицу article — без синка она стейл. `app:blog:pull-articles`
+     * (Mac) тянет сюда раз в день. indexed_at/indexed_notified_at НЕ отдаём — авторитет по
+     * ним локальный (Mac), прод их не ведёт.
+     */
+    #[Route('/blog-articles', name: 'api_blog_articles', methods: ['GET'])]
+    public function blogArticles(
+        Request $request,
+        EntityManagerInterface $em,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter, checkSignature: false)) !== null) {
+            return $deny;
+        }
+
+        $rows = $em->getConnection()->fetchAllAssociative(
+            'SELECT id, slug, locale, title, source_file, status, published_at, created_at, updated_at
+             FROM article ORDER BY id ASC LIMIT 1000',
+        );
+
+        return $this->json(['items' => $rows]);
+    }
+
     #[Route('/brands/{slug}/status', name: 'api_brand_status', methods: ['GET'])]
     public function status(
         string $slug,
