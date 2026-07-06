@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Service\Gsc\GscClient;
+use App\Service\PageClassifier;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -19,6 +20,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *     (показ невозможен без индексации). Помечаем indexed=1 БЕЗ инспекции — иначе инспекция
  *     одного ru-URL недосчитывает индексацию в разы (ранжируется en/tr/…, а ru ещё нет).
  *     Это и масштабируется: на десятках тысяч страниц индекс выводим из SA, не из квоты.
+ *     То же самое — для не-брендовых страниц (blog/style/city/other), группировка по page_url
+ *     (у них нет brand_id); gsc_index_status трекает ВСЕ страницы, не только бренды.
  *  2. URL Inspection (лимит Google 2000/день → cap 1500) — ДИАГНОСТИКА МОЛЧУНОВ: квоту
  *     тратим на свежеопубликованные + страницы БЕЗ показов (их и надо разбирать «почему не
  *     в индексе»); уже ранжирующиеся не инспектируем — они и так помечены п.1b.
@@ -42,6 +45,7 @@ class SyncGscCommand extends Command
     public function __construct(
         private readonly GscClient  $gsc,
         private readonly Connection $db,
+        private readonly PageClassifier $pageClassifier,
         private readonly \App\Notification\AdminNotifier $notifier,
     ) {
         parent::__construct();
@@ -154,6 +158,43 @@ class SyncGscCommand extends Command
             "SELECT COUNT(DISTINCT brand_id) FROM gsc_page_stats WHERE brand_id IS NOT NULL AND impressions > 0",
         );
         $io->text("Индекс по Search Analytics: {$served} брендов с показами помечены проиндексированными (любая локаль)");
+
+        // 3) не-брендовые страницы (блог/стили/города/прочее) с показами — тот же вывод индекса
+        // из Search Analytics, но группировка по page_url (у них нет brand_id). Квоты не тратит —
+        // данные уже собраны в п.1.
+        $servedUrlSub = "SELECT page_url, MIN(day) first_day FROM gsc_page_stats
+                          WHERE brand_id IS NULL AND impressions > 0 GROUP BY page_url";
+
+        $this->db->executeStatement(
+            "UPDATE gsc_index_status s
+             JOIN ({$servedUrlSub}) p ON p.page_url = s.page_url
+             SET s.indexed = 1,
+                 s.coverage_state = IF(s.coverage_state IS NULL OR s.coverage_state LIKE 'Served%',
+                                       'Served (Search Analytics)', s.coverage_state),
+                 s.first_indexed_at = LEAST(COALESCE(s.first_indexed_at, p.first_day), p.first_day)",
+        );
+
+        $newUrls = $this->db->fetchAllAssociative(
+            "SELECT p.page_url, p.first_day FROM ({$servedUrlSub}) p
+             LEFT JOIN gsc_index_status s ON s.page_url = p.page_url
+             WHERE s.page_url IS NULL",
+        );
+        foreach ($newUrls as $u) {
+            $this->db->executeStatement(
+                "INSERT INTO gsc_index_status (brand_id, page_url, page_type, coverage_state, indexed, last_checked_at, first_indexed_at)
+                 VALUES (NULL, :url, :type, 'Served (Search Analytics)', 1, NULL, :first_day)",
+                [
+                    'url'       => $u['page_url'],
+                    'type'      => $this->pageClassifier->classify($u['page_url']),
+                    'first_day' => $u['first_day'],
+                ],
+            );
+        }
+
+        $servedPages = (int) $this->db->fetchOne(
+            "SELECT COUNT(DISTINCT page_url) FROM gsc_page_stats WHERE brand_id IS NULL AND impressions > 0",
+        );
+        $io->text("Индекс по Search Analytics: {$servedPages} не-брендовых страниц с показами помечены проиндексированными");
     }
 
     private function syncIndexCoverage(SymfonyStyle $io, int $cap): void

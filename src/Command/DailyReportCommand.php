@@ -76,7 +76,15 @@ class DailyReportCommand extends Command
             : '— (нет когорты 14д+)';
 
         // --- Яндекс.Вебмастер (локальная БД; синк крон Mac 07:00) ---
-        $yaInSearch = $one("SELECT COUNT(*) FROM yandex_index_status WHERE in_search = 1");
+        $yaByType = $this->db->fetchAllAssociative(
+            "SELECT page_type, COUNT(*) c FROM yandex_index_status WHERE in_search = 1 GROUP BY page_type",
+        );
+        $yaCounts   = array_column($yaByType, 'c', 'page_type');
+        $yaInSearch = array_sum($yaCounts);
+        $yaTypesTxt = implode(' · ', array_map(
+            fn($t, $c) => "{$t} {$c}",
+            array_keys($yaCounts), $yaCounts,
+        ));
         $yaLast     = $this->db->fetchOne("SELECT MAX(last_checked_at) FROM yandex_index_status") ?: '—';
         $yaQ = $this->db->fetchAssociative(
             "SELECT COUNT(*) c, COALESCE(SUM(shows),0) shows, COALESCE(SUM(clicks),0) clicks
@@ -135,7 +143,7 @@ class DailyReportCommand extends Command
             "<b>GSC:</b> проверено %d · в индексе сейчас %d · когда-либо %d\n" .
             "Когорта 14д+ в индексе: %s\n" .
             "Последняя проверка: %s\n\n" .
-            "<b>Яндекс:</b> в поиске %d брендов · запросы: %s\n" .
+            "<b>Яндекс:</b> в поиске %d (%s) · запросы: %s\n" .
             "Последняя проверка: %s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
             $pub['published_yesterday'], $pub['published_total'], $pub['queue_pending'],
@@ -143,7 +151,7 @@ class DailyReportCommand extends Command
             $gscChecked, $gscIndexed, $gscEver,
             $cohortTxt,
             $gscLast,
-            $yaInSearch, $yaQtxt,
+            $yaInSearch, $yaTypesTxt, $yaQtxt,
             $yaLast,
             $contactLine,
         );

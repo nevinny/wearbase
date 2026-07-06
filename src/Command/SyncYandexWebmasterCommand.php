@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use App\Service\PageClassifier;
 use App\Service\Yandex\YandexWebmasterClient;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -35,6 +36,7 @@ class SyncYandexWebmasterCommand extends Command
     public function __construct(
         private readonly YandexWebmasterClient $ya,
         private readonly Connection $db,
+        private readonly PageClassifier $pageClassifier,
         private readonly \App\Notification\AdminNotifier $notifier,
         private readonly HttpClientInterface $httpClient,
         #[Autowire('%env(default::PROD_API_URL)%')]
@@ -95,20 +97,19 @@ class SyncYandexWebmasterCommand extends Command
 
         $marked = 0;
         foreach ($samples as $s) {
-            $brandId = $this->resolveBrandId($s['url']);
-            if ($brandId === null) {
-                continue; // не-брендовая страница (блог/лендинг) — в этой таблице не трекаем
-            }
+            $url = mb_substr($s['url'], 0, 512);
+            $pageType = $this->pageClassifier->classify($s['url']);
+            $brandId  = $pageType === 'brand' ? $this->resolveBrandId($s['url']) : null;
             $this->db->executeStatement(
-                'INSERT INTO yandex_index_status (brand_id, page_url, in_search, last_checked_at, first_seen_at)
-                 VALUES (:brand_id, :url, 1, NOW(), NOW())
-                 ON DUPLICATE KEY UPDATE page_url = :url, in_search = 1, last_checked_at = NOW(),
+                'INSERT INTO yandex_index_status (brand_id, page_url, page_type, in_search, last_checked_at, first_seen_at)
+                 VALUES (:brand_id, :url, :page_type, 1, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE brand_id = :brand_id, page_type = :page_type, in_search = 1, last_checked_at = NOW(),
                      first_seen_at = COALESCE(first_seen_at, NOW())',
-                ['brand_id' => $brandId, 'url' => mb_substr($s['url'], 0, 512)],
+                ['brand_id' => $brandId, 'url' => $url, 'page_type' => $pageType],
             );
             $marked++;
         }
-        $io->text("Помечено брендов в поиске Яндекса: {$marked}");
+        $io->text("Помечено страниц в поиске Яндекса: {$marked}");
     }
 
     /** TOP популярных запросов → yandex_query_stats. */
@@ -211,8 +212,19 @@ class SyncYandexWebmasterCommand extends Command
         $io->section('Отчёт');
         $lines = [];
 
-        $inSearch = (int) $this->db->fetchOne('SELECT COUNT(*) FROM yandex_index_status WHERE in_search = 1');
-        $lines[]  = $this->activeCountLine($inSearch);
+        $byType = $this->db->fetchAllAssociative(
+            "SELECT page_type, COUNT(*) c FROM yandex_index_status WHERE in_search = 1 GROUP BY page_type",
+        );
+        $counts = array_column($byType, 'c', 'page_type');
+        $total  = array_sum($counts);
+
+        $parts = [$this->activeCountFragment((int) ($counts['brand'] ?? 0))];
+        foreach (['blog' => 'блог', 'style' => 'стили', 'city' => 'города', 'other' => 'прочее'] as $type => $label) {
+            if (($counts[$type] ?? 0) > 0) {
+                $parts[] = sprintf('%s %d', $label, $counts[$type]);
+            }
+        }
+        $lines[] = sprintf('В поиске Яндекса: %d страниц · %s', $total, implode(' · ', $parts));
 
         $q = $this->db->fetchAssociative(
             'SELECT COUNT(*) c, COALESCE(SUM(shows),0) shows, COALESCE(SUM(clicks),0) clicks
@@ -236,12 +248,12 @@ class SyncYandexWebmasterCommand extends Command
     }
 
     /**
-     * Строка «В поиске Яндекса: N (из M active)» — знаменатель active берём с прода
+     * Фрагмент «бренды N (из M active)» для строки отчёта — знаменатель active берём с прода
      * (agent-API, publish-stats.active_total): числитель (страницы прода) и знаменатель
      * иначе оказываются из разных БД (dev vs прод). Прод недоступен/поля нет — честный
      * fallback на локальный COUNT с явной подписью «в dev-БД».
      */
-    private function activeCountLine(int $inSearch): string
+    private function activeCountFragment(int $inSearch): string
     {
         if (trim((string) $this->prodApiUrl) !== '' && trim((string) $this->agentToken) !== '') {
             try {
@@ -250,7 +262,7 @@ class SyncYandexWebmasterCommand extends Command
                     'timeout' => 8,
                 ])->toArray(false);
                 if (isset($d['active_total'])) {
-                    return sprintf('В поиске Яндекса: %d брендов (из %d active на проде)', $inSearch, (int) $d['active_total']);
+                    return sprintf('бренды %d (из %d active на проде)', $inSearch, (int) $d['active_total']);
                 }
             } catch (\Throwable) {
                 // прод недоступен — fallback ниже
@@ -258,7 +270,7 @@ class SyncYandexWebmasterCommand extends Command
         }
 
         $active = (int) $this->db->fetchOne("SELECT COUNT(*) FROM brand WHERE status = 'active'");
-        return sprintf('В поиске Яндекса: %d брендов (из %d active в dev-БД)', $inSearch, $active);
+        return sprintf('бренды %d (из %d active в dev-БД)', $inSearch, $active);
     }
 
     /** /{locale}/brands/{slug} → brand.id (null для прочих страниц). */
