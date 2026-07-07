@@ -1,0 +1,112 @@
+# Curated-факты «уход с маркетплейсов / боли селлеров» для генератора статей.
+# Подмешиваются в generateReplacementListicle через MarketplaceExitContext::factBlock(),
+# который отдаёт ТОЛЬКО type=fact (мнения физически не попадают в промпт).
+# Решение «curated, не RAG» + схема — docs/wb_seller_pain_points.md.
+#
+# ⚠️ E-E-A-T: type=fact = подтверждено веб-фактчеком 2026-07-07 с публичным источником.
+# Разбор-первоисточник и полный список кандидатов (вкл. opinion) — docs/marketplace_exit_content.md.
+# Правки фактчека, ВАЖНО для датировки статей: часть событий — 2026 год, не 2025
+# (в транскриптах была путаница); опровергнутый тезис про оптику/ортопедию на WB удалён.
+
+facts:
+  # --- Регулирование (самое надёжное для публикации) ---
+  - claim: "Закон о платформенной экономике (289-ФЗ) обязывает маркетплейсы уведомлять продавца об изменении комиссий, штрафов и условий за 45 дней; потолка комиссии закон не вводит"
+    metric: "289-ФЗ, подписан 31.07.2025, в силе с 01.10.2026; уведомление за 45 дней"
+    source: "https://rg.ru/2026/07/06/marketplejsy-gotoviatsia-rabotat-po-novym-pravilam.html"
+    type: fact
+    attribution: ~
+    needs_check: false
+  - claim: "289-ФЗ запрещает маркетплейсам давать скидку за счёт продавца без его согласия и требует прозрачно раскрывать условия (единого стандарта СПП при этом не вводит)"
+    metric: "в силе с 01.10.2026"
+    source: "https://www.consultant.ru/legalnews/29160/"
+    type: fact
+    attribution: ~
+    needs_check: false
+  - claim: "ФАС добилась отмены Wildberries практики «индекс остатка» (принудительное снижение цены, повышенное хранение, вывоз товара) — по рекомендации экспертного совета при ФАС"
+    metric: "отмена с 1 ноября 2025"
+    source: "https://www.interfax.ru/business/1056403"
+    type: fact
+    attribution: ~
+    needs_check: false
+  - claim: "Указ Президента РФ №778 разрешил временный ввоз автотранспортом товаров из Казахстана и Киргизии без подтверждения статуса ЕАЭС и без маркировки"
+    metric: "указ от 24.10.2025; ввоз до 10 декабря (продлён до 25.12), маркировка/декларирование до 27.12.2025"
+    source: "https://www.garant.ru/hotlaw/federal/1895614/"
+    type: fact
+    attribution: ~
+    needs_check: false
+
+  # --- Рост комиссий 2025 ---
+  - claim: "Ozon повысил комиссию продавцам для большинства категорий — шестое повышение за год"
+    metric: "+5 п.п. с 10 ноября 2025 (предыдущее +4 п.п. — 27 октября)"
+    source: "https://oborot.ru/news/ozon-menyaet-tarify-v-shestoj-raz-za-god-i256729.html"
+    type: fact
+    attribution: ~
+    needs_check: false
+  - claim: "Яндекс.Маркет поднял комиссии продавцам синхронно с Ozon, сославшись на рост издержек"
+    metric: "с 10 ноября 2025"
+    source: "https://lenta.ru/news/2025/10/31/esche-odin-marketpleys-v-rossii-podnimet-komissii-dlya-prodavtsov/"
+    type: fact
+    attribution: ~
+    needs_check: false
+  - claim: "При повышении комиссий Wildberries сильнее всего выросла ставка для доставки силами продавца (DBS)"
+    metric: "DBS +20 п.п. (против +6 п.п. FBS и +5 п.п. FBO/FBW)"
+    source: "https://uniseller.io/blog/wildberries-povyshaet-komissii-rost-cen-benzin/"
+    type: fact
+    attribution: ~
+    needs_check: false
+
+  # --- Двойные стандарты по Китаю ---
+  - claim: "Wildberries ввёл для китайских поставщиков (China POP) льготные условия: пониженную комиссию, бонус на продвижение, FBS-логистику со складов Китая/Гонконга и еженедельные выплаты в юанях"
+    metric: "комиссия 5–16%, бонус 120 тыс. баллов"
+    source: "https://e-pepper.ru/blogs/news/wildberries-vvel-lgotnye-usloviya-dlya-kitayskikh-postavshchikov"
+    type: fact
+    attribution: ~
+    needs_check: false
+  - claim: "Регистрация на Wildberries как китайский поставщик требует китайский номер телефона и действующую бизнес-лицензию, входной взнос — 10 000 юаней"
+    metric: "≈130 тыс. ₽"
+    source: "https://oborot.ru/news/dorogo-no-priyatno-kakie-usloviya-wildberries-predlagaet-kitajskim-postavshhikam-i257038.html"
+    type: fact
+    attribution: ~
+    needs_check: false
+
+  # --- Разворот к малому бизнесу и снижения ---
+  - claim: "Wildberries снизил комиссию для малого бизнеса (FBW/FBS, около 80% продавцов), но не ниже 4,5%"
+    metric: "−7 п.п. с 29 октября 2025"
+    source: "https://ria.ru/20251024/komissiya-2050459322.html"
+    type: fact
+    attribution: ~
+    needs_check: false
+  - claim: "Оборот объединённой компании РВБ (Wildberries + Russ) за 2024 год вырос более чем в полтора раза, при высокой чистой прибыли"
+    metric: "оборот 4,1 трлн ₽ (+60% г/г), чистая прибыль РВБ по РСБУ ~104 млрд ₽"
+    source: "https://www.forbes.ru/biznes/533847-ob-edinennaa-kompania-wildberries-i-russ-otcitalas-o-pribyli-za-2024-god"
+    type: fact
+    attribution: ~
+    needs_check: false
+
+  # --- События 2026 (даты уточнены фактчеком — НЕ датировать 2025-м) ---
+  - claim: "Wildberries провёл «топливное» повышение комиссий; сильнее всего выросла одежда"
+    metric: "с 7 июля 2026; одежда +8–9% (до 43,5%), средний рост +5/+6 п.п."
+    source: "https://selsup.ru/blog/wildberries-povyshaet-komissii-s-7-iyulya-chto-izmenilos-i-kak-pereschitat-yunit-ekonomiku/"
+    type: fact
+    attribution: ~
+    needs_check: false
+  - claim: "Яндекс.Маркет запустил подписку для продавцов одежды, снижающую комиссию"
+    metric: "с ~45–52% до 14–21%; запуск июнь 2026"
+    source: "https://oborot.ru/news/komissiya-ot-14-do-21-yandeks-market-predprinyal-eshhe-odnu-popytku-zakrepitsya-v-fashion-i272527.html"
+    type: fact
+    attribution: ~
+    needs_check: false
+
+  # --- opinion: в статьи как факт НЕ идут (factBlock их отфильтрует); максимум ручной иллюстрацией ---
+  - claim: "Оборот на маркетплейсе не равен прибыли: рост комиссии на несколько пунктов вынуждает поднимать цену заметно сильнее"
+    metric: "+8% комиссии → +20–30% к цене (оценка продавца)"
+    source: "видео 4 (автор)"
+    type: opinion
+    attribution: "по словам продавца"
+    needs_check: true
+  - claim: "Часть топовых селлеров уходит с маркетплейсов не на другую площадку, а в другую отрасль"
+    metric: ~
+    source: "видео 5 (автор)"
+    type: opinion
+    attribution: "по словам продавца"
+    needs_check: false
