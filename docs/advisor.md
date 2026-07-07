@@ -112,3 +112,21 @@ Anti-hallucination: каждая идея несёт `rag_citations` (id чан�
 ## Честная рекомендация human-in-the-loop (по цене ошибки, не из принципа)
 
 Даже при «полной автономии» человек остаётся на: (1) деньги/юр (платежи, шлюзы, оферты, возврат) — нет тестов + цена ошибки = чужой счёт/юр-экспозиция; (2) security/auth/env/секреты — тихая катастрофа; (3) деструктивные миграции — единственное рутинно-необратимое; (4) массовые рассылки (был инцидент 263 письма/день, лимит Rusender 100); (5) SEO масштаба деиндексации — регрессии невидимы проду (GSC на Mac), недели на восстановление.
+
+---
+
+## Исполнительный контур (бэклог → decision-maker → трекер → воркеры → доставка → A/B)
+
+4 детерминированные команды поверх status-машины на `AdvisorIdea` (бэклог) + `AdvisorExperiment` (трекер). Воркер-кодер = `claude -p` в git worktree, только производит ветку; прод-ключ у не-агентского broker'а. Без staging класс b (код) → человек-гейт через TG-кнопки (переиспускать `TelegramController::handleCallback`/`isAdminChat`, паттерн `unpub:<id>`). Новых сущностей НЕ плодить — только поля.
+
+**1. Decision-maker** (`app:advisor:decide` + `DecisionMaker`, отдельно от tick): proposed-идеи по iceScore → классификация a/b/c ДЕТЕРМИНИРОВАННО (регекс по hypothesis/sourceSignal; плат/заказ/security/миграции/рассылки/sitemap→c, контент/seo→a, иначе b, неоднозначно→c fail-closed) → `actionClass`+`needsHuman`. Пороги: a→approved(авто), b→approved(в очередь воркеру), c→proposed+needsHuman(ревью). ICE ниже пола→rejected. WIP-cap N=1. HALT-файл.
+
+**2. Гитфлоу-трекер**: `AdvisorExperiment.stage` (pending→branch_created→implementing→implemented→tests_passed/failed→rc_ready→awaiting_approval→approved→deployed→measuring→done) как курсор-резюме (как BrandRagPipeline.status). +поля actionClass/worktreePath/testStatus/testReport/gateReport/prUrl/attempts/failureNote/approvedBy/At. Ветка `advisor/idea-<id>-<slug>`.
+
+**3. Воркеры** (`app:advisor:work` супервизор): `git worktree add` на ветку идеи (параллель-безопасно) → `claude -p` с ТЗ (title/hypothesis/ragCitations + hard-constraints: класс-c deny, soft-delete, тесты) в cwd worktree, detached → контракт-отчёт `var/advisor/reports/idea-<id>.json {sha,files,test_status}`. Воркер НЕ пушит/деплоит/не трогает прод-ключ. После: `PolicyLinter` на `git diff` (authoritative a/b/c, path/SQL deny fail-closed) + phpunit. Зелёно+a/b → rc_ready+PR; красно/escalate-to-c → назад в proposed, attempts++, после MAX → rejected.
+
+**4. Доставка — release-broker** (`app:advisor:promote`, прод-ключ здесь): гейты (php -l/lint/phpunit/PolicyLinter/migrations-status/smoke). class a→авто; **class b→человек-гейт TG (`advisor_ok/no:<id>` inline-кнопки)**, тап → merge→main→канонический деплой+smoke; class c→hard-deny. Canary=smoke-only (нет real-time прод-метрик), fail→авто-откат (prev git-тег+rsync+cache:clear). HALT перед каждым действием.
+
+**5. Замыкание = A/B на окне** (`app:advisor:evaluate`, клон EvaluateExperiments): **diff-in-diff вариант-когорта vs matched-holdout** за одно календарное окно (нейтрализует сезонность — сильнее before/after). Метод по умолчанию — per-entity cohort_holdout (это и есть паттерн BrandContentRevision); feature-flag — позже, только если нужна site-wide идея. Поля на AdvisorExperiment: measurementMethod/variantCohort/controlCohort/metricKey/armAResult/armBResult/lossStreak/measureAfter. Статистика — константы EvaluateExperiments verbatim (MIN_SAMPLE, DELTA_REL=20%, LOSS_CONFIRM_WINDOWS=2, freshness-guard); ниже порога→inconclusive (не validated). Вердикт: validated=оставили, reverted=откат (контент через BrandContentVersioner, код через git revert+broker — тоже человек-гейт), inconclusive=продлить окно→оставить. Idea-статусы без новых enum: validated/reverted; сила доказательства — в experiment.verdict. **Measurability = критерий DecisionMaker**: идеи, измеримые только before/after, получают ниже Confidence.
+
+**Фазовый порядок:** A (decide+поля трекера, 0 риск) → B (воркер→PR + PolicyLinter, 0 риск, выдаёт PR человеку) → C (broker+доставка, класс-a авто / класс-b человек-тап / класс-c deny) → D (A/B-замыкание, после C). **Phase 5 (авто-деплой класса b БЕЗ тапа) заблокирована до staging + real-time прод-метрик.** Linchpin: `PolicyLinter` (Фаза B) — единый a/b/c на реальном диффе, переиспускается broker'ом.
