@@ -91,30 +91,18 @@ final class SignalCollector
             $m['gsc_ever']    = (int) $gsc['ever'];
         }
 
-        // --- Подписки (subscription) ---
-        foreach ($this->all('SELECT status, COUNT(*) c FROM subscription GROUP BY status') as $r) {
-            $m['subscriptions_' . $r['status']] = (int) $r['c'];
-        }
-
-        // --- Прочие лиды (best-effort — таблицы могут быть пусты) ---
-        $ll = $this->one('SELECT COUNT(*) FROM landing_lead');
-        if ($ll !== null) {
-            $m['leads_landing'] = (int) $ll;
-        }
-        $ns = $this->one('SELECT COUNT(*) FROM newsletter_subscriber');
-        if ($ns !== null) {
-            $m['leads_newsletter'] = (int) $ns;
-        }
-
-        // --- Публикации и очередь дрипа с ПРОДА (агент-API; TG/публикация — на проде) ---
-        // Тот же источник, что DailyReportCommand: /api/v1/publish-stats. Недоступен → пропуск.
-        $m += $this->collectProdPublishStats();
+        // --- Живой бизнес с ПРОДА (агент-API; реальные юзеры/подписки/лиды/заказы там) ---
+        // Локальная dev-БД содержит только тестовые subscription/landing_lead/newsletter
+        // (подписки=1, лиды=1) — не бизнес. Публикации/очередь дрипа тоже живут на проде.
+        // Источник — /api/v1/publish-stats. Недоступен ИЛИ поля ещё нет (прод не задеплоен)
+        // → метрика просто отсутствует, ничего не выдумываем.
+        $m += $this->collectProdBusinessStats();
 
         return $m;
     }
 
     /** @return array<string, int> */
-    private function collectProdPublishStats(): array
+    private function collectProdBusinessStats(): array
     {
         if (trim((string) $this->prodApiUrl) === '') {
             return [];
@@ -126,14 +114,25 @@ final class SignalCollector
                 ['headers' => ['X-Agent-Token' => (string) $this->agentToken], 'timeout' => 8],
             )->toArray(false);
         } catch (\Throwable) {
-            return []; // прод недоступен — метрика просто отсутствует
+            return []; // прод недоступен — метрики просто отсутствуют
         }
 
         $out = [];
-        // Берём только числовые поля (last_published — дата-строка, не метрика).
+        // Публикации/очередь дрипа (стабильный контракт, префикс prod_ как раньше).
         foreach (['published_total', 'published_today', 'published_yesterday', 'queue_pending'] as $k) {
             if (isset($d[$k]) && is_numeric($d[$k])) {
                 $out['prod_' . $k] = (int) $d[$k];
+            }
+        }
+        // Живой бизнес: подписки по статусам, лиды, заказы. Имена уже осмысленные —
+        // переносим как есть. Появятся только после деплоя прода с новым эндпоинтом.
+        foreach ($d as $k => $v) {
+            if (is_numeric($v) && (
+                str_starts_with($k, 'subscriptions_')
+                || str_starts_with($k, 'leads_')
+                || str_starts_with($k, 'orders_')
+            )) {
+                $out[$k] = (int) $v;
             }
         }
 

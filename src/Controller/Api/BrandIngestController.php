@@ -257,7 +257,15 @@ class BrandIngestController extends AbstractController
         return $this->json(['items' => $items]);
     }
 
-    /** Статистика дрип-публикации для dev-дашборда (publish-данные живут только на проде). */
+    /**
+     * Статистика дрип-публикации + живой бизнес для dev-дашборда/советника
+     * (эти данные живут ТОЛЬКО на проде: реальные юзеры, подписки, лиды, заказы).
+     * SignalCollector на Mac читает отсюда — локальная dev-БД содержит лишь тестовые
+     * подписки/лиды, поэтому бизнес-метрики берутся с прода, а не из dev.
+     *
+     * Блок publish_* — стабильный контракт. Блок бизнеса добавлен аддитивно и fail-safe:
+     * если таблицы нет (сущность не деплоена) — соответствующее поле просто отсутствует.
+     */
     #[Route('/publish-stats', name: 'api_publish_stats', methods: ['GET'])]
     public function publishStats(
         Request $request,
@@ -272,14 +280,43 @@ class BrandIngestController extends AbstractController
         $todayMsk     = (new \DateTime('today', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
         $yesterdayMsk = (new \DateTime('yesterday', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
 
-        return $this->json([
+        $out = [
             'published_total'     => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at IS NOT NULL'),
             'published_today'     => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at >= ?', [$todayMsk]),
             'published_yesterday' => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at >= ? AND published_at < ?', [$yesterdayMsk, $todayMsk]),
             'queue_pending'       => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1"),
             'last_published'      => $db->fetchOne('SELECT MAX(published_at) FROM brand') ?: null,
             'active_total'        => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='active'"),
-        ]);
+        ];
+
+        // --- Живой бизнес (fail-safe: каждый блок отдельно, нет таблицы → поле пропускаем) ---
+
+        // Подписки по статусам: subscriptions_trial|active|past_due|cancelled|expired.
+        try {
+            foreach ($db->fetchAllAssociative('SELECT status, COUNT(*) c FROM subscription GROUP BY status') as $r) {
+                $out['subscriptions_' . $r['status']] = (int) $r['c'];
+            }
+        } catch (\Throwable) {
+        }
+
+        // Лиды (те же таблицы, что SignalCollector читал локально).
+        try {
+            $out['leads_landing'] = (int) $db->fetchOne('SELECT COUNT(*) FROM landing_lead');
+        } catch (\Throwable) {
+        }
+        try {
+            $out['leads_newsletter'] = (int) $db->fetchOne('SELECT COUNT(*) FROM newsletter_subscriber');
+        } catch (\Throwable) {
+        }
+
+        // Заказы: всего + созданные сегодня (МСК). Таблица `order` — зарезервированное слово.
+        try {
+            $out['orders_total'] = (int) $db->fetchOne('SELECT COUNT(*) FROM `order`');
+            $out['orders_today'] = (int) $db->fetchOne('SELECT COUNT(*) FROM `order` WHERE created_at >= ?', [$todayMsk]);
+        } catch (\Throwable) {
+        }
+
+        return $this->json($out);
     }
 
     /**
