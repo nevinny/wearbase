@@ -30,6 +30,9 @@ doctrine:
 when@test:
     doctrine:
         dbal:
+            # МЁРТВЫЙ конфиг: тест-БД — это SQLite-файл var/test.db (см. .env.test → DATABASE_URL),
+            # а не MySQL `<db>_test`. Этот dbname_suffix перекрыт sqlite-URL и ни на что не влияет.
+            # Схема провижинится из сущностей в tests/bootstrap.php. Оставлено на случай возврата к MySQL.
             # "TEST_TOKEN" is typically set by ParaTest
             dbname_suffix: '_test%env(default::TEST_TOKEN)%'
 

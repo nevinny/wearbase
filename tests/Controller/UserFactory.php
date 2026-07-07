@@ -4,54 +4,101 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use App\Entity\Brand;
+use App\Entity\BrandUser;
 use App\Entity\User;
+use Doctrine\ORM\EntityManagerInterface;
+use Psr\Container\ContainerInterface;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
- * Builds in-memory User stubs for use with KernelBrowser::loginUser().
+ * Персистит тестовых пользователей в тест-БД (SQLite, см. tests/bootstrap.php).
  *
- * These objects are never persisted — they only need to satisfy
- * UserInterface and carry the right roles so Symfony's security layer
- * will recognise them as authenticated during the request.
+ * loginUser() требует пользователя с идентификатором: на следующем запросе
+ * EntityUserProvider::refreshUser() перечитывает его из БД по email. Раньше фабрика
+ * отдавала неперсистентные заглушки без id → refreshUser падал «cannot refresh a user
+ * without identifier» → HTTP 500 на всех authenticated-тестах. Теперь пользователи
+ * реально сохраняются с хешированным паролем — как в проде (тот же провайдер).
+ *
+ * Все методы идемпотентны (find-or-create по email), пароль у всех — self::PASSWORD.
+ * Контейнер брать из static::getContainer() тест-кейса (даёт доступ к приватным сервисам).
  */
 final class UserFactory
 {
-    /**
-     * A regular customer with ROLE_USER (via ROLE_CUSTOMER hierarchy).
-     */
-    public static function makeCustomer(): User
-    {
-        $user = new User();
-        $user->setEmail('customer@test.local');
-        $user->setRoles(['ROLE_CUSTOMER']);
-        $user->setPassword('hashed-password-stub');
+    public const PASSWORD = 'test-password';
 
-        return $user;
+    // Emails в отдельном namespace `harness-*`, чтобы не пересекаться с email'ами,
+    // которые захардкожены в KernelTestCase-тестах (напр. owner@test.local в BrandClaimGrantIntegrationTest):
+    // функциональные тесты коммитят своих пользователей, integration-тесты работают в rollback-транзакции,
+    // и одинаковый email дал бы UNIQUE-конфликт на client.email.
+    public static function customer(ContainerInterface $c): User
+    {
+        return self::findOrCreate($c, 'harness-customer@test.local', ['ROLE_CUSTOMER']);
+    }
+
+    public static function brandManager(ContainerInterface $c): User
+    {
+        return self::findOrCreate($c, 'harness-manager@test.local', ['ROLE_BRAND_MANAGER']);
+    }
+
+    public static function brandOwner(ContainerInterface $c): User
+    {
+        return self::findOrCreate($c, 'harness-owner@test.local', ['ROLE_BRAND_OWNER']);
     }
 
     /**
-     * A brand manager with ROLE_BRAND_MANAGER.
-     * Also has ROLE_USER via the role_hierarchy.
+     * Бренд-владелец + бренд + связь BrandUser (owner).
+     * Нужен для страниц /brand LK (getActiveBrand ищет BrandUser по пользователю) и checkout.
+     *
+     * @return array{0: User, 1: Brand}
      */
-    public static function makeBrandManager(): User
+    public static function brandOwnerWithBrand(ContainerInterface $c): array
     {
-        $user = new User();
-        $user->setEmail('brand@test.local');
-        $user->setRoles(['ROLE_BRAND_MANAGER']);
-        $user->setPassword('hashed-password-stub');
+        $em   = $c->get('doctrine.orm.entity_manager');
+        $user = self::brandOwner($c);
 
-        return $user;
+        $existing = $em->getRepository(BrandUser::class)->findOneBy(['user' => $user]);
+        if ($existing !== null) {
+            return [$user, $existing->getBrand()];
+        }
+
+        $brand = (new Brand())
+            ->setTitle('Test Brand')
+            ->setSlug('test-brand-lk');
+        $em->persist($brand);
+
+        $link = (new BrandUser())
+            ->setUser($user)
+            ->setBrand($brand)
+            ->setRole(BrandUser::ROLE_OWNER);
+        $em->persist($link);
+
+        $em->flush();
+
+        return [$user, $brand];
     }
 
-    /**
-     * A brand owner with ROLE_BRAND_OWNER.
-     * Inherits ROLE_BRAND_MANAGER and ROLE_USER via hierarchy.
-     */
-    public static function makeBrandOwner(): User
+    private static function findOrCreate(ContainerInterface $c, string $email, array $roles): User
     {
+        /** @var EntityManagerInterface $em */
+        $em   = $c->get('doctrine.orm.entity_manager');
+        $repo = $em->getRepository(User::class);
+
+        $user = $repo->findOneBy(['email' => $email]);
+        if ($user !== null) {
+            return $user;
+        }
+
+        /** @var UserPasswordHasherInterface $hasher */
+        $hasher = $c->get(UserPasswordHasherInterface::class);
+
         $user = new User();
-        $user->setEmail('owner@test.local');
-        $user->setRoles(['ROLE_BRAND_OWNER']);
-        $user->setPassword('hashed-password-stub');
+        $user->setEmail($email);
+        $user->setRoles($roles);
+        $user->setPassword($hasher->hashPassword($user, self::PASSWORD));
+
+        $em->persist($user);
+        $em->flush();
 
         return $user;
     }

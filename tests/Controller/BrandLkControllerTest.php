@@ -16,7 +16,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
  *
  * Run with: php bin/phpunit tests/Controller/BrandLkControllerTest.php
  */
-class BrandLkControllerTest extends DatabaseDependentWebTestCase
+class BrandLkControllerTest extends AuthenticatedWebTestCase
 {
     // ── Access control: guests redirect (no DB needed) ────────────────────────
 
@@ -47,7 +47,7 @@ class BrandLkControllerTest extends DatabaseDependentWebTestCase
         $this->skipIfNoDatabase();
 
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeCustomer());
+        $this->loginAsCustomer($client);
         $client->request('GET', $path);
 
         $this->assertResponseStatusCodeSame(403, "Expected 403 for customer at $path");
@@ -60,11 +60,13 @@ class BrandLkControllerTest extends DatabaseDependentWebTestCase
         $this->skipIfNoDatabase();
 
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeBrandManager());
+        $this->loginAsBrandOwnerWithBrand($client);
         $client->request('GET', '/brand/dashboard');
 
         $this->assertResponseIsSuccessful();
-        $this->assertSelectorTextContains('body', 'WEARBASE');
+        // Brand LK использует компактный app.html.twig (без «WEARBASE» в шапке);
+        // проверяем, что отрендерился именно дашборд бренда.
+        $this->assertSelectorTextContains('body', 'Дашборд');
     }
 
     public function testBrandProfileLoads(): void
@@ -72,7 +74,7 @@ class BrandLkControllerTest extends DatabaseDependentWebTestCase
         $this->skipIfNoDatabase();
 
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeBrandManager());
+        $this->loginAsBrandOwnerWithBrand($client);
         $client->request('GET', '/brand/profile');
 
         $this->assertResponseIsSuccessful();
@@ -84,7 +86,7 @@ class BrandLkControllerTest extends DatabaseDependentWebTestCase
         $this->skipIfNoDatabase();
 
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeBrandManager());
+        $this->loginAsBrandOwnerWithBrand($client);
         $client->request('GET', '/brand/products');
 
         $this->assertResponseIsSuccessful();
@@ -95,7 +97,7 @@ class BrandLkControllerTest extends DatabaseDependentWebTestCase
         $this->skipIfNoDatabase();
 
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeBrandManager());
+        $this->loginAsBrandOwnerWithBrand($client);
         $client->request('GET', '/brand/orders');
 
         $this->assertResponseIsSuccessful();
@@ -106,7 +108,7 @@ class BrandLkControllerTest extends DatabaseDependentWebTestCase
         $this->skipIfNoDatabase();
 
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeBrandManager());
+        $this->loginAsBrandOwnerWithBrand($client);
         $client->request('GET', '/brand/team');
 
         $this->assertResponseIsSuccessful();
@@ -118,7 +120,7 @@ class BrandLkControllerTest extends DatabaseDependentWebTestCase
         $this->skipIfNoDatabase();
 
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeBrandManager());
+        $this->loginAsBrandOwnerWithBrand($client);
         $client->request('GET', '/brand/products/new');
 
         $this->assertResponseIsSuccessful();

@@ -26,8 +26,8 @@ php bin/console doctrine:migrations:diff
 php bin/console app:currency:update-rates --dry-run   # preview
 php bin/console app:currency:update-rates             # apply
 
-# PHPUnit (functional tests, no DB — uses test env)
-php bin/phpunit
+# PHPUnit (test env; тест-БД = одноразовый SQLite var/test.db, схема из сущностей — см. раздел Tests)
+php -d memory_limit=512M bin/phpunit
 php bin/phpunit tests/Controller/BrandLkControllerTest.php   # single file
 php bin/phpunit --filter testBrandProfile                    # single test
 
@@ -261,7 +261,13 @@ php bin/console app:brand:enrich-contacts 200 --no-verify --quiet >> var/log/enr
 
 ### Tests
 
-`tests/Controller/` contains PHPUnit functional tests using Symfony's `WebTestCase`. A `UserFactory` helper creates test users. The test environment uses a separate DB (`*_test` suffix). E2E tests live in `tests/e2e/` and use Playwright against a live dev server.
+`tests/Controller/` contains PHPUnit functional tests using Symfony's `WebTestCase`. E2E tests live in `tests/e2e/` and use Playwright against a live dev server.
+
+**Тест-БД — одноразовый SQLite-файл `var/test.db`** (`.env.test` → `DATABASE_URL`), а НЕ MySQL `*_test` (тот `dbname_suffix` в `doctrine.yaml when@test` — мёртвый, перекрыт sqlite-URL). Схема **провижинится из текущих сущностей** в `tests/bootstrap.php` на каждый прогон (файл пересоздаётся, `SchemaTool::createSchema` + мирроринг сырых не-entity таблиц вроде `brand_related`) — миграции для тестов гонять не нужно, «протухший» var/test.db невозможен. Bootstrap также сидит минимум справочников (базовая валюта RUB + язык ru), иначе currency-global = null и cart/checkout падают в 500.
+
+**Аутентификация в тестах**: `UserFactory` **персистит** реальных пользователей (id + хешированный пароль) в тест-БД — `loginUser()` работает через тот же провайдер, что в проде (никаких in-memory заглушек). Базовый класс `AuthenticatedWebTestCase` даёт `loginAsCustomer()` / `loginAsBrandOwner()` / `loginAsBrandOwnerWithBrand()` (последний создаёт Brand + связь BrandUser для страниц `/brand` LK и checkout). Полная архитектура харнеса — **[docs/testing.md](docs/testing.md)**.
+
+⚠️ Гонять phpunit полным путём с памятью: `/opt/homebrew/bin/php -d memory_limit=512M bin/phpunit`. `.env.local` в test-окружении Symfony НЕ загружается — всё нужное (напр. `TURNSTILE_KEY`) дублировать в `.env.test`.
 
 ### OpenRouter / LLM
 

@@ -50,6 +50,7 @@
 | [brand_lifecycle.md](brand_lifecycle.md) | **Ниша-гейт + HTTP-семантика бренда**: классификатор `app:brand:niche-check` (мода+красота vs off-niche), гейт конвейера/публикации, 410 для deleted + tombstone для закрывшихся. От 2026-06-24 |
 | [international.md](international.md) | Международные рынки: 9 локалей, валюты, SEO непереведённых локалей (noindex) |
 | [payments.md](payments.md) | Платежи, провайдеры, юр-слой (оферты/юрлица/возврат предоплаты) |
+| [testing.md](testing.md) | Тест-харнес PHPUnit: SQLite var/test.db, автосхема из сущностей, Authenticated*WebTestCase, как писать функциональные тесты |
 | [brand-claim-verification.md](brand-claim-verification.md) | Методы подтверждения владения брендом |
 | [virtual-tryon.md](virtual-tryon.md) | Виртуальная примерочная (VTON) — PoC и запуск в прод |
 | [antifraud_plan.md](antifraud_plan.md) | Антифрод и верификация брендов — план на будущее |

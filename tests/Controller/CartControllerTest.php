@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
-use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
-
 /**
  * Tests for the cart and checkout flow: /cart/*, /checkout/*
  *
@@ -14,7 +12,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *
  * Run with: php bin/phpunit tests/Controller/CartControllerTest.php
  */
-class CartControllerTest extends WebTestCase
+class CartControllerTest extends AuthenticatedWebTestCase
 {
     // ── Cart: public, no DB needed ────────────────────────────────────────────
 
@@ -74,7 +72,7 @@ class CartControllerTest extends WebTestCase
     public function testCheckoutWithEmptyCartRedirectsToCart(): void
     {
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeCustomer());
+        $this->loginAsCustomer($client);
         $client->request('GET', '/checkout');
 
         // Empty cart → should redirect back to /cart
@@ -86,7 +84,7 @@ class CartControllerTest extends WebTestCase
     public function testCheckoutSuccessMultiPageDoesNotCrash(): void
     {
         $client = static::createClient();
-        $client->loginUser(UserFactory::makeCustomer());
+        $this->loginAsCustomer($client);
         $client->request('GET', '/checkout/success');
 
         $this->assertNotSame(500, $client->getResponse()->getStatusCode());
@@ -94,13 +92,14 @@ class CartControllerTest extends WebTestCase
 
     // ── Cart add: POST endpoint returns JSON ──────────────────────────────────
 
-    public function testCartAddEndpointWithBadVariantReturns404(): void
+    public function testCartAddEndpointWithBadRequestReturns400(): void
     {
         $client = static::createClient();
         $client->request('POST', '/cart/add/99999999');
 
-        // Unknown variant ID → 404
-        $this->assertResponseStatusCodeSame(404);
+        // POST без валидного cart-токена отбивается на входе (400 «Недействительный токен»);
+        // недоступный/несуществующий вариант контроллер тоже отдаёт как 400, не 404.
+        $this->assertResponseStatusCodeSame(400);
     }
 
     // ── Cart page has correct form elements ──────────────────────────────────
