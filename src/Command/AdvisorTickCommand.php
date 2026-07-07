@@ -10,6 +10,7 @@ use App\Entity\StateSnapshot;
 use App\Notification\AdminNotifier;
 use App\Repository\AdvisorIdeaRepository;
 use App\Repository\StateSnapshotRepository;
+use App\Service\Advisor\AnomalyDetector;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -49,11 +50,22 @@ class AdvisorTickCommand extends Command
         'subscriptions_trial'   => 'подписок (trial)',
     ];
 
+    /** Сколько строк сигналов показываем в дайджесте, остальное — «…и ещё N». */
+    private const SIGNALS_SHOWN = 5;
+
+    /** Ранг severity для сортировки high→low. */
+    private const SEVERITY_RANK = [
+        AnomalyDetector::SEV_HIGH   => 0,
+        AnomalyDetector::SEV_MEDIUM => 1,
+        AnomalyDetector::SEV_LOW    => 2,
+    ];
+
     public function __construct(
         private readonly StateSnapshotRepository $snapshots,
         private readonly AdvisorIdeaRepository $ideas,
         private readonly AdminNotifier $notifier,
         private readonly EntityManagerInterface $em,
+        private readonly AnomalyDetector $detector,
     ) {
         parent::__construct();
     }
@@ -78,7 +90,10 @@ class AdvisorTickCommand extends Command
         $shipped   = $this->ideas->findBy(['status' => AdvisorIdea::STATUS_SHIPPED], ['updatedAt' => 'DESC'], 5);
         $measuring = $this->ideas->findBy(['status' => AdvisorIdea::STATUS_MEASURING], ['updatedAt' => 'DESC'], 5);
 
-        $digest = $this->render($snap, $proposed, $shipped, $measuring);
+        $signals = $this->detector->detect($snap);
+        $this->sortSignals($signals);
+
+        $digest = $this->render($snap, $signals, $proposed, $shipped, $measuring);
 
         $io->text(strip_tags($digest));
 
@@ -96,6 +111,7 @@ class AdvisorTickCommand extends Command
             ->setDigestText($digest)
             ->setDecisions([
                 'snapshot_id'   => $snap->getId(),
+                'signals'       => $signals,
                 'proposed_ids'  => array_map(static fn(AdvisorIdea $i) => $i->getId(), $proposed),
                 'shipped_ids'   => array_map(static fn(AdvisorIdea $i) => $i->getId(), $shipped),
                 'measuring_ids' => array_map(static fn(AdvisorIdea $i) => $i->getId(), $measuring),
@@ -114,18 +130,23 @@ class AdvisorTickCommand extends Command
     }
 
     /**
+     * @param list<array{key:string,message:string,severity:string,value:int|float|null,delta:int|float|null}> $signals
      * @param AdvisorIdea[] $proposed
      * @param AdvisorIdea[] $shipped
      * @param AdvisorIdea[] $measuring
      */
-    private function render(StateSnapshot $snap, array $proposed, array $shipped, array $measuring): string
+    private function render(StateSnapshot $snap, array $signals, array $proposed, array $shipped, array $measuring): string
     {
         $metrics = $snap->getMetrics();
         $delta   = $snap->getDelta();
 
         $parts = [];
         $parts[] = '<b>🧭 Советник · ' . $this->moscowDate() . '</b>';
-        $parts[] = $this->verdict($metrics, $delta);           // вывод-вердикт первым абзацем
+        $parts[] = $this->verdict($metrics, $delta, $signals);  // вывод-вердикт первым абзацем
+        $signalsBlock = $this->signalsSection($signals);        // ⚠️ Сигналы — сразу после вердикта
+        if ($signalsBlock !== null) {
+            $parts[] = $signalsBlock;
+        }
         $parts[] = $this->deltaLine($metrics, $delta);         // Δ-строка метрик
 
         if ($shipped !== []) {
@@ -171,12 +192,63 @@ class AdvisorTickCommand extends Command
     }
 
     /**
-     * Вывод-вердикт: главное изменение дельты (метрика с максимальным |Δ| среди подписанных).
+     * Секция «⚠️ Сигналы»: детерминированные аномалии, отсортированы high→low, максимум
+     * SIGNALS_SHOWN строк, остальное — «…и ещё N». Пусто → секции нет (null).
+     * @param list<array{key:string,message:string,severity:string,value:int|float|null,delta:int|float|null}> $signals
+     */
+    private function signalsSection(array $signals): ?string
+    {
+        if ($signals === []) {
+            return null;
+        }
+
+        $icons = [
+            AnomalyDetector::SEV_HIGH   => '🔴',
+            AnomalyDetector::SEV_MEDIUM => '🟠',
+            AnomalyDetector::SEV_LOW    => '🟡',
+        ];
+
+        $shown = array_slice($signals, 0, self::SIGNALS_SHOWN);
+        $rows  = array_map(
+            static fn(array $s) => ($icons[$s['severity']] ?? '•') . ' ' . htmlspecialchars($s['message']),
+            $shown,
+        );
+        $rest = count($signals) - count($shown);
+        if ($rest > 0) {
+            $rows[] = sprintf('…и ещё %d', $rest);
+        }
+
+        return "<b>⚠️ Сигналы:</b>\n" . implode("\n", $rows);
+    }
+
+    /**
+     * Стабильная сортировка сигналов по severity high→low (PHP 8 usort стабилен).
+     * @param list<array{key:string,message:string,severity:string,value:int|float|null,delta:int|float|null}> $signals
+     */
+    private function sortSignals(array &$signals): void
+    {
+        usort(
+            $signals,
+            static fn(array $a, array $b) =>
+                (self::SEVERITY_RANK[$a['severity']] ?? 9) <=> (self::SEVERITY_RANK[$b['severity']] ?? 9),
+        );
+    }
+
+    /**
+     * Вывод-вердикт: при наличии high-аномалии — про неё; иначе главное изменение дельты
+     * (метрика с максимальным |Δ| среди подписанных).
      * @param array<string,int|float> $metrics
      * @param array<string,int|float>|null $delta
+     * @param list<array{key:string,message:string,severity:string,value:int|float|null,delta:int|float|null}> $signals
      */
-    private function verdict(array $metrics, ?array $delta): string
+    private function verdict(array $metrics, ?array $delta, array $signals): string
     {
+        foreach ($signals as $s) {
+            if ($s['severity'] === AnomalyDetector::SEV_HIGH) {
+                return 'Главное: ' . $s['message'] . '.';
+            }
+        }
+
         if ($delta === null) {
             return 'Первый снимок — базовая точка, дельты пока нет.';
         }
