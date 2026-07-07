@@ -166,7 +166,7 @@ class SeoGuideCommand extends Command
         $issues = ['пусто'];
         for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
             try {
-                $raw = $this->llm->generateGuide($nicheTitle, $cityDisp, $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5);
+                $raw = $this->llm->generateGuide($nicheTitle, $cityDisp, $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen');
             } catch (\Throwable $e) {
                 // LLM-блип — не падаем, ждём и ретраим (переживаем транзиентный сбой gemma).
                 $issues = ['LLM ошибка: ' . mb_substr($e->getMessage(), 0, 80)];

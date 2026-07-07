@@ -213,7 +213,7 @@ class GenerateListicleCommand extends Command
             $issues = ['пусто'];
             for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
                 try {
-                    $raw = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords, $fixHint, $temps[$att] ?? 0.5);
+                    $raw = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $vPlatform === 'dzen');
                 } catch (\Throwable $e) {
                     // LLM-блип (gemma под майнингом перезапускается) — не рушим батч,
                     // ждём и ретраим: транзиентный сбой переживём, не теряем остаток прогона.
