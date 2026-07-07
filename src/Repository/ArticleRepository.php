@@ -59,6 +59,26 @@ class ArticleRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * Для синдикации на сторонние площадки (RSS «Дзен для сайтов» и подобные):
+     * только статьи с подтверждённой индексацией ($indexed_at через GSC URL Inspection)
+     * не позже чем $minIndexedDays дней назад — даём поисковикам закрепить wearbase.ru
+     * как канонический источник до появления копии на чужом (более сильном) домене.
+     *
+     * @return Article[]
+     */
+    public function findIndexedForSyndication(string $locale, int $limit, int $minIndexedDays): array
+    {
+        return $this->publishedQb($locale)
+            ->andWhere('a.indexedAt IS NOT NULL')
+            ->andWhere('a.indexedAt <= :cutoff')
+            ->setParameter('cutoff', new \DateTime("-{$minIndexedDays} days"))
+            ->orderBy('a.publishedAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     private function publishedQb(string $locale): \Doctrine\ORM\QueryBuilder
     {
         return $this->createQueryBuilder('a')

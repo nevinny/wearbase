@@ -1,7 +1,6 @@
-<?xml version="1.0" encoding="UTF-8"?>
+{% autoescape 'html' %}<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
-     xmlns:yandex="http://news.yandex.ru"
-     xmlns:media="http://search.yahoo.com/mrss/"
+     xmlns:dc="http://purl.org/dc/elements/1.1/"
      xmlns:content="http://purl.org/rss/1.0/modules/content/">
     <channel>
         <title>{{ siteTitle }}</title>
@@ -12,16 +11,18 @@
         <item>
             <title>{{ item.title }}</title>
             <link>{{ item.link }}</link>
+            <guid isPermaLink="true">{{ item.link }}</guid>
             <pubDate>{{ item.pubDate }}</pubDate>
             {% if item.excerpt %}
             <description><![CDATA[{{ item.excerpt|raw }}]]></description>
             {% endif %}
-            <yandex:full-text><![CDATA[{{ item.content|raw }}]]></yandex:full-text>
             <content:encoded><![CDATA[{{ item.content|raw }}]]></content:encoded>
+            <category>native-draft</category>
             {% if item.author %}
-            <author>{{ item.author }}</author>
+            <dc:creator>{{ item.author }}</dc:creator>
             {% endif %}
         </item>
         {% endfor %}
     </channel>
 </rss>
+{% endautoescape %}
