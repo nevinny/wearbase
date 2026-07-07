@@ -1,0 +1,13 @@
+# Кураторские якоря серии «Бренд X ушёл — чем заменить в России»
+# (app:seo:replace-listicle, docs/foreign_brands_policy.md → раздел «Фрейминг»).
+# ТОЛЬКО ручная курация по реальному спросу — НЕ автогенерация сотней
+# (scaled-content риск). Люкс (Chanel/Hermes/Cartier) не добавлять.
+anchors:
+  - foreign: zara          # slug бренда X в БД (origin_status='foreign')
+    niche: ~               # slug BrandStyle или null → auto из первого style бренда X
+    count: 6               # брендов-замен в статье
+    keywords: []           # доп. фразы к replacement-фразам X из brand_keyword
+  - foreign: uniqlo
+    niche: ~
+    count: 6
+    keywords: []
