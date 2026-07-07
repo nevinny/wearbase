@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Repository\ArticleRepository;
+use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -21,23 +22,30 @@ class DzenFeedController extends AbstractController
     // материалы, а не разовый бэклог (см. docs/seo_publishing_strategy.md).
     private const MAX_ITEMS = 30;
 
-    // Буфер после подтверждённой индексации в Google (article.indexed_at), прежде чем
-    // статья попадёт в фид: копия на Дзене (сильный домен) не должна появиться раньше,
-    // чем Яндекс/Google закрепят wearbase.ru как первоисточник. indexed_at — единственный
-    // exhaustive per-URL сигнал индексации, который у нас есть (Yandex Webmaster API
-    // такого per-URL инспектора не даёт, только несплошную выборку yandex_index_status).
-    private const MIN_INDEXED_DAYS = 3;
+    // Из скольких последних опубликованных статей блога выбираем подмножество,
+    // уже подтверждённое в поиске Яндекса (см. fetchYandexIndexedSlugs) — с запасом
+    // над MAX_ITEMS, т.к. часть кандидатов ещё не проиндексирована.
+    private const CANDIDATE_POOL = 200;
 
     #[Route('/rss/dzen.xml', name: 'dzen_feed', defaults: ['_format' => 'xml'])]
-    public function feed(ArticleRepository $articleRepo, UrlGeneratorInterface $urlGenerator): Response
+    public function feed(ArticleRepository $articleRepo, Connection $db, UrlGeneratorInterface $urlGenerator): Response
     {
         $siteBase = parse_url((string) $this->getParameter('app.site_base_url'));
         $context  = $urlGenerator->getContext();
         $context->setScheme($siteBase['scheme'] ?? 'https');
         $context->setHost($siteBase['host'] ?? 'wearbase.ru');
 
+        $indexedSlugs = $this->fetchYandexIndexedSlugs($db);
+
         $items = [];
-        foreach ($articleRepo->findIndexedForSyndication('ru', self::MAX_ITEMS, self::MIN_INDEXED_DAYS) as $article) {
+        foreach ($articleRepo->findPublished('ru', self::CANDIDATE_POOL) as $article) {
+            if (count($items) >= self::MAX_ITEMS) {
+                break;
+            }
+            if (!isset($indexedSlugs[$article->getSlug()])) {
+                continue;
+            }
+
             $link = $this->generateUrl('blog_show', [
                 '_locale' => 'ru',
                 'slug' => $article->getSlug(),
@@ -69,5 +77,32 @@ class DzenFeedController extends AbstractController
         return new Response($xml, 200, [
             'Content-Type' => 'application/rss+xml; charset=utf-8',
         ]);
+    }
+
+    /**
+     * Slug'и блог-статей, СЕЙЧАС находящихся в поиске Яндекса (`yandex_index_status`,
+     * наполняется `app:yandex:sync`/`YandexWebmasterClient::urlsInSearch()`). Это
+     * реальный сигнал индексации в Яндексе — Дзен внутренний продукт Яндекса и именно
+     * этот поиск, а не Google, конкурирует с блогом за каноничность. Выборка не
+     * исчерпывающая (сэмплы Яндекс.Вебмастера, cap 5000), поэтому это fail-closed
+     * фильтр: непопавшая в сэмпл, но реально проиндексированная статья просто подождёт
+     * следующего синка, а не просочится в фид раньше времени.
+     *
+     * @return array<string,true> slug => true
+     */
+    private function fetchYandexIndexedSlugs(Connection $db): array
+    {
+        $urls = $db->fetchFirstColumn(
+            "SELECT page_url FROM yandex_index_status WHERE page_type = 'blog' AND in_search = 1",
+        );
+
+        $slugs = [];
+        foreach ($urls as $url) {
+            if (preg_match('~/blog/([a-z0-9-]+)~', (string) $url, $m)) {
+                $slugs[$m[1]] = true;
+            }
+        }
+
+        return $slugs;
     }
 }
