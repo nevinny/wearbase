@@ -12,8 +12,10 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 /**
  * "Дзен для сайтов": Дзен сам поллит эту ленту и заносит материалы привязанного
  * канала в черновики — замыкает блог→Дзен без ручного копирования текста.
- * `native-draft` — публикацию всё равно подтверждает человек (правило очерёдности
- * «блог→индексация→Дзен» и добавление обложки/CTA/UTM по методологии остаются
+ * Отдаёт `article.dzenContent` (готовый под Дзен текст, другая персона — не дубль
+ * блога, привязывается `app:seo:attach-dzen-copy`), НЕ `article.content` — статьи
+ * без привязанной Дзен-копии в фид не попадают. `native-draft` — публикацию всё
+ * равно подтверждает человек (добавление обложки/CTA/UTM по методологии остаются
  * ручными, см. docs/seo_publishing_strategy.md, docs/dzen_seo_methodology.md).
  */
 class DzenFeedController extends AbstractController
@@ -45,16 +47,22 @@ class DzenFeedController extends AbstractController
             if (!isset($indexedSlugs[$article->getSlug()])) {
                 continue;
             }
+            // Без готовой Дзен-копии (другая персона, var/seo/dzen/*.md → app:seo:attach-dzen-copy)
+            // в фид не пускаем: отдать вместо неё article.content было бы почти дословным дублем
+            // блога на сильном домене Дзена — то, чего отдельная персона как раз избегает.
+            if ($article->getDzenContent() === null) {
+                continue;
+            }
 
             $link = $this->generateUrl('blog_show', [
                 '_locale' => 'ru',
                 'slug' => $article->getSlug(),
             ], UrlGeneratorInterface::ABSOLUTE_URL);
 
-            // Дзен показывает title из content:encoded, а не из <title> — в БД он
-            // хранится без H1 (заголовок рендерит сам Twig-шаблон блога), поэтому
-            // возвращаем H1 обратно только для фида.
-            $content = preg_replace('#<script type="application/ld\+json">.*?</script>#s', '', $article->getContent());
+            // Дзен показывает title из content:encoded, а не из <title> — в Дзен-копии он
+            // хранится без H1 (парсер выводит его отдельно как title), поэтому возвращаем
+            // H1 обратно только для фида.
+            $content = preg_replace('#<script type="application/ld\+json">.*?</script>#s', '', $article->getDzenContent());
             $content = '<h1>' . htmlspecialchars($article->getTitle(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</h1>\n" . $content
                 . "\n<p><em>Источник: <a href=\"{$link}\">wearbase.ru</a></em></p>";
 

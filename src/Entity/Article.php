@@ -53,6 +53,14 @@ class Article
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $sourceFile = null;
 
+    /** Готовый под Дзен HTML (другая персона, var/seo/dzen/*.md) — отдаёт /rss/dzen.xml */
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $dzenContent = null;
+
+    /** Имя исходного .md для dzenContent (var/seo/dzen/...), для идемпотентности привязки */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $dzenSourceFile = null;
+
     /** Когда GSC-вотчер впервые увидел страницу в индексе */
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTime $indexedAt = null;
@@ -91,6 +99,12 @@ class Article
 
     public function getSourceFile(): ?string { return $this->sourceFile; }
     public function setSourceFile(?string $sourceFile): static { $this->sourceFile = $sourceFile; return $this; }
+
+    public function getDzenContent(): ?string { return $this->dzenContent; }
+    public function setDzenContent(?string $dzenContent): static { $this->dzenContent = $dzenContent; return $this; }
+
+    public function getDzenSourceFile(): ?string { return $this->dzenSourceFile; }
+    public function setDzenSourceFile(?string $dzenSourceFile): static { $this->dzenSourceFile = $dzenSourceFile; return $this; }
 
     public function getIndexedAt(): ?\DateTime { return $this->indexedAt; }
     public function setIndexedAt(?\DateTime $indexedAt): static { $this->indexedAt = $indexedAt; return $this; }
