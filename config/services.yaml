@@ -86,6 +86,19 @@ services:
             $qdrantApiKey: '%env(QDRANT_API_KEY)%'
             $collection: '%env(QDRANT_COLLECTION)%'
 
+    # Отдельный инстанс векторного хранилища для базы знаний (коллекция topic_chunks),
+    # тот же Qdrant/размерность, что brand_chunks. Только для app:kb:ingest-channels.
+    app.vector_store.topic:
+        class: App\Service\VectorStoreService
+        arguments:
+            $qdrantUrl: '%env(QDRANT_URL)%'
+            $qdrantApiKey: '%env(QDRANT_API_KEY)%'
+            $collection: 'topic_chunks'
+
+    App\Command\IngestKnowledgeChannelsCommand:
+        arguments:
+            $vectors: '@app.vector_store.topic'
+
     App\Service\UrlFilter:
         arguments:
             $extraExcludedDomains: '%env(SCRAPE_EXCLUDED_DOMAINS)%'

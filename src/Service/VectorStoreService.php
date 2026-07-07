@@ -57,6 +57,12 @@ class VectorStoreService
         ]);
     }
 
+    /** Удаляет коллекцию целиком (для --recreate). Отсутствующая коллекция — не ошибка. */
+    public function dropCollection(): void
+    {
+        $this->request('DELETE', "/collections/{$this->collection}?wait=true");
+    }
+
     /**
      * @param array<int,array{id:string,vector:float[],payload:array}> $points
      */
