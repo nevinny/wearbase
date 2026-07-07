@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:yandex="http://news.yandex.ru"
+     xmlns:media="http://search.yahoo.com/mrss/"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel>
+        <title>{{ siteTitle }}</title>
+        <link>{{ siteLink }}</link>
+        <description>{{ siteTitle }}</description>
+        <language>ru</language>
+        {% for item in items %}
+        <item>
+            <title>{{ item.title }}</title>
+            <link>{{ item.link }}</link>
+            <pubDate>{{ item.pubDate }}</pubDate>
+            {% if item.excerpt %}
+            <description><![CDATA[{{ item.excerpt|raw }}]]></description>
+            {% endif %}
+            <yandex:full-text><![CDATA[{{ item.content|raw }}]]></yandex:full-text>
+            <content:encoded><![CDATA[{{ item.content|raw }}]]></content:encoded>
+            {% if item.author %}
+            <author>{{ item.author }}</author>
+            {% endif %}
+        </item>
+        {% endfor %}
+    </channel>
+</rss>
