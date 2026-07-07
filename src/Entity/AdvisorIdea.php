@@ -29,6 +29,11 @@ class AdvisorIdea
     public const STATUS_VALIDATED   = 'validated';
     public const STATUS_REVERTED    = 'reverted';
 
+    /** Класс действия по риску (docs/advisor.md §Таксономия): a=контент(авто), b=код(брокер), c=человек. */
+    public const CLASS_CONTENT = 'a';
+    public const CLASS_CODE    = 'b';
+    public const CLASS_HUMAN   = 'c';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -71,6 +76,14 @@ class AdvisorIdea
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $rejectedReason = null;
+
+    /** Класс действия a|b|c, проставляет DecisionMaker детерминированно (не LLM). */
+    #[ORM\Column(length: 1, nullable: true)]
+    private ?string $actionClass = null;
+
+    /** Требует ревью человеком (класс c, fail-closed) — не уходит в авто-исполнение. */
+    #[ORM\Column(options: ['default' => false])]
+    private bool $needsHuman = false;
 
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
@@ -127,6 +140,12 @@ class AdvisorIdea
 
     public function getRejectedReason(): ?string { return $this->rejectedReason; }
     public function setRejectedReason(?string $v): static { $this->rejectedReason = $v; return $this; }
+
+    public function getActionClass(): ?string { return $this->actionClass; }
+    public function setActionClass(?string $v): static { $this->actionClass = $v; return $this; }
+
+    public function needsHuman(): bool { return $this->needsHuman; }
+    public function setNeedsHuman(bool $v): static { $this->needsHuman = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
     public function setCreatedAt(\DateTimeInterface $v): static { $this->createdAt = $v; return $this; }
