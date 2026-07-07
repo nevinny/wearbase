@@ -2,12 +2,127 @@
 # (app:seo:replace-listicle, docs/foreign_brands_policy.md → раздел «Фрейминг»).
 # ТОЛЬКО ручная курация по реальному спросу — НЕ автогенерация сотней
 # (scaled-content риск). Люкс (Chanel/Hermes/Cartier) не добавлять.
+# Перед добавлением якоря проверять ФАКТ ухода из РФ: Lacoste/Ecco/Geox/Guess/
+# Kappa/Columbia/Fila/Lotto/Pepe Jeans НЕ уходили — под «чем заменить» не годятся
+# (фактчек 2026-07-07, docs/foreign_brands_policy.md → «Фактчек „кто реально ушёл"»).
 anchors:
   - foreign: zara          # slug бренда X в БД (origin_status='foreign')
-    niche: ~               # slug BrandStyle или null → auto из первого style бренда X
+    niche: classic         # slug BrandStyle или null → auto из первого style бренда X
     count: 6               # брендов-замен в статье
     keywords: []           # доп. фразы к replacement-фразам X из brand_keyword
-  - foreign: uniqlo
-    niche: ~
+  - foreign: crocs
+    niche: streetwear
     count: 6
     keywords: []
+  - foreign: uniqlo
+    niche: minimalism
+    count: 6
+    keywords: []
+  - foreign: stradivarius
+    niche: classic
+    count: 6
+    keywords: []
+  - foreign: bershka
+    niche: streetwear
+    count: 6
+    keywords: []
+  - foreign: nike
+    niche: sport
+    count: 6
+    keywords: ["nike в россии", "чем заменить nike", "аналоги nike"]
+  - foreign: adidas
+    niche: sport
+    count: 6
+    keywords: ["adidas в россии", "чем заменить adidas", "аналоги adidas"]
+  - foreign: puma
+    niche: sport
+    count: 6
+    keywords: ["puma в россии", "чем заменить puma", "аналоги puma"]
+  - foreign: reebok
+    niche: sport
+    count: 6
+    keywords: ["reebok в россии", "чем заменить reebok", "аналоги reebok"]
+  - foreign: newbalance
+    niche: sport
+    count: 6
+    keywords: ["new balance в россии", "чем заменить new balance", "аналоги new balance"]
+  - foreign: asics
+    niche: sport
+    count: 6
+    keywords: ["asics в россии", "чем заменить asics", "аналоги asics"]
+  - foreign: vans
+    niche: sport
+    count: 6
+    keywords: ["vans в россии", "чем заменить vans", "аналоги vans"]
+  - foreign: converse
+    niche: streetwear
+    count: 6
+    keywords: ["converse в россии", "чем заменить converse", "аналоги converse"]
+  - foreign: hm
+    niche: streetwear
+    count: 6
+    keywords: ["h&m в россии", "чем заменить h&m", "аналоги h&m"]
+  - foreign: mango
+    niche: casual
+    count: 6
+    keywords: ["mango в россии", "чем заменить mango", "аналоги mango"]
+  - foreign: levis
+    niche: classic
+    count: 6
+    keywords: ["levis в россии", "чем заменить levis", "аналоги levis"]
+  - foreign: gap
+    niche: vintage
+    count: 6
+    keywords: ["gap в россии", "чем заменить gap", "аналоги gap"]
+  - foreign: marksspencer
+    niche: classic
+    count: 6
+    keywords: ["marks & spencer в россии", "чем заменить marks & spencer", "аналоги marks & spencer"]
+  - foreign: mothercare
+    niche: casual
+    count: 6
+    keywords: ["mothercare в россии", "чем заменить mothercare", "аналоги mothercare"]
+  - foreign: tommyhilfiger
+    niche: classic
+    count: 6
+    keywords: ["tommy hilfiger в россии", "чем заменить tommy hilfiger", "аналоги tommy hilfiger"]
+  - foreign: calvinklein
+    niche: classic
+    count: 6
+    keywords: ["calvin klein в россии", "чем заменить calvin klein", "аналоги calvin klein"]
+  - foreign: thenorthface
+    niche: sport
+    count: 6
+    keywords: ["the north face в россии", "чем заменить the north face", "аналоги the north face"]
+  - foreign: timberland
+    niche: sport
+    count: 6
+    keywords: ["timberland в россии", "чем заменить timberland", "аналоги timberland"]
+  - foreign: diesel
+    niche: streetwear
+    count: 6
+    keywords: ["diesel в россии", "чем заменить diesel", "аналоги diesel"]
+  - foreign: stoneisland
+    niche: streetwear
+    count: 6
+    keywords: ["stone island в россии", "чем заменить stone island", "аналоги stone island"]
+  - foreign: victoriassecret
+    niche: casual
+    count: 6
+    keywords: ["victoria's secret в россии", "чем заменить victoria's secret", "аналоги victoria's secret"]
+  - foreign: pull-and-bear
+    niche: casual
+    count: 6
+    keywords: ["pull&bear в россии", "чем заменить pull&bear", "аналоги pull&bear"]
+  - foreign: oysho
+    niche: casual
+    count: 6
+    keywords: ["oysho в россии", "чем заменить oysho", "аналоги oysho"]
+  - foreign: massimo-dutti
+    niche: classic
+    count: 6
+    keywords: ["massimo dutti в россии", "чем заменить massimo dutti", "аналоги massimo dutti"]
+  - foreign: decathlon
+    niche: sport
+    count: 6
+    keywords: ["decathlon в россии", "чем заменить decathlon", "аналоги decathlon"]
