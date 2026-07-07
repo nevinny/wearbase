@@ -99,6 +99,10 @@ services:
         arguments:
             $vectors: '@app.vector_store.topic'
 
+    App\Service\Advisor\AdvisorRag:
+        arguments:
+            $vectors: '@app.vector_store.topic'
+
     App\Service\UrlFilter:
         arguments:
             $extraExcludedDomains: '%env(SCRAPE_EXCLUDED_DOMAINS)%'

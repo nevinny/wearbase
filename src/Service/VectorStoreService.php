@@ -109,6 +109,31 @@ class VectorStoreService
         return $res['body']['result'] ?? [];
     }
 
+    /**
+     * Семантический поиск с опциональным фильтром по значениям payload-поля `role`
+     * (match-any). Для базы знаний (topic_chunks): достать чанки только нужных ролей
+     * (idea/framing/case/tone). Пустой $roles → без фильтра, как search().
+     *
+     * @param float[] $queryVector
+     * @param string[] $roles
+     * @return array<int,array{score:float,payload:array}>
+     */
+    public function searchByRoles(array $queryVector, array $roles = [], int $topK = 6): array
+    {
+        $body = [
+            'vector'       => $queryVector,
+            'limit'        => $topK,
+            'with_payload' => true,
+        ];
+        if ($roles !== []) {
+            $body['filter'] = ['must' => [['key' => 'role', 'match' => ['any' => array_values($roles)]]]];
+        }
+
+        $res = $this->request('POST', "/collections/{$this->collection}/points/search", $body);
+
+        return $res['body']['result'] ?? [];
+    }
+
     public function deleteByBrand(int $brandId): void
     {
         $this->request('POST', "/collections/{$this->collection}/points/delete?wait=true", [

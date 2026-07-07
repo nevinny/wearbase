@@ -996,6 +996,115 @@ EOT;
         ];
     }
 
+    /**
+     * «Мозг» советника (docs/advisor.md §Мозг, уровень 2): grounded-генерация идей развития
+     * на gemma. Модель мэппит бизнес-принципы каналов ($ragContext) на сигналы проекта — это
+     * ей по силам, в отличие от глубокой стратегии. Никаких выдуманных цифр: состояние и
+     * сигналы даны как факты, принципы — как опора. Confidence выше у идей с опорой на принцип.
+     *
+     * @param array<string,int|float> $state ключевые метрики снимка
+     * @param list<array{message:string,severity:string}> $signals аномалии-сигналы
+     * @param string $ragContext нумерованные принципы «#N [Канал · роль]: …»
+     * @return list<array{title:string,hypothesis:string,source_signal:?string,rag_citations:array,impact:int,confidence:int,ease:int}>
+     */
+    public function generateAdvisorIdeas(array $state, array $signals, string $ragContext): array
+    {
+        $systemPrompt = 'Ты — операционный директор каталога российских брендов одежды wearbase.ru. '
+            . 'По состоянию проекта, сигналам и бизнес-принципам из базы знаний предложи КОНКРЕТНЫЕ '
+            . 'идеи развития. Опирайся на принципы (в них — реальные механики из бизнес-разборов). '
+            . 'Каждая идея практична и проверяема. Отвечай строго JSON.';
+
+        $stateJson    = json_encode($state, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '{}';
+        $signalsBlock = $signals === []
+            ? '(явных аномалий нет — предложи идеи роста от текущего состояния)'
+            : implode("\n", array_map(
+                static fn(array $s) => sprintf('- [%s] %s', $s['severity'] ?? '', $s['message'] ?? ''),
+                $signals,
+            ));
+        $ragBlock = trim($ragContext) !== '' ? $ragContext : '(принципов не нашлось — предлагай без опоры, ставь низкий confidence)';
+
+        $prompt = <<<EOT
+СОСТОЯНИЕ ПРОЕКТА (метрики, факты — НЕ выдумывай других цифр):
+{$stateJson}
+
+СИГНАЛЫ (детерминированные аномалии):
+{$signalsBlock}
+
+БИЗНЕС-ПРИНЦИПЫ ИЗ БАЗЫ ЗНАНИЙ (опора для идей; #N — метка для цитирования):
+{$ragBlock}
+
+Задача: предложи 3–6 конкретных, проверяемых идей развития проекта. Каждая идея должна
+отвечать на сигнал или метрику и по возможности опираться на принцип выше.
+
+Верни ТОЛЬКО валидный JSON-массив без markdown:
+[
+  {
+    "title": "краткая формулировка идеи (до 100 символов)",
+    "hypothesis": "что делаем и почему это сработает (2–4 предложения)",
+    "source_signal": "на какой сигнал/метрику отвечает или null",
+    "rag_citations": ["#1", "#3"],
+    "impact": 1-10,
+    "confidence": 1-10,
+    "ease": 1-10
+  }
+]
+
+Правила:
+- impact — потенциальный эффект; ease — простота реализации; confidence — уверенность.
+- confidence ВЫШЕ, если идея опирается на принцип из базы (укажи его метку в rag_citations);
+  без опоры — rag_citations: [] и НИЗКИЙ confidence.
+- Никаких выдуманных цифр, дат, обещаний. Идея должна быть проверяема (есть как измерить эффект).
+EOT;
+
+        $response = $this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 600);
+
+        $ideas = [];
+        foreach ($this->extractJsonArray($response) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $title = trim((string) ($item['title'] ?? ''));
+            $hypo  = trim((string) ($item['hypothesis'] ?? ''));
+            if ($title === '' || $hypo === '') {
+                continue;
+            }
+            $clamp = static fn($v): int => max(1, min(10, (int) $v));
+            $cites = is_array($item['rag_citations'] ?? null)
+                ? array_values(array_filter(array_map(static fn($x) => trim((string) $x), $item['rag_citations']), static fn($x) => $x !== ''))
+                : [];
+            $ideas[] = [
+                'title'         => mb_substr($title, 0, 255),
+                'hypothesis'    => $hypo,
+                'source_signal' => $this->nullableString($item['source_signal'] ?? null),
+                'rag_citations' => $cites,
+                'impact'        => $clamp($item['impact'] ?? 1),
+                'confidence'    => $clamp($item['confidence'] ?? 1),
+                'ease'          => $clamp($item['ease'] ?? 1),
+            ];
+        }
+
+        return array_slice($ideas, 0, 6);
+    }
+
+    /**
+     * Устойчивое извлечение JSON-массива из ответа модели (вырезает первый [...] даже с
+     * мусором вокруг / markdown-обёрткой). Пусто → [].
+     *
+     * @return array<int,mixed>
+     */
+    private function extractJsonArray(string $response): array
+    {
+        $cleaned = preg_replace('/```(?:json)?\s*([\s\S]*?)```/', '$1', $response) ?? $response;
+        if (preg_match('/\[[\s\S]*\]/', $cleaned, $m)) {
+            $decoded = json_decode($m[0], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return [];
+    }
+
     private function extractJson(string $response): ?array
     {
         // Убираем markdown-обёртку, если модель всё же её добавила
