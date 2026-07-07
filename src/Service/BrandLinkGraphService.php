@@ -220,7 +220,7 @@ class BrandLinkGraphService
                 continue;
             }
             $this->db->executeStatement(
-                'UPDATE brand_related SET related_brand_id = :target, source = :source, created_at = NOW()
+                'UPDATE brand_related SET related_brand_id = :target, source = :source, created_at = CURRENT_TIMESTAMP
                  WHERE id = :id',
                 [
                     'target' => $brandId,
@@ -296,7 +296,7 @@ class BrandLinkGraphService
                 continue;
             }
             $this->db->executeStatement(
-                'UPDATE brand_related SET related_brand_id = :target, source = :source, created_at = NOW()
+                'UPDATE brand_related SET related_brand_id = :target, source = :source, created_at = CURRENT_TIMESTAMP
                  WHERE id = :id',
                 [
                     'target' => $candidate,
