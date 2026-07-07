@@ -90,6 +90,10 @@ services:
         arguments:
             $extraExcludedDomains: '%env(SCRAPE_EXCLUDED_DOMAINS)%'
 
+    App\Service\MarketplaceExitContext:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
     App\Service\ArticleQaService:
         arguments:
             $projectDir: '%kernel.project_dir%'
