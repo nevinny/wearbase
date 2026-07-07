@@ -2,7 +2,7 @@
 
 namespace App\Controller;
 
-use App\Repository\ArticleRepository;
+use App\Repository\ArticleDistributionRepository;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
@@ -12,25 +12,28 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 /**
  * "Дзен для сайтов": Дзен сам поллит эту ленту и заносит материалы привязанного
  * канала в черновики — замыкает блог→Дзен без ручного копирования текста.
- * Отдаёт `article.dzenContent` (готовый под Дзен текст, другая персона — не дубль
- * блога, привязывается `app:seo:attach-dzen-copy`), НЕ `article.content` — статьи
- * без привязанной Дзен-копии в фид не попадают. `native-draft` — публикацию всё
- * равно подтверждает человек (добавление обложки/CTA/UTM по методологии остаются
- * ручными, см. docs/seo_publishing_strategy.md, docs/dzen_seo_methodology.md).
+ * Отдаёт текущую версию `article_distribution` (platform=dzen) — готовый под Дзен
+ * текст, другая персона, не дубль блога (привязывается `app:seo:attach-distribution
+ * dzen`), НЕ `article.content` — статьи без привязанной копии в фид не попадают.
+ * `native-draft` — публикацию всё равно подтверждает человек (добавление обложки/
+ * CTA/UTM по методологии остаются ручными, см. docs/seo_publishing_strategy.md,
+ * docs/dzen_seo_methodology.md).
  */
 class DzenFeedController extends AbstractController
 {
+    private const PLATFORM = 'dzen';
+
     // Лента — скользящее окно последних публикаций, а не архив: Дзен ждёт актуальные
     // материалы, а не разовый бэклог (см. docs/seo_publishing_strategy.md).
     private const MAX_ITEMS = 30;
 
-    // Из скольких последних опубликованных статей блога выбираем подмножество,
-    // уже подтверждённое в поиске Яндекса (см. fetchYandexIndexedSlugs) — с запасом
-    // над MAX_ITEMS, т.к. часть кандидатов ещё не проиндексирована.
+    // Из скольких последних опубликованных статей с привязанной Дзен-копией выбираем
+    // подмножество, уже подтверждённое в поиске Яндекса (см. fetchYandexIndexedSlugs) —
+    // с запасом над MAX_ITEMS, т.к. часть кандидатов ещё не проиндексирована.
     private const CANDIDATE_POOL = 200;
 
     #[Route('/rss/dzen.xml', name: 'dzen_feed', defaults: ['_format' => 'xml'])]
-    public function feed(ArticleRepository $articleRepo, Connection $db, UrlGeneratorInterface $urlGenerator): Response
+    public function feed(ArticleDistributionRepository $distributionRepo, Connection $db, UrlGeneratorInterface $urlGenerator): Response
     {
         $siteBase = parse_url((string) $this->getParameter('app.site_base_url'));
         $context  = $urlGenerator->getContext();
@@ -40,17 +43,12 @@ class DzenFeedController extends AbstractController
         $indexedSlugs = $this->fetchYandexIndexedSlugs($db);
 
         $items = [];
-        foreach ($articleRepo->findPublished('ru', self::CANDIDATE_POOL) as $article) {
+        foreach ($distributionRepo->findCurrentForPlatform(self::PLATFORM, 'ru', self::CANDIDATE_POOL) as $distribution) {
             if (count($items) >= self::MAX_ITEMS) {
                 break;
             }
+            $article = $distribution->getArticle();
             if (!isset($indexedSlugs[$article->getSlug()])) {
-                continue;
-            }
-            // Без готовой Дзен-копии (другая персона, var/seo/dzen/*.md → app:seo:attach-dzen-copy)
-            // в фид не пускаем: отдать вместо неё article.content было бы почти дословным дублем
-            // блога на сильном домене Дзена — то, чего отдельная персона как раз избегает.
-            if ($article->getDzenContent() === null) {
                 continue;
             }
 
@@ -59,18 +57,20 @@ class DzenFeedController extends AbstractController
                 'slug' => $article->getSlug(),
             ], UrlGeneratorInterface::ABSOLUTE_URL);
 
+            $title = $distribution->getTitle() ?? $article->getTitle();
+
             // Дзен показывает title из content:encoded, а не из <title> — в Дзен-копии он
             // хранится без H1 (парсер выводит его отдельно как title), поэтому возвращаем
             // H1 обратно только для фида.
-            $content = preg_replace('#<script type="application/ld\+json">.*?</script>#s', '', $article->getDzenContent());
-            $content = '<h1>' . htmlspecialchars($article->getTitle(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</h1>\n" . $content
+            $content = preg_replace('#<script type="application/ld\+json">.*?</script>#s', '', $distribution->getContent());
+            $content = '<h1>' . htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</h1>\n" . $content
                 . "\n<p><em>Источник: <a href=\"{$link}\">wearbase.ru</a></em></p>";
 
             $items[] = [
-                'title'   => $article->getTitle(),
+                'title'   => $title,
                 'link'    => $link,
                 'pubDate' => $article->getPublishedAt()->format(\DATE_RSS),
-                'excerpt' => $article->getExcerpt(),
+                'excerpt' => $distribution->getExcerpt() ?? $article->getExcerpt(),
                 'content' => $content,
                 'author'  => $article->getAuthor()?->getName(),
             ];

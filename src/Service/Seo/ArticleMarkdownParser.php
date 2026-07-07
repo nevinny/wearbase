@@ -4,8 +4,8 @@ namespace App\Service\Seo;
 
 /**
  * Разбор сгенерированных .md-статей (var/seo/blog|dzen/*.md) в title/excerpt/HTML.
- * Общий для `app:seo:publish-blog` (var/seo/blog) и `app:seo:attach-dzen-copy`
- * (var/seo/dzen) — оба конвейера используют один и тот же формат генерации.
+ * Общий для `app:seo:publish-blog` (var/seo/blog) и `app:seo:attach-distribution`
+ * (var/seo/{platform}) — все конвейеры используют один и тот же формат генерации.
  */
 class ArticleMarkdownParser
 {
