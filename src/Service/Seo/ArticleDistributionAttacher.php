@@ -139,12 +139,22 @@ class ArticleDistributionAttacher
             }
 
             $current = $this->distributions->findCurrent($article, $platform);
-            if ($current !== null && trim($current->getContent()) === trim($contentHtml)) {
+            // Не только content: та же генерация может поправить заголовок/анонс, оставив
+            // тело файла байт-в-байт прежним — сравнение только по content пропустило бы это.
+            $unchangedFromCurrent = $current !== null
+                && trim($current->getContent()) === trim($contentHtml)
+                && $current->getTitle() === $title
+                && $current->getExcerpt() === $excerpt;
+            if ($unchangedFromCurrent) {
                 $unchanged++;
-                continue;   // байт-в-байт та же версия — новую заводить незачем
+                continue;
             }
 
-            $rows[] = [$article->getSlug(), basename($file), $current === null ? 1 : $current->getVersion() + 1];
+            // MAX(version)+1 по БД, а не $current->getVersion()+1 — устойчивее к ручным
+            // правкам is_current (напр. точечное снятие ошибочной привязки), где текущая
+            // is_current-строка не обязана быть строкой с максимальным version.
+            $version = $this->distributions->nextVersion($article, $platform);
+            $rows[] = [$article->getSlug(), basename($file), $version];
             if ($dryRun) {
                 continue;
             }
@@ -157,7 +167,7 @@ class ArticleDistributionAttacher
             $distribution = (new ArticleDistribution())
                 ->setArticle($article)
                 ->setPlatform($platform)
-                ->setVersion($this->distributions->nextVersion($article, $platform))
+                ->setVersion($version)
                 ->setIsCurrent(true)
                 ->setTitle($title)
                 ->setExcerpt($excerpt)
