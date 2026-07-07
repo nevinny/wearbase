@@ -4,6 +4,7 @@ namespace App\Command;
 
 use App\Entity\Article;
 use App\Repository\ArticleRepository;
+use App\Service\Seo\ArticleDistributionAttacher;
 use App\Service\Seo\ArticleMarkdownParser;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -21,6 +22,10 @@ use Symfony\Component\String\Slugger\SluggerInterface;
  * рендерится |raw, markdown-либы в проекте нет). Дрип-расписание через будущий
  * `publishedAt` (видимость блога = status=active AND publishedAt<=now) — статьи
  * выкладываются ровным темпом без ручной работы. Идемпотентна по slug.
+ *
+ * После публикации сразу привязывает готовые копии под площадки (var/seo/**,
+ * ArticleDistributionAttacher — общая логика с app:seo:attach-distribution),
+ * если они уже лежат на диске — `--no-attach-distribution` отключает.
  *
  * Стратегия и частота — docs/seo_publishing_strategy.md.
  *
@@ -44,6 +49,7 @@ class SeoPublishBlogCommand extends Command
         private readonly SluggerInterface       $slugger,
         private readonly \App\Service\LlmService $llm,
         private readonly ArticleMarkdownParser  $parser,
+        private readonly ArticleDistributionAttacher $attacher,
     ) {
         parent::__construct();
     }
@@ -59,6 +65,7 @@ class SeoPublishBlogCommand extends Command
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Перезаписать контент существующих slug')
             ->addOption('no-judge', null, InputOption::VALUE_NONE,    'Без LLM-судьи (по умолчанию судья включён)')
             ->addOption('author',  null, InputOption::VALUE_REQUIRED, 'Slug автора (байлайн + Person schema)', 'anna-semyannikova')
+            ->addOption('no-attach-distribution', null, InputOption::VALUE_NONE, 'Не привязывать копии под площадки (var/seo/**) после публикации')
         ;
     }
 
@@ -162,6 +169,19 @@ class SeoPublishBlogCommand extends Command
         $io->table(['publishedAt', 'slug', 'title'], $rows);
         $io->success(sprintf('Создано (live-дрип): %d · в черновик судьёй: %d · обновлено: %d · пропущено: %d',
             $created, $drafted, $updated, $skipped));
+
+        // Копии под площадки (var/seo/dzen, var/seo/guides, …) часто уже лежат на диске
+        // к моменту публикации блога — привязываем их сразу, чтобы не ждать отдельного
+        // ручного/крон-прогона app:seo:attach-distribution.
+        if (!$dryRun && !$input->getOption('no-attach-distribution')) {
+            foreach ($this->attacher->attachAll('var/seo') as $platform => $result) {
+                if ($result['attached'] === 0) {
+                    continue;   // не шуметь, если для площадки ничего нового
+                }
+                $io->text(sprintf('  → «%s»: новых версий копий %d (%s)', $platform, $result['attached'],
+                    implode(', ', array_column($result['rows'], 0))));
+            }
+        }
 
         return Command::SUCCESS;
     }

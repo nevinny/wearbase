@@ -27,6 +27,7 @@
 | `app:report:pipeline` | `0 */3 * * *` (раз в 3ч) | 🖥/🍎 | сводка RAG-конвейера в TG |
 | `app:report:daily` | `17 9 * * *` (ежедневно) | 🍎 Mac | дайджест публикаций+GSC в TG |
 | `app:gsc:sync` | `0 6 * * *` (ежедневно) | 🖥 .43 | синк Google Search Console |
+| `app:seo:attach-distribution` | `40 5 * * *` (ежедневно) | 🍎 Mac | подстраховка: привязка копий статей под площадки (var/seo/**) — основной путь автопривязки — сразу при `app:seo:publish-blog`, см. [seo_publishing_strategy.md](seo_publishing_strategy.md) §6б |
 | `app:google:index-ping` | `0 7 * * *` (ежедневно) | 🍎 Mac | пинг Google Indexing API (≤200/день) |
 | `app:currency:update-rates` | `0 12 * * *` (ежедневно) | ☁️ prod | курсы валют ЦБ РФ |
 | `app:subscription:expire` | ежедневно (рекоменд.) | ☁️ prod | истечение подписок |
@@ -143,8 +144,14 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:seo:near-dup` | Аудит near-duplicate описаний (Jaccard по word-shingles, DROP≥0.85 / WARN≥0.60). Read-only отчёт, `--threshold`, `--export`. Дубли в генерации уже ловит `NearDuplicateDetector` в generate-content. | 👆 по запросу | 🖥/🍎 |
 | `app:seo:listicle` | **SEO Boost / GEO**: статья-рейтинг «ТОП-N в нише» с целевым брендом №1 + реальные конкуренты той же ниши; grounded (описание+RAG), JSON-LD Article+ItemList+FAQPage, quality-gate перед сохранением (бренд не пропущен/отказ/штампы). По умолчанию пишет в `var/seo/`. `<brand_id> [niche]`, `--city` (гео-срез «ТОП {стиль} {город}»), `--top --platform`(vc/dtf/pikabu/press/blog/**dzen**)` --persona --variants --no-faq --force --out`. Свой аналог КП ContentMagic. Полный reference — [seo_boost.md](seo_boost.md). | 👆 по запросу | 🖥/🍎 (нужна локальная LLM) |
 | `app:seo:ranking` | Рейтинги брендов по поисковому спросу (`brand_keyword.monthly_shows`, Wordstat): **бренд→город** + **матрица стиль×город→топ брендов**, CSV+MD в `var/seo/`. Срез в консоль: `--style --city --top`. `--min-kw` режет омоним-хвост. Без LLM. Питает выбор ячеек для листиклов. | 👆 по запросу | 🖥/🍎 |
+| `app:seo:publish-blog` | `var/seo/blog/*.md` → `Article` (canonical, MD→HTML, дрип через `publishedAt`). После публикации сам привязывает копии под площадки (см. ниже), `--no-attach-distribution` отключает. `--per-day --start --force --no-judge`. | 👆 по запросу | ☁️ prod (пишет в боевую `article`) |
+| `app:seo:attach-distribution` | Привязка готовых копий статьи под площадку (`var/seo/**/*.md`, суффикс `-{platform}(-pN)?.md`) к статьям блога → `article_distribution` (версионируемо, `is_current`). Авто-обнаружение по всему дереву `var/seo` (не по имени папки — копии раскиданы по разным батчам), без аргумента — все найденные площадки разом. Пропускает файлы, чей текст совпадает с блогом (нет персона-дифференциации). `[platform] --dir --dry-run`. | ⏰ `40 5 * * *` (подстраховка) + авто из `publish-blog` | 🍎 Mac |
 
 ---
+
+> `GET /rss/dzen.xml` (не консольная команда, публичный роут) — RSS «Дзен для сайтов»:
+> отдаёт текущую версию `article_distribution` (platform=dzen), гейт по индексации
+> в Яндексе. См. [seo_publishing_strategy.md](seo_publishing_strategy.md) §6/§6а.
 
 ## 7. Подписки / биллинг
 

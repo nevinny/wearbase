@@ -2,11 +2,7 @@
 
 namespace App\Command;
 
-use App\Entity\ArticleDistribution;
-use App\Repository\ArticleDistributionRepository;
-use App\Repository\ArticleRepository;
-use App\Service\Seo\ArticleMarkdownParser;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\Seo\ArticleDistributionAttacher;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -16,37 +12,29 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Привязка готовых копий статьи под площадку (var/seo/{platform}/*.md — другая
- * персона/тон, см. GenerateListicleCommand::PLATFORM_TONES) к статьям блога
- * (`article.source_file`), в `article_distribution` (версионируемо). Без привязки
- * фиды/выгрузки под площадку синтезировали бы копию из article.content — почти
- * дословный дубль блога на чужом (часто более сильном) домене.
+ * Привязка готовых копий статьи под площадку (var/seo/**\/*.md, суффикс имени
+ * -{platform}(-pN)?.md — другая персона/тон, см. GenerateListicleCommand::
+ * PLATFORM_TONES) к статьям блога, в article_distribution (версионируемо).
+ * Логика — в ArticleDistributionAttacher (общая с автопривязкой внутри
+ * app:seo:publish-blog).
  *
- * Сопоставление по topic-key: суффикс `-site(-pN)?.md` / `-{platform}(-pN)?.md`
- * отбрасывается — персона-индекс (pN) у site- и целевой версий генерится
- * независимо и НЕ совпадает (напр. listicle-…-site-p4.md ↔ listicle-…-dzen-p1.md).
+ * Без platform — сканирует ВЕСЬ var/seo и привязывает копии под все найденные
+ * площадки разом (это же прогоняет ежедневный крон, см. миграцию
+ * Version20260707_attach_distribution_cron).
  *
- * Каждый прогон с изменившимся текстом создаёт НОВУЮ версию (version+1, is_current
- * переезжает на неё) — история не теряется. Байт-в-байт совпадающий с уже текущей
- * версией файл — no-op. Файл, текст которого совпадает с article.content (нет
- * реальной персона-дифференциации) — пропускается с предупреждением, это и есть
- * риск дублей, которого мы избегаем.
- *
- *   php bin/console app:seo:attach-distribution dzen --dry-run
- *   php bin/console app:seo:attach-distribution dzen
- *   php bin/console app:seo:attach-distribution vc --dir=var/seo/vc
+ *   php bin/console app:seo:attach-distribution --dry-run       # все площадки
+ *   php bin/console app:seo:attach-distribution                 # все площадки
+ *   php bin/console app:seo:attach-distribution dzen             # только dzen (тоже auto-discovery по var/seo)
+ *   php bin/console app:seo:attach-distribution vc --dir=var/seo/vc   # точечно, без auto-discovery
  */
 #[AsCommand(
     name: 'app:seo:attach-distribution',
-    description: 'Привязка var/seo/{platform}/*.md к статьям блога (article_distribution)',
+    description: 'Привязка var/seo/**/*.md к статьям блога (article_distribution), по умолчанию все площадки',
 )]
 class AttachArticleDistributionCommand extends Command
 {
     public function __construct(
-        private readonly EntityManagerInterface $em,
-        private readonly ArticleRepository $articles,
-        private readonly ArticleDistributionRepository $distributions,
-        private readonly ArticleMarkdownParser $parser,
+        private readonly ArticleDistributionAttacher $attacher,
     ) {
         parent::__construct();
     }
@@ -54,8 +42,8 @@ class AttachArticleDistributionCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('platform', InputArgument::REQUIRED, 'Код площадки (dzen, vc, pikabu, …)')
-            ->addOption('dir',     null, InputOption::VALUE_REQUIRED, 'Папка с копиями (по умолчанию var/seo/{platform})')
+            ->addArgument('platform', InputArgument::OPTIONAL, 'Код площадки (dzen, vc, …) — без аргумента обрабатываются все найденные под var/seo')
+            ->addOption('dir',     null, InputOption::VALUE_REQUIRED, 'Явная папка вместо авто-обнаружения по var/seo (нужен вместе с platform)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Показать план без записи')
         ;
     }
@@ -63,107 +51,51 @@ class AttachArticleDistributionCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io       = new SymfonyStyle($input, $output);
-        $platform = (string) $input->getArgument('platform');
-        $dir      = rtrim((string) ($input->getOption('dir') ?: "var/seo/{$platform}"), '/');
+        $platform = $input->getArgument('platform');
+        $dir      = $input->getOption('dir');
         $dryRun   = (bool) $input->getOption('dry-run');
 
-        $files = glob($dir . '/*.md') ?: [];
-        if ($files === []) {
-            $io->error("Нет .md в {$dir}.");
+        if ($dir !== null && $platform === null) {
+            $io->error('--dir требует явного аргумента platform.');
             return Command::FAILURE;
         }
 
-        // topic-key => путь к файлу площадки
-        $byKey = [];
-        foreach ($files as $file) {
-            $byKey[$this->topicKey(basename($file), $platform)] = $file;
+        if ($dir !== null) {
+            $files = glob(rtrim($dir, '/') . '/*.md') ?: [];
+            $grouped = [$platform => $files];
+        } else {
+            $grouped = $this->attacher->discoverFiles('var/seo');
+            if ($platform !== null) {
+                $grouped = array_intersect_key($grouped, [$platform => true]);
+            }
         }
 
-        $articles = $this->articles->createQueryBuilder('a')
-            ->where('a.sourceFile IS NOT NULL')
-            ->getQuery()
-            ->getResult();
-
-        $rows = [];
-        $attached = $unchanged = $duplicates = $unmatchedArticles = 0;
-        $usedKeys = [];
-        foreach ($articles as $article) {
-            $key = $this->topicKey((string) $article->getSourceFile(), 'site');
-            if (!isset($byKey[$key])) {
-                $unmatchedArticles++;
-                continue;
-            }
-            $usedKeys[$key] = true;
-
-            $file = $byKey[$key];
-            $parsed = $this->parser->parse((string) file_get_contents($file));
-            if ($parsed === null) {
-                $io->warning('Пропущен (нет H1): ' . basename($file));
-                continue;
-            }
-            [$title, $excerpt, $contentHtml] = $parsed;
-
-            // Совпадающий по имени файл иногда оказывается тем же текстом, что и блог
-            // (разные генерации/партии без реальной персона-дифференциации) — публиковать
-            // такой «дубль» на внешней площадке смысла нет, это и есть риск, которого мы избегаем.
-            if (trim($contentHtml) === trim($article->getContent())) {
-                $io->warning(sprintf('Пропущен (текст идентичен блогу, нет персона-дифференциации): %s ↔ %s',
-                    $article->getSourceFile(), basename($file)));
-                $duplicates++;
-                continue;
-            }
-
-            $current = $this->distributions->findCurrent($article, $platform);
-            if ($current !== null && trim($current->getContent()) === trim($contentHtml)) {
-                $unchanged++;
-                continue;   // байт-в-байт та же версия — новую заводить незачем
-            }
-
-            $rows[] = [$article->getSlug(), basename($file), $current === null ? 1 : $current->getVersion() + 1];
-            if ($dryRun) {
-                continue;
-            }
-
-            if ($current !== null) {
-                $current->setIsCurrent(false);
-                $this->em->persist($current);
-            }
-
-            $distribution = (new ArticleDistribution())
-                ->setArticle($article)
-                ->setPlatform($platform)
-                ->setVersion($this->distributions->nextVersion($article, $platform))
-                ->setIsCurrent(true)
-                ->setTitle($title)
-                ->setExcerpt($excerpt)
-                ->setContent($contentHtml)
-                ->setSourceFile(basename($file));
-            $this->em->persist($distribution);
-            $attached++;
+        if ($grouped === [] || array_sum(array_map('count', $grouped)) === 0) {
+            $io->error($platform !== null
+                ? "Не нашёл файлов площадки «{$platform}» под var/seo."
+                : 'Не нашёл файлов ни одной площадки под var/seo.');
+            return Command::FAILURE;
         }
 
-        if (!$dryRun) {
-            $this->em->flush();
-        }
+        foreach ($grouped as $p => $files) {
+            $result = $this->attacher->attachPlatform($p, $files, $dryRun);
 
-        $unmatchedFiles = array_diff_key($byKey, $usedKeys);
+            foreach ($result['warnings'] as $warning) {
+                $io->warning($warning);
+            }
 
-        $io->table(['slug', 'source_file', 'version'], $rows);
-        $io->success(sprintf(
-            'Площадка «%s» — новых версий: %d · без изменений: %d · дублей блога (пропущены): %d · статей без копии: %d · файлов без статьи: %d',
-            $platform, $attached, $unchanged, $duplicates, $unmatchedArticles, count($unmatchedFiles),
-        ));
+            $io->section("Площадка «{$p}»");
+            $io->table(['slug', 'source_file', 'version'], $result['rows']);
+            $io->success(sprintf(
+                'новых версий: %d · без изменений: %d · дублей блога (пропущены): %d · статей без копии: %d · файлов без статьи: %d',
+                $result['attached'], $result['unchanged'], $result['duplicates'], $result['unmatchedArticles'], count($result['unmatchedFiles']),
+            ));
 
-        if ($unmatchedFiles !== []) {
-            $io->note('Файлы без статьи-первоисточника (проверить slug/source_file): ' . implode(', ', array_map('basename', $unmatchedFiles)));
+            if ($result['unmatchedFiles'] !== []) {
+                $io->note('Файлы без статьи-первоисточника (проверить slug/source_file): ' . implode(', ', $result['unmatchedFiles']));
+            }
         }
 
         return Command::SUCCESS;
-    }
-
-    /** Базовое имя без суффикса `-{$tag}(-pN)?.md` — общий topic-key для site/площадка версий. */
-    private function topicKey(string $filename, string $tag): string
-    {
-        return (string) preg_replace('/-' . preg_quote($tag, '/') . '(-p\d+)?\.md$/', '', $filename);
     }
 }
