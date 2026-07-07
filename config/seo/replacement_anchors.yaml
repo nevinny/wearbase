@@ -50,10 +50,6 @@ anchors:
     niche: sport
     count: 6
     keywords: ["asics в россии", "чем заменить asics", "аналоги asics"]
-  - foreign: vans
-    niche: sport
-    count: 6
-    keywords: ["vans в россии", "чем заменить vans", "аналоги vans"]
   - foreign: converse
     niche: streetwear
     count: 6
@@ -90,14 +86,6 @@ anchors:
     niche: classic
     count: 6
     keywords: ["calvin klein в россии", "чем заменить calvin klein", "аналоги calvin klein"]
-  - foreign: thenorthface
-    niche: sport
-    count: 6
-    keywords: ["the north face в россии", "чем заменить the north face", "аналоги the north face"]
-  - foreign: timberland
-    niche: sport
-    count: 6
-    keywords: ["timberland в россии", "чем заменить timberland", "аналоги timberland"]
   - foreign: diesel
     niche: streetwear
     count: 6
@@ -126,3 +114,16 @@ anchors:
     niche: sport
     count: 6
     keywords: ["decathlon в россии", "чем заменить decathlon", "аналоги decathlon"]
+  # VF Corporation (Vans/Timberland/TNF) — leave-russia: Stay/Scaling Back; в конце очереди до вердикта
+  - foreign: vans
+    niche: sport
+    count: 6
+    keywords: ["vans в россии", "чем заменить vans", "аналоги vans"]
+  - foreign: timberland
+    niche: sport
+    count: 6
+    keywords: ["timberland в россии", "чем заменить timberland", "аналоги timberland"]
+  - foreign: thenorthface
+    niche: sport
+    count: 6
+    keywords: ["the north face в россии", "чем заменить the north face", "аналоги the north face"]

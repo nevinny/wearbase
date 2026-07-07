@@ -133,6 +133,17 @@ class ReplaceListicleCommand extends Command
             $slug = (string) $cfg['foreign'];
             $io->section("Якорь: {$slug}");
 
+            // Resume-скип: обе копии уже на диске → якорь готов (батч на 30 якорей идёт
+            // часами и может оборваться; перезапуск не должен пережигать готовое —
+            // см. память no-force-overwrite-ready-articles). --force пересоздаёт.
+            if (!$force && !$dryRun
+                && is_file("{$outDir}/blog/replace-{$slug}-site.md")
+                && is_file("{$outDir}/dzen/replace-{$slug}-dzen.md")) {
+                $io->text('  обе копии уже существуют — пропуск (пересоздать: --force).');
+                $skipped++;
+                continue;
+            }
+
             /** @var Brand|null $anchor */
             $anchor = $brandRepo->findOneBy(['slug' => $slug]);
             if ($anchor === null || !$anchor->getTitle()) {
