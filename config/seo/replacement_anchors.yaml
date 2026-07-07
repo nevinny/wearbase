@@ -2,8 +2,10 @@
 # (app:seo:replace-listicle, docs/foreign_brands_policy.md → раздел «Фрейминг»).
 # ТОЛЬКО ручная курация по реальному спросу — НЕ автогенерация сотней
 # (scaled-content риск). Люкс (Chanel/Hermes/Cartier) не добавлять.
-# Перед добавлением якоря проверять ФАКТ ухода из РФ: Lacoste/Ecco/Geox/Guess/
-# Kappa/Columbia/Fila/Lotto/Pepe Jeans НЕ уходили — под «чем заменить» не годятся
+# Перед добавлением якоря проверять ФАКТ ухода из РФ (leave-russia.org, копия в
+# ~/seo-archives/leave-russia/): Lacoste/Ecco/Geox/Guess/Kappa/Columbia/Fila/Lotto/
+# Pepe Jeans/Diesel (Stay/Continue Operations)/Vans/Timberland/The North Face
+# (VF Corp: Stay/Scaling Back) НЕ уходили — под «чем заменить» не годятся
 # (фактчек 2026-07-07, docs/foreign_brands_policy.md → «Фактчек „кто реально ушёл"»).
 anchors:
   - foreign: zara          # slug бренда X в БД (origin_status='foreign')
@@ -86,10 +88,6 @@ anchors:
     niche: classic
     count: 6
     keywords: ["calvin klein в россии", "чем заменить calvin klein", "аналоги calvin klein"]
-  - foreign: diesel
-    niche: streetwear
-    count: 6
-    keywords: ["diesel в россии", "чем заменить diesel", "аналоги diesel"]
   - foreign: stoneisland
     niche: streetwear
     count: 6
@@ -114,16 +112,3 @@ anchors:
     niche: sport
     count: 6
     keywords: ["decathlon в россии", "чем заменить decathlon", "аналоги decathlon"]
-  # VF Corporation (Vans/Timberland/TNF) — leave-russia: Stay/Scaling Back; в конце очереди до вердикта
-  - foreign: vans
-    niche: sport
-    count: 6
-    keywords: ["vans в россии", "чем заменить vans", "аналоги vans"]
-  - foreign: timberland
-    niche: sport
-    count: 6
-    keywords: ["timberland в россии", "чем заменить timberland", "аналоги timberland"]
-  - foreign: thenorthface
-    niche: sport
-    count: 6
-    keywords: ["the north face в россии", "чем заменить the north face", "аналоги the north face"]

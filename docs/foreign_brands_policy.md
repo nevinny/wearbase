@@ -103,6 +103,18 @@ Bershka, Crocs, H&M, Nike, adidas), НЕ автогенерация сотней
 - **Lotto, Pepe Jeans** — официального ритейла/ухода не подтверждено, товар на маркетплейсах.
 - **Springfield (Tendam)** — уходила в 2022, вернулась в 2023 через белорусского франчайзи.
 
+Сверка с leave-russia.org (полная локальная копия базы KSE в `~/seo-archives/leave-russia/`,
+fashion-выжимка 141 компания — `var/seo/replace-series/leave-russia-fashion.tsv`) добавила:
+- **Diesel** — Stay / Continue Operations (19.06.2023) — из серии исключён;
+- **Vans / Timberland / The North Face** (VF Corporation) — Stay / Scaling Back (08.06.2023) — исключены;
+- **Tommy Hilfiger** — на уровне PVH Exit Completed, но отдельная карточка бренда Leave/Withdrawal
+  (09.04.2025): «ограничил работу» — корректно, «полностью ушёл» — не утверждать;
+- Asics/Mango/Gap/M&S/Victoria's Secret — карточки leave-russia отдают HTTP 500 (баг их стороны),
+  оставлены в серии по фактчеку деловых СМИ.
+
+Кандидаты на расширение серии из выжимки (ушли, у нас не якоря): Skechers, Helly Hansen,
+Reima (детская), Samsonite, Tapestry (Coach/Kate Spade), Gerry Weber, Rossignol, Pandora.
+
 Для этих брендов допустим только нейтральный фрейминг «российские альтернативы X» БЕЗ
 утверждения об уходе (отдельная серия, если понадобится). Оговорки в действующих якорях:
 **Mango** — закрыла собственный бизнес 2022, вернулась франшизой Fiba Retail («ограничила
