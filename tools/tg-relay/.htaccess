@@ -1,0 +1,4 @@
+# Закрыть прямой доступ к SQLite-очереди и служебным файлам.
+<FilesMatch "\.(sqlite|sqlite-wal|sqlite-shm|md)$">
+    Require all denied
+</FilesMatch>
