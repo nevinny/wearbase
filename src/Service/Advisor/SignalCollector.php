@@ -32,12 +32,13 @@ final class SignalCollector
     {
         $m = [];
 
-        // --- Бренды: каталог и контакт-воронка (локальная БД) ---
-        $brand = $this->row(
+        // --- ФАБРИКА КОНТЕНТА (локальная dev-БД, НЕ живой каталог) ---
+        // Каталожные метрики брендов (active/new/disabled/published) берём с ПРОДА ниже:
+        // dev — это фабрика (тысячи сырых лидов в 'new'), выдавать их за каталог = путаница.
+        // Здесь — только фабричные показатели: контакт-воронка enrichment, стадии RAG,
+        // собранные ключевики. Префикс factory_ явно помечает «фабрика (dev)».
+        $contacts = $this->row(
             "SELECT
-               SUM(status = 'active')                              AS active,
-               SUM(status = 'new')                                 AS new,
-               SUM(published_at IS NOT NULL)                       AS published,
                SUM(contact_status = 'enriched')                   AS enriched,
                SUM(contact_status = 'partial')                    AS partial,
                SUM(contact_status = 'not_found')                  AS not_found,
@@ -45,25 +46,22 @@ final class SignalCollector
                    AND status IN ('active','new'))                AS with_email
              FROM brand"
         );
-        if ($brand !== null) {
-            $m['brands_active']    = (int) $brand['active'];
-            $m['brands_new']       = (int) $brand['new'];
-            $m['brands_published'] = (int) $brand['published'];
-            $m['contacts_enriched'] = (int) $brand['enriched'];
-            $m['contacts_partial']  = (int) $brand['partial'];
-            $m['contacts_not_found'] = (int) $brand['not_found'];
-            $m['contacts_email']    = (int) $brand['with_email'];
+        if ($contacts !== null) {
+            $m['factory_contacts_enriched']  = (int) $contacts['enriched'];
+            $m['factory_contacts_partial']   = (int) $contacts['partial'];
+            $m['factory_contacts_not_found'] = (int) $contacts['not_found'];
+            $m['factory_contacts_email']     = (int) $contacts['with_email'];
         }
 
-        // --- Гистограмма стадий RAG-конвейера (brand_rag_pipeline) ---
+        // --- Гистограмма стадий RAG-конвейера (brand_rag_pipeline) — фабрика ---
         foreach ($this->all('SELECT status, COUNT(*) c FROM brand_rag_pipeline GROUP BY status') as $r) {
-            $m['pipeline_' . $r['status']] = (int) $r['c'];
+            $m['factory_pipeline_' . $r['status']] = (int) $r['c'];
         }
 
-        // --- Ключевики (brand_keyword) ---
+        // --- Ключевики (brand_keyword) — фабрика ---
         $kw = $this->one('SELECT COUNT(*) FROM brand_keyword');
         if ($kw !== null) {
-            $m['keywords_total'] = (int) $kw;
+            $m['factory_keywords_total'] = (int) $kw;
         }
 
         // --- Яндекс.Вебмастер: индекс + запросы (локальная БД, синк крон Mac) ---
@@ -118,6 +116,25 @@ final class SignalCollector
         }
 
         $out = [];
+
+        // Живой КАТАЛОГ (headline советника): бренды по статусам с ПРОДА.
+        // active/new/disabled — из GROUP BY status нового эндпоинта (после деплоя прода).
+        // brands_active до деплоя падает на active_total (уже есть в старом контракте),
+        // brands_published — из published_total (published_at IS NOT NULL, стабильное поле).
+        if (isset($d['brands_active']) && is_numeric($d['brands_active'])) {
+            $out['brands_active'] = (int) $d['brands_active'];
+        } elseif (isset($d['active_total']) && is_numeric($d['active_total'])) {
+            $out['brands_active'] = (int) $d['active_total'];
+        }
+        foreach (['brands_new', 'brands_disabled'] as $k) {
+            if (isset($d[$k]) && is_numeric($d[$k])) {
+                $out[$k] = (int) $d[$k];
+            }
+        }
+        if (isset($d['published_total']) && is_numeric($d['published_total'])) {
+            $out['brands_published'] = (int) $d['published_total'];
+        }
+
         // Публикации/очередь дрипа (стабильный контракт, префикс prod_ как раньше).
         foreach (['published_total', 'published_today', 'published_yesterday', 'queue_pending'] as $k) {
             if (isset($d[$k]) && is_numeric($d[$k])) {

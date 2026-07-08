@@ -291,6 +291,16 @@ class BrandIngestController extends AbstractController
 
         // --- Живой бизнес (fail-safe: каждый блок отдельно, нет таблицы → поле пропускаем) ---
 
+        // Каталог прода по статусам: brands_active|new|disabled|... (одним GROUP BY).
+        // active_total выше оставлен как стабильный алиас brands_active. Fail-safe:
+        // нет колонки status / таблицы brand → блок пропускаем.
+        try {
+            foreach ($db->fetchAllAssociative('SELECT status, COUNT(*) c FROM brand GROUP BY status') as $r) {
+                $out['brands_' . $r['status']] = (int) $r['c'];
+            }
+        } catch (\Throwable) {
+        }
+
         // Подписки по статусам: subscriptions_trial|active|past_due|cancelled|expired.
         try {
             foreach ($db->fetchAllAssociative('SELECT status, COUNT(*) c FROM subscription GROUP BY status') as $r) {
