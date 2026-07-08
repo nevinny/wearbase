@@ -26,6 +26,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  *   php bin/console app:advisor:ask "Что важнее всего для роста трафика?"
  *   php bin/console app:advisor:ask "..." --role=framing   # сузить ретрив до одной роли
+ *   php bin/console app:advisor:ask "..." --plain          # только текст ответа (для TG-бота)
  */
 #[AsCommand(name: 'app:advisor:ask', description: 'Задать вопрос советнику — ответ по состоянию проекта + базе знаний (read-only)')]
 class AdvisorAskCommand extends Command
@@ -42,12 +43,14 @@ class AdvisorAskCommand extends Command
     {
         $this
             ->addArgument('question', InputArgument::REQUIRED, 'Вопрос владельца советнику')
-            ->addOption('role', null, InputOption::VALUE_REQUIRED, 'Сузить ретрив до одной роли (idea|framing|case)');
+            ->addOption('role', null, InputOption::VALUE_REQUIRED, 'Сузить ретрив до одной роли (idea|framing|case)')
+            ->addOption('plain', null, InputOption::VALUE_NONE, 'Печатать только текст ответа, без SymfonyStyle-хрома (для TG-бота)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io       = new SymfonyStyle($input, $output);
+        $plain    = (bool) $input->getOption('plain');
         $question = trim((string) $input->getArgument('question'));
         if ($question === '') {
             $io->error('Пустой вопрос.');
@@ -57,7 +60,7 @@ class AdvisorAskCommand extends Command
         // Состояние: последний снимок. Нет — продолжаем с пустыми метриками (предупредив).
         $snap    = $this->snapshots->findLatest();
         $metrics = $snap?->getMetrics() ?? [];
-        if ($snap === null) {
+        if ($snap === null && !$plain) {
             $io->warning('Нет ни одного StateSnapshot — отвечаю без метрик состояния (app:advisor:snapshot соберёт их).');
         }
 
@@ -88,6 +91,11 @@ class AdvisorAskCommand extends Command
         if ($answer === '') {
             $io->error('Советник вернул пустой ответ (gemma перегружена? повторите позже).');
             return Command::FAILURE;
+        }
+
+        if ($plain) {
+            $output->writeln($answer);
+            return Command::SUCCESS;
         }
 
         $io->section('Вопрос');
