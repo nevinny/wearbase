@@ -2,6 +2,9 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\AdvisorExperiment;
+use App\Entity\AdvisorIdea;
+use App\Entity\AdvisorRun;
 use App\Entity\Article;
 use App\Entity\Author;
 use App\Entity\Brand;
@@ -112,6 +115,11 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToCrud('Правила доставки', 'fas fa-truck', ShippingRule::class);
         yield MenuItem::linkToCrud('Налоговые правила', 'fas fa-receipt', TaxRule::class);
         yield MenuItem::linkToCrud('Рынки брендов', 'fas fa-flag', BrandMarket::class);
+
+        yield MenuItem::section('Советник');
+        yield MenuItem::linkToCrud('Идеи', 'fas fa-lightbulb', AdvisorIdea::class);
+        yield MenuItem::linkToCrud('Дайджесты', 'fas fa-scroll', AdvisorRun::class);
+        yield MenuItem::linkToCrud('Эксперименты', 'fas fa-flask', AdvisorExperiment::class);
 
         yield MenuItem::section('Пользователи');
         yield MenuItem::linkToCrud('Users', 'fas fa-users', User::class);
