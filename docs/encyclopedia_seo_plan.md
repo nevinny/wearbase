@@ -127,6 +127,74 @@
 - **Фаза 3**: рёбра бренд↔термин в графе; перелинковка терминов между собой
   (материал↔стиль↔категория); фасетный SEO-футер как у getboat.
 
+## Тех-план реализации — Фаза 1 (энциклопедия-история бренда)
+
+Прямой порт схемы getboat. Ниже — на утверждение, кода пока нет.
+
+### 1. Модель данных (минимум, без спекуляций)
+Добавляем в сущность `Brand` (не плодим `BrandMilestone` — у getboat история = прозаические
+H2, а не жёсткий таймлайн; `foundingYear`+`closedAt`+прозу с годами хватает):
+- `history` LONGTEXT NULL — нарратив (HTML/markdown с H2-секциями, годы-якоря внутри текста).
+- `historyStatus` VARCHAR(20) NOT NULL DEFAULT `none` — `none / generating / ready /
+  insufficient` (гейт публикации + идемпотентность батча; по образцу `contactStatus`/`nicheStatus`).
+- `historyGeneratedAt` DATETIME NULL.
+Переиспользуем как есть: `foundingYear` (год-якорь интро), `closedAt`/`isClosed()` (вехи «сегодня/закрыт»).
+
+**Миграция**: `VersionYYYYMMDD_encyclopedia_brand_history.php`, `ADD COLUMN` с guard'ами
+(идемпотентно, как принято). Не `schema:update`.
+
+### 2. Генерация истории (grounded, с гейтом качества)
+Команда `app:brand:generate-history` — по образцу RAG-generate-content:
+- Ретрив top-k чанков бренда из Qdrant (`BrandRagService`) → промпт в `LlmService`
+  (локальная ollama gemma): «история строго по фактам контекста; интро (год основания
+  `foundingYear`) + H2-секции с годами; НЕ выдумывать; если фактов мало → верни `INSUFFICIENT`».
+- **Гейт**: chunks < порога ИЛИ ответ `INSUFFICIENT` → `historyStatus='insufficient'`,
+  страницу НЕ создаём (защита от thin/scaled-content дубля). Иначе `ready`.
+- Флаги как у прочих батчей: `limit`, `--id`, `--force`, `--dry-run`, `--quiet`, `--no-debug`
+  (обязателен на больших батчах — OOM-профайлер, см. CLAUDE.md).
+
+### 3. Маршруты и контроллер
+Новый `EncyclopediaController` (locale-префикс + requirements как везде):
+- `encyclopedia_index` `/{_locale}/encyclopedia` — хаб A–Z, только `historyStatus='ready'`
+  (переиспользуем `Alphabet`/пагинацию).
+- `encyclopedia_show` `/{_locale}/encyclopedia/{slug}` — рендер `ready`; иначе 404.
+
+### 4. Шаблоны (templates/tailwind/, extends base.html.twig — SEO-head)
+- `encyclopedia/index.html.twig` — сетка карточек бренда (лого + счётчик товаров + строка
+  дефиниции + «Изучить →»), стиль-токены как в проекте.
+- `encyclopedia/show.html.twig` — крошки «← Энциклопедия», лого + «N товаров», интро с
+  годом-якорем, `history` (H2-секции), грид товаров бренда + CTA «смотреть в каталоге».
+- JSON-LD: `Article`/`AboutPage` + `Organization` (`foundingDate` из `foundingYear`) +
+  `BreadcrumbList` (в Twig, как в brand/show).
+
+### 5. Двусторонняя перелинковка (ядро приёма)
+- `/encyclopedia/{slug}` → `/brands/{slug}` («товары бренда в каталоге»).
+- `/brands/{slug}` (правка `brand/show.html.twig`, хирургически) → блок-кнопка «Изучить
+  историю бренда в энциклопедии →», **только при `historyStatus='ready'`**. Это back-link getboat.
+
+### 6. SEO-обвязка
+- `SitemapController`: добавить URL энциклопедии — **только `ready`**.
+- Non-ru локали: `noindex,follow` наследуется из `base.html.twig` (правило уже есть) — ОК.
+- (Фаза 3) ссылка на хаб `/encyclopedia` в футер.
+
+### 7. Тесты и критерии приёмки (goal-driven)
+1. Миграция применяется, колонки есть. → `SHOW COLUMNS`.
+2. `generate-history --id=X --dry-run`: у покрытого бренда — grounded-проза с годами;
+   у тонкого — `INSUFFICIENT`. → глазами + статус.
+3. `/ru/encyclopedia/{slug}` = 200 для `ready`, 404 для `none`; JSON-LD валиден; крошки;
+   back-link на обеих страницах. → functional-тест (`WebTestCase`).
+4. `/ru/encyclopedia` листит только `ready`.
+5. Non-ru → `noindex`.
+6. Батч `--no-debug` на N брендах, спот-чек качества.
+
+### Порядок работ (каждый шаг — с верификацией)
+1. Миграция + поля сущности → колонки на месте.
+2. Команда `generate-history` (RAG+гейт) → dry-run на 3–5 брендах.
+3. Контроллер+маршруты+шаблоны → страницы рендерятся.
+4. Двусторонняя перелинковка → ссылки видны при `ready`.
+5. Sitemap + JSON-LD + functional-тесты → зелёные.
+6. Реальный батч генерации → публикация/деплой по запросу.
+
 ## Метрика успеха
 Рост индексируемых URL (энциклопедия) + рост внутренних ссылок на карточки брендов +
 показы/клики в GSC по информационным запросам («что такое …», «бренды … стиля»).
