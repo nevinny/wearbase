@@ -96,7 +96,16 @@ Gate проверяет их (перенос `verify-*` из движка DrMax)
 По разбору конкурента ([dzen_seo_methodology.md](dzen_seo_methodology.md)) генератор собирает
 полную SEO-анатомию (детерминированно, в коде — не доверяем LLM структуру):
 
-- **Оглавление** (`## Содержание`) из H2-секций;
+- **Оглавление** (`## Содержание`) из H2-секций — **якорное** (приём Т—Ж,
+  [tj_wear_russian_benchmark.md](tj_wear_russian_benchmark.md)): пункты — markdown-ссылки
+  `[1. Бренд](#1-бренд)`; id заголовкам ставит `ArticleMarkdownParser` тем же
+  `anchorId()` → якоря работают после `app:seo:publish-blog`;
+- **Фикс-поля карточки бренда** (приём Т—Ж) — под каждым `## N. …` детерминированный
+  markdown-список «Кратко / Хиты / Цены / Город / Офлайн» из БД (`BrandFactSheet`),
+  НЕ из LLM. Источники: `brand.anons` (обрезка по предложениям до 220 симв.),
+  товары бренда (названия — «Хиты», min цена — «от N ₽»), атрибут `price_segment`
+  (фолбэк «Цены»), `brand.city`, `brand_store` (адрес одной точки или «N офлайн-точек
+  (города)»). Нет данных по полю — строка не выводится (никаких «уточняйте на сайте»);
 - **In-text ссылки на каталог с UTM** — линкуется первое упоминание каждого бренда (до 4),
   целевой идёт первым → его ссылка попадает в первый абзац («ссылка в первом абзаце»);
 - **UTM-схема**: `utm_source={platform}&utm_medium=article&utm_campaign={style}-{target}-{platform}`,
@@ -235,6 +244,8 @@ gate без проверки нумерованных секций (у гида 
 | `src/Service/LlmService.php::generateListicle()` | grounded-промпт листикла (порядок мест, факты, персона, тон, ключи) |
 | `src/Service/LlmService.php::generateBrandFaq()` | FAQ из Wordstat-фраз (переиспользуется из задачи FAQ) |
 | `src/Repository/BrandRepository.php::findListicleCompetitors()` | конкуренты той же ниши с описанием |
+| `src/Service/Seo/BrandFactSheet.php` | фикс-поля карточки «Кратко/Хиты/Цены/Город/Офлайн» из БД (не LLM) |
+| `src/Service/Seo/ArticleMarkdownParser.php::anchorId()` | id заголовков h2/h3 — единый источник якорей для оглавления |
 
 JSON-LD (`Article` + `ItemList` + `FAQPage` в `@graph`) собирается **в коде**
 детерминированно — модели не доверяем структурную разметку.
