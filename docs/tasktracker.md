@@ -1014,7 +1014,10 @@ Big-player roadmap §#2 (выбор плацдарма): плацдарм = **М
 - [ ] §#2 рескью 102 deferred: `app:rag:daemon --no-debug` (discover→fetch→embed→generate, priority выставлен).
       Реалистичный потолок ~+50 → done ≈175–180; ~48 «мёртвых» без онлайн-присутствия исключить из знаменателя.
 - [ ] §#3 топ-3 по «бренды одежды Москва» — после индексации (GSC).
-- [ ] Засеять следующие города (СПб 58 / НН 13) тем же CityHub.
+- [x] Засеять следующие города тем же CityHub. Формульный засев СПб/НН/Екб — `Version20260620_city_hub_seed`
+      (INSERT IGNORE). **2026-07-10** обогащены СПб (63 active) и НН (13 active) кураторским intro/meta
+      с именами реальных локальных марок из базы (СПб — Krakatau/Gate31/SHU; НН — Called a Garment/Ruff Global):
+      миграция `Version20260710_city_hub_local_brands` (идемпотентный UPDATE по slug). Смоук на dev — 200, intro/meta ок.
 
 ---
 
