@@ -121,6 +121,27 @@ Gate проверяет их (перенос `verify-*` из движка DrMax)
   «редакционная статья каталога». Схема: блог (`site`) = первоисточник/canonical, Дзен =
   отдельный вариант со ссылкой на блог (см. [dzen_seo_methodology.md](dzen_seo_methodology.md)).
 
+## Title-паттерн и ежегодное переиздание (приём Т—Ж)
+
+По разбору Т—Ж ([tj_wear_russian_benchmark.md](tj_wear_russian_benchmark.md), «Что перенять» п.2):
+
+- **SEO-title ≠ H1.** Генератор пишет в `.md` комментарий `<!-- meta-title: Топ-N лучших
+  брендов {ниша} {год} года -->` (год — из даты генерации, `GenerateListicleCommand::seoTitle`),
+  а H1 — человеческий **без года**: «ТОП-N брендов {ниша}: рейтинг» (`h1Title`). При
+  публикации `app:seo:publish-blog` кладёт его в `article.meta_title`; шаблон блога
+  использует meta_title в `<title>`/`og:title` с fallback на `title` (старые статьи без
+  meta_title не ломаются). Slug строится из H1 → **вечнозелёный URL** без года.
+- **Переиздание — `app:seo:republish-blog <slug> [--file=…] [--dry-run]`**: осознанное
+  ежегодное обновление ТОЙ ЖЕ статьи. Обновляет title/meta_title (свежий год)/excerpt/
+  content и `updatedAt` (→ `dateModified` в JSON-LD, `lastmod` в sitemap, «обновлено» в
+  байлайне, pubDate Дзен-фида = max(publishedAt, updatedAt)). Slug, `publishedAt` (первая
+  публикация), статус и автор не трогаются. По умолчанию берёт `var/seo/blog/{sourceFile}`
+  статьи; свежесгенерированный файл указывать через `--file`. Копии под площадки после
+  переиздания обновлять отдельно (`app:seo:attach-distribution`).
+- **`publish-blog --force` по-прежнему НЕ для переиздания** готовых статей (правило
+  «новый повод → новый slug» остаётся для смены темы; ежегодное обновление той же темы —
+  только republish).
+
 ## Quality-gate
 
 Перед сохранением каждая статья проходит детерминированный gate
