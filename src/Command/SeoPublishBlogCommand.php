@@ -113,7 +113,7 @@ class SeoPublishBlogCommand extends Command
                 $skipped++;
                 continue;
             }
-            [$title, $excerpt, $contentHtml] = $parsed;
+            [$title, $excerpt, $contentHtml, $metaTitle] = $parsed;
 
             $publishAt = (clone $start)
                 ->modify('+' . intdiv($i, $perDay) . ' days')
@@ -147,6 +147,9 @@ class SeoPublishBlogCommand extends Command
 
             $article = $existing ?? (new Article())->setSlug($slug)->setLocale($locale);
             $article->setTitle($title)->setExcerpt($excerpt)->setContent($contentHtml)->setSourceFile(basename($file));
+            if ($metaTitle !== null) {
+                $article->setMetaTitle($metaTitle);   // SEO-title с годом (Т—Ж); нет в md — не затираем
+            }
             if ($author && $article->getAuthor() === null) {
                 $article->setAuthor($author);   // только если автор не задан (не затираем ручной выбор в EA)
             }

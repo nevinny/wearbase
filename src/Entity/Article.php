@@ -29,6 +29,14 @@ class Article
     #[Assert\NotBlank]
     private string $title;
 
+    /**
+     * SEO-title для <title>/og:title (приём Т—Ж: «Топ-N лучших … {год} года»),
+     * H1 остаётся человеческим без года ($title). Null — старые статьи, шаблон
+     * блога делает fallback на title.
+     */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $metaTitle = null;
+
     #[ORM\Column(length: 255, unique: true)]
     #[Assert\NotBlank]
     #[Assert\Regex(pattern: '/^[a-z0-9]+(?:-[a-z0-9]+)*$/', message: 'Слаг: только строчные латинские буквы, цифры и дефисы')]
@@ -73,6 +81,9 @@ class Article
 
     public function getTitle(): string { return $this->title; }
     public function setTitle(string $title): static { $this->title = $title; return $this; }
+
+    public function getMetaTitle(): ?string { return $this->metaTitle; }
+    public function setMetaTitle(?string $metaTitle): static { $this->metaTitle = $metaTitle; return $this; }
 
     public function getSlug(): string { return $this->slug; }
     public function setSlug(string $slug): static { $this->slug = $slug; return $this; }

@@ -10,11 +10,15 @@ namespace App\Service\Seo;
 class ArticleMarkdownParser
 {
     /**
-     * Разбор md: H1→title, блок «## Коротко»→excerpt, остальное (без H1) → HTML.
-     * @return array{0:string,1:?string,2:string}|null
+     * Разбор md: H1→title, блок «## Коротко»→excerpt, остальное (без H1) → HTML,
+     * `<!-- meta-title: … -->` → SEO-title (Т—Ж: с годом; null, если комментария нет).
+     * @return array{0:string,1:?string,2:string,3:?string}|null
      */
     public function parse(string $md): ?array
     {
+        // meta-title — до вырезания комментариев (он и есть комментарий).
+        $metaTitle = preg_match('/<!--\s*meta-title:\s*(.+?)\s*-->/u', $md, $mt) ? $mt[1] : null;
+
         $md = preg_replace('/<!--.*?-->/s', '', $md);            // убрать комментарии
         if (!preg_match('/^\#\s+(.+?)\s*$/m', $md, $m)) {
             return null;                                          // нет H1 — не статья
@@ -29,7 +33,7 @@ class ArticleMarkdownParser
             $excerpt = mb_substr($plain, 0, 300);
         }
 
-        return [$title, $excerpt, $this->mdToHtml($body)];
+        return [$title, $excerpt, $this->mdToHtml($body), $metaTitle];
     }
 
     /** Минимальный конвертер под наши конструкции (заголовки/абзацы/таблица/списки/hr/JSON-LD). */

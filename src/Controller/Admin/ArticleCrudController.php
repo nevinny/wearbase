@@ -40,6 +40,10 @@ class ArticleCrudController extends DefaultCrudController
     {
         yield IdField::new('id')->onlyOnIndex();
         yield TextField::new('title', 'Заголовок');
+        yield TextField::new('metaTitle', 'SEO-title')
+            ->setHelp('Тег &lt;title&gt;/og:title («Топ-N лучших … {год} года»). Пусто — используется заголовок.')
+            ->hideOnIndex()
+            ->setRequired(false);
         yield TextField::new('slug', 'Слаг')
             ->setHelp('URL статьи: /ru/blog/&lt;слаг&gt;. Только строчные латинские буквы, цифры, дефисы.');
         yield ChoiceField::new('locale', 'Локаль')

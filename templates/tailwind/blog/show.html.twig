@@ -2,11 +2,12 @@
 
 {% set page_locale = app.request.locale|default('ru') %}
 
-{% block title %}{{ article.title }} | WEARBASE{% endblock %}
+{# SEO-title с годом (metaTitle, приём Т—Ж); fallback на title — старые статьи без metaTitle #}
+{% block title %}{{ article.metaTitle ?: article.title }} | WEARBASE{% endblock %}
 
 {% block meta_description %}{{ article.excerpt ? article.excerpt|slice(0, 155) : article.title }}{% endblock %}
 
-{% block og_title %}{{ article.title }} | WEARBASE{% endblock %}
+{% block og_title %}{{ article.metaTitle ?: article.title }} | WEARBASE{% endblock %}
 
 {% block og_description %}{{ article.excerpt ? article.excerpt|slice(0, 155) : article.title }}{% endblock %}
 

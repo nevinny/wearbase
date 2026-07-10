@@ -252,8 +252,13 @@ class GenerateListicleCommand extends Command
             // если корректор вернул «уникальн»).
             $body = $this->softenCliches($this->applyProofread($body, $io));
 
-            $title    = sprintf('ТОП-%d брендов %s: рейтинг %s', count($orderedBrands), $nicheTitle, date('Y'));
-            $campaign = sprintf('%s-%s-%s', $style->getSlug(), $target->getSlug(), $vPlatform);
+            // Приём Т—Ж (tj_wear_russian_benchmark.md, п.2): SEO-title с годом
+            // (уходит в article.meta_title через <!-- meta-title --> + publish-blog),
+            // H1 — человеческий без года → вечнозелёный slug, переиздание ежегодно
+            // обновляет год в meta_title, не плодя URL.
+            $title     = self::h1Title(count($orderedBrands), $nicheTitle);
+            $metaTitle = self::seoTitle(count($orderedBrands), $nicheTitle);
+            $campaign  = sprintf('%s-%s-%s', $style->getSlug(), $target->getSlug(), $vPlatform);
 
             // P1-методология: in-text ссылки на каталог с UTM (ссылка в 1-м абзаце —
             // целевой бренд идёт первым), фикс-поля карточек (из БД), оглавление,
@@ -266,7 +271,7 @@ class GenerateListicleCommand extends Command
             // Article+author даёт шаблон. В контент цементируем снимок рейтинга (ItemList+FAQ),
             // без узла Article. buildJsonLd отдаёт нужный вариант по платформе.
             $jsonLd     = $this->buildJsonLd($title, $orderedBrands, $vPersona, $faq, $vPlatform, $campaign);
-            $document   = $this->renderDocument($title, $vPersona, $vPlatform, $toc, $linkedBody, $faqMd, $cta, $jsonLd);
+            $document   = $this->renderDocument($title, $metaTitle, $vPersona, $vPlatform, $toc, $linkedBody, $faqMd, $cta, $jsonLd);
 
             if ($outDir === '-') {
                 $output->writeln($document);
@@ -710,7 +715,19 @@ class GenerateListicleCommand extends Command
             . "[Смотреть бренды в каталоге →]({$url})";
     }
 
-    private function renderDocument(string $title, string $persona, string $platform, string $toc, string $body, string $faqMd, string $cta, string $jsonLd): string
+    /** H1 — человеческий, без года (вечнозелёный URL: slug не меняется год от года). */
+    public static function h1Title(int $places, string $niche): string
+    {
+        return sprintf('ТОП-%d брендов %s: рейтинг', $places, $niche);
+    }
+
+    /** SEO-title (<title>/meta_title) — паттерн Т—Ж «Топ-N лучших … {год} года»; год — из даты генерации. */
+    public static function seoTitle(int $places, string $niche, ?int $year = null): string
+    {
+        return sprintf('Топ-%d лучших брендов %s %d года', $places, $niche, $year ?? (int) date('Y'));
+    }
+
+    private function renderDocument(string $title, string $metaTitle, string $persona, string $platform, string $toc, string $body, string $faqMd, string $cta, string $jsonLd): string
     {
         $tocSection = $toc === '' ? '' : "{$toc}\n\n";
         $faqSection = $faqMd === '' ? '' : "\n\n{$faqMd}";
@@ -719,6 +736,7 @@ class GenerateListicleCommand extends Command
 
         return <<<MD
         <!-- площадка: {$platform} · автор-персона: {$persona} -->
+        <!-- meta-title: {$metaTitle} -->
 
         # {$title}
 

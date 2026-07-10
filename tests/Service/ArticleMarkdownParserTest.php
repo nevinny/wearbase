@@ -43,4 +43,31 @@ class ArticleMarkdownParserTest extends TestCase
         self::assertStringContainsString('<a href="#1-меч">1. МЕЧ</a>', $html);
         self::assertStringContainsString('<li><strong>Город:</strong> Санкт-Петербург</li>', $html);
     }
+
+    /** SEO-title (Т—Ж): комментарий meta-title извлекается и не попадает в HTML. */
+    public function testMetaTitleComment(): void
+    {
+        $md = <<<MD
+        <!-- площадка: site · автор-персона: стилист -->
+        <!-- meta-title: Топ-5 лучших брендов streetwear 2026 года -->
+
+        # ТОП-5 брендов streetwear: рейтинг
+
+        Текст.
+        MD;
+
+        [$title, , $html, $metaTitle] = (new ArticleMarkdownParser())->parse($md);
+
+        self::assertSame('ТОП-5 брендов streetwear: рейтинг', $title);
+        self::assertSame('Топ-5 лучших брендов streetwear 2026 года', $metaTitle);
+        self::assertStringNotContainsString('meta-title', $html);
+    }
+
+    /** Старые .md без meta-title: 4-й элемент null (fallback на title в шаблоне). */
+    public function testMetaTitleAbsent(): void
+    {
+        [, , , $metaTitle] = (new ArticleMarkdownParser())->parse("# Заголовок\n\nТекст.");
+
+        self::assertNull($metaTitle);
+    }
 }

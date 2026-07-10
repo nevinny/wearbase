@@ -84,7 +84,10 @@ class DzenFeedController extends AbstractController
             $items[] = [
                 'title'   => $title,
                 'link'    => $link,
-                'pubDate' => $article->getPublishedAt()->format(\DATE_RSS),
+                // Переизданная статья (app:seo:republish-blog) должна выглядеть для Дзена
+                // свежей: updatedAt > publishedAt только после переиздания (Created-трейт
+                // бампает updatedAt лишь на PrePersist, а publishedAt дрипа — в будущем).
+                'pubDate' => max($article->getPublishedAt(), $article->getUpdatedAt())->format(\DATE_RSS),
                 'excerpt' => $distribution->getExcerpt() ?? $article->getExcerpt(),
                 'content' => $content,
                 'author'  => $article->getAuthor()?->getName(),
