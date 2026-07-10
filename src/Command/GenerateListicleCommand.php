@@ -10,6 +10,8 @@ use App\Repository\BrandRepository;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
+use App\Service\Seo\ArticleMarkdownParser;
+use App\Service\Seo\BrandFactSheet;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -80,6 +82,7 @@ class GenerateListicleCommand extends Command
         private readonly LlmService             $llm,
         private readonly BrandRagService        $rag,
         private readonly ContentValidator       $validator,
+        private readonly BrandFactSheet         $factSheet,
     ) {
         parent::__construct();
     }
@@ -253,8 +256,10 @@ class GenerateListicleCommand extends Command
             $campaign = sprintf('%s-%s-%s', $style->getSlug(), $target->getSlug(), $vPlatform);
 
             // P1-методология: in-text ссылки на каталог с UTM (ссылка в 1-м абзаце —
-            // целевой бренд идёт первым), оглавление, CTA-блок, UTM в JSON-LD.
+            // целевой бренд идёт первым), фикс-поля карточек (из БД), оглавление,
+            // CTA-блок, UTM в JSON-LD.
             $linkedBody = $this->linkifyBody($body, $orderedBrands, $vPlatform, $campaign);
+            $linkedBody = $this->injectFactSheets($linkedBody, $orderedBrands);
             $toc        = $this->buildToc($linkedBody);
             $cta        = $this->buildCta($target, $vPlatform, $campaign);
             $faqMd      = $this->buildFaqMarkdown($faq);
@@ -660,13 +665,36 @@ class GenerateListicleCommand extends Command
         return implode("\n", $lines);
     }
 
-    /** Оглавление из H2-секций статьи (UX + анкоры). */
+    /**
+     * Фикс-поля карточки бренда (приём Т—Ж): markdown-список «Кратко/Хиты/Цены/
+     * Город/Офлайн» из БД (BrandFactSheet) сразу после заголовка «## N. …».
+     * Номер места в заголовке — индекс в $ordered; данных нет → секция без блока.
+     *
+     * @param Brand[] $ordered
+     */
+    private function injectFactSheets(string $body, array $ordered): string
+    {
+        return (string) preg_replace_callback('/^##\s+(\d+)\.[^\n]*$/mu', function (array $m) use ($ordered): string {
+            $brand = $ordered[(int) $m[1] - 1] ?? null;
+            if ($brand === null) {
+                return $m[0];
+            }
+            $sheet = $this->factSheet->build($brand);
+
+            return $sheet === '' ? $m[0] : $m[0] . "\n\n" . $sheet;
+        }, $body);
+    }
+
+    /** Оглавление из H2-секций статьи: якорные ссылки на id заголовков (те же id ставит ArticleMarkdownParser). */
     private function buildToc(string $body): string
     {
         if (!preg_match_all('/^##\s+(.+?)\s*$/mu', $body, $m) || count($m[1]) < 2) {
             return '';
         }
-        $items = array_map(static fn(string $h) => '- ' . $h, $m[1]);
+        $items = array_map(
+            static fn(string $h) => sprintf('- [%s](#%s)', $h, ArticleMarkdownParser::anchorId($h)),
+            $m[1],
+        );
 
         return "## Содержание\n\n" . implode("\n", $items);
     }

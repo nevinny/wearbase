@@ -62,10 +62,12 @@ class ArticleMarkdownParser
             }
             // hr
             if (preg_match('/^(\*\*\*|---|___)\s*$/', $line)) { $html[] = '<hr>'; $i++; continue; }
-            // заголовки
+            // заголовки (с id — цель якорных ссылок оглавления листиклов)
             if (preg_match('/^(##|###)\s+(.+)$/', $line, $hm)) {
                 $tag = $hm[1] === '##' ? 'h2' : 'h3';
-                $html[] = "<{$tag}>" . $this->inline($hm[2]) . "</{$tag}>";
+                $id  = self::anchorId($hm[2]);
+                $idAttr = $id === '' ? '' : " id=\"{$id}\"";
+                $html[] = "<{$tag}{$idAttr}>" . $this->inline($hm[2]) . "</{$tag}>";
                 $i++;
                 continue;
             }
@@ -122,12 +124,25 @@ class ArticleMarkdownParser
         return $out . '</tbody></table>';
     }
 
-    /** Инлайн: экранирование + **жирный** + [текст](url). */
+    /**
+     * id-якорь заголовка: строчные, всё кроме букв/цифр → «-». Единственный
+     * источник истины для якорей — оглавление листиклов строит ссылки этим же
+     * методом (GenerateListicleCommand::buildToc).
+     */
+    public static function anchorId(string $heading): string
+    {
+        $s = mb_strtolower(trim($heading), 'UTF-8');
+        $s = (string) preg_replace('/[^\p{L}\p{Nd}]+/u', '-', $s);
+
+        return trim($s, '-');
+    }
+
+    /** Инлайн: экранирование + **жирный** + [текст](url|#якорь). */
     private function inline(string $s): string
     {
         $s = htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        // ссылки (url у нас без & и кавычек — внутренние)
-        $s = preg_replace_callback('/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/u',
+        // ссылки (url у нас без & и кавычек — внутренние; # — якоря оглавления)
+        $s = preg_replace_callback('/\[([^\]]+)\]\(((?:https?:\/\/|#)[^\s)]+)\)/u',
             static fn($m) => '<a href="' . $m[2] . '">' . $m[1] . '</a>', $s);
         $s = preg_replace('/\*\*(.+?)\*\*/u', '<strong>$1</strong>', $s);
 
