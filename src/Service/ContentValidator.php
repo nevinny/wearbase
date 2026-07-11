@@ -31,8 +31,20 @@ class ContentValidator
         'беспрецедентный',
     ];
 
+    /**
+     * Незаполненные скобки-плейсхолдеры от LLM: [название бренда], [город],
+     * [услуги/товары], [вставьте …], а также цитатные/заглушечные [1], [N], […].
+     * Раньше стоял catch-all /\[[^\]]+\]/ — он резал ЛЕГИТИМНЫЕ фонетические
+     * транскрипции с сайтов брендов («РОШ[И']» у Roshi, «[эла́пс]» у Elapse Space,
+     * «[ЮЛ]» у YLLL) → детерминированный false positive, 200+ generate_failed подряд.
+     * Теперь скобки режутся только с шаблонным словом-маркером внутри.
+     */
+    private const BRACKET_PLACEHOLDER_PATTERN =
+        '/\[[^\]]*(?:назван|бренд|город|стран|товар|услуг|описан|вставь|вставит|укаж|заполн|пример|текст|ссылк|brand|city|name|insert|placeholder|todo|example|description)[^\]]*\]'
+        . '|\[\s*(?:\d+|[NXnx]|\.{2,3}|…)\s*\]/iu';
+
     private const PLACEHOLDER_PATTERNS = [
-        '/\[[^\]]+\]/',           // [услуги/товары]
+        self::BRACKET_PLACEHOLDER_PATTERN,
         '/\{[^}]+\}/',             // {описание}
         '/placeholder/i',
         '/lorem ipsum/i',
@@ -103,7 +115,7 @@ class ContentValidator
             $errors[] = 'Содержит URL';
         }
 
-        if (preg_match('/\[.*?\]/', $description)) {
+        if (preg_match(self::BRACKET_PLACEHOLDER_PATTERN, $description)) {
             $errors[] = 'Содержит незаполненные квадратные скобки';
         }
 
