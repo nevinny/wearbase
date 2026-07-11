@@ -1464,6 +1464,39 @@ PHP + RuSender API + анти-петля (Mailer-Daemon/своё/Auto-Submitted)
 
 ---
 
+## 2026-07-11 — «Мой гардероб»: инвентаризация вещей (веб-ЛК + Telegram-ввод)
+
+Фича по запросу первого реального пользователя (супруга вела каталог 38 вещей в AI-чате —
+`~/Downloads/handoff_garderobe_chat.md`). Фича для всех пользователей; mobile-app (Flutter) — позже.
+
+**Итерация 1 (веб):** сущность `WardrobeItem` (per-user нумерация `#0006` с UNIQUE(user_id,item_no),
+категория-строка + datalist-подсказки, цена RUB, «любовь с первого взгляда» yes/no/unknown,
+плюсы/минусы/вердикт, фото VichUploader `wardrobe_item_photo` → `public_html/images/wardrobe/`,
+soft-delete `deleted_at`, `source` web|telegram|import), CRUD `/account/wardrobe`
+(WardrobeController, 5 роутов) со статистикой по категориям (getStats GROUP BY), пункт в sidebar ЛК.
+Импорт: `app:wardrobe:import var/import/wardrobe.json --user=EMAIL [--dry-run]`, идемпотентный
+по item_no. **Ждёт экспорта её чата со всеми 38 карточками** (в handoff только сводка).
+Попутный фикс: `WardrobeItem::setUpdatedAt` принимает `\DateTimeInterface` —
+`EntityUserListener::preUpdate` суёт `\DateTime` в любой setUpdatedAt (иначе edit/delete → 500).
+
+**Итерация 2 (Telegram):** диалог в @wearbase_bot — `/wardrobe` → шаблон → фото с заполненным
+шаблоном в подписи (можно фото и текст раздельно; толерантный парсер `Ключ: значение` с синонимами) →
+точечный дозапрос недостающего (inline-кнопки `wl:*` для «любви») → карточка + статистика + шаблон
+следующей вещи. `/cancel` — сброс, черновик протухает за 24ч (lazy). Состояние —
+`telegram_dialog_state` (chat_id UNIQUE, draft JSON, дедуп по last_update_id; эфемерное,
+hard-delete допустим). Фото: `message.photo[] → getFile → download` (`TelegramFileFetcher`,
+10 МБ/image-only) → `UploadedFile(test:true)` → Vich кладёт как веб-аплоад. Только линкованные
+юзеры (telegramChatId); контакт-воронка и `unpub:` не тронуты. Логика в транспорт-агностик
+`WardrobeDialogService` + чистый `WardrobeTemplate` (юнит-тесты).
+
+**Развёрнуто:** egress-тест с прода — **api.telegram.org с regru ДОСТУПЕН** (устаревшее
+«TG с прода заблокирован» поправлено в CLAUDE.md/production.md) → бот отвечает синхронно
+с прода, очереди/Mac-воркер не понадобились. Деплой — по запросу.
+
+Отложено: inline-выбор категории в боте, edit/undo из бота, эхо-фото в карточке, Flutter-app.
+
+---
+
 ## Бэклог
 
 ### [BUG] Системный глюк gemma «му» в генерации (заведён 2026-07-07)

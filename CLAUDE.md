@@ -53,7 +53,7 @@ BASE_URL=http://localhost:8000 npx playwright test           # custom base URL
 | Хост | Что там | Доступ |
 |---|---|---|
 | LLM-сервер / майнинг-риг | ollama :11434, Qdrant :6333, SearXNG :8080, wildrig, дашборд :8088 | `ssh llm` (сейчас 192.168.0.111; **IP непостоянен** — при недоступности сканировать подсеть на порт 11434 и обновить `~/.ssh/config` + память) |
-| Прод regru | wearbase.ru | `ssh regru`; **TG с прода заблокирован** — все Telegram-уведомления шлёт Mac |
+| Прод regru | wearbase.ru | `ssh regru`; TG-egress с прода **работает** (проверено 2026-07-11, см. docs/production.md) — webhook-бот отвечает с прода; массовые уведомления/постинг по-прежнему шлёт Mac |
 | Mac | dev, крон-диспетчер (`app:cron:run-scheduled` ежеминутно), TG | локально |
 
 - «Host key verification failed» после смены IP → `ssh-keygen -R <ip>`, не бороться вслепую.

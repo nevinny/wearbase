@@ -96,6 +96,7 @@ Auto-Submitted; (3) e2e-тест форвардера — синтетическ
 1. In-app: лента в ЛК бренда `/brand/notifications` (и `/account/notifications` у покупателя).
 2. Email: `mailer:test` (выше) + лог `Email notification failed` в prod.log.
 3. Telegram: требует привязки `telegram_chat_id` у пользователя (через `/telegram/link`); без привязки канал молча пропускается. Ошибки API теперь в логе (`Telegram notification failed/rejected`).
+   - ✅ **Проверено 2026-07-11: исходящий трафик к api.telegram.org С ПРОДА РАБОТАЕТ** (curl с regru → 302; getWebhookInfo с прода — ok). Утверждение «TG с прода заблокирован» устарело (актуально было для соцпостинга/Meta). Webhook стоит на `https://wearbase.ru/telegram/webhook`; бот (контакт-воронка, диалог гардероба) отвечает синхронно с прода. Массовый постинг/уведомления по-прежнему гоняем с Mac по модели egressHost — переносить не обязательно.
 4. Дефолты без сохранённых настроек: email + in-app включены, telegram выключен (NotificationDispatcher).
 
 ## GSC (Search Console)
