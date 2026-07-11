@@ -86,7 +86,8 @@ class RagDashboardController extends AbstractController
             'generate (сервер, GPU)' => $stage('brand_rag_pipeline', 'generated_at')
                 + ['left' => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE status='embedded'")],
             'keywords (Mac, квота 100/ч)' => $stage('brand_rag_pipeline', 'keywords_checked_at')
-                + ['left' => $one("SELECT COUNT(*) FROM brand b LEFT JOIN brand_rag_pipeline p ON p.brand_id=b.id LEFT JOIN brand_keyword k ON k.brand_id=b.id WHERE b.status IN ('active','new') AND k.id IS NULL AND (p.id IS NULL OR p.keywords_status IS NULL)")],
+                // Единый источник правды — предикат демона keywords (findForKeywords, вкл. гейты)
+                + ['left' => $this->brands->countForKeywords()],
             'faq (сервер, GPU)' => [
                 'done'     => $one("SELECT COUNT(*) FROM brand_rag_pipeline WHERE faq_status='done'"),
                 'lastHour' => 0,
@@ -208,12 +209,10 @@ class RagDashboardController extends AbstractController
                  WHERE b.status IN ('active','new') AND (b.logo IS NULL OR b.logo='')
                    AND (p.id IS NULL OR p.logo_status IS NULL OR p.logo_status='failed')"
             )],
-            // keywords — отдельный квотируемый демон (Yandex Wordstat 100/ч), не в gpu/net-наборах
-            ['key' => 'keywords', 'label' => 'keywords', 'lane' => 'net', 'role' => 'side', 'next' => null, 'stack' => $one(
-                "SELECT COUNT(*) FROM brand b LEFT JOIN brand_rag_pipeline p ON p.brand_id=b.id
-                 LEFT JOIN brand_keyword k ON k.brand_id=b.id
-                 WHERE b.status IN ('active','new') AND k.id IS NULL AND (p.id IS NULL OR p.keywords_status IS NULL)"
-            )],
+            // keywords — отдельный квотируемый демон (Yandex Wordstat 100/ч), не в gpu/net-наборах.
+            // Единый источник правды — предикат демона (findForKeywords, вкл. гейты).
+            ['key' => 'keywords', 'label' => 'keywords', 'lane' => 'net', 'role' => 'side', 'next' => null,
+             'stack' => $this->brands->countForKeywords()],
             ['key' => 'push', 'label' => 'push', 'lane' => 'net', 'role' => 'main', 'next' => null,
              'stack' => $this->brands->countReadyToPush()],
         ];

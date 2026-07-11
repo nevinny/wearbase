@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Repository\BrandRepository;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -29,8 +30,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class RagDoctorCommand extends Command
 {
-    public function __construct(private readonly Connection $db)
-    {
+    public function __construct(
+        private readonly Connection $db,
+        private readonly BrandRepository $brands,
+    ) {
         parent::__construct();
     }
 
@@ -68,20 +71,22 @@ class RagDoctorCommand extends Command
                 "SELECT COUNT(*) FROM brand WHERE status='inactive'",
                 'inactive нет в enum Statuses → падение гидрации; правильное скрытие = disabled',
             ),
-            $this->check(
-                'остаток ключевиков: отчёт ≢ админка',
-                'error',
-                // расхождение = бренды, которых считает одна формула и не считает другая
-                "SELECT ABS(
-                    (SELECT COUNT(*) FROM brand b JOIN brand_rag_pipeline p ON p.brand_id=b.id
-                       WHERE b.status IN ('active','new') AND p.keywords_status IS NULL
-                         AND NOT EXISTS (SELECT 1 FROM brand_keyword k WHERE k.brand_id=b.id))
-                  - (SELECT COUNT(*) FROM brand b LEFT JOIN brand_rag_pipeline p ON p.brand_id=b.id
-                     LEFT JOIN brand_keyword k ON k.brand_id=b.id
-                       WHERE b.status IN ('active','new') AND k.id IS NULL AND (p.id IS NULL OR p.keywords_status IS NULL))
-                 )",
-                'формулы PipelineReportCommand и RagDashboardController должны совпадать',
-            ),
+            [
+                'name'     => 'остаток ключевиков: канон ≢ raw-зеркало демона',
+                'severity' => 'error',
+                // Отчёт и админка зовут countForKeywords (единый источник) — разъехаться не могут.
+                // Зеркало ловит дрейф DQL-предиката findForKeywords относительно задокументированной
+                // семантики: очередь демона = active/new, ни одной фразы, не опрошен, вкл. гейты.
+                'count'    => abs($this->brands->countForKeywords() - (int) $this->db->fetchOne(
+                    "SELECT COUNT(*) FROM brand b LEFT JOIN brand_rag_pipeline p ON p.brand_id=b.id
+                     WHERE b.status IN ('active','new')
+                       AND NOT EXISTS (SELECT 1 FROM brand_keyword k WHERE k.brand_id=b.id)
+                       AND (p.id IS NULL OR p.keywords_status IS NULL)
+                       AND (b.niche_status IS NULL OR b.niche_status <> 'off')
+                       AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign','unknown'))",
+                )),
+                'note'     => 'PipelineQueueRepository::countForKeywords ≡ предикату findForKeywords',
+            ],
         ];
 
         $rows = [];

@@ -479,6 +479,11 @@ class BrandRepository extends ServiceEntityRepository
         return $this->pipelineQueue->findForKeywords($limit, $shard, $total);
     }
 
+    public function countForKeywords(): int
+    {
+        return $this->pipelineQueue->countForKeywords();
+    }
+
     public function findForExtract(int $limit, int $shard = 0, int $total = 1): array
     {
         return $this->pipelineQueue->findForExtract($limit, $shard, $total);

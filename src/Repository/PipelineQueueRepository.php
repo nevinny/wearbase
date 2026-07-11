@@ -105,17 +105,32 @@ class PipelineQueueRepository
      */
     public function findForKeywords(int $limit, int $shard = 0, int $total = 1): array
     {
-        $qb = $this->qb()
+        return $this->finishStageQuery($this->keywordsQueueQb()->groupBy('b.id'), $limit, $shard, $total);
+    }
+
+    /**
+     * Остаток очереди keywords — ТОТ ЖЕ предикат, что findForKeywords (вкл. niche/origin-гейты).
+     * Единый источник правды: отчёт (PipelineReportCommand), админка (RagDashboardController)
+     * и доктор (RagDoctorCommand) зовут это вместо собственных raw-SQL-копий, которые разъезжались.
+     */
+    public function countForKeywords(): int
+    {
+        return (int) $this->applyGates($this->keywordsQueueQb())
+            ->select('COUNT(DISTINCT b.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    private function keywordsQueueQb(): QueryBuilder
+    {
+        return $this->qb()
             ->leftJoin(BrandKeyword::class, 'k', 'WITH', 'k.brand = b')
             ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
             // new = очередь дрипа, конвейер её готовит (см. findForScrape)
             ->where('b.status IN (:statuses)')
             ->andWhere('k.id IS NULL')
             ->andWhere('p.id IS NULL OR p.keywordsStatus IS NULL')
-            ->setParameter('statuses', [Statuses::Active, Statuses::New])
-            ->groupBy('b.id');
-
-        return $this->finishStageQuery($qb, $limit, $shard, $total);
+            ->setParameter('statuses', [Statuses::Active, Statuses::New]);
     }
 
     /**
@@ -288,20 +303,27 @@ class PipelineQueueRepository
             ->setParameter('kwOk', [BrandRagPipeline::KW_FOUND, BrandRagPipeline::KW_NOT_FOUND]);
     }
 
+    /**
+     * Гейты ниши/происхождения — единая точка для всех stage-finder'ов и канонических count'ов.
+     *
+     * Подтверждённо вне ниши (app:brand:niche-check) — не готовим, не пушим, не публикуем.
+     * Иностранное происхождение (app:brand:origin-check, docs/foreign_brands_policy.md) —
+     * блокируем 'foreign' И 'unknown' (сомнение → ручной review, fail-safe).
+     * NULL (не проверен) и 'in'/'ru' проходят, чтобы гейт не застопорил конвейер до
+     * прогона классификаторов.
+     */
+    private function applyGates(QueryBuilder $qb): QueryBuilder
+    {
+        return $qb
+            ->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != :nicheOff")
+            ->setParameter('nicheOff', 'off')
+            ->andWhere("b.originStatus IS NULL OR b.originStatus NOT IN (:originBlocked)")
+            ->setParameter('originBlocked', ['foreign', 'unknown']);
+    }
+
     private function finishStageQuery(QueryBuilder $qb, int $limit, int $shard, int $total, bool $oldestFirst = false, bool $leastAttemptsFirst = false): array
     {
-        // Подтверждённо вне ниши (app:brand:niche-check) — не готовим, не пушим, не публикуем.
-        // NULL (не проверен) и 'in' проходят: иначе гейт застопорит весь конвейер до прогона
-        // классификатора. Единая точка для всех stage-finder'ов (scrape/embed/generate/push/…).
-        $qb->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != :nicheOff")
-            ->setParameter('nicheOff', 'off');
-
-        // Иностранное происхождение (app:brand:origin-check, docs/foreign_brands_policy.md) —
-        // не готовим, не пушим, не публикуем. Блокируем 'foreign' И 'unknown' (сомнение →
-        // ручной review, fail-safe); NULL (не проверен) и 'ru' проходят, чтобы гейт не
-        // застопорил конвейер до прогона классификатора.
-        $qb->andWhere("b.originStatus IS NULL OR b.originStatus NOT IN (:originBlocked)")
-            ->setParameter('originBlocked', ['foreign', 'unknown']);
+        $this->applyGates($qb);
 
         if ($total > 1) {
             $qb->andWhere('MOD(b.id, :total) = :shard')
