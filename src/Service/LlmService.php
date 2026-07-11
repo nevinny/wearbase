@@ -162,10 +162,44 @@ class LlmService
 
     private function imageToDataUrl(string $path): string
     {
+        $bytes = $this->downscaleImage($path);
+        if ($bytes !== null) {
+            return 'data:image/jpeg;base64,' . base64_encode($bytes);
+        }
+
         $mime = mime_content_type($path) ?: 'image/jpeg';
         $data = base64_encode((string) file_get_contents($path));
 
         return "data:{$mime};base64,{$data}";
+    }
+
+    /**
+     * Фото с телефона (3-12 МБ) в base64 не пролезают в vision-запрос по таймауту —
+     * ужимаем до 1024px по длинной стороне. null = GD не справился, шлём оригинал.
+     */
+    private function downscaleImage(string $path, int $maxSide = 1024, int $quality = 82): ?string
+    {
+        if (!\function_exists('imagecreatefromstring')) {
+            return null;
+        }
+
+        $raw = (string) file_get_contents($path);
+        $src = @imagecreatefromstring($raw);
+        if ($src === false) {
+            return null;
+        }
+
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $scale = min(1.0, $maxSide / max($w, $h));
+        if ($scale < 1.0) {
+            $src = imagescale($src, (int) round($w * $scale), (int) round($h * $scale), IMG_BICUBIC) ?: $src;
+        }
+
+        ob_start();
+        imagejpeg($src, null, $quality);
+
+        return ob_get_clean() ?: null;
     }
 
     /**

@@ -184,7 +184,7 @@
             photoStatus.innerHTML = SPINNER + ' <span class="ml-1">✨ AI подсказывает поля…</span>';
 
             var controller = new AbortController();
-            var timeout = setTimeout(function () { controller.abort(); }, 15000);
+            var timeout = setTimeout(function () { controller.abort(); }, 25000);
 
             var fd = new FormData();
             fd.append('photo', file);
@@ -239,7 +239,7 @@
             }
 
             var controller = new AbortController();
-            var timeout = setTimeout(function () { controller.abort(); }, 15000);
+            var timeout = setTimeout(function () { controller.abort(); }, 25000);
 
             fetch(URL_URL, {
                 method: 'POST',
