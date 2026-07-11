@@ -1521,6 +1521,23 @@ hard-delete допустим). Фото: `message.photo[] → getFile → downlo
 **TG-обвязка семьи (кусок II) — СЛЕДУЮЩИЙ ШАГ**: «Кому: Маша» в шаблоне бота,
 резолв члена семьи + inline-кнопки, /give. Дизайн готов, не начат.
 
+**Итерация 4 (AI-подсказки полей) — в тот же день, на проде.** Рутина заполнения = главный
+барьер ведения гардероба. Два флоу в форме new/edit:
+- **По фото**: выбор файла → AJAX `/account/wardrobe/ai/photo` → OpenRouter vision
+  (`WARDROBE_VISION_MODEL=google/gemini-2.5-flash-lite`, ~3.5с, ~0.05₽/фото) → категория
+  (приоритет SUGGESTED_CATEGORIES)/название/цвет-сезон-фасон в notes/размер с бирки.
+  Заполняются ТОЛЬКО пустые поля. Локальный gemma4 умеет vision, но риг с прода недоступен →
+  прод-путь только OpenRouter.
+- **По ссылке**: `/account/wardrobe/ai/url` — WB через публичный `card.wb.ru/cards/v4/detail`
+  без LLM (v2 закрыт PoW-антиботом; картинка — brute-force basket-01..30, fail-soft) +
+  превью фото; прочие сайты — WebScraperService + LLM-экстракция (remote, та же модель).
+- Обвязка: sha1/URL-кеш 24ч, `WardrobeAiMeter` → api_usage_daily (cap `WARDROBE_AI_DAILY_CAP`
+  100/день), rate-limiter `wardrobe_ai` 30/день/юзер (429), `LlmService::generateVision()`
+  (multimodal, remote+local ветки). ⚠️ `OPENROUTER_API_KEY` перенесён в прод `.env.local`
+  (был пуст — деплой-чеклист для LLM-фич).
+- Отложено: batch-дропзона «нафоткал 10 вещей», AI в TG-боте (фото без подписи → карточка
+  на подтверждение [Сохранить][Править] — дизайн готов), автоскачивание фото товара.
+
 ---
 
 ## Бэклог
