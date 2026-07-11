@@ -1495,6 +1495,32 @@ hard-delete допустим). Фото: `message.photo[] → getFile → downlo
 
 Отложено: inline-выбор категории в боте, edit/undo из бота, эхо-фото в карточке, Flutter-app.
 
+**Итерация 3 (семейный гардероб, веб) — в тот же день.** Продуктовое видение владельца:
+семейный гардероб = key differentiator (docs/wardrobe_roadmap.md). Реализовано:
+- `Family` (owner FK client) + поля на User: family_id, family_role parent|child,
+  family_claim_token, claimed_at, birth_date. Семья создаётся лениво.
+- **Дети без email**: реальные client-строки с синтетическим email
+  `child-<familyId>-<8hex>@family.wearbase.local` + нелогинибельный пароль; «дорос» —
+  claim-ссылка `/family/claim/{token}` (ставит настоящие email+пароль). Регистрация
+  отклоняет служебный домен. `isManaged()`.
+- **Инвайты** (`FamilyInvite`): родитель генерит одноразовую ссылку с ролью
+  `/family/invite/{token}`; акцепт залогиненным юзером без семьи; повторный — 410.
+- **Передача вещей**: `WardrobeTransfer` (append-only журнал: from/to/actor/note);
+  item.user меняется, item_no перенумеровывается у получателя (retry на гонке),
+  item.id стабилен (задел под AI-связи). Передаёт только родитель. original_owner
+  фиксируется при создании (immutable) — «кто покупал» для будущих бюджетов.
+- **Статусы** `wear_status`: active/reserve(на вырост)/outgrown(мала)/given_away(отдана
+  из семьи, терминальный, НЕ deleted_at); given_away отфильтрован из активных выборок
+  и статистики (`findGivenAwayForUser` — архив).
+- **Права** — в `FamilyService` (НЕ Voter — переиспользуется TG-путём без security-токена):
+  membersFor/canManage/resolveMember. WardrobeController: `?member=` селектор гардероба,
+  табы членов семьи, блоки передачи/статуса/истории на show.
+- UI: `/account/family` (члены, счётчики, claim/invite-ссылки), пункт «Семья» в sidebar.
+- Тесты: 266/266 (FamilyControllerTest 7, WardrobeControllerTest +5, юниты).
+
+**TG-обвязка семьи (кусок II) — СЛЕДУЮЩИЙ ШАГ**: «Кому: Маша» в шаблоне бота,
+резолв члена семьи + inline-кнопки, /give. Дизайн готов, не начат.
+
 ---
 
 ## Бэклог
