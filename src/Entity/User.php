@@ -104,12 +104,19 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     #[ORM\OneToMany(targetEntity: Notification::class, mappedBy: 'recipient', orphanRemoval: true)]
     private Collection $notifications;
 
+    /**
+     * @var Collection<int, WardrobeItem>
+     */
+    #[ORM\OneToMany(targetEntity: WardrobeItem::class, mappedBy: 'user')]
+    private Collection $wardrobeItems;
+
     public function __construct()
     {
         $this->brandUsers = new ArrayCollection();
         $this->orders = new ArrayCollection();
         $this->addresses = new ArrayCollection();
         $this->notifications = new ArrayCollection();
+        $this->wardrobeItems = new ArrayCollection();
         $this->createdAt = new \DateTimeImmutable();
         $this->updatedAt = new \DateTimeImmutable();
     }
@@ -287,6 +294,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     public function getAddresses(): Collection { return $this->addresses; }
 
     public function getNotifications(): Collection { return $this->notifications; }
+
+    public function getWardrobeItems(): Collection { return $this->wardrobeItems; }
 
     public function getDefaultAddress(): ?Address
     {

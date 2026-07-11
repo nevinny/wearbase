@@ -1,0 +1,127 @@
+{% extends 'account/layout.html.twig' %}
+{% block title %}{{ item.id ? 'Редактировать вещь' : 'Новая вещь' }} — WEARBASE{% endblock %}
+
+{% macro err(field) %}
+    {% if field.vars.errors|length > 0 %}
+        <div class="form-error mt-1 text-sm text-red-600">{{ form_errors(field) }}</div>
+    {% endif %}
+{% endmacro %}
+
+{% block account_content %}
+{% import _self as f %}
+{% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+{% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+
+<div class="mb-5 flex items-center gap-3">
+    <a href="{{ path('account_wardrobe_index') }}"
+       class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
+    <h1 class="text-lg font-bold">{{ item.id ? 'Редактировать вещь' : 'Новая вещь' }}</h1>
+</div>
+
+{{ form_start(form) }}
+
+<datalist id="wardrobe-categories">{% for c in categories %}<option value="{{ c }}">{% endfor %}</datalist>
+
+{# ── Основное ── #}
+<div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+    <h2 class="mb-4 text-sm font-bold">Основное</h2>
+    <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-12 md:col-span-6">
+            <label class="{{ tw_label }}">Категория <span class="text-red-600">*</span></label>
+            {{ form_widget(form.category, {'attr': {'class': tw_input, 'placeholder': 'Например: Футболки'}}) }}
+            {{ f.err(form.category) }}
+        </div>
+        <div class="col-span-12 md:col-span-6">
+            <label class="{{ tw_label }}">Название <span class="text-red-600">*</span></label>
+            {{ form_widget(form.name, {'attr': {'class': tw_input, 'placeholder': 'Белая футболка oversize'}}) }}
+            {{ f.err(form.name) }}
+        </div>
+        <div class="col-span-4">
+            <label class="{{ tw_label }}">Размер</label>
+            {{ form_widget(form.size, {'attr': {'class': tw_input, 'placeholder': 'M'}}) }}
+            {{ f.err(form.size) }}
+        </div>
+        <div class="col-span-8 md:col-span-4">
+            <label class="{{ tw_label }}">Цена, ₽</label>
+            {{ form_widget(form.price, {'attr': {'class': tw_input, 'placeholder': '2990'}}) }}
+            {{ f.err(form.price) }}
+        </div>
+        <div class="col-span-12 md:col-span-4">
+            <label class="{{ tw_label }}">Дата покупки</label>
+            {{ form_widget(form.purchasedAt, {'attr': {'class': tw_input}}) }}
+            {{ f.err(form.purchasedAt) }}
+        </div>
+        <div class="col-span-12">
+            <label class="{{ tw_label }}">Ссылка на товар</label>
+            {{ form_widget(form.productUrl, {'attr': {'class': tw_input, 'placeholder': 'https://…'}}) }}
+            {{ f.err(form.productUrl) }}
+        </div>
+    </div>
+</div>
+
+{# ── Фото ── #}
+<div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+    <h2 class="mb-4 text-sm font-bold">Фото</h2>
+    {% if item.photo %}
+        <div class="mb-3">
+            <img src="{{ vich_uploader_asset(item, 'photoFile') }}"
+                 class="h-32 w-32 rounded-xl object-cover" alt="{{ item.name }}">
+            <div class="mt-1 text-xs text-gray-400">Текущее фото — загрузите новое, чтобы заменить</div>
+        </div>
+    {% endif %}
+    {{ form_widget(form.photoFile, {'attr': {'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-black'}}) }}
+    {{ f.err(form.photoFile) }}
+</div>
+
+{# ── История ── #}
+<div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+    <h2 class="mb-4 text-sm font-bold">История</h2>
+    <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-12 md:col-span-8">
+            <label class="{{ tw_label }}">Причина покупки</label>
+            {{ form_widget(form.purchaseReason, {'attr': {'class': tw_input, 'rows': 2, 'placeholder': 'Почему купили эту вещь?'}}) }}
+            {{ f.err(form.purchaseReason) }}
+        </div>
+        <div class="col-span-12 md:col-span-4">
+            <label class="{{ tw_label }}">Любовь с первого взгляда</label>
+            {{ form_widget(form.loveAtFirstSight, {'attr': {'class': tw_input}}) }}
+            {{ f.err(form.loveAtFirstSight) }}
+        </div>
+        <div class="col-span-12">
+            <label class="{{ tw_label }}">Характеристики</label>
+            {{ form_widget(form.notes, {'attr': {'class': tw_input, 'rows': 3, 'placeholder': 'Состав, уход, особенности…'}}) }}
+            {{ f.err(form.notes) }}
+        </div>
+    </div>
+</div>
+
+{# ── Оценка ── #}
+<div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+    <h2 class="mb-4 text-sm font-bold">Оценка</h2>
+    <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-12 md:col-span-6">
+            <label class="{{ tw_label }}">Плюсы</label>
+            {{ form_widget(form.pros, {'attr': {'class': tw_input, 'rows': 3, 'placeholder': 'Что нравится'}}) }}
+            {{ f.err(form.pros) }}
+        </div>
+        <div class="col-span-12 md:col-span-6">
+            <label class="{{ tw_label }}">Минусы</label>
+            {{ form_widget(form.cons, {'attr': {'class': tw_input, 'rows': 3, 'placeholder': 'Что не нравится'}}) }}
+            {{ f.err(form.cons) }}
+        </div>
+        <div class="col-span-12">
+            <label class="{{ tw_label }}">Вердикт</label>
+            {{ form_widget(form.verdict, {'attr': {'class': tw_input, 'rows': 2, 'placeholder': 'Итоговое мнение о вещи'}}) }}
+            {{ f.err(form.verdict) }}
+        </div>
+    </div>
+</div>
+
+<div class="mt-6 flex gap-2">
+    <button type="submit" class="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить</button>
+    <a href="{{ path('account_wardrobe_index') }}"
+       class="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Отмена</a>
+</div>
+
+{{ form_end(form) }}
+{% endblock %}
