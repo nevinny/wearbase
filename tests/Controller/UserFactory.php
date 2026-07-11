@@ -78,6 +78,16 @@ final class UserFactory
         return [$user, $brand];
     }
 
+    /**
+     * Пользователь с произвольным (заданным вызывающим) email — для сценариев,
+     * где нужно несколько РАЗНЫХ изолированных пользователей в одном тесте
+     * (напр. семейные инвайты), а не общий harness-* аккаунт.
+     */
+    public static function withEmail(ContainerInterface $c, string $email, array $roles = ['ROLE_CUSTOMER']): User
+    {
+        return self::findOrCreate($c, $email, $roles);
+    }
+
     private static function findOrCreate(ContainerInterface $c, string $email, array $roles): User
     {
         /** @var EntityManagerInterface $em */
