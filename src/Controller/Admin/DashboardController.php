@@ -5,6 +5,7 @@ namespace App\Controller\Admin;
 use App\Entity\AdvisorExperiment;
 use App\Entity\AdvisorIdea;
 use App\Entity\AdvisorRun;
+use App\Entity\AiUsageLog;
 use App\Entity\Article;
 use App\Entity\Author;
 use App\Entity\Brand;
@@ -120,6 +121,9 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToCrud('Идеи', 'fas fa-lightbulb', AdvisorIdea::class);
         yield MenuItem::linkToCrud('Дайджесты', 'fas fa-scroll', AdvisorRun::class);
         yield MenuItem::linkToCrud('Эксперименты', 'fas fa-flask', AdvisorExperiment::class);
+
+        yield MenuItem::section('AI-расход');
+        yield MenuItem::linkToCrud('Учёт AI-запросов', 'fas fa-receipt', AiUsageLog::class);
 
         yield MenuItem::section('Пользователи');
         yield MenuItem::linkToCrud('Users', 'fas fa-users', User::class);

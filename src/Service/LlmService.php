@@ -10,6 +10,14 @@ class LlmService
     private const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
     private const DEFAULT_MAX_TOKENS = 1024;
 
+    /**
+     * Usage последнего remote-вызова (учёт стоимости AI-запросов, AiUsageTracker).
+     * null — вызов ещё не был / был local (ollama бесплатный) / провайдер не отдал usage.
+     *
+     * @var array{model:string,prompt_tokens:int,completion_tokens:int,cost_usd:?float}|null
+     */
+    private ?array $lastUsage = null;
+
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly string $apiKey,
@@ -26,6 +34,8 @@ class LlmService
      */
     public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null, int $timeout = 120, ?int $maxTokens = null, bool $local = false, bool $think = true, ?float $temperature = null): string
     {
+        $this->lastUsage = null;
+
         $messages = [];
         if ($systemPrompt !== null) {
             $messages[] = ['role' => 'system', 'content' => $systemPrompt];
@@ -82,11 +92,15 @@ class LlmService
                     'model'      => $model,
                     'messages'   => $messages,
                     'max_tokens' => $maxTokens ?? self::DEFAULT_MAX_TOKENS,
+                    'usage'      => ['include' => true],
                 ],
                 'timeout' => $timeout,
             ]);
 
-            return $response->toArray()['choices'][0]['message']['content'] ?? '';
+            $data = $response->toArray();
+            $this->captureUsage($data, $model);
+
+            return $data['choices'][0]['message']['content'] ?? '';
         } catch (TransportExceptionInterface $e) {
             throw new \RuntimeException('LLM request failed: ' . $e->getMessage(), 0, $e);
         }
@@ -103,6 +117,8 @@ class LlmService
      */
     public function generateVision(string $prompt, array $imagePaths, ?string $model = null, bool $local = false): string
     {
+        $this->lastUsage = null;
+
         return $local
             ? $this->generateVisionLocal($prompt, $imagePaths, $model ?? $this->localModel)
             : $this->generateVisionRemote($prompt, $imagePaths, $model ?? $this->model);
@@ -125,11 +141,15 @@ class LlmService
                     'model'      => $model,
                     'messages'   => [['role' => 'user', 'content' => $content]],
                     'max_tokens' => self::DEFAULT_MAX_TOKENS,
+                    'usage'      => ['include' => true],
                 ],
                 'timeout' => 60,
             ]);
 
-            return $response->toArray()['choices'][0]['message']['content'] ?? '';
+            $data = $response->toArray();
+            $this->captureUsage($data, $model);
+
+            return $data['choices'][0]['message']['content'] ?? '';
         } catch (TransportExceptionInterface $e) {
             throw new \RuntimeException('LLM vision request failed: ' . $e->getMessage(), 0, $e);
         }
@@ -158,6 +178,38 @@ class LlmService
         } catch (TransportExceptionInterface $e) {
             throw new \RuntimeException('Local vision LLM request failed: ' . $e->getMessage(), 0, $e);
         }
+    }
+
+    /**
+     * Usage последнего вызова generate()/generateVision() (учёт стоимости, AiUsageTracker).
+     * null — вызов ещё не делался / шёл через local (ollama, бесплатный) / провайдер
+     * не отдал usage. Сбрасывается в null в начале каждого generate()/generateVision().
+     *
+     * @return array{model:string,prompt_tokens:int,completion_tokens:int,cost_usd:?float}|null
+     */
+    public function getLastUsage(): ?array
+    {
+        return $this->lastUsage;
+    }
+
+    /**
+     * Разбирает блок usage из ответа OpenRouter (требует 'usage'=>['include'=>true] в
+     * запросе — тогда провайдер добавляет usage.cost в $). model — фактическая из
+     * ответа (может отличаться от запрошенной при авто-роутинге).
+     */
+    private function captureUsage(array $data, string $requestedModel): void
+    {
+        $usage = $data['usage'] ?? null;
+        if (!is_array($usage)) {
+            return;
+        }
+
+        $this->lastUsage = [
+            'model'             => (string) ($data['model'] ?? $requestedModel),
+            'prompt_tokens'     => (int) ($usage['prompt_tokens'] ?? 0),
+            'completion_tokens' => (int) ($usage['completion_tokens'] ?? 0),
+            'cost_usd'          => isset($usage['cost']) && is_numeric($usage['cost']) ? (float) $usage['cost'] : null,
+        ];
     }
 
     private function imageToDataUrl(string $path): string

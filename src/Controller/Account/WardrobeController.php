@@ -135,7 +135,7 @@ class WardrobeController extends AbstractController
             return $this->json(['ok' => false, 'error' => 'Файл больше 10 МБ'], Response::HTTP_BAD_REQUEST);
         }
 
-        $result = $ai->suggestFromPhoto($photo->getPathname());
+        $result = $ai->suggestFromPhoto($photo->getPathname(), $user);
 
         return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);
     }
@@ -160,7 +160,7 @@ class WardrobeController extends AbstractController
             return $this->json(['ok' => false, 'error' => 'Лимит AI-подсказок на сегодня'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        $result = $ai->suggestFromUrl((string) $request->request->get('url'));
+        $result = $ai->suggestFromUrl((string) $request->request->get('url'), $user);
 
         return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);
     }

@@ -2,7 +2,10 @@
 
 namespace App\Service\Wardrobe;
 
+use App\Entity\AiUsageLog;
+use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Service\WardrobeAiMeter;
 use App\Service\WebScraperService;
@@ -32,13 +35,14 @@ class WardrobeAiService
         private readonly WebScraperService $scraper,
         private readonly WildberriesAdapter $wbAdapter,
         private readonly WardrobeAiMeter $meter,
+        private readonly AiUsageTracker $usageTracker,
         private readonly CacheInterface $cache,
         private readonly string $visionModel,
     ) {
     }
 
     /** @return array{ok:bool,fields?:array,confidence?:string,error?:string} */
-    public function suggestFromPhoto(string $path): array
+    public function suggestFromPhoto(string $path, ?User $user = null): array
     {
         $hash = @sha1_file($path);
         if ($hash === false) {
@@ -48,10 +52,10 @@ class WardrobeAiService
         try {
             return $this->cache->get(
                 "wardrobe_ai_photo_{$hash}",
-                function (ItemInterface $item) use ($path): array {
+                function (ItemInterface $item) use ($path, $user): array {
                     $item->expiresAfter(self::CACHE_TTL);
 
-                    return $this->analyzePhoto($path);
+                    return $this->analyzePhoto($path, $user);
                 },
             );
         } catch (\Throwable $e) {
@@ -60,7 +64,7 @@ class WardrobeAiService
     }
 
     /** @return array{ok:bool,fields?:array,imageUrl?:?string,confidence?:string,error?:string} */
-    public function suggestFromUrl(string $url): array
+    public function suggestFromUrl(string $url, ?User $user = null): array
     {
         $url = trim($url);
         if ($url === '' || !filter_var($url, FILTER_VALIDATE_URL)) {
@@ -72,10 +76,10 @@ class WardrobeAiService
         try {
             return $this->cache->get(
                 $cacheKey,
-                function (ItemInterface $item) use ($url): array {
+                function (ItemInterface $item) use ($url, $user): array {
                     $item->expiresAfter(self::CACHE_TTL);
 
-                    return $this->analyzeUrl($url);
+                    return $this->analyzeUrl($url, $user);
                 },
             );
         } catch (\Throwable $e) {
@@ -83,7 +87,7 @@ class WardrobeAiService
         }
     }
 
-    private function analyzePhoto(string $path): array
+    private function analyzePhoto(string $path, ?User $user): array
     {
         if (!$this->meter->allowed()) {
             throw new \RuntimeException(self::DAILY_CAP_ERROR);
@@ -109,6 +113,7 @@ EOT;
 
         $this->meter->record();
         $response = $this->llm->generateVision($prompt, [$path], $this->visionModel);
+        $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_PHOTO);
         $data = $this->extractJson($response);
         if ($data === null) {
             throw new \RuntimeException('Не удалось распознать фото');
@@ -121,7 +126,7 @@ EOT;
         ];
     }
 
-    private function analyzeUrl(string $url): array
+    private function analyzeUrl(string $url, ?User $user): array
     {
         if (str_contains(strtolower($url), 'wildberries.ru')) {
             $wb = $this->wbAdapter->fetch($url);
@@ -175,6 +180,7 @@ EOT;
         $this->meter->record();
         // Remote (OpenRouter, та же дешёвая модель, что и vision): локальный ollama с прода недоступен
         $response = $this->llm->generate($prompt, model: $this->visionModel, timeout: 30);
+        $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_URL);
         $data = $this->extractJson($response);
         if ($data === null) {
             throw new \RuntimeException('Не удалось распознать содержимое страницы');
