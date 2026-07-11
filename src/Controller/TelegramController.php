@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Notification\AdminNotifier;
 use App\Notification\TelegramNotifier;
 use App\Service\Agent\BrandUnpublisher;
+use App\Service\Telegram\WardrobeDialogService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -25,13 +26,14 @@ class TelegramController extends AbstractController
         TelegramNotifier $telegramNotifier,
         AdminNotifier $adminNotifier,
         BrandUnpublisher $unpublisher,
+        WardrobeDialogService $wardrobeDialog,
         \Psr\Log\LoggerInterface $telegramLogger,
     ): Response {
         $body = json_decode($request->getContent(), true);
 
         // Нажатие inline-кнопки (напр. «🚫 Скрыть с публикации» под уведомлением о публикации).
         if (is_array($body) && isset($body['callback_query'])) {
-            return $this->handleCallback($body['callback_query'], $telegramNotifier, $adminNotifier, $unpublisher, $telegramLogger);
+            return $this->handleCallback($body['callback_query'], $em, $telegramNotifier, $adminNotifier, $unpublisher, $wardrobeDialog, $telegramLogger);
         }
 
         if (!$body || !isset($body['message'])) {
@@ -54,6 +56,13 @@ class TelegramController extends AbstractController
             return new JsonResponse(['ok' => true]);
         }
 
+        // «Мой гардероб»: у привязанного пользователя сообщение сперва предлагаем диалогу.
+        // false = не его (нет активного черновика и не /wardrobe|/cancel) → обычная логика ниже.
+        $linkedUser = $chatId !== '' ? $em->getRepository(User::class)->findOneBy(['telegramChatId' => $chatId]) : null;
+        if ($linkedUser !== null && $wardrobeDialog->handle($linkedUser, $message, (int) ($body['update_id'] ?? 0))) {
+            return new JsonResponse(['ok' => true]);
+        }
+
         if (str_starts_with($text, '/start ')) {
             $token = substr($text, 7);
             $user = $em->getRepository(User::class)->findOneBy(['telegramLinkToken' => $token]);
@@ -61,7 +70,7 @@ class TelegramController extends AbstractController
                 $user->setTelegramChatId($chatId);
                 $user->setTelegramLinkToken(null);
                 $em->flush();
-                $telegramNotifier->send($chatId, '✅ Telegram привязан к вашему аккаунту WEARBASE!');
+                $telegramNotifier->send($chatId, "✅ Telegram привязан к вашему аккаунту WEARBASE!\n\n📦 Команда /wardrobe — вести учёт своего гардероба прямо здесь.");
             } else {
                 $telegramNotifier->send($chatId, '❌ Ссылка устарела. Сгенерируйте новую в настройках безопасности на сайте.');
             }
@@ -90,12 +99,14 @@ class TelegramController extends AbstractController
         return new JsonResponse(['ok' => true]);
     }
 
-    /** Обработка нажатия inline-кнопки. Сейчас: «unpub:<id>» — скрыть бренд с публикации. */
+    /** Обработка нажатия inline-кнопки. «unpub:<id>» — скрыть бренд (admin-only); «wl:*» — гардероб (по привязке chatId→User). */
     private function handleCallback(
         array $cq,
+        EntityManagerInterface $em,
         TelegramNotifier $telegram,
         AdminNotifier $adminNotifier,
         BrandUnpublisher $unpublisher,
+        WardrobeDialogService $wardrobeDialog,
         \Psr\Log\LoggerInterface $telegramLogger,
     ): Response {
         $cqId    = (string) ($cq['id'] ?? '');
@@ -105,6 +116,19 @@ class TelegramController extends AbstractController
         $msgText = (string) ($cq['message']['text'] ?? '');
 
         $telegramLogger->info('TG callback', ['chat' => $chatId, 'data' => $data, 'admin' => $adminNotifier->isAdminChat($chatId)]);
+
+        // Кнопки гардероба (wl:*): авторизация — привязка chatId→User, admin-чат не требуется.
+        if (str_starts_with($data, 'wl:')) {
+            $user = $chatId !== '' ? $em->getRepository(User::class)->findOneBy(['telegramChatId' => $chatId]) : null;
+            if ($user === null) {
+                $telegramLogger->warning('TG wl: callback от непривязанного чата', ['chat' => $chatId, 'data' => $data]);
+                $telegram->answerCallbackQuery($cqId, 'Не авторизовано');
+                return new JsonResponse(['ok' => true]);
+            }
+            $wardrobeDialog->handleCallback($user, $data, $chatId);
+            $telegram->answerCallbackQuery($cqId, '');
+            return new JsonResponse(['ok' => true]);
+        }
 
         // Безопасность: скрывать бренды может ТОЛЬКО наш админ-чат (вебхук публичный).
         if (!$adminNotifier->isAdminChat($chatId)) {

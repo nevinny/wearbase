@@ -205,6 +205,10 @@ services:
         arguments:
             $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
 
+    App\Service\Telegram\TelegramFileFetcher:
+        arguments:
+            $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
+
     App\Notification\AdminNotifier:
         arguments:
             $adminChatId: '%env(ADMIN_TELEGRAM_CHAT_ID)%'
