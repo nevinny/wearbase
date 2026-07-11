@@ -53,14 +53,22 @@
         </div>
         <div class="col-span-12">
             <label class="{{ tw_label }}">Ссылка на товар</label>
-            {{ form_widget(form.productUrl, {'attr': {'class': tw_input, 'placeholder': 'https://…'}}) }}
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <div class="flex-1">
+                    {{ form_widget(form.productUrl, {'attr': {'class': tw_input, 'placeholder': 'https://…'}}) }}
+                </div>
+                <button type="button" id="wardrobe-ai-url-btn"
+                        class="shrink-0 whitespace-nowrap rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">✨ Подтянуть из ссылки</button>
+            </div>
             {{ f.err(form.productUrl) }}
+            <div id="wardrobe-ai-url-status" class="mt-1 hidden text-xs"></div>
+            <div id="wardrobe-ai-url-preview" class="mt-2 hidden"></div>
         </div>
     </div>
 </div>
 
 {# ── Фото ── #}
-<div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+<div class="mb-4 rounded-2xl bg-white p-6 shadow-sm" id="wardrobe-photo-section">
     <h2 class="mb-4 text-sm font-bold">Фото</h2>
     {% if item.photo %}
         <div class="mb-3">
@@ -71,6 +79,7 @@
     {% endif %}
     {{ form_widget(form.photoFile, {'attr': {'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-black'}}) }}
     {{ f.err(form.photoFile) }}
+    <div id="wardrobe-ai-photo-status" class="mt-2 hidden text-xs"></div>
 </div>
 
 {# ── История ── #}
@@ -124,4 +133,160 @@
 </div>
 
 {{ form_end(form) }}
+
+<script>
+(function () {
+    var CSRF_TOKEN = '{{ csrf_token('wardrobe_ai') }}';
+    var PHOTO_URL = '{{ path('account_wardrobe_ai_photo') }}';
+    var URL_URL = '{{ path('account_wardrobe_ai_url') }}';
+    var SPINNER = '<svg class="inline h-3.5 w-3.5 animate-spin align-[-2px]" viewBox="0 0 24 24" fill="none">' +
+        '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+        '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+
+    // ── Общий хелпер: заполнить только пустые поля формы ──
+    function fillEmpty(map) {
+        Object.keys(map || {}).forEach(function (key) {
+            var val = map[key];
+            if (val === undefined || val === null || val === '') return;
+            var el = document.getElementById('wardrobe_item_form_' + key);
+            if (!el) return;
+            if (el.value && el.value.trim() !== '') return;
+            el.value = val;
+            el.classList.add('bg-amber-50', 'transition-colors', 'duration-1000');
+            setTimeout(function () { el.classList.remove('bg-amber-50'); }, 1500);
+        });
+    }
+
+    function hideAfter(el, ms) {
+        setTimeout(function () {
+            el.classList.add('hidden');
+            el.innerHTML = '';
+        }, ms);
+    }
+
+    function readJson(response) {
+        return response.json().then(function (data) {
+            return { status: response.status, data: data };
+        });
+    }
+
+    // ── Фото-флоу ──
+    var photoInput = document.querySelector('#wardrobe-photo-section input[type="file"]');
+    var photoStatus = document.getElementById('wardrobe-ai-photo-status');
+
+    if (photoInput && photoStatus) {
+        photoInput.addEventListener('change', function () {
+            var file = photoInput.files && photoInput.files[0];
+            if (!file || file.type.indexOf('image/') !== 0) return;
+
+            photoStatus.classList.remove('hidden', 'text-green-600', 'text-gray-400');
+            photoStatus.classList.add('text-gray-500');
+            photoStatus.innerHTML = SPINNER + ' <span class="ml-1">✨ AI подсказывает поля…</span>';
+
+            var controller = new AbortController();
+            var timeout = setTimeout(function () { controller.abort(); }, 15000);
+
+            var fd = new FormData();
+            fd.append('photo', file);
+            fd.append('_token', CSRF_TOKEN);
+
+            fetch(PHOTO_URL, { method: 'POST', body: fd, signal: controller.signal })
+                .then(readJson)
+                .then(function (res) {
+                    clearTimeout(timeout);
+                    photoStatus.classList.remove('text-gray-500');
+                    if (res.data && res.data.ok) {
+                        fillEmpty(res.data.fields || {});
+                        photoStatus.classList.add('text-green-600');
+                        photoStatus.innerHTML = '✨ Поля заполнены по фото — проверьте';
+                    } else {
+                        photoStatus.classList.add('text-gray-400');
+                        photoStatus.innerHTML = (res.data && res.data.error) ? res.data.error : 'AI-подсказка недоступна';
+                    }
+                    hideAfter(photoStatus, 5000);
+                })
+                .catch(function () {
+                    clearTimeout(timeout);
+                    photoStatus.classList.remove('text-gray-500', 'text-green-600');
+                    photoStatus.classList.add('text-gray-400');
+                    photoStatus.innerHTML = 'AI-подсказка недоступна';
+                    hideAfter(photoStatus, 5000);
+                });
+        });
+    }
+
+    // ── Ссылка-флоу ──
+    var urlInput = document.getElementById('wardrobe_item_form_productUrl');
+    var urlButton = document.getElementById('wardrobe-ai-url-btn');
+    var urlStatus = document.getElementById('wardrobe-ai-url-status');
+    var urlPreview = document.getElementById('wardrobe-ai-url-preview');
+
+    if (urlButton && urlInput) {
+        var urlButtonDefaultHtml = urlButton.innerHTML;
+
+        urlButton.addEventListener('click', function () {
+            var url = urlInput.value.trim();
+            if (!url) {
+                urlInput.focus();
+                return;
+            }
+
+            urlButton.disabled = true;
+            urlButton.innerHTML = SPINNER + ' Загружаем…';
+            if (urlStatus) {
+                urlStatus.classList.add('hidden');
+                urlStatus.innerHTML = '';
+            }
+
+            var controller = new AbortController();
+            var timeout = setTimeout(function () { controller.abort(); }, 15000);
+
+            fetch(URL_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ url: url, _token: CSRF_TOKEN }),
+                signal: controller.signal
+            })
+                .then(readJson)
+                .then(function (res) {
+                    clearTimeout(timeout);
+                    urlButton.disabled = false;
+                    urlButton.innerHTML = urlButtonDefaultHtml;
+
+                    if (res.data && res.data.ok) {
+                        fillEmpty(res.data.fields || {});
+                        if (res.data.imageUrl && urlPreview && photoInput && (!photoInput.files || !photoInput.files.length)) {
+                            urlPreview.innerHTML =
+                                '<img src="' + res.data.imageUrl + '" alt="Фото из магазина" class="max-h-40 rounded-lg border border-gray-200">' +
+                                '<div class="mt-1 text-xs text-gray-400">Фото из магазина будет НЕ сохранено автоматически — прикрепите файл</div>';
+                            urlPreview.classList.remove('hidden');
+                        }
+                        if (urlStatus) {
+                            urlStatus.classList.remove('hidden', 'text-gray-400');
+                            urlStatus.classList.add('text-green-600');
+                            urlStatus.innerHTML = '✨ Поля заполнены по ссылке — проверьте';
+                            hideAfter(urlStatus, 5000);
+                        }
+                    } else if (urlStatus) {
+                        urlStatus.classList.remove('hidden', 'text-green-600');
+                        urlStatus.classList.add('text-gray-400');
+                        urlStatus.innerHTML = (res.data && res.data.error) ? res.data.error : 'AI-подсказка недоступна';
+                        hideAfter(urlStatus, 5000);
+                    }
+                })
+                .catch(function () {
+                    clearTimeout(timeout);
+                    urlButton.disabled = false;
+                    urlButton.innerHTML = urlButtonDefaultHtml;
+                    if (urlStatus) {
+                        urlStatus.classList.remove('hidden', 'text-green-600');
+                        urlStatus.classList.add('text-gray-400');
+                        urlStatus.innerHTML = 'AI-подсказка недоступна';
+                        hideAfter(urlStatus, 5000);
+                    }
+                });
+        });
+    }
+})();
+</script>
 {% endblock %}

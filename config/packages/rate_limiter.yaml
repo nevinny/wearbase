@@ -23,3 +23,10 @@ framework:
             policy: sliding_window
             limit: 120
             interval: '1 minute'
+
+        # AI-ассист добавления вещи в гардероб (фото/URL → LLM): per-user анти-абьюз,
+        # поверх — общий дневной потолок инсталляции (WardrobeAiMeter, api_usage_daily).
+        wardrobe_ai:
+            policy: sliding_window
+            limit: 30
+            interval: '1 day'

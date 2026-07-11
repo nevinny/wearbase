@@ -120,6 +120,14 @@ services:
         arguments:
             $dailyCap: '%env(int:YANDEX_SEARCH_DAILY_CAP)%'
 
+    App\Service\WardrobeAiMeter:
+        arguments:
+            $dailyCap: '%env(int:WARDROBE_AI_DAILY_CAP)%'
+
+    App\Service\Wardrobe\WardrobeAiService:
+        arguments:
+            $visionModel: '%env(WARDROBE_VISION_MODEL)%'
+
     App\Service\YandexSearchClient:
         arguments:
             $apiKey: '%env(YANDEX_SEARCH_API_KEY)%'

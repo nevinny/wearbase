@@ -11,12 +11,16 @@ use App\Form\Account\WardrobeItemFormType;
 use App\Repository\WardrobeItemRepository;
 use App\Repository\WardrobeTransferRepository;
 use App\Service\FamilyService;
+use App\Service\Wardrobe\WardrobeAiService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/account/wardrobe', name: 'account_wardrobe_')]
@@ -98,6 +102,67 @@ class WardrobeController extends AbstractController
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
         ]);
+    }
+
+    /**
+     * AI-ассист: распознать параметры вещи по фото (vision LLM). Контракт ответа
+     * фиксирован для JS-виджета формы — не менять без синхронизации с фронтом.
+     */
+    #[Route('/ai/photo', name: 'ai_photo', methods: ['POST'])]
+    public function aiPhoto(
+        Request $request,
+        WardrobeAiService $ai,
+        RateLimiterFactory $wardrobeAiLimiter,
+    ): JsonResponse {
+        if (!$this->isCsrfTokenValid('wardrobe_ai', (string) $request->request->get('_token'))) {
+            return $this->json(['ok' => false, 'error' => 'Недействительный токен'], Response::HTTP_BAD_REQUEST);
+        }
+
+        /** @var User $user */
+        $user = $this->getUser();
+        if (!$wardrobeAiLimiter->create((string) $user->getId())->consume()->isAccepted()) {
+            return $this->json(['ok' => false, 'error' => 'Лимит AI-подсказок на сегодня'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
+        $photo = $request->files->get('photo');
+        if (!$photo instanceof UploadedFile || !$photo->isValid()) {
+            return $this->json(['ok' => false, 'error' => 'Файл не получен'], Response::HTTP_BAD_REQUEST);
+        }
+        if (!str_starts_with((string) $photo->getMimeType(), 'image/')) {
+            return $this->json(['ok' => false, 'error' => 'Нужен файл изображения'], Response::HTTP_BAD_REQUEST);
+        }
+        if ($photo->getSize() > 10 * 1024 * 1024) {
+            return $this->json(['ok' => false, 'error' => 'Файл больше 10 МБ'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $result = $ai->suggestFromPhoto($photo->getPathname());
+
+        return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);
+    }
+
+    /**
+     * AI-ассист: извлечь параметры товара по ссылке (WB — без LLM; иначе scraper+LLM).
+     * Контракт ответа фиксирован для JS-виджета формы — не менять без синхронизации с фронтом.
+     */
+    #[Route('/ai/url', name: 'ai_url', methods: ['POST'])]
+    public function aiUrl(
+        Request $request,
+        WardrobeAiService $ai,
+        RateLimiterFactory $wardrobeAiLimiter,
+    ): JsonResponse {
+        if (!$this->isCsrfTokenValid('wardrobe_ai', (string) $request->request->get('_token'))) {
+            return $this->json(['ok' => false, 'error' => 'Недействительный токен'], Response::HTTP_BAD_REQUEST);
+        }
+
+        /** @var User $user */
+        $user = $this->getUser();
+        if (!$wardrobeAiLimiter->create((string) $user->getId())->consume()->isAccepted()) {
+            return $this->json(['ok' => false, 'error' => 'Лимит AI-подсказок на сегодня'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
+        $result = $ai->suggestFromUrl((string) $request->request->get('url'));
+
+        return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);
     }
 
     #[Route('/{id}', name: 'show', requirements: ['id' => '\d+'], methods: ['GET'])]

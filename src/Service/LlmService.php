@@ -93,6 +93,82 @@ class LlmService
     }
 
     /**
+     * Мультимодальная генерация (vision): фото + текстовый промпт. Отдельно от
+     * generate() — другой формат сообщений (content-массив remote / images[] local).
+     * Модель по умолчанию — та же, что у текстовой генерации ($this->model /
+     * $this->localModel); вызывающий обычно передаёт $model явно (vision-модель
+     * может отличаться от основной текстовой).
+     *
+     * @param string[] $imagePaths локальные пути к файлам изображений
+     */
+    public function generateVision(string $prompt, array $imagePaths, ?string $model = null, bool $local = false): string
+    {
+        return $local
+            ? $this->generateVisionLocal($prompt, $imagePaths, $model ?? $this->localModel)
+            : $this->generateVisionRemote($prompt, $imagePaths, $model ?? $this->model);
+    }
+
+    private function generateVisionRemote(string $prompt, array $imagePaths, string $model): string
+    {
+        $content = [['type' => 'text', 'text' => $prompt]];
+        foreach ($imagePaths as $path) {
+            $content[] = ['type' => 'image_url', 'image_url' => ['url' => $this->imageToDataUrl($path)]];
+        }
+
+        try {
+            $response = $this->httpClient->request('POST', self::OPENROUTER_URL, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->apiKey,
+                    'Content-Type'  => 'application/json',
+                ],
+                'json' => [
+                    'model'      => $model,
+                    'messages'   => [['role' => 'user', 'content' => $content]],
+                    'max_tokens' => self::DEFAULT_MAX_TOKENS,
+                ],
+                'timeout' => 60,
+            ]);
+
+            return $response->toArray()['choices'][0]['message']['content'] ?? '';
+        } catch (TransportExceptionInterface $e) {
+            throw new \RuntimeException('LLM vision request failed: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    private function generateVisionLocal(string $prompt, array $imagePaths, string $model): string
+    {
+        $images = array_map(
+            static fn(string $path): string => base64_encode((string) file_get_contents($path)),
+            $imagePaths,
+        );
+
+        try {
+            $response = $this->httpClient->request('POST', $this->localUrl, [
+                'headers' => ['Content-Type' => 'application/json'],
+                'json'    => [
+                    'model'    => $model,
+                    'messages' => [['role' => 'user', 'content' => $prompt, 'images' => $images]],
+                    'stream'   => false,
+                    'think'    => false,
+                ],
+                'timeout' => 120,
+            ]);
+
+            return $response->toArray()['message']['content'] ?? '';
+        } catch (TransportExceptionInterface $e) {
+            throw new \RuntimeException('Local vision LLM request failed: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    private function imageToDataUrl(string $path): string
+    {
+        $mime = mime_content_type($path) ?: 'image/jpeg';
+        $data = base64_encode((string) file_get_contents($path));
+
+        return "data:{$mime};base64,{$data}";
+    }
+
+    /**
      * Развёрнутое описание бренда (250+ слов).
      */
     public function generateBrandDescription(
