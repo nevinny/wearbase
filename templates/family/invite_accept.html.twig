@@ -1,0 +1,52 @@
+{% extends 'tailwind/app.html.twig' %}
+{% block title %}Приглашение в семью — WEARBASE{% endblock %}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block body %}
+{% embed 'tailwind/auth/_shell.html.twig' %}
+    {% block eyebrow %}Семейный гардероб{% endblock %}
+    {% block heading %}Один гардероб<br>на всю семью{% endblock %}
+    {% block panel_extra %}Вещи каждого члена семьи — в одном месте,<br>с историей передач «от старших младшим».{% endblock %}
+
+    {% block form %}
+        {% if alreadyUsed %}
+
+            <h1 class="text-xl font-bold mb-2">Приглашение уже использовано</h1>
+            <p class="text-sm text-gray-500 mb-6">Эта ссылка больше не действует. Попросите отправить вам новое приглашение.</p>
+            <a href="{{ path('account_family_index') }}"
+               class="inline-block rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Перейти в кабинет</a>
+
+        {% else %}
+
+            <h1 class="text-xl font-bold mb-2">{{ inviterName }} приглашает вас в семейный гардероб WEARBASE</h1>
+            <p class="text-sm text-gray-500 mb-6">
+                Ваша роль в семье:
+                <span class="font-semibold text-gray-900">{{ invite.role == 'child' ? 'Ребёнок' : 'Родитель' }}</span>
+            </p>
+
+            {% for message in app.flashes('error') %}
+                <div class="form-error mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{{ message }}</div>
+            {% endfor %}
+
+            {% if app.user %}
+                <form method="post">
+                    <input type="hidden" name="_token" value="{{ csrf_token('family_invite_accept') }}">
+                    <button type="submit" class="w-full rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white hover:bg-black transition">
+                        Принять приглашение
+                    </button>
+                </form>
+            {% else %}
+                <p class="mb-4 text-sm text-gray-500">Войдите или зарегистрируйтесь, затем откройте эту ссылку снова</p>
+                <div class="flex gap-2">
+                    <a href="{{ path('app_login') }}"
+                       class="flex-1 rounded-xl bg-gray-900 py-3.5 text-center text-sm font-semibold text-white hover:bg-black transition">Войти</a>
+                    <a href="{{ path('app_register') }}"
+                       class="flex-1 rounded-xl border border-gray-300 py-3.5 text-center text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Зарегистрироваться</a>
+                </div>
+            {% endif %}
+
+        {% endif %}
+    {% endblock %}
+{% endembed %}
+{% endblock %}

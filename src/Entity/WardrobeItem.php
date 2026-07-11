@@ -25,6 +25,20 @@ class WardrobeItem
     public const SOURCE_TELEGRAM = 'telegram';
     public const SOURCE_IMPORT = 'import';
 
+    // Статус носки (семейный гардероб). GIVEN_AWAY — терминальный «отдана из семьи»,
+    // это НЕ deleted_at: вещь остаётся в истории, но уходит из активных выборок.
+    public const WEAR_ACTIVE = 'active';
+    public const WEAR_RESERVE = 'reserve';
+    public const WEAR_OUTGROWN = 'outgrown';
+    public const WEAR_GIVEN_AWAY = 'given_away';
+
+    public const WEAR_LABELS = [
+        self::WEAR_ACTIVE     => 'Носится',
+        self::WEAR_RESERVE    => 'На вырост',
+        self::WEAR_OUTGROWN   => 'Мала — ждёт передачи',
+        self::WEAR_GIVEN_AWAY => 'Отдана из семьи',
+    ];
+
     public const SUGGESTED_CATEGORIES = [
         'Футболки',
         'Майки и топы',
@@ -101,6 +115,15 @@ class WardrobeItem
     // Канал добавления: SOURCE_WEB / SOURCE_TELEGRAM / SOURCE_IMPORT
     #[ORM\Column(length: 20, options: ['default' => self::SOURCE_WEB])]
     private string $source = self::SOURCE_WEB;
+
+    // Статус носки: WEAR_ACTIVE / WEAR_RESERVE / WEAR_OUTGROWN / WEAR_GIVEN_AWAY
+    #[ORM\Column(length: 12, options: ['default' => self::WEAR_ACTIVE])]
+    private string $wearStatus = self::WEAR_ACTIVE;
+
+    // Кому вещь принадлежала изначально; immutable при передачах внутри семьи
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?User $originalOwner = null;
 
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
@@ -259,6 +282,27 @@ class WardrobeItem
     public function setSource(string $source): static
     {
         $this->source = $source;
+        return $this;
+    }
+
+    public function getWearStatus(): string { return $this->wearStatus; }
+
+    public function setWearStatus(string $wearStatus): static
+    {
+        $this->wearStatus = $wearStatus;
+        return $this;
+    }
+
+    public function getWearStatusLabel(): string
+    {
+        return self::WEAR_LABELS[$this->wearStatus] ?? $this->wearStatus;
+    }
+
+    public function getOriginalOwner(): ?User { return $this->originalOwner; }
+
+    public function setOriginalOwner(?User $originalOwner): static
+    {
+        $this->originalOwner = $originalOwner;
         return $this;
     }
 

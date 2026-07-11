@@ -83,6 +83,7 @@ security:
         - { path: ^/telegram/webhook, roles: PUBLIC_ACCESS }
         - { path: ^/payment/subscribe, roles: ROLE_BRAND_MANAGER }
         - { path: ^/invite/accept, roles: IS_AUTHENTICATED_REMEMBERED }
+        - { path: ^/family,       roles: PUBLIC_ACCESS } # claim managed-ребёнка + акцепт семейного инвайта (логин проверяет контроллер на POST)
         - { path: ^/brand-data,   roles: PUBLIC_ACCESS } # голоса краудсорс-валидации (анонимы; ДО ^/brand — префикс!)
         - { path: ^/e/,           roles: PUBLIC_ACCESS } # outreach-трекинг: пиксель/клик/отписка из писем
         - { path: ^/go/,          roles: PUBLIC_ACCESS } # трекинг исходящих кликов на ссылки бренда (редирект-прокладка)

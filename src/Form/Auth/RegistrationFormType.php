@@ -17,6 +17,7 @@ use Symfony\Component\OptionsResolver\OptionsResolver;
 use Symfony\Component\Validator\Constraints\IsTrue;
 use Symfony\Component\Validator\Constraints\Length;
 use Symfony\Component\Validator\Constraints\NotBlank;
+use Symfony\Component\Validator\Constraints\Regex;
 
 class RegistrationFormType extends AbstractType
 {
@@ -32,8 +33,16 @@ class RegistrationFormType extends AbstractType
                 ],
             ])
             ->add('email', EmailType::class, [
-                'label' => 'Email',
-                'attr'  => ['placeholder' => 'you@example.com'],
+                'label'       => 'Email',
+                'attr'        => ['placeholder' => 'you@example.com'],
+                'constraints' => [
+                    // Служебный домен managed-детей семейного гардероба — регистрация запрещена
+                    new Regex([
+                        'pattern' => '/@' . preg_quote(User::MANAGED_EMAIL_DOMAIN, '/') . '$/i',
+                        'match'   => false,
+                        'message' => 'Этот email нельзя использовать для регистрации',
+                    ]),
+                ],
             ])
             ->add('plainPassword', RepeatedType::class, [
                 'type'           => PasswordType::class,

@@ -22,6 +22,12 @@ use Symfony\Component\HttpFoundation\File\File;
 #[UniqueEntity(fields: ['email'], message: 'Этот email уже зарегистрирован')]
 class User implements UserInterface, PasswordAuthenticatedUserInterface, EquatableInterface
 {
+    public const FAMILY_ROLE_PARENT = 'parent';
+    public const FAMILY_ROLE_CHILD = 'child';
+
+    // Домен синтетических email managed-детей (email NOT NULL UNIQUE не трогаем)
+    public const MANAGED_EMAIL_DOMAIN = 'family.wearbase.local';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -73,6 +79,27 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
 
     #[ORM\Column(length: 20, options: ['default' => 'active'])]
     private string $status = 'active';
+
+    // --- Семейный гардероб ---
+
+    #[ORM\ManyToOne(targetEntity: Family::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Family $family = null;
+
+    // FAMILY_ROLE_PARENT | FAMILY_ROLE_CHILD | null (вне семьи)
+    #[ORM\Column(length: 10, nullable: true)]
+    private ?string $familyRole = null;
+
+    // Токен страницы /family/claim/{token}: есть только у managed-детей, обнуляется при claim
+    #[ORM\Column(length: 64, unique: true, nullable: true)]
+    private ?string $familyClaimToken = null;
+
+    // Когда managed-ребёнок «дорос» и получил свои email+пароль
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $claimedAt = null;
+
+    #[ORM\Column(type: 'date_immutable', nullable: true)]
+    private ?\DateTimeImmutable $birthDate = null;
 
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
@@ -305,6 +332,68 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
             }
         }
         return $this->addresses->first() ?: null;
+    }
+
+    public function getFamily(): ?Family { return $this->family; }
+
+    public function setFamily(?Family $family): static
+    {
+        $this->family = $family;
+        return $this;
+    }
+
+    public function getFamilyRole(): ?string { return $this->familyRole; }
+
+    public function setFamilyRole(?string $familyRole): static
+    {
+        $this->familyRole = $familyRole;
+        return $this;
+    }
+
+    public function isFamilyParent(): bool
+    {
+        return $this->familyRole === self::FAMILY_ROLE_PARENT;
+    }
+
+    public function getFamilyClaimToken(): ?string { return $this->familyClaimToken; }
+
+    public function setFamilyClaimToken(?string $familyClaimToken): static
+    {
+        $this->familyClaimToken = $familyClaimToken;
+        return $this;
+    }
+
+    public function getClaimedAt(): ?\DateTimeImmutable { return $this->claimedAt; }
+
+    public function setClaimedAt(?\DateTimeImmutable $claimedAt): static
+    {
+        $this->claimedAt = $claimedAt;
+        return $this;
+    }
+
+    public function getBirthDate(): ?\DateTimeImmutable { return $this->birthDate; }
+
+    public function setBirthDate(?\DateTimeImmutable $birthDate): static
+    {
+        $this->birthDate = $birthDate;
+        return $this;
+    }
+
+    /**
+     * Managed-аккаунт: ребёнок, заведённый родителем без своего email/пароля
+     * (синтетический email child-<familyId>-<hex>@family.wearbase.local, случайный пароль).
+     *
+     * Инварианты:
+     * - familyClaimToken выставляется ТОЛЬКО при createChild() и обнуляется при claim —
+     *   у всех обычных (существующих) пользователей он NULL → isManaged() = false;
+     * - claimed_at у обычных пользователей тоже NULL, поэтому по нему одному судить нельзя —
+     *   поэтому признак: живой claim-токен ЛИБО синтетический домен email (страховка на случай,
+     *   если токен обнулили вручную, не выдав настоящий email).
+     */
+    public function isManaged(): bool
+    {
+        return $this->familyClaimToken !== null
+            || str_ends_with((string) $this->email, '@' . self::MANAGED_EMAIL_DOMAIN);
     }
 
     public function isBrandManager(): bool

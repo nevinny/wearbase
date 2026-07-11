@@ -1,0 +1,43 @@
+{% extends 'tailwind/app.html.twig' %}
+{% block title %}Настройка доступа — WEARBASE{% endblock %}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block body %}
+{% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+{% set tw_input = 'w-full rounded-xl bg-gray-100 px-4 py-3.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% embed 'tailwind/auth/_shell.html.twig' with {tw_label: tw_label, tw_input: tw_input} %}
+    {% block eyebrow %}Семейный гардероб{% endblock %}
+    {% block heading %}Твой гардероб<br>уже ждёт{% endblock %}
+    {% block panel_extra %}Родители завели для тебя гардероб на WEARBASE.<br>Остался последний шаг — свой доступ.{% endblock %}
+
+    {% block form %}
+        <h1 class="text-xl font-bold mb-1">Привет, {{ memberName }}!</h1>
+        <p class="text-sm text-gray-500 mb-6">Заверши настройку аккаунта — укажи почту и придумай пароль</p>
+
+        {% for message in app.flashes('error') %}
+            <div class="form-error mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{{ message }}</div>
+        {% endfor %}
+
+        {{ form_start(form, {'attr': {'novalidate': 'novalidate'}}) }}
+
+            <div class="mb-4">
+                <label class="{{ tw_label }}">Почта</label>
+                {{ form_widget(form.email, {'attr': {'class': tw_input, 'placeholder': 'you@example.com'}}) }}
+                <div class="form-error mt-1 text-sm text-red-600">{{ form_errors(form.email) }}</div>
+            </div>
+
+            <div class="mb-5">
+                <label class="{{ tw_label }}">Пароль</label>
+                {{ form_widget(form.password, {'attr': {'class': tw_input, 'placeholder': '••••••••'}}) }}
+                <div class="form-error mt-1 text-sm text-red-600">{{ form_errors(form.password) }}</div>
+            </div>
+
+            <button type="submit" class="w-full rounded-xl bg-gray-900 py-3.5 text-sm font-semibold text-white hover:bg-black transition">
+                Создать доступ
+            </button>
+
+        {{ form_end(form) }}
+    {% endblock %}
+{% endembed %}
+{% endblock %}
