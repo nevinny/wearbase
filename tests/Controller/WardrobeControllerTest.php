@@ -8,8 +8,10 @@ use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeTransfer;
 use App\Service\FamilyService;
+use App\Service\Wardrobe\WardrobeAiService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Vich\UploaderBundle\Storage\StorageInterface;
 
 /**
  * Integration tests for "Мой гардероб": /account/wardrobe/*
@@ -448,6 +450,139 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         /** @var WardrobeItem $reloadedItem */
         $reloadedItem = $em->getRepository(WardrobeItem::class)->find($itemId);
         $this->assertSame(WardrobeItem::WEAR_GIVEN_AWAY, $reloadedItem->getWearStatus());
+    }
+
+    // ── AI-подсказки по фото: перезапрос по item_id (уже сохранённая вещь) ────
+
+    public function testAiPhotoWithForeignItemIdReturnsNotFound(): void
+    {
+        $client = static::createClient();
+        $this->loginAsCustomer($client);
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $otherUser = UserFactory::brandOwner(static::getContainer());
+        $foreignItem = (new WardrobeItem())
+            ->setUser($otherUser)
+            ->setItemNo(9101)
+            ->setCategory('Платья')
+            ->setName('Чужое платье для AI');
+        $em->persist($foreignItem);
+        $em->flush();
+        $id = $foreignItem->getId();
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+
+        $client->request('POST', '/account/wardrobe/ai/photo', [
+            'item_id' => (string) $id,
+            '_token'  => $token,
+        ]);
+
+        $this->assertResponseStatusCodeSame(400);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertFalse($data['ok']);
+        // Не палим существование чужой вещи — та же ошибка, что и «вещь не найдена»
+        $this->assertSame('Вещь не найдена', $data['error']);
+    }
+
+    public function testAiPhotoWithOwnItemWithoutPhotoReturnsError(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)
+            ->setItemNo(9102)
+            ->setCategory('Худи')
+            ->setName('Худи без фото для AI');
+        $em->persist($item);
+        $em->flush();
+        $id = $item->getId();
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+
+        $client->request('POST', '/account/wardrobe/ai/photo', [
+            'item_id' => (string) $id,
+            '_token'  => $token,
+        ]);
+
+        $this->assertResponseStatusCodeSame(400);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertFalse($data['ok']);
+        $this->assertSame('У вещи нет фото', $data['error']);
+    }
+
+    public function testAiPhotoWithoutPhotoOrItemIdKeepsOriginalValidationError(): void
+    {
+        $client = static::createClient();
+        $this->loginAsCustomer($client);
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+
+        $client->request('POST', '/account/wardrobe/ai/photo', ['_token' => $token]);
+
+        $this->assertResponseStatusCodeSame(400);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertFalse($data['ok']);
+        $this->assertSame('Файл не получен', $data['error']);
+    }
+
+    public function testAiPhotoWithOwnSavedPhotoCallsAiServiceAndReturnsResult(): void
+    {
+        $client = static::createClient();
+        // KernelBrowser по умолчанию перезагружает kernel (а с ним и контейнер) между
+        // запросами — это стирает container->set() ниже до того, как POST его увидит.
+        $client->disableReboot();
+        $user = $this->loginAsCustomer($client);
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)
+            ->setItemNo(9103)
+            ->setCategory('Обувь')
+            ->setName('Кроссовки для AI-теста')
+            ->setPhoto('wardrobe-ai-controller-test.jpg');
+        $em->persist($item);
+        $em->flush();
+
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        $absPath = $storage->resolvePath($item, 'photoFile');
+        @mkdir(dirname($absPath), 0777, true);
+        file_put_contents($absPath, 'fake-image-bytes');
+
+        $aiMock = $this->createMock(WardrobeAiService::class);
+        $aiMock->expects($this->once())
+            ->method('suggestFromPhoto')
+            ->with($absPath, $this->callback(static fn (User $u): bool => $u->getId() === $user->getId()))
+            ->willReturn(['ok' => true, 'fields' => ['category' => 'Обувь'], 'confidence' => 'high']);
+        static::getContainer()->set(WardrobeAiService::class, $aiMock);
+
+        try {
+            $client->request('GET', '/account/wardrobe');
+            $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+
+            $client->request('POST', '/account/wardrobe/ai/photo', [
+                'item_id' => (string) $item->getId(),
+                '_token'  => $token,
+            ]);
+
+            $this->assertResponseIsSuccessful();
+            $data = json_decode($client->getResponse()->getContent(), true);
+            $this->assertTrue($data['ok']);
+            $this->assertSame('Обувь', $data['fields']['category']);
+        } finally {
+            @unlink($absPath);
+        }
     }
 
     /**

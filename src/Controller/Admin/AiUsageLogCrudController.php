@@ -60,5 +60,7 @@ class AiUsageLogCrudController extends AbstractCrudController
         yield NumberField::new('completionTokens', 'Completion tokens');
         yield NumberField::new('costUsd', 'Стоимость, $')
             ->setNumDecimals(6);
+        yield TextField::new('status', 'Статус');
+        yield TextField::new('error', 'Ошибка');
     }
 }

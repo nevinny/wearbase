@@ -40,4 +40,33 @@ class AiUsageTracker
         $this->em->persist($log);
         $this->em->flush();
     }
+
+    /**
+     * Ошибка запроса (до/во время LLM-вызова, дневной cap, rate-limit) — токенов
+     * не было, model неприменима. $user может быть null (пайплайн-контекст).
+     *
+     * Best-effort: если исходная ошибка уже угробила EM (напр. обрыв соединения БД
+     * после долгого HTTP-вызова LLM), сама запись в БД бросит исключение — глотаем его,
+     * иначе логирование ошибки подменяет собой graceful {ok:false} ответ вызывающего кода
+     * (файловый лог wardrobe_ai пишется вызывающим кодом отдельно и не зависит от БД).
+     */
+    public function recordError(?User $user, string $feature, string $error): void
+    {
+        try {
+            $log = new AiUsageLog();
+            $log->setUser($user);
+            $log->setFeature($feature);
+            $log->setModel('n/a');
+            $log->setPromptTokens(0);
+            $log->setCompletionTokens(0);
+            $log->setCostUsd(null);
+            $log->setStatus(AiUsageLog::STATUS_ERROR);
+            $log->setError(mb_substr($error, 0, 255));
+
+            $this->em->persist($log);
+            $this->em->flush();
+        } catch (\Throwable) {
+            // намеренно проглочено — см. docblock
+        }
+    }
 }

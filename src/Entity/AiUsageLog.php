@@ -23,6 +23,9 @@ class AiUsageLog
     public const FEATURE_WARDROBE_PHOTO = 'wardrobe_photo';
     public const FEATURE_WARDROBE_URL   = 'wardrobe_url';
 
+    public const STATUS_OK    = 'ok';
+    public const STATUS_ERROR = 'error';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -46,6 +49,13 @@ class AiUsageLog
 
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 8, nullable: true)]
     private ?string $costUsd = null;
+
+    // STATUS_OK / STATUS_ERROR
+    #[ORM\Column(length: 10, options: ['default' => self::STATUS_OK])]
+    private string $status = self::STATUS_OK;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $error = null;
 
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
@@ -74,6 +84,12 @@ class AiUsageLog
 
     public function getCostUsd(): ?string { return $this->costUsd; }
     public function setCostUsd(?float $v): static { $this->costUsd = $v === null ? null : (string) $v; return $this; }
+
+    public function getStatus(): string { return $this->status; }
+    public function setStatus(string $v): static { $this->status = $v; return $this; }
+
+    public function getError(): ?string { return $this->error; }
+    public function setError(?string $v): static { $this->error = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
     public function setCreatedAt(\DateTimeInterface $v): static { $this->createdAt = $v; return $this; }

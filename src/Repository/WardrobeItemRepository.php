@@ -82,6 +82,21 @@ class WardrobeItemRepository extends ServiceEntityRepository
     }
 
     /**
+     * Активная вещь по id БЕЗ ограничения владельца — авторизация (свой /
+     * FamilyService::canManage) проверяется вызывающим кодом отдельно
+     * (напр. переиспользование AI-подсказок по уже сохранённому фото).
+     */
+    public function findActiveOne(int $id): ?WardrobeItem
+    {
+        return $this->createQueryBuilder('w')
+            ->andWhere('w.id = :id')
+            ->andWhere('w.deletedAt IS NULL')
+            ->setParameter('id', $id)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
+    /**
      * Статистика по категориям: [['category' => ..., 'cnt' => ..., 'total' => ...], ...]
      *
      * @return array<int, array{category: string, cnt: int, total: string}>

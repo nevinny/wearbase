@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace App\Controller\Account;
 
+use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeTransfer;
 use App\Form\Account\WardrobeItemFormType;
 use App\Repository\WardrobeItemRepository;
 use App\Repository\WardrobeTransferRepository;
+use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -22,6 +25,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
+use Vich\UploaderBundle\Storage\StorageInterface;
 
 #[Route('/account/wardrobe', name: 'account_wardrobe_')]
 class WardrobeController extends AbstractController
@@ -107,12 +111,19 @@ class WardrobeController extends AbstractController
     /**
      * AI-ассист: распознать параметры вещи по фото (vision LLM). Контракт ответа
      * фиксирован для JS-виджета формы — не менять без синхронизации с фронтом.
+     *
+     * Вход: multipart `photo` (новая вещь) ИЛИ form-поле `item_id` (перезапрос
+     * подсказок по уже сохранённому фото вещи, для карточки/edit-формы).
      */
     #[Route('/ai/photo', name: 'ai_photo', methods: ['POST'])]
     public function aiPhoto(
         Request $request,
         WardrobeAiService $ai,
         RateLimiterFactory $wardrobeAiLimiter,
+        WardrobeItemRepository $repo,
+        StorageInterface $vichStorage,
+        AiUsageTracker $usageTracker,
+        LoggerInterface $wardrobeAiLogger,
     ): JsonResponse {
         if (!$this->isCsrfTokenValid('wardrobe_ai', (string) $request->request->get('_token'))) {
             return $this->json(['ok' => false, 'error' => 'Недействительный токен'], Response::HTTP_BAD_REQUEST);
@@ -121,21 +132,48 @@ class WardrobeController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
         if (!$wardrobeAiLimiter->create((string) $user->getId())->consume()->isAccepted()) {
+            $usageTracker->recordError($user, AiUsageLog::FEATURE_WARDROBE_PHOTO, 'Лимит AI-подсказок на сегодня');
+            $wardrobeAiLogger->error('Лимит AI-подсказок на сегодня', ['feature' => AiUsageLog::FEATURE_WARDROBE_PHOTO, 'user_id' => $user->getId()]);
             return $this->json(['ok' => false, 'error' => 'Лимит AI-подсказок на сегодня'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
         $photo = $request->files->get('photo');
-        if (!$photo instanceof UploadedFile || !$photo->isValid()) {
-            return $this->json(['ok' => false, 'error' => 'Файл не получен'], Response::HTTP_BAD_REQUEST);
-        }
-        if (!str_starts_with((string) $photo->getMimeType(), 'image/')) {
-            return $this->json(['ok' => false, 'error' => 'Нужен файл изображения'], Response::HTTP_BAD_REQUEST);
-        }
-        if ($photo->getSize() > 10 * 1024 * 1024) {
-            return $this->json(['ok' => false, 'error' => 'Файл больше 10 МБ'], Response::HTTP_BAD_REQUEST);
+        if ($photo !== null) {
+            if (!$photo instanceof UploadedFile || !$photo->isValid()) {
+                return $this->json(['ok' => false, 'error' => 'Файл не получен'], Response::HTTP_BAD_REQUEST);
+            }
+            if (!str_starts_with((string) $photo->getMimeType(), 'image/')) {
+                return $this->json(['ok' => false, 'error' => 'Нужен файл изображения'], Response::HTTP_BAD_REQUEST);
+            }
+            if ($photo->getSize() > 10 * 1024 * 1024) {
+                return $this->json(['ok' => false, 'error' => 'Файл больше 10 МБ'], Response::HTTP_BAD_REQUEST);
+            }
+
+            $result = $ai->suggestFromPhoto($photo->getPathname(), $user);
+            return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);
         }
 
-        $result = $ai->suggestFromPhoto($photo->getPathname(), $user);
+        $itemId = $request->request->getInt('item_id');
+        if ($itemId <= 0) {
+            return $this->json(['ok' => false, 'error' => 'Файл не получен'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $item = $repo->findActiveOne($itemId);
+        if ($item === null || !($item->getUser()->getId() === $user->getId() || $this->familyService->canManage($user, $item->getUser()))) {
+            // Не палим существование чужой вещи — та же ошибка, что и «не нашли»
+            return $this->json(['ok' => false, 'error' => 'Вещь не найдена'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if ($item->getPhoto() === null) {
+            return $this->json(['ok' => false, 'error' => 'У вещи нет фото'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $absPath = $vichStorage->resolvePath($item, 'photoFile');
+        if ($absPath === null || !is_file($absPath)) {
+            return $this->json(['ok' => false, 'error' => 'Файл фото не найден'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $result = $ai->suggestFromPhoto($absPath, $user);
 
         return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);
     }
@@ -149,6 +187,8 @@ class WardrobeController extends AbstractController
         Request $request,
         WardrobeAiService $ai,
         RateLimiterFactory $wardrobeAiLimiter,
+        AiUsageTracker $usageTracker,
+        LoggerInterface $wardrobeAiLogger,
     ): JsonResponse {
         if (!$this->isCsrfTokenValid('wardrobe_ai', (string) $request->request->get('_token'))) {
             return $this->json(['ok' => false, 'error' => 'Недействительный токен'], Response::HTTP_BAD_REQUEST);
@@ -157,6 +197,8 @@ class WardrobeController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
         if (!$wardrobeAiLimiter->create((string) $user->getId())->consume()->isAccepted()) {
+            $usageTracker->recordError($user, AiUsageLog::FEATURE_WARDROBE_URL, 'Лимит AI-подсказок на сегодня');
+            $wardrobeAiLogger->error('Лимит AI-подсказок на сегодня', ['feature' => AiUsageLog::FEATURE_WARDROBE_URL, 'user_id' => $user->getId()]);
             return $this->json(['ok' => false, 'error' => 'Лимит AI-подсказок на сегодня'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 

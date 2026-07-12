@@ -9,6 +9,7 @@ use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Service\WardrobeAiMeter;
 use App\Service\WebScraperService;
+use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
 
@@ -38,6 +39,7 @@ class WardrobeAiService
         private readonly AiUsageTracker $usageTracker,
         private readonly CacheInterface $cache,
         private readonly string $visionModel,
+        private readonly LoggerInterface $wardrobeAiLogger,
     ) {
     }
 
@@ -46,7 +48,10 @@ class WardrobeAiService
     {
         $hash = @sha1_file($path);
         if ($hash === false) {
-            return ['ok' => false, 'error' => 'Не удалось прочитать фото'];
+            $error = 'Не удалось прочитать фото';
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_PHOTO, $user, $error, ['path' => $path]);
+
+            return ['ok' => false, 'error' => $error];
         }
 
         try {
@@ -59,6 +64,8 @@ class WardrobeAiService
                 },
             );
         } catch (\Throwable $e) {
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_PHOTO, $user, $e->getMessage(), ['hash' => $hash]);
+
             return ['ok' => false, 'error' => $e->getMessage()];
         }
     }
@@ -68,7 +75,10 @@ class WardrobeAiService
     {
         $url = trim($url);
         if ($url === '' || !filter_var($url, FILTER_VALIDATE_URL)) {
-            return ['ok' => false, 'error' => 'Некорректная ссылка'];
+            $error = 'Некорректная ссылка';
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_URL, $user, $error, ['url' => $url]);
+
+            return ['ok' => false, 'error' => $error];
         }
 
         $cacheKey = 'wardrobe_ai_url_' . sha1($this->normalizeUrl($url));
@@ -83,8 +93,17 @@ class WardrobeAiService
                 },
             );
         } catch (\Throwable $e) {
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_URL, $user, $e->getMessage(), ['url' => $url]);
+
             return ['ok' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    /** Общий хвост ошибок: журнал (ai_usage_log, best-effort) + файловый лог (var/log/wardrobe_ai.log). */
+    private function logError(string $feature, ?User $user, string $error, array $context = []): void
+    {
+        $this->usageTracker->recordError($user, $feature, $error);
+        $this->wardrobeAiLogger->error($error, $context + ['feature' => $feature, 'user_id' => $user?->getId()]);
     }
 
     private function analyzePhoto(string $path, ?User $user): array

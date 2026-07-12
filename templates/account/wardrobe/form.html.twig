@@ -75,11 +75,16 @@
             <img src="{{ vich_uploader_asset(item, 'photoFile') }}"
                  class="h-32 w-32 rounded-xl object-cover" alt="{{ item.name }}">
             <div class="mt-1 text-xs text-gray-400">Текущее фото — загрузите новое, чтобы заменить</div>
+            {% if item.id %}
+                <button type="button" id="wardrobe-ai-rerun-btn"
+                        class="mt-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">✨ AI-подсказки по фото</button>
+            {% endif %}
         </div>
     {% endif %}
     {{ form_widget(form.photoFile, {'attr': {'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-black'}}) }}
     {{ f.err(form.photoFile) }}
     <div id="wardrobe-ai-photo-status" class="mt-2 hidden text-xs"></div>
+    <div id="wardrobe-ai-photo-diff" class="mt-2 hidden"></div>
 </div>
 
 {# ── История ── #}
@@ -207,6 +212,156 @@
                 })
                 .catch(function () {
                     clearTimeout(timeout);
+                    photoStatus.classList.remove('text-gray-500', 'text-green-600');
+                    photoStatus.classList.add('text-gray-400');
+                    photoStatus.innerHTML = 'AI-подсказка недоступна';
+                    hideAfter(photoStatus, 5000);
+                });
+        });
+    }
+
+    // ── Пере-запрос AI-подсказок по сохранённому фото (edit-режим) ──
+    var rerunBtn = document.getElementById('wardrobe-ai-rerun-btn');
+    var photoDiff = document.getElementById('wardrobe-ai-photo-diff');
+    var ITEM_ID = '{{ item.id }}';
+    var AI_FIELD_LABELS = { category: 'Категория', name: 'Название', size: 'Размер', notes: 'Характеристики' };
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+    }
+
+    // ── Общий хелпер запроса к AI-подсказке (файл ИЛИ сохранённое фото по item_id) ──
+    function requestAiPhoto(body, headers) {
+        var controller = new AbortController();
+        var timeout = setTimeout(function () { controller.abort(); }, 25000);
+        var opts = { method: 'POST', body: body, signal: controller.signal };
+        if (headers) opts.headers = headers;
+        return fetch(PHOTO_URL, opts)
+            .then(readJson)
+            .then(function (res) { clearTimeout(timeout); return res; })
+            .catch(function (err) { clearTimeout(timeout); throw err; });
+    }
+
+    function markFilled(el, val) {
+        el.value = val;
+        el.classList.add('bg-amber-50', 'transition-colors', 'duration-1000');
+        setTimeout(function () { el.classList.remove('bg-amber-50'); }, 1500);
+    }
+
+    function showPhotoStatusDone() {
+        photoStatus.classList.remove('hidden', 'text-gray-500', 'text-gray-400');
+        photoStatus.classList.add('text-green-600');
+        photoStatus.innerHTML = '✨ Подсказки получены';
+        hideAfter(photoStatus, 5000);
+    }
+
+    function showPhotoDiff(diffs) {
+        if (!photoDiff) { showPhotoStatusDone(); return; }
+
+        photoStatus.classList.remove('hidden', 'text-gray-500', 'text-green-600');
+        photoStatus.classList.add('text-gray-400');
+        photoStatus.innerHTML = '✨ AI предлагает изменить заполненные поля';
+
+        var parts = Object.keys(diffs).map(function (key) {
+            return '<b>' + AI_FIELD_LABELS[key] + '</b>: «' + escapeHtml(diffs[key]) + '»';
+        });
+
+        photoDiff.innerHTML =
+            '<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-gray-700">' +
+            '<div class="mb-1.5">AI предлагает: ' + parts.join(' · ') + '</div>' +
+            '<div class="flex gap-2">' +
+            '<button type="button" id="wardrobe-ai-photo-diff-apply" class="rounded-md bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-black transition">Применить</button>' +
+            '<button type="button" id="wardrobe-ai-photo-diff-dismiss" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition">✕</button>' +
+            '</div></div>';
+        photoDiff.classList.remove('hidden');
+
+        document.getElementById('wardrobe-ai-photo-diff-apply').addEventListener('click', function () {
+            Object.keys(diffs).forEach(function (key) {
+                var el = document.getElementById('wardrobe_item_form_' + key);
+                if (el) markFilled(el, diffs[key]);
+            });
+            photoDiff.classList.add('hidden');
+            photoDiff.innerHTML = '';
+            showPhotoStatusDone();
+        });
+
+        document.getElementById('wardrobe-ai-photo-diff-dismiss').addEventListener('click', function () {
+            photoDiff.classList.add('hidden');
+            photoDiff.innerHTML = '';
+            photoStatus.classList.add('hidden');
+            photoStatus.innerHTML = '';
+        });
+    }
+
+    // Применение подсказок: пустые поля — сразу, непустые отличающиеся — в diff-блок на подтверждение
+    function applyAiSuggestions(fields) {
+        var diffs = {};
+        Object.keys(AI_FIELD_LABELS).forEach(function (key) {
+            var val = fields[key];
+            if (val === undefined || val === null || val === '') return;
+            var el = document.getElementById('wardrobe_item_form_' + key);
+            if (!el) return;
+            var current = el.value ? el.value.trim() : '';
+            if (current === '') {
+                markFilled(el, val);
+            } else if (current !== val) {
+                diffs[key] = val;
+            }
+        });
+
+        if (Object.keys(diffs).length === 0) {
+            showPhotoStatusDone();
+        } else {
+            showPhotoDiff(diffs);
+        }
+    }
+
+    if (rerunBtn && photoStatus) {
+        var rerunDefaultHtml = rerunBtn.innerHTML;
+
+        rerunBtn.addEventListener('click', function () {
+            var file = photoInput && photoInput.files && photoInput.files[0];
+            var reqPromise;
+
+            if (file) {
+                var fd = new FormData();
+                fd.append('photo', file);
+                fd.append('_token', CSRF_TOKEN);
+                reqPromise = requestAiPhoto(fd);
+            } else {
+                reqPromise = requestAiPhoto(
+                    new URLSearchParams({ item_id: ITEM_ID, _token: CSRF_TOKEN }),
+                    { 'Content-Type': 'application/x-www-form-urlencoded' }
+                );
+            }
+
+            rerunBtn.disabled = true;
+            rerunBtn.innerHTML = SPINNER + ' Спрашиваем AI…';
+            if (photoDiff) { photoDiff.classList.add('hidden'); photoDiff.innerHTML = ''; }
+
+            photoStatus.classList.remove('hidden', 'text-green-600', 'text-gray-400');
+            photoStatus.classList.add('text-gray-500');
+            photoStatus.innerHTML = SPINNER + ' <span class="ml-1">✨ AI подсказывает поля…</span>';
+
+            reqPromise
+                .then(function (res) {
+                    rerunBtn.disabled = false;
+                    rerunBtn.innerHTML = rerunDefaultHtml;
+                    photoStatus.classList.remove('text-gray-500');
+
+                    if (res.data && res.data.ok) {
+                        applyAiSuggestions(res.data.fields || {});
+                    } else {
+                        photoStatus.classList.add('text-gray-400');
+                        photoStatus.innerHTML = (res.data && res.data.error) ? res.data.error : 'AI-подсказка недоступна';
+                        hideAfter(photoStatus, 5000);
+                    }
+                })
+                .catch(function () {
+                    rerunBtn.disabled = false;
+                    rerunBtn.innerHTML = rerunDefaultHtml;
                     photoStatus.classList.remove('text-gray-500', 'text-green-600');
                     photoStatus.classList.add('text-gray-400');
                     photoStatus.innerHTML = 'AI-подсказка недоступна';
