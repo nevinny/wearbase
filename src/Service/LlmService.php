@@ -24,6 +24,8 @@ class LlmService
         private readonly string $model = 'anthropic/claude-3.5-haiku',
         private readonly string $localUrl = '',
         private readonly string $localModel = '',
+        private readonly string $proxyUrl = '',
+        private readonly string $proxyAuth = '',
     ) {
     }
 
@@ -83,11 +85,8 @@ class LlmService
     private function generateRemote(array $messages, string $model, int $timeout, ?int $maxTokens): string
     {
         try {
-            $response = $this->httpClient->request('POST', self::OPENROUTER_URL, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $this->apiKey,
-                    'Content-Type'  => 'application/json',
-                ],
+            $response = $this->httpClient->request('POST', $this->remoteEndpoint(), [
+                'headers' => $this->remoteHeaders(),
                 'json' => [
                     'model'      => $model,
                     'messages'   => $messages,
@@ -104,6 +103,36 @@ class LlmService
         } catch (TransportExceptionInterface $e) {
             throw new \RuntimeException('LLM request failed: ' . $e->getMessage(), 0, $e);
         }
+    }
+
+    /**
+     * Куда слать remote-запросы: Cloudflare AI Gateway прокси, если настроен
+     * (OPENROUTER_PROXY_URL непуст — обход блокировки OpenRouter с прода regru),
+     * иначе прямой OpenRouter API. Пустой proxyUrl = поведение не меняется.
+     */
+    private function remoteEndpoint(): string
+    {
+        return $this->proxyUrl !== '' ? $this->proxyUrl : self::OPENROUTER_URL;
+    }
+
+    /**
+     * Заголовки remote-запроса: Authorization (ключ OpenRouter) — всегда;
+     * cf-aig-authorization (авторизация самого Cloudflare AI Gateway) — только
+     * если proxyAuth задан.
+     *
+     * @return array<string,string>
+     */
+    private function remoteHeaders(): array
+    {
+        $headers = [
+            'Authorization' => 'Bearer ' . $this->apiKey,
+            'Content-Type'  => 'application/json',
+        ];
+        if ($this->proxyAuth !== '') {
+            $headers['cf-aig-authorization'] = 'Bearer ' . $this->proxyAuth;
+        }
+
+        return $headers;
     }
 
     /**
@@ -132,11 +161,8 @@ class LlmService
         }
 
         try {
-            $response = $this->httpClient->request('POST', self::OPENROUTER_URL, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $this->apiKey,
-                    'Content-Type'  => 'application/json',
-                ],
+            $response = $this->httpClient->request('POST', $this->remoteEndpoint(), [
+                'headers' => $this->remoteHeaders(),
                 'json' => [
                     'model'      => $model,
                     'messages'   => [['role' => 'user', 'content' => $content]],

@@ -10,6 +10,7 @@ use App\Entity\WardrobeItem;
 use App\Notification\TelegramNotifier;
 use App\Repository\TelegramDialogStateRepository;
 use App\Repository\WardrobeItemRepository;
+use App\Service\Wardrobe\WardrobeAiService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\Persistence\ManagerRegistry;
 use Psr\Log\LoggerInterface;
@@ -20,6 +21,12 @@ use Symfony\Component\Mime\MimeTypes;
  * Telegram-диалог «Мой гардероб»: сбор черновика вещи (фото + шаблон в подписи
  * или отдельными сообщениями) → создание WardrobeItem. Транспорт-агностик:
  * контроллер вебхука передаёт сюда message/callback, false = «не моё, в воронку».
+ *
+ * AI-ассист: фото без (пока) достаточного текста → vision-разбор (WardrobeAiService)
+ * и карточка-превью с кнопками «Сохранить»/«Дополнить» вместо немедленного текстового
+ * запроса недостающих полей. Полный caption (категория+название уже есть) — коммит
+ * как раньше, AI не дёргаем (не замедляем хэппи-пас). AI недоступен → фолбэк на
+ * обычный текстовый поток.
  */
 class WardrobeDialogService
 {
@@ -36,6 +43,7 @@ class WardrobeDialogService
         private readonly WardrobeTemplate $template,
         private readonly TelegramFileFetcher $fileFetcher,
         private readonly TelegramNotifier $telegram,
+        private readonly WardrobeAiService $ai,
         private readonly LoggerInterface $telegramLogger,
     ) {}
 
@@ -91,7 +99,8 @@ class WardrobeDialogService
         $draft = $state->getDraft();
 
         $photos = $message['photo'] ?? null;
-        if (is_array($photos) && $photos !== []) {
+        $hasNewPhoto = is_array($photos) && $photos !== [];
+        if ($hasNewPhoto) {
             $largest = end($photos); // Telegram шлёт варианты по возрастанию, берём последний
             if (isset($largest['file_id'])) {
                 $draft['photo_file_id'] = (string) $largest['file_id'];
@@ -104,18 +113,107 @@ class WardrobeDialogService
         }
 
         $state->setDraft($draft)->touch();
+
+        // Новое фото + после парсинга caption не хватает обязательных → AI-разбор фото
+        // (полный caption — коммитим сразу, как раньше, AI не дёргаем).
+        if ($hasNewPhoto && isset($draft['photo_file_id']) && $this->template->missingRequired($draft) !== []) {
+            $this->assistWithPhoto($user, $state, $chatId, (string) $draft['photo_file_id']);
+            return true;
+        }
+
         $this->tryCommitOrPrompt($user, $state, $chatId);
 
         return true;
     }
 
-    /** @return bool true — callback обработан (wl:*) */
-    public function handleCallback(User $user, string $data, string $chatId): bool
+    /**
+     * Vision-разбор нового фото (WardrobeAiService) и карточка-превью с кнопками.
+     * Ошибка скачивания/распознавания → фолбэк на обычный текстовый поток
+     * (recordError уже пишется внутри WardrobeAiService).
+     */
+    private function assistWithPhoto(User $user, TelegramDialogState $state, string $chatId, string $fileId): void
     {
-        if (!str_starts_with($data, 'wl:')) {
-            return false;
+        $this->doctrine->getManager()->flush();
+
+        $tmpPath = $this->fileFetcher->fetchToTmp($fileId);
+        if ($tmpPath === null) {
+            $this->tryCommitOrPrompt($user, $state, $chatId);
+            return;
         }
 
+        $this->telegram->send($chatId, '🔍 Определяю по фото…');
+
+        $result = $this->ai->suggestFromPhoto($tmpPath, $user);
+        @unlink($tmpPath);
+
+        if (!($result['ok'] ?? false)) {
+            $this->tryCommitOrPrompt($user, $state, $chatId);
+            return;
+        }
+
+        $draft = $this->mergeAiFields($state->getDraft(), $result['fields'] ?? []);
+        $state->setDraft($draft)->touch();
+
+        $this->presentPreview($state, $chatId);
+    }
+
+    /** AI-подсказки в draft БЕЗ затирания уже введённого пользователем (draft-ключи выигрывают). */
+    private function mergeAiFields(array $draft, array $suggested): array
+    {
+        foreach ($suggested as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            if (!isset($draft[$key]) || trim((string) $draft[$key]) === '') {
+                $draft[$key] = $value;
+            }
+        }
+
+        return $draft;
+    }
+
+    /**
+     * Карточка черновика с кнопками после AI-разбора: обязательные все на месте →
+     * «Сохранить»/«Дополнить»; чего-то не хватает → только «Дополнить».
+     */
+    private function presentPreview(TelegramDialogState $state, string $chatId): void
+    {
+        $draft = $state->getDraft();
+        $this->doctrine->getManager()->flush();
+
+        $missing = $this->template->missingRequired($draft);
+        $card = $this->template->formatDraftCard($draft);
+
+        if ($missing === []) {
+            $this->telegram->send($chatId, $card, ['inline_keyboard' => [[
+                ['text' => '💾 Сохранить', 'callback_data' => 'wa:save'],
+                ['text' => '✏️ Дополнить', 'callback_data' => 'wa:edit'],
+            ]]]);
+            return;
+        }
+
+        $msg = $card . "\n\nНе хватает: <b>" . implode('</b>, <b>', $missing) . '</b>.';
+        $this->telegram->send($chatId, $msg, ['inline_keyboard' => [[
+            ['text' => '✏️ Дополнить', 'callback_data' => 'wa:edit'],
+        ]]]);
+    }
+
+    /** @return bool true — callback обработан (префиксы wl: и wa:); false — не наше */
+    public function handleCallback(User $user, string $data, string $chatId): bool
+    {
+        if (str_starts_with($data, 'wl:')) {
+            return $this->handleLoveCallback($user, $data, $chatId);
+        }
+
+        if (str_starts_with($data, 'wa:')) {
+            return $this->handleAssistCallback($user, $data, $chatId);
+        }
+
+        return false;
+    }
+
+    private function handleLoveCallback(User $user, string $data, string $chatId): bool
+    {
         $love = match (substr($data, 3)) {
             'yes'     => WardrobeItem::LOVE_YES,
             'no'      => WardrobeItem::LOVE_NO,
@@ -138,6 +236,31 @@ class WardrobeDialogService
         $state->setDraft($draft)->touch();
         $this->tryCommitOrPrompt($user, $state, $chatId);
 
+        return true;
+    }
+
+    /** «💾 Сохранить» → коммит (или переспросить недостающее — как в обычном потоке); «✏️ Дополнить» → шаблон с подставленными значениями. */
+    private function handleAssistCallback(User $user, string $data, string $chatId): bool
+    {
+        $state = $this->activeState($chatId);
+        if ($state === null) {
+            $this->telegram->send($chatId, 'Черновик не найден. /wardrobe — начать новую вещь.');
+            return true;
+        }
+
+        $action = substr($data, 3);
+
+        if ($action === 'edit') {
+            $this->telegram->send($chatId, $this->template->prefilled($state->getDraft()));
+            return true;
+        }
+
+        if ($action === 'save') {
+            $this->tryCommitOrPrompt($user, $state, $chatId);
+            return true;
+        }
+
+        $this->telegramLogger->warning('TG wa: неизвестный payload', ['chat' => $chatId, 'data' => $data]);
         return true;
     }
 
@@ -217,6 +340,7 @@ class WardrobeDialogService
         $item->setPrice(isset($draft['price']) ? (string) $draft['price'] : null);
         $item->setProductUrl(isset($draft['product_url']) ? (string) $draft['product_url'] : null);
         $item->setPurchaseReason(isset($draft['purchase_reason']) ? (string) $draft['purchase_reason'] : null);
+        $item->setNotes(isset($draft['notes']) ? (string) $draft['notes'] : null);
         $item->setLoveAtFirstSight(isset($draft['love']) ? (string) $draft['love'] : null);
         $item->setSource(WardrobeItem::SOURCE_TELEGRAM);
         if (isset($draft['purchased_at'])) {

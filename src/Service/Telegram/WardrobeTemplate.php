@@ -188,6 +188,65 @@ class WardrobeTemplate
         return implode("\n", $lines);
     }
 
+    /** Карточка ЧЕРНОВИКА (до коммита) — превью после AI-разбора фото (parse_mode HTML). */
+    public function formatDraftCard(array $draft): string
+    {
+        $lines = ['📝 <b>Черновик вещи</b>', ''];
+
+        $fields = [
+            'Категория'     => $draft['category'] ?? null,
+            'Название'      => $draft['name'] ?? null,
+            'Размер'        => $draft['size'] ?? null,
+            'Стоимость'     => isset($draft['price']) ? $this->formatMoney((float) $draft['price']) : null,
+            'Дата покупки'  => isset($draft['purchased_at']) ? $this->formatDraftDate((string) $draft['purchased_at']) : null,
+            'Ссылка'        => $draft['product_url'] ?? null,
+            'Задача покупки' => $draft['purchase_reason'] ?? null,
+            'Заметки'       => $draft['notes'] ?? null,
+            'Любовь с первого взгляда' => isset($draft['love'])
+                ? (self::LOVE_LABELS[$draft['love']] ?? $draft['love'])
+                : null,
+        ];
+        foreach ($fields as $label => $value) {
+            if ($value !== null && $value !== '') {
+                $lines[] = sprintf('%s: %s', $label, htmlspecialchars((string) $value));
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Шаблон с уже собранными в драфте значениями (кнопка «✏️ Дополнить»): пользователь
+     * дописывает/правит нужные строки и отправляет — обычный parse() смёржит их в draft.
+     */
+    public function prefilled(array $draft): string
+    {
+        $love = isset($draft['love'])
+            ? (self::LOVE_LABELS[$draft['love']] ?? 'Да / Нет / Пока не знаю')
+            : 'Да / Нет / Пока не знаю';
+
+        $lines = [
+            'Категория: ' . ($draft['category'] ?? ''),
+            'Название: ' . ($draft['name'] ?? ''),
+            'Размер: ' . ($draft['size'] ?? ''),
+            'Стоимость: ' . (isset($draft['price']) ? (string) $draft['price'] : ''),
+            'Дата покупки: ' . (isset($draft['purchased_at']) ? $this->formatDraftDate((string) $draft['purchased_at']) : ''),
+            'Ссылка: ' . ($draft['product_url'] ?? ''),
+            'Задача покупки: ' . ($draft['purchase_reason'] ?? ''),
+            'Любовь с первого взгляда: ' . $love,
+        ];
+
+        return "✏️ Поправьте нужные строки и отправьте:\n\n" . htmlspecialchars(implode("\n", $lines));
+    }
+
+    /** 'Y-m-d' (формат драфта) → 'd.m.Y' (формат отображения); невалидную строку возвращает как есть. */
+    private function formatDraftDate(string $ymd): string
+    {
+        $dt = \DateTimeImmutable::createFromFormat('!Y-m-d', $ymd);
+
+        return $dt !== false ? $dt->format('d.m.Y') : $ymd;
+    }
+
     /**
      * Статистика гардероба (parse_mode HTML).
      *

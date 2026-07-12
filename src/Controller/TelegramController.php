@@ -99,7 +99,7 @@ class TelegramController extends AbstractController
         return new JsonResponse(['ok' => true]);
     }
 
-    /** Обработка нажатия inline-кнопки. «unpub:<id>» — скрыть бренд (admin-only); «wl:*» — гардероб (по привязке chatId→User). */
+    /** Обработка нажатия inline-кнопки. «unpub:<id>» — скрыть бренд (admin-only); «wl:*»/«wa:*» — гардероб (по привязке chatId→User). */
     private function handleCallback(
         array $cq,
         EntityManagerInterface $em,
@@ -117,8 +117,8 @@ class TelegramController extends AbstractController
 
         $telegramLogger->info('TG callback', ['chat' => $chatId, 'data' => $data, 'admin' => $adminNotifier->isAdminChat($chatId)]);
 
-        // Кнопки гардероба (wl:*): авторизация — привязка chatId→User, admin-чат не требуется.
-        if (str_starts_with($data, 'wl:')) {
+        // Кнопки гардероба (wl:*/wa:*): авторизация — привязка chatId→User, admin-чат не требуется.
+        if (str_starts_with($data, 'wl:') || str_starts_with($data, 'wa:')) {
             $user = $chatId !== '' ? $em->getRepository(User::class)->findOneBy(['telegramChatId' => $chatId]) : null;
             if ($user === null) {
                 $telegramLogger->warning('TG wl: callback от непривязанного чата', ['chat' => $chatId, 'data' => $data]);

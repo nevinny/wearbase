@@ -30,6 +30,8 @@ class WardrobeAiService
     private const CACHE_TTL = 86400;
     private const MAX_SCRAPE_CHARS = 6000;
     private const DAILY_CAP_ERROR = 'Дневной лимит AI-подсказок исчерпан, попробуйте завтра';
+    // Наружу при НЕ-WardrobeAiException (детали — только в логе; URL провайдера никогда не утекает)
+    private const GENERIC_ERROR = 'Не удалось обработать запрос, попробуйте позже';
 
     public function __construct(
         private readonly LlmService $llm,
@@ -66,7 +68,7 @@ class WardrobeAiService
         } catch (\Throwable $e) {
             $this->logError(AiUsageLog::FEATURE_WARDROBE_PHOTO, $user, $e->getMessage(), ['hash' => $hash]);
 
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return ['ok' => false, 'error' => $e instanceof WardrobeAiException ? $e->getMessage() : self::GENERIC_ERROR];
         }
     }
 
@@ -95,7 +97,7 @@ class WardrobeAiService
         } catch (\Throwable $e) {
             $this->logError(AiUsageLog::FEATURE_WARDROBE_URL, $user, $e->getMessage(), ['url' => $url]);
 
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return ['ok' => false, 'error' => $e instanceof WardrobeAiException ? $e->getMessage() : self::GENERIC_ERROR];
         }
     }
 
@@ -109,7 +111,7 @@ class WardrobeAiService
     private function analyzePhoto(string $path, ?User $user): array
     {
         if (!$this->meter->allowed()) {
-            throw new \RuntimeException(self::DAILY_CAP_ERROR);
+            throw new WardrobeAiException(self::DAILY_CAP_ERROR);
         }
 
         $categories = implode(', ', WardrobeItem::SUGGESTED_CATEGORIES);
@@ -135,7 +137,7 @@ EOT;
         $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_PHOTO);
         $data = $this->extractJson($response);
         if ($data === null) {
-            throw new \RuntimeException('Не удалось распознать фото');
+            throw new WardrobeAiException('Не удалось распознать фото');
         }
 
         return [
@@ -168,12 +170,12 @@ EOT;
         }
 
         if (!$this->meter->allowed()) {
-            throw new \RuntimeException(self::DAILY_CAP_ERROR);
+            throw new WardrobeAiException(self::DAILY_CAP_ERROR);
         }
 
         $text = $this->scraper->fetchCleanText($url, keepTables: true);
         if ($text === null || trim($text) === '') {
-            throw new \RuntimeException('Не удалось получить содержимое страницы');
+            throw new WardrobeAiException('Не удалось получить содержимое страницы');
         }
         $text = mb_substr($text, 0, self::MAX_SCRAPE_CHARS);
 
@@ -202,7 +204,7 @@ EOT;
         $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_URL);
         $data = $this->extractJson($response);
         if ($data === null) {
-            throw new \RuntimeException('Не удалось распознать содержимое страницы');
+            throw new WardrobeAiException('Не удалось распознать содержимое страницы');
         }
 
         return [

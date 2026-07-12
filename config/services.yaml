@@ -74,6 +74,8 @@ services:
             $model: '%env(OPENROUTER_MODEL)%'
             $localUrl: '%env(LOCAL_LLM_URL)%'
             $localModel: '%env(LOCAL_LLM_MODEL)%'
+            $proxyUrl: '%env(OPENROUTER_PROXY_URL)%'
+            $proxyAuth: '%env(OPENROUTER_PROXY_AUTH)%'
 
     App\Service\EmbeddingService:
         arguments:

@@ -205,6 +205,62 @@ class WardrobeTemplateTest extends TestCase
         self::assertStringContainsString('₽', $result);
     }
 
+    public function testFormatDraftCardShowsCollectedFieldsOnly(): void
+    {
+        $draft = [
+            'category' => 'Худи',
+            'name'     => 'Худи Nike Tech Fleece',
+            'price'    => '891',
+            'notes'    => 'Цвет: чёрный',
+        ];
+
+        $card = $this->template->formatDraftCard($draft);
+
+        self::assertStringContainsString('📝', $card);
+        self::assertStringContainsString('Категория: Худи', $card);
+        self::assertStringContainsString('Название: Худи Nike Tech Fleece', $card);
+        self::assertStringContainsString('891', $card);
+        self::assertStringContainsString('Заметки: Цвет: чёрный', $card);
+        self::assertStringNotContainsString('Ссылка', $card);
+        self::assertStringNotContainsString('Любовь', $card);
+    }
+
+    public function testFormatDraftCardFormatsPurchasedAtAndLove(): void
+    {
+        $draft = [
+            'category'     => 'Худи',
+            'name'         => 'Худи',
+            'purchased_at' => '2024-05-17',
+            'love'         => WardrobeItem::LOVE_YES,
+        ];
+
+        $card = $this->template->formatDraftCard($draft);
+
+        self::assertStringContainsString('Дата покупки: 17.05.2024', $card);
+        self::assertStringContainsString('Любовь с первого взгляда: Да', $card);
+    }
+
+    public function testPrefilledContainsCollectedValuesAndLovePlaceholderWhenUnset(): void
+    {
+        $draft = ['category' => 'Худи', 'name' => 'Худи Nike'];
+
+        $text = $this->template->prefilled($draft);
+
+        self::assertStringContainsString('Категория: Худи', $text);
+        self::assertStringContainsString('Название: Худи Nike', $text);
+        self::assertStringContainsString('Да / Нет / Пока не знаю', $text);
+    }
+
+    public function testPrefilledShowsLoveLabelWhenAlreadySet(): void
+    {
+        $draft = ['category' => 'Худи', 'name' => 'Худи', 'love' => WardrobeItem::LOVE_NO];
+
+        $text = $this->template->prefilled($draft);
+
+        self::assertStringContainsString('Любовь с первого взгляда: Нет', $text);
+        self::assertStringNotContainsString('Да / Нет / Пока не знаю', $text);
+    }
+
     public function testFormatCard(): void
     {
         $item = new WardrobeItem();
