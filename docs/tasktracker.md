@@ -1557,6 +1557,13 @@ OpenAI/Anthropic; workers.dev тоже) → маршрут через Cloudflare
 черновик (ввод юзера в приоритете) → превью [Сохранить][Дополнить] (wa:-callbacks,
 prefilled-шаблон), фолбэк на обычный шаблон без AI. 274 теста.
 
+**Фикс 13.07:** «Недействительный токен» на проде при AI-подсказках — `wardrobe_ai`
+это session-based CSRF (не в stateless-списке submit/authenticate/logout), а на shared-
+хостинге reg.ru сессия собирается GC → запечённый в HTML токен осиротевал. JS теперь
+берёт токен свежим `GET /account/wardrobe/ai/token` прямо перед запросом (fallback на
+запечённый) + credentials:same-origin. Grep-памятка: длинные AJAX-страницы с session-CSRF
+на reg.ru — брать токен свежим, не из HTML.
+
 ---
 
 ## Бэклог
