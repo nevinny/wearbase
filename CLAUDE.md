@@ -47,6 +47,7 @@ BASE_URL=http://localhost:8000 npx playwright test           # custom base URL
 - **yt-dlp**: `/opt/homebrew/bin/yt-dlp` (youtube-dl не установлен). **trafilatura** — в venv, путь экспортит `bin/mac-rag-start.sh`; пути в `.env.local` серверные, им не верить.
 - ⚠️ **`dbal:run-sql`**: SQL строго одной строкой (многострочный молча даёт «0 rows affected»); «0 rows affected» в ответ на SELECT — артефакт раннера, НЕ доказательство пустой таблицы.
 - `sleep` в Bash-инструменте блокируется — ожидания делать фоновой командой (`run_in_background`).
+- ⚠️ После правки DI/сервисов: `--no-debug` использует отдельный freshness-чек скомпилированного контейнера без сверки таймстампов → команда отдаёт старый контейнер (симптом: «сервис/источник не зарегистрирован») даже после `cache:clear`. Лечить `rm -rf var/cache/dev && bin/console cache:clear -d memory_limit=512M`.
 
 ## Карта хостов
 
