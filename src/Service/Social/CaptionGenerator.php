@@ -154,20 +154,28 @@ EOT;
         $brand = $post->getBrand();
 
         if ($brand !== null && $brand->getSlug()) {
-            return ['Бренд напрямую', $this->withUtm('/ru/brands/' . $brand->getSlug(), $source, $post->getRubric())];
+            return ['Бренд напрямую', $this->withUtm('/ru/brands/' . $brand->getSlug(), $source, $post->getRubric(), $post->getId())];
         }
 
-        return ['Каталог независимых русских брендов', $this->withUtm('/ru/', $source, $post->getRubric())];
+        return ['Каталог независимых русских брендов', $this->withUtm('/ru/', $source, $post->getRubric(), $post->getId())];
     }
 
-    /** Ссылка с UTM-метками — для отслеживания эффективности канала/рубрики в аналитике. */
-    private function withUtm(string $path, string $source, string $rubric): string
+    /**
+     * Ссылка с UTM-метками — для отслеживания эффективности канала/рубрики в аналитике.
+     * utm_content=p<id> — точная атрибуция клика к посту (app:social:ingest-clicks), id
+     * известен на этапе generate, когда пост уже персистирован (planned → generated).
+     */
+    private function withUtm(string $path, string $source, string $rubric, ?int $postId): string
     {
-        $query = http_build_query([
+        $params = [
             'utm_source'   => $source,                          // tg | vk | ig
             'utm_medium'   => 'social',
             'utm_campaign' => $rubric !== '' ? $rubric : 'social_auto',
-        ]);
+        ];
+        if ($postId !== null) {
+            $params['utm_content'] = 'p' . $postId; // точная атрибуция клика к посту
+        }
+        $query = http_build_query($params);
 
         return rtrim($this->siteBaseUrl, '/') . $path . '?' . $query;
     }

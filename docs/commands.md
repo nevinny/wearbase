@@ -36,6 +36,7 @@
 | `app:rag:daemon` | непрерывно (под autoscale) | 🍎 Mac | оркестратор RAG-стадий (net + gpu, шарды) |
 | `app:rag:autoscale` | `*/3 * * * *` | 🍎 Mac | супервизор baseline + burst по очередям + health-gate |
 | `app:social:plan` / `generate` / `publish-tick` | `6:00` / `*/30` / `0 * * * *` | 🍎 Mac | контент-сетка → наполнение → дрип-публикация (TG/VK) |
+| `app:social:ingest-clicks` | `30 7 * * *` (ежедневно) | 🍎 Mac | closed-loop: UTM-клики из nginx-логов прода (ssh+zgrep) → `social_post_metric.link_taps` |
 
 ### 🍎 Mac-крон: одна точка входа + расписание в БД
 

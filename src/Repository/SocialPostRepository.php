@@ -150,6 +150,32 @@ class SocialPostRepository extends ServiceEntityRepository
             ->getSingleScalarResult();
     }
 
+    /**
+     * Fallback-атрибуция клика без utm_content (старые/битые ссылки): последний
+     * опубликованный пост этой платформы+рубрики, чей published_at <= момента клика
+     * и не старше $maxAgeDays от него (app:social:ingest-clicks).
+     */
+    public function findForClickAttribution(string $platform, string $rubric, \DateTimeInterface $clickAt, int $maxAgeDays): ?SocialPost
+    {
+        $earliest = (clone $clickAt)->modify("-{$maxAgeDays} days");
+
+        return $this->createQueryBuilder('p')
+            ->join('p.channel', 'c')
+            ->where('c.platform = :platform')
+            ->andWhere('p.rubric = :rubric')
+            ->andWhere('p.publishedAt IS NOT NULL')
+            ->andWhere('p.publishedAt <= :clickAt')
+            ->andWhere('p.publishedAt >= :earliest')
+            ->setParameter('platform', $platform)
+            ->setParameter('rubric', $rubric)
+            ->setParameter('clickAt', $clickAt)
+            ->setParameter('earliest', $earliest)
+            ->orderBy('p.publishedAt', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
     /** Уже есть пост этой рубрики на этот день у канала? (дедуп при планировании). */
     public function existsForSlot(SocialChannel $channel, string $rubric, \DateTimeInterface $dayStart): bool
     {

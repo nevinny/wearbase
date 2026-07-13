@@ -17,6 +17,10 @@ parameters:
     env(SOCIAL_LAUNCH_DATE): ''
     env(SOCIAL_START_RATE): '3'
     env(SOCIAL_CAP): '14'
+    # UTM-клик-инжестер (Ф0 closed-loop, app:social:ingest-clicks): нет токена API Метрики —
+    # источник кликов nginx-логи прода через ssh+zgrep. Дефолты — реальные прод-пути.
+    env(SOCIAL_CLICK_LOG_HOST): 'regru'
+    env(SOCIAL_CLICK_LOG_GLOB): '/var/www/u3042786/data/logs/wearbase.ru.access.log*'
     env(POSTIZ_URL): ''
     env(POSTIZ_API_KEY): ''
     env(GEMINI_API_KEY): ''
