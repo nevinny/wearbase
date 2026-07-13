@@ -282,6 +282,7 @@ class BrandRepository extends ServiceEntityRepository
             ->where('b.status = :status')
             ->andWhere('b.description IS NOT NULL')
             ->andWhere('LENGTH(b.description) > 100')
+            ->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != 'off'")  // ниша-гейт: не берём off
             ->setParameter('status', Statuses::Active)
             ->orderBy('b.created_at', 'DESC')
             ->setMaxResults($limit);
@@ -294,6 +295,7 @@ class BrandRepository extends ServiceEntityRepository
         if (empty($results)) {
             $qb = $this->createQueryBuilder('b')
                 ->where('b.status = :status')
+                ->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != 'off'")  // ниша-гейт: не берём off
                 ->setParameter('status', Statuses::Active)
                 ->orderBy('b.created_at', 'DESC')
                 ->setMaxResults($limit);
