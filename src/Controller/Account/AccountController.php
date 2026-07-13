@@ -317,7 +317,7 @@ class AccountController extends AbstractController
         // Генерируем токен для привязки Telegram при каждом открытии страницы
         $telegramLink = null;
         if (!$user->getTelegramChatId()) {
-            $botUsername = 'wearbase_bot'; // заменить на реальный юзернейм бота
+            $botUsername = $this->getParameter('app.telegram_bot_username');
             $token = $user->generateTelegramLinkToken();
             $em->flush();
             $telegramLink = "https://t.me/{$botUsername}?start={$token}";
