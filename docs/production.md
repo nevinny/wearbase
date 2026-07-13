@@ -47,6 +47,8 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 | `ADMIN_TELEGRAM_CHAT_ID` | `.env` | `.env` | админ-дайджесты |
 | `GSC_CREDENTIALS_PATH` | `config/secrets/gsc-sa.json` | пусто (GSC гоняем с Mac) | `app:gsc:sync`, `app:report:daily` |
 | `YOOKASSA_*` | пусто/тест | прод `.env.local` | |
+| `OPENROUTER_API_KEY` | `.env.local` | прод `.env.local` (перенесён 2026-07-11) | AI-подсказки гардероба |
+| `OPENROUTER_PROXY_URL/AUTH` | ПУСТЫЕ (прямой ход) | Cloudflare AI Gateway `wearbase` + cf-aig токен | ⚠️ RU-прод заблокирован ПЕРИМЕТРОМ всех AI-провайдеров (OpenRouter/Google/OpenAI/Anthropic → 403 даже анонимно); единственный живой путь — gateway.ai.cloudflare.com (проверено 2026-07-13). Пустой PROXY_URL = прямой ход (Mac). |
 | LLM/RAG (`LOCAL_LLM_URL` и т.д.) | 192.168.2.43 | не используется на проде | конвейер живёт на Mac/LLM-сервере, прод получает готовый контент через agent-API |
 | Соцсети (`SOCIAL_*`, `CLOUDFLARE_*`, `GEMINI_API_KEY`, `POSTIZ_*`) | `.env.local` на Mac | не используется на проде | авто-постинг (TG/VK/IG) живёт на Mac (egress + cron + БД); на проде только ссылка на TG-канал в подвале. См. [marketing_instagram.md](marketing_instagram.md) |
 

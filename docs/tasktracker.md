@@ -1546,6 +1546,17 @@ OpenRouter через `usage.include=true` + `LlmService::getLastUsage()`); ке
 не пишутся; read-only админка «AI-расход»; `AiUsageLogRepository::totals()`. Фундамент под
 перепродажу AI-кредитов (биллинг НЕ строился). Реальные цифры: фото ≈ $0.00019, URL ≈ $0.00019.
 
+**Итерации 4.2-4.3 (12-13.07):** (a) перезапрос AI-подсказок с карточки (endpoint принимает
+item_id, путь фото через Vich resolvePath; занятые поля — через явный «Применить»); (b) ошибки
+AI в журнал (ai_usage_log.status/error + monolog-канал wardrobe_ai, файловый лог на проде);
+(c) **RU-прод заблокирован периметром всех AI-провайдеров** (403 анонимно: OpenRouter/Google/
+OpenAI/Anthropic; workers.dev тоже) → маршрут через Cloudflare AI Gateway `wearbase`
+(gateway.ai.cloudflare.com доступен с regru): env OPENROUTER_PROXY_URL/AUTH (пусто = прямой
+ход с Mac), cf-aig-authorization; санитизация ошибок наружу (WardrobeAiException);
+(d) **AI в TG-боте**: фото без полной подписи → «Определяю по фото…» → мерж подсказок в
+черновик (ввод юзера в приоритете) → превью [Сохранить][Дополнить] (wa:-callbacks,
+prefilled-шаблон), фолбэк на обычный шаблон без AI. 274 теста.
+
 ---
 
 ## Бэклог
