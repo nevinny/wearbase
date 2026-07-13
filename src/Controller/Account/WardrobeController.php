@@ -21,6 +21,7 @@ use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
@@ -106,6 +107,17 @@ class WardrobeController extends AbstractController
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
         ]);
+    }
+
+    /**
+     * Свежий CSRF-токен для AI-запросов. JS берёт его непосредственно перед
+     * отправкой: session-based токен, запечённый в HTML, может «осиротеть», если
+     * сессия собрана GC (shared-хостинг) к моменту AJAX-вызова → «Недействительный токен».
+     */
+    #[Route('/ai/token', name: 'ai_token', methods: ['GET'])]
+    public function aiToken(CsrfTokenManagerInterface $csrf): JsonResponse
+    {
+        return $this->json(['token' => $csrf->getToken('wardrobe_ai')->getValue()]);
     }
 
     /**
