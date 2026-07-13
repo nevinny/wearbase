@@ -42,14 +42,25 @@ UTM-клик-инжестер `app:social:ingest-clicks`: токена API Ме�
 (14 дней). `SocialEvaluateCommand` и сущность метрик получают данные, крон —
 `30 7 * * *` на Mac. Платформенные saves/shares — отдельным инжестером позже.
 
-### Фаза 1 — save-утилиты для покупателя (данные готовы)
-1. **«Чем заменить ушедших»** — rebrand-данные (MAAG≈Zara, Ростикс) + каталог.
-   Максимальный интент и пересылаемость; связка с гипотезой rebrand-интента
-   (memory: wearbase-rebrand-intent).
-2. **Demand-рубрика из `brand_keyword`** — топ-фраза Wordstat → пост-ответ на
-   реальный спрос, факты из `brand_chunks`. Двойная польза: соцсети + GEO/SEO.
-3. **brand_week → история основателя** — тот же слот, но нарратив из RAG-фактов
-   (почему начал, город, путь), а не пересказ описания.
+### Фаза 1 — save-утилиты для покупателя (данные готовы) — ✅ сделано 2026-07-13
+1. **«Чем заменить ушедших»** — рубрика `replace_departed` (пт), source `departed`
+   (`DepartedCaptionSource`): читает `config/social/departed_brands.yaml`, курсор ротации =
+   `countByRubric()` % число записей (зеркало `brandCursor` в `SocialPlanner`). Тело
+   двухслойное: LLM-лид строго на фактах записи (departed/niche/successor/successor_note)
+   + детерминированная строка «Российские альтернативы: …» (НЕ LLM, имена по slug только
+   `status=active`; запись с <2 живыми alt пропускается, берётся следующая по курсору).
+2. **Demand-рубрика из `brand_keyword`** — рубрика `demand` (вт), source `demand`
+   (`DemandCaptionSource`): топ-фраза бренда (`BrandKeywordRepository::findTopByBrand`,
+   ORDER BY monthlyShows DESC) → пост-ответ на реальный спрос, факты — из описания бренда.
+   Нет ключевиков у бренда → фолбэк на `BrandDescriptionCaptionSource`.
+3. **brand_week → история основателя** — source рубрики `brand_week` сменён на
+   `founder_story` (`FounderStoryCaptionSource`): нарратив из RAG-фактов `BrandRagService`
+   (gate качества chunks≥3 И score≥0.5 уже внутри сервиса). Gate не пройден/Qdrant
+   недоступен (IP непостоянен) → фолбэк на `BrandDescriptionCaptionSource`.
+
+Слот/needsBrand/media рубрик не менялись — только source. `calculator`/`vs_marketplace`
+остаются в `SocialRubrics::CATALOG` (day=0, вне еженедельной сетки) как backing-def для
+`SocialPlanner::AUTO_FALLBACK`. Тесты — `tests/Service/Social/Source/*Test.php`.
 
 ### Фаза 2 — дешёвый постоянный контент
 4. **Тизеры блога/энциклопедии** — уже опубликованный (уже QA-нутый) лонгформ →

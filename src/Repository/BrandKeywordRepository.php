@@ -43,6 +43,18 @@ class BrandKeywordRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /** Топ-фраза бренда по частотности (для рубрики demand — ответ на реальный спрос). */
+    public function findTopByBrand(Brand $brand): ?BrandKeyword
+    {
+        return $this->createQueryBuilder('k')
+            ->where('k.brand = :brand')
+            ->setParameter('brand', $brand)
+            ->orderBy('k.monthlyShows', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
     public function deleteForBrand(Brand $brand): void
     {
         $this->createQueryBuilder('k')

@@ -12,12 +12,18 @@ use App\Entity\SocialPost;
  *   - template — ядро-сообщение (манифест/калькулятор/сравнение): LLM пишет на привязанных
  *     фактах пиллара (grounding, ноль выдумок про конкурента/цифры), угол подачи ротируется.
  *   - llm — брендовая рубрика: подпись генерится из описания бренда.
- * Обе пишет LLM → aiGenerated=true. auto=false → пост создаётся в held (ручной просмотр: Reels/UGC).
+ *   - founder_story — история бренда из RAG-фактов (BrandRagService), фолбэк на llm-описание.
+ *   - demand — ответ на топ-запрос бренда из Wordstat (brand_keyword), фолбэк на llm-описание.
+ *   - departed — «чем заменить ушедших» из config/social/departed_brands.yaml, без бренда.
+ * Все пишет LLM → aiGenerated=true. auto=false → пост создаётся в held (ручной просмотр: Reels/UGC).
  */
 final class SocialRubrics
 {
-    public const SOURCE_TEMPLATE = 'template';
-    public const SOURCE_LLM      = 'llm';
+    public const SOURCE_TEMPLATE      = 'template';
+    public const SOURCE_LLM           = 'llm';
+    public const SOURCE_FOUNDER_STORY = 'founder_story';
+    public const SOURCE_DEMAND        = 'demand';
+    public const SOURCE_DEPARTED      = 'departed';
 
     /**
      * @var array<string,array{day:int,hour:int,source:string,needsBrand:bool,media:string,auto:bool,hashtags:string[]}>
@@ -25,14 +31,21 @@ final class SocialRubrics
      */
     private const CATALOG = [
         'brand_week' => [
-            'day' => 1, 'hour' => 11, 'source' => self::SOURCE_LLM, 'needsBrand' => true,
+            'day' => 1, 'hour' => 11, 'source' => self::SOURCE_FOUNDER_STORY, 'needsBrand' => true,
             'media' => SocialPost::MEDIA_IMAGE, 'auto' => true,
             'hashtags' => ['#ПрямойБренд', '#российскиебренды', '#brandweek'],
         ],
+        // day=0 — вне еженедельной сетки (forWeekday() матчит только 1..7): рубрика вытеснена
+        // 'demand' (вт), но её def нужен как backing-рубрика для SocialPlanner::AUTO_FALLBACK.
         'calculator' => [
-            'day' => 2, 'hour' => 12, 'source' => self::SOURCE_TEMPLATE, 'needsBrand' => false,
+            'day' => 0, 'hour' => 12, 'source' => self::SOURCE_TEMPLATE, 'needsBrand' => false,
             'media' => SocialPost::MEDIA_NONE, 'auto' => true,
             'hashtags' => ['#ПрямойБренд', '#безмаркетплейса', '#wildberries'],
+        ],
+        'demand' => [
+            'day' => 2, 'hour' => 12, 'source' => self::SOURCE_DEMAND, 'needsBrand' => true,
+            'media' => SocialPost::MEDIA_IMAGE, 'auto' => true,
+            'hashtags' => ['#ПрямойБренд', '#российскиебренды', '#подборкабрендов'],
         ],
         'new_drops' => [
             'day' => 3, 'hour' => 13, 'source' => self::SOURCE_LLM, 'needsBrand' => true,
@@ -44,10 +57,17 @@ final class SocialRubrics
             'media' => SocialPost::MEDIA_NONE, 'auto' => true,
             'hashtags' => ['#ПрямойБренд', '#независимыебренды'],
         ],
+        // day=0 — вне еженедельной сетки: рубрика вытеснена 'replace_departed' (пт), def
+        // остаётся backing-рубрикой для SocialPlanner::AUTO_FALLBACK.
         'vs_marketplace' => [
-            'day' => 5, 'hour' => 12, 'source' => self::SOURCE_TEMPLATE, 'needsBrand' => false,
+            'day' => 0, 'hour' => 12, 'source' => self::SOURCE_TEMPLATE, 'needsBrand' => false,
             'media' => SocialPost::MEDIA_NONE, 'auto' => true,
             'hashtags' => ['#ПрямойБренд', '#безмаркетплейса'],
+        ],
+        'replace_departed' => [
+            'day' => 5, 'hour' => 12, 'source' => self::SOURCE_DEPARTED, 'needsBrand' => false,
+            'media' => SocialPost::MEDIA_IMAGE, 'auto' => true,
+            'hashtags' => ['#ПрямойБренд', '#российскиебренды', '#чемзаменить'],
         ],
         // Сб/Вс — ручные рубрики (UGC/лайфстайл): план создаёт held-заглушку.
         'ugc' => [

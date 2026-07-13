@@ -151,6 +151,20 @@ class SocialPostRepository extends ServiceEntityRepository
     }
 
     /**
+     * Сколько постов этой рубрики уже создано — детерминированный курсор ротации записей
+     * config-сида рубрики (напр. departed_brands.yaml), зеркало countWithBrand().
+     */
+    public function countByRubric(string $rubric): int
+    {
+        return (int) $this->createQueryBuilder('p')
+            ->select('COUNT(p.id)')
+            ->where('p.rubric = :r')
+            ->setParameter('r', $rubric)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
      * Fallback-атрибуция клика без utm_content (старые/битые ссылки): последний
      * опубликованный пост этой платформы+рубрики, чей published_at <= момента клика
      * и не старше $maxAgeDays от него (app:social:ingest-clicks).

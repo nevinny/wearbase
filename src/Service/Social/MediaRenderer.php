@@ -22,8 +22,10 @@ class MediaRenderer
     /** Базовые промпты по рубрикам (без текста). */
     private const PROMPTS = [
         'calculator'     => 'editorial flat lay, clothing price tags and a calculator on muted beige background, minimalist fashion photography, soft daylight',
+        'demand'         => 'editorial flat lay, folded clothing next to a magnifying glass over a search bar sketch, muted tones, minimalist fashion photography',
         'manifesto'      => 'independent clothing brand atelier, sewing table, fabric rolls, warm authentic editorial photo, muted tones',
         'vs_marketplace' => 'a curated boutique clothing rack versus a faceless grey warehouse of identical boxes, editorial split scene, muted tones',
+        'replace_departed' => 'an empty clothing rack next to a filled rack of new folded garments, editorial studio photo, muted tones, quiet transition mood',
         'new_drops'      => 'modern russian streetwear flat lay, folded clothes and accessories, editorial fashion photography, neutral palette',
         'brand_week'     => 'minimalist fashion brand still life, clothing on a clean studio backdrop, editorial photography, soft light',
         'lifestyle'      => 'young person wearing stylish independent russian brand clothing, candid street style, editorial, natural light',

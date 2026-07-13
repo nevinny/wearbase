@@ -119,6 +119,10 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    App\Service\Social\Source\DepartedCaptionSource:
+        arguments:
+            $yamlPath: '%kernel.project_dir%/config/social/departed_brands.yaml'
+
     App\Service\ArticleQaService:
         arguments:
             $projectDir: '%kernel.project_dir%'
