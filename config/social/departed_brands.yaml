@@ -1,0 +1,107 @@
+# Сид рубрики «Чем заменить ушедших» (см. docs/social_value_plan.md Фаза 1.1)
+# Факты проверены по ~/seo-archives/leave-russia/ + docs/. Обновлять руками.
+# Методика отбора, источники, что не вошло и почему — docs/departed_brands_seed.md
+-
+  departed: "Zara"
+  aliases: ["зара"]
+  niche: "быстрая мода, повседневная база для всей семьи"
+  successor: "MAAG"
+  successor_note: "магазины Zara проданы Daher Group, перезапущены как MAAG в 2023"
+  alternatives: ["gate31", "12storeez", "chois", "uniquefabric"]
+  confidence: high
+-
+  departed: "H&M"
+  aliases: ["хм", "эйч энд эм", "х&м"]
+  niche: "быстрая мода, база на каждый день"
+  successor: ""
+  successor_note: ""
+  alternatives: ["chois", "tvoe", "finn-flare", "uniquefabric"]
+  confidence: high
+-
+  departed: "Uniqlo"
+  aliases: ["юникло"]
+  niche: "базовый трикотаж, японский casual-минимализм"
+  successor: ""
+  successor_note: ""
+  alternatives: ["finn-flare", "uniquefabric", "12storeez", "chois"]
+  confidence: medium
+-
+  departed: "Bershka"
+  aliases: ["бершка"]
+  niche: "молодёжный стритвир, яркая база для подростков"
+  successor: "ECRU"
+  successor_note: "магазины Bershka перезапущены под брендом Ecru в 2023 (та же сделка с Daher Group)"
+  alternatives: ["breakdownbrand", "zny", "codered", "ymkashix"]
+  confidence: high
+-
+  departed: "Stradivarius"
+  aliases: ["страдивариус"]
+  niche: "женственная романтичная мода для молодых женщин"
+  successor: "VILET"
+  successor_note: "публично упоминается как ребренд Stradivarius; подтверждено только гипотезой проекта (var/scripts/wordstat-rebrand-sweep.sh), живых данных Wordstat по паре не собрано"
+  alternatives: ["ostrovimenitebya", "red-bow-story", "chois", "netoclothes"]
+  confidence: medium
+-
+  departed: "Pull&Bear"
+  aliases: ["пул энд бир", "пул анд бир"]
+  niche: "casual-стритвир для молодёжи, унисекс база"
+  successor: "DUB"
+  successor_note: "магазины Pull&Bear перезапущены как DUB в 2023 (та же сделка с Daher Group)"
+  alternatives: ["molotov", "shu", "streetrepublic", "netoclothes"]
+  confidence: high
+-
+  departed: "Massimo Dutti"
+  aliases: ["массимо дутти"]
+  niche: "деловая элегантная одежда, смарт-кэжуал"
+  successor: ""
+  successor_note: ""
+  alternatives: ["12storeez", "gate31", "4forms", "studio-29", "lesyanebo"]
+  confidence: high
+-
+  departed: "Oysho"
+  aliases: ["ойшо", "уишо"]
+  niche: "домашняя одежда, бельё, пижамы"
+  successor: ""
+  successor_note: ""
+  alternatives: ["myza", "unison", "21maison", "fashion-loves-women"]
+  confidence: high
+-
+  departed: "Levi's"
+  aliases: ["левис", "ливайс"]
+  niche: "джинсовая одежда, casual-классика"
+  successor: ""
+  successor_note: ""
+  alternatives: ["uniquefabric", "streetrepublic", "lych-project", "codered"]
+  confidence: medium
+-
+  departed: "Nike"
+  aliases: ["найк"]
+  niche: "спортивная одежда и кроссовки"
+  successor: ""
+  successor_note: ""
+  alternatives: ["anteater", "afour", "zny", "molotov"]
+  confidence: high
+-
+  departed: "Adidas"
+  aliases: ["адидас"]
+  niche: "спортивная одежда, трикотаж, кроссовки"
+  successor: ""
+  successor_note: ""
+  alternatives: ["anteater", "breakdownbrand", "codered", "comfers"]
+  confidence: medium
+-
+  departed: "New Balance"
+  aliases: ["нью бэланс", "нью баланс"]
+  niche: "кроссовки, спортивная обувь и одежда"
+  successor: ""
+  successor_note: ""
+  alternatives: ["afour", "anteater", "comfers"]
+  confidence: medium
+-
+  departed: "Puma"
+  aliases: ["пума"]
+  niche: "спортивная одежда, стритвир, кроссовки"
+  successor: ""
+  successor_note: ""
+  alternatives: ["anteater", "zny", "breakdownbrand", "larusodejda"]
+  confidence: medium
