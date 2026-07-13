@@ -8,6 +8,8 @@ use App\Entity\SocialChannel;
 use App\Entity\SocialPost;
 use App\Service\LlmService;
 use App\Service\Social\CaptionGenerator;
+use App\Service\Social\Source\BrandDescriptionCaptionSource;
+use App\Service\Social\Source\PillarCaptionSource;
 use App\Service\Social\SocialRubrics;
 use PHPUnit\Framework\TestCase;
 
@@ -22,7 +24,10 @@ class CaptionGeneratorTest extends TestCase
         $llm = $this->createMock(LlmService::class);
         $llm->method('generate')->willReturnCallback(static fn (string $prompt): string => $prompt);
 
-        return new CaptionGenerator($llm, 'https://wearbase.ru');
+        return new CaptionGenerator(
+            [new PillarCaptionSource($llm), new BrandDescriptionCaptionSource($llm)],
+            'https://wearbase.ru',
+        );
     }
 
     private function compose(string $rubric, string $date): string
