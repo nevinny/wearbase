@@ -26,6 +26,7 @@
 | `app:brand:publish-tick` | `0 * * * *` (раз в час) | ☁️ prod | дрип-публикация брендов |
 | `app:report:pipeline` | `0 */3 * * *` (раз в 3ч) | 🖥/🍎 | сводка RAG-конвейера в TG |
 | `app:report:daily` | `17 9 * * *` (ежедневно) | 🍎 Mac | дайджест публикаций+GSC в TG |
+| `app:report:weekly` | `0 10 * * 1` (пн) | 🍎 Mac | дайджест видимости неделя-к-неделе (GSC+Яндекс+публикации) в TG |
 | `app:gsc:sync` | `0 6 * * *` (ежедневно) | 🖥 .43 | синк Google Search Console |
 | `app:seo:attach-distribution` | `40 5 * * *` (ежедневно) | 🍎 Mac | подстраховка: привязка копий статей под площадки (var/seo/**) — основной путь автопривязки — сразу при `app:seo:publish-blog`, см. [seo_publishing_strategy.md](seo_publishing_strategy.md) §6б |
 | `app:google:index-ping` | `0 7 * * *` (ежедневно) | 🍎 Mac | пинг Google Indexing API (≤200/день) |
@@ -128,6 +129,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 |---|---|---|---|
 | `app:report:pipeline` | Сводка RAG-конвейера в TG: парсинг/генерация/ключевики/готовность + темпы за час. | ⏰ `0 */3 * * *` | 🖥/🍎 (TG) |
 | `app:report:daily` | Ежедневный дайджест: публикации прода (агент-API) + индексация GSC. **Только Mac** (TG заблокирован на .43 и проде). | ⏰ `17 9 * * *` | 🍎 Mac |
+| `app:report:weekly` | Недельный дайджест видимости в поиске (неделя-к-неделе): GSC (индекс/показы/клики/позиция), Яндекс (в поиске + топ-500 фраз), публикации прода. Всё из `state_snapshot` (пишет `app:advisor:snapshot`) + `gsc_page_stats`; сравнивает последний снимок с ближайшим к −7д (fallback — самый старый, пока история <7д). **Только Mac.** | ⏰ `0 10 * * 1` (пн) | 🍎 Mac |
 | `app:brand:stats` | Статистика по брендам (консоль). | 👆 по запросу | 👆 |
 | `app:brand:check-content` | Проверка качества контента (`--type=description\|meta\|all`, `--export` в JSON). | 👆 по запросу | 🖥 |
 
