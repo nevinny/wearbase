@@ -7,6 +7,7 @@ use App\Entity\SocialPost;
 use App\Repository\SocialPostRepository;
 use App\Service\ContentValidator;
 use App\Service\Social\CaptionGenerator;
+use App\Service\Social\CardImageRenderer;
 use App\Service\Social\MediaRenderer;
 use App\Service\Social\SocialRubrics;
 use Doctrine\ORM\EntityManagerInterface;
@@ -30,6 +31,7 @@ class SocialGenerateCommand extends Command
         private readonly SocialRubrics $rubrics,
         private readonly CaptionGenerator $captions,
         private readonly MediaRenderer $media,
+        private readonly CardImageRenderer $cardRenderer,
         private readonly ContentValidator $validator,
     ) {
         parent::__construct();
@@ -72,6 +74,19 @@ class SocialGenerateCommand extends Command
                 $post->setGenerateAttempts($post->getGenerateAttempts() + 1);
 
                 $mediaPath = $this->media->render($post);
+
+                // Доп. ветка (не меняет TG/VK и остальные рубрики): для IG рубрики-шаблоны
+                // получают брендированную карточку с заголовком вместо слабой AI-сцены
+                // (см. docs/marketing_instagram.md §5).
+                if ($post->getChannel()?->getPlatform() === SocialChannel::PLATFORM_IG
+                    && $this->cardRenderer->supports($post->getRubric())
+                ) {
+                    $cardPath = $this->cardRenderer->render($post);
+                    if ($cardPath !== null) {
+                        $mediaPath = $cardPath;
+                    }
+                }
+
                 $post->setMediaPath($mediaPath);
                 // Тип медиа = факт: есть картинка → image, иначе none (для текст-рубрик без карточки).
                 $post->setMediaType($mediaPath !== null ? SocialPost::MEDIA_IMAGE : SocialPost::MEDIA_NONE);

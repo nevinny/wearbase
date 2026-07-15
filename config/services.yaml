@@ -296,3 +296,10 @@ services:
         arguments:
             $postizUrl: '%env(POSTIZ_URL)%'
             $postizApiKey: '%env(POSTIZ_API_KEY)%'
+
+    # Брендированная карточка для IG-рубрик-шаблонов (вместо слабой AI-сцены) — точечная добавка,
+    # не меняет существующий MediaRenderer/TG/VK.
+    App\Service\Social\CardImageRenderer:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'
