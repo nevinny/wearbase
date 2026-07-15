@@ -13,6 +13,9 @@ parameters:
     env(BRAND_CLAIM_AUTOGRANT_EMAIL): '1'
     env(BRAND_CLAIM_AUTOGRANT_VK): '1'
     env(PAYMENT_SECRET_KEY): ''
+    # Гардероб авто-ингест: 0=remote vision (WARDROBE_VISION_MODEL, работает на проде),
+    # 1=local vision на LLM-сервере (dev/.env.local, где достаётся риг — бесплатно).
+    env(WARDROBE_VISION_LOCAL): '0'
     # Соц-автоматизация: дрип-рамп (предохранитель) + Postiz для Instagram
     env(SOCIAL_LAUNCH_DATE): ''
     env(SOCIAL_START_RATE): '3'
@@ -139,6 +142,8 @@ services:
     App\Service\Wardrobe\WardrobeAiService:
         arguments:
             $visionModel: '%env(WARDROBE_VISION_MODEL)%'
+            $visionLocal: '%env(bool:WARDROBE_VISION_LOCAL)%'
+            $localModel: '%env(LOCAL_LLM_MODEL)%'
 
     App\Service\YandexSearchClient:
         arguments:

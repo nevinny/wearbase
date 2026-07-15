@@ -32,7 +32,16 @@
   отдельными таблицами, схему менять не потребуется.
 - `source` уже есть (web|telegram|import) — добавится mobile.
 
-## Авто-ингест из фото (апгрейд ит. 1–2)
+## Авто-ингест из фото (апгрейд ит. 1–2) — ✅ v1 2026-07-15
+
+**Реализовано (v1):** сущность-staging `WardrobeItemDraft` (отдельная таблица, не трогает
+`WardrobeItem`), multi-upload `/account/wardrobe/ingest/upload` (dropzone) → pending-черновики →
+фоновая команда `app:wardrobe:ingest-drafts` (в `scheduled_command`, каждые 2 мин, распознаёт
+через `WardrobeAiService::suggestFromPhoto`) → страница ревью с поллингом и confidence-гейтом →
+accept промоутит в `WardrobeItem` (`source=import`), reject — hard-delete. HEIC режется на
+аплоаде; EXIF-автоповорот + downscale в `LlmService`. Тесты: `WardrobeIngestControllerTest`
+(6/6) + полный E2E команды на живой gemma4. **Deferred:** дедуп (`possible_duplicates`),
+`observed.{}`/bbox, прод-раскатка local vision (нужна экспозиция рига — Tailscale/CF-proxy).
 
 Источник рецепта: gist tandpfun `b73063c8be8fc46644da9925d48b3240` — «extract clothing»
 skill (пайплайн распознавания гардероба из фото). Твит подаёт его как AI-стилиста,
@@ -46,8 +55,14 @@ skill (пайплайн распознавания гардероба из фо�
 Пайплайн (адаптация 9 шагов гиста под наш стек):
 1. Нормализация фото (EXIF-ориентация, RGB, quality 95+).
 2. Vision-распознавание надетых вещей → структурный манифест. **Модель — локальная
-   на LLM-сервере** (vision подтверждён: примерку вещей уже гоняли на .43;
-   внешний GPT Image из гиста НЕ берём — дорого и не нужно).
+   на LLM-сервере по умолчанию, с env-fallback на remote Gemini** (тумблер
+   `WARDROBE_VISION_LOCAL`): dev/Mac достаёт риг → `gemma4:26b` (vision подтверждён
+   эмпирически 2026-07-15: `ollama show` = capability vision + живой прогон вернул
+   `{category:Косухи, name:«Черная кожаная куртка», confidence:high}`), бесплатно;
+   прод рига не достаёт → остаётся на уже-настроенном `WARDROBE_VISION_MODEL`
+   (gemini-2.5-flash-lite, ~$0.0002/фото). Внешний GPT Image из гиста НЕ берём.
+   ⚠️ NB: local vision на .111 делит одну GPU (concurrency=1) с RAG/соц-генерацией —
+   команда распознаёт серийно (`--limit`), задействует риг только на всплесках онбординга.
 3. Дедупликация — **консервативная, только по фото-доказательствам**, авто-удаления
    по похожести генераций нет (семейный сценарий: тысячи фото, 5+ детей → один
    центральный проход на identity/дедуп, распознавание можно батчить).

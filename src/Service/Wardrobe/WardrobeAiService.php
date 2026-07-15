@@ -41,6 +41,8 @@ class WardrobeAiService
         private readonly AiUsageTracker $usageTracker,
         private readonly CacheInterface $cache,
         private readonly string $visionModel,
+        private readonly bool $visionLocal,
+        private readonly string $localModel,
         private readonly LoggerInterface $wardrobeAiLogger,
     ) {
     }
@@ -110,7 +112,7 @@ class WardrobeAiService
 
     private function analyzePhoto(string $path, ?User $user): array
     {
-        if (!$this->meter->allowed()) {
+        if (!$this->visionLocal && !$this->meter->allowed()) {
             throw new WardrobeAiException(self::DAILY_CAP_ERROR);
         }
 
@@ -132,8 +134,11 @@ class WardrobeAiService
 }
 EOT;
 
-        $this->meter->record();
-        $response = $this->llm->generateVision($prompt, [$path], $this->visionModel);
+        if (!$this->visionLocal) {
+            $this->meter->record();
+        }
+        $model = $this->visionLocal ? $this->localModel : $this->visionModel;
+        $response = $this->llm->generateVision($prompt, [$path], $model, $this->visionLocal);
         $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_PHOTO);
         $data = $this->extractJson($response);
         if ($data === null) {

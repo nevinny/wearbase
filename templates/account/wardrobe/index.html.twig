@@ -11,8 +11,33 @@
     <h1 class="text-lg font-bold">
         {% if hasFamily and not ownWardrobe %}Гардероб: {{ currentMember.fullName }}{% else %}Мой гардероб{% endif %}
     </h1>
-    <a href="{{ path('account_wardrobe_new', memberParam) }}"
-       class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black transition">+ Добавить вещь</a>
+    <div class="flex items-center gap-2">
+        <button type="button" id="wardrobe-ingest-toggle"
+                class="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Загрузить пачкой</button>
+        <a href="{{ path('account_wardrobe_new', memberParam) }}"
+           class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black transition">+ Добавить вещь</a>
+    </div>
+</div>
+
+{# ── Пакетная загрузка фото (сворачиваемая панель) ── #}
+<div id="wardrobe-ingest-panel"
+     class="mb-6 hidden rounded-2xl bg-white p-6 shadow-sm"
+     data-csrf="{{ csrf_token('wardrobe_ingest') }}"
+     data-upload-url="{{ path('account_wardrobe_ingest_upload') }}">
+    <h2 class="mb-3 text-sm font-bold">Загрузить фото вещей</h2>
+    <div id="ingest-panel-upload-area"
+         class="cursor-pointer rounded-xl border-2 border-dashed border-gray-300 px-3 py-12 text-center text-gray-500 transition">
+        <div class="mb-2 text-3xl">☁️</div>
+        <div>Перетащите фото или <span class="font-semibold text-gray-900">выберите файлы</span></div>
+        <div class="text-xs">JPG, PNG, WebP — можно сразу несколько</div>
+        <input type="file" id="ingest-panel-file-input" multiple accept="image/*" class="hidden">
+    </div>
+    <div id="ingest-panel-progress" class="mt-3 hidden">
+        <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div id="ingest-panel-progress-bar" class="h-full bg-gray-900 transition-all" style="width:0%"></div>
+        </div>
+    </div>
+    <div id="ingest-panel-error" class="form-error mt-2 hidden text-sm text-red-600"></div>
 </div>
 
 {# ── Члены семьи ── #}
@@ -106,4 +131,70 @@
         {% endfor %}
     </div>
 {% endif %}
+
+<script>
+(function () {
+    var toggleBtn = document.getElementById('wardrobe-ingest-toggle');
+    var panel = document.getElementById('wardrobe-ingest-panel');
+    if (toggleBtn && panel) {
+        toggleBtn.addEventListener('click', function () {
+            panel.classList.toggle('hidden');
+        });
+    }
+    if (!panel) return;
+
+    var CSRF_TOKEN = panel.dataset.csrf;
+    var UPLOAD_URL = panel.dataset.uploadUrl;
+    var area = document.getElementById('ingest-panel-upload-area');
+    var fileInput = document.getElementById('ingest-panel-file-input');
+    var progress = document.getElementById('ingest-panel-progress');
+    var bar = document.getElementById('ingest-panel-progress-bar');
+    var errorBox = document.getElementById('ingest-panel-error');
+
+    area.addEventListener('click', function () { fileInput.click(); });
+    area.addEventListener('dragover', function (e) { e.preventDefault(); area.classList.add('bg-gray-50'); });
+    area.addEventListener('dragleave', function () { area.classList.remove('bg-gray-50'); });
+    area.addEventListener('drop', function (e) {
+        e.preventDefault();
+        area.classList.remove('bg-gray-50');
+        uploadFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', function () { uploadFiles(fileInput.files); });
+
+    function uploadFiles(files) {
+        if (!files || !files.length) return;
+
+        var fd = new FormData();
+        [].forEach.call(files, function (f) { fd.append('photos', f); });
+
+        errorBox.classList.add('hidden');
+        progress.classList.remove('hidden');
+        bar.style.width = '0%';
+
+        var xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = function (e) {
+            if (e.lengthComputable) bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+        };
+        xhr.onload = function () {
+            var data = {};
+            try { data = JSON.parse(xhr.responseText); } catch (e) {}
+            if (xhr.status === 200 && data.ok && data.reviewUrl) {
+                window.location.href = data.reviewUrl;
+                return;
+            }
+            progress.classList.add('hidden');
+            errorBox.textContent = (data && data.error) ? data.error : 'Не удалось загрузить фото';
+            errorBox.classList.remove('hidden');
+        };
+        xhr.onerror = function () {
+            progress.classList.add('hidden');
+            errorBox.textContent = 'Сеть недоступна, попробуйте ещё раз';
+            errorBox.classList.remove('hidden');
+        };
+        xhr.open('POST', UPLOAD_URL);
+        xhr.setRequestHeader('X-CSRF-Token', CSRF_TOKEN);
+        xhr.send(fd);
+    }
+})();
+</script>
 {% endblock %}

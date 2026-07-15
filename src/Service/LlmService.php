@@ -184,7 +184,7 @@ class LlmService
     private function generateVisionLocal(string $prompt, array $imagePaths, string $model): string
     {
         $images = array_map(
-            static fn(string $path): string => base64_encode((string) file_get_contents($path)),
+            fn(string $path): string => base64_encode($this->downscaledBytes($path)),
             $imagePaths,
         );
 
@@ -252,8 +252,20 @@ class LlmService
     }
 
     /**
+     * Байты изображения для base64-кодирования (используется и remote-, и
+     * local-веткой): downscaleImage() при успехе, иначе — сырой файл как есть.
+     */
+    private function downscaledBytes(string $path): string
+    {
+        return $this->downscaleImage($path) ?? (string) file_get_contents($path);
+    }
+
+    /**
      * Фото с телефона (3-12 МБ) в base64 не пролезают в vision-запрос по таймауту —
-     * ужимаем до 1024px по длинной стороне. null = GD не справился, шлём оригинал.
+     * ужимаем до 1024px по длинной стороне. Также поворачиваем по EXIF Orientation
+     * (телефонные JPEG часто лежат "на боку" без физического поворота пикселей —
+     * без этого OCR размерных бирок читает повёрнутый текст). null = GD не справился,
+     * шлём оригинал.
      */
     private function downscaleImage(string $path, int $maxSide = 1024, int $quality = 82): ?string
     {
@@ -265,6 +277,20 @@ class LlmService
         $src = @imagecreatefromstring($raw);
         if ($src === false) {
             return null;
+        }
+
+        if (\function_exists('exif_read_data') && str_starts_with($raw, "\xFF\xD8")) {
+            $exif = @exif_read_data($path);
+            $orientation = $exif['Orientation'] ?? null;
+            $rotated = match ($orientation) {
+                3       => imagerotate($src, 180, 0),
+                6       => imagerotate($src, -90, 0),
+                8       => imagerotate($src, 90, 0),
+                default => false,
+            };
+            if ($rotated !== false) {
+                $src = $rotated;
+            }
         }
 
         $w = imagesx($src);

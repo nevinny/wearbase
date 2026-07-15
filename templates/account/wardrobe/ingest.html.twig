@@ -1,0 +1,328 @@
+{% extends 'account/layout.html.twig' %}
+{% block title %}Пакетная загрузка фото — WEARBASE{% endblock %}
+
+{% block account_content %}
+{% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+{% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% set hasBatch = batch is defined and batch %}
+{% set activeDrafts = hasBatch ? (drafts|default([]))|filter(d => d.status not in ['accepted', 'rejected']) : [] %}
+{% set pendingCount = counts is defined ? counts.pending : (activeDrafts|filter(d => d.status == 'pending')|length) %}
+{% set totalCount = counts is defined ? counts.total : activeDrafts|length %}
+{% set reviewDrafts = activeDrafts|filter(d => d.status != 'pending') %}
+{% set highCount = reviewDrafts|filter(d => d.status == 'recognized' and d.confidence == 'high')|length %}
+
+<div id="wardrobe-ingest-root"
+     data-csrf="{{ csrf_token('wardrobe_ingest') }}"
+     data-upload-url="{{ path('account_wardrobe_ingest_upload') }}"
+     {% if hasBatch %}
+     data-batch="{{ batch }}"
+     data-status-url="{{ path('account_wardrobe_ingest_status', {batch: batch}) }}"
+     {% endif %}>
+
+<div class="mb-5 flex items-center gap-3">
+    <a href="{{ path('account_wardrobe_index') }}"
+       class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
+    <h1 class="text-lg font-bold">Пакетная загрузка фото</h1>
+</div>
+
+{# ── Дропзона ── #}
+<div class="mb-6 rounded-2xl bg-white p-6 shadow-sm">
+    <h2 class="mb-3 text-sm font-bold">Загрузить фото вещей</h2>
+    <div id="ingest-upload-area"
+         class="cursor-pointer rounded-xl border-2 border-dashed border-gray-300 px-3 py-12 text-center text-gray-500 transition">
+        <div class="mb-2 text-3xl">☁️</div>
+        <div>Перетащите фото или <span class="font-semibold text-gray-900">выберите файлы</span></div>
+        <div class="text-xs">JPG, PNG, WebP — можно сразу несколько</div>
+        <input type="file" id="ingest-file-input" multiple accept="image/*" class="hidden">
+    </div>
+    <div id="ingest-upload-progress" class="mt-3 hidden">
+        <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div id="ingest-progress-bar" class="h-full bg-gray-900 transition-all" style="width:0%"></div>
+        </div>
+    </div>
+    <div id="ingest-upload-error" class="form-error mt-2 hidden text-sm text-red-600"></div>
+    <div id="ingest-rejected-list" class="mt-3 hidden space-y-1"></div>
+</div>
+
+{% if hasBatch %}
+
+    {# ── Прогресс распознавания ── #}
+    <div id="ingest-progress-banner" class="mb-6 flex items-center gap-3 rounded-2xl bg-white p-5 shadow-sm {{ pendingCount > 0 ? '' : 'hidden' }}">
+        <svg class="h-5 w-5 shrink-0 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <div class="text-sm text-gray-600">
+            Распознаётся <span id="ingest-progress-text">{{ pendingCount }} из {{ totalCount }}</span>…
+        </div>
+    </div>
+
+    {# ── Проверка и подтверждение ── #}
+    <div id="ingest-review-section" class="{{ pendingCount > 0 ? 'hidden' : '' }}">
+        {% if reviewDrafts|length > 0 %}
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-sm font-bold">Проверьте распознанные вещи ({{ reviewDrafts|length }})</h2>
+                {% if highCount > 0 %}
+                    <button type="button" id="ingest-accept-all-btn"
+                            data-url="{{ path('account_wardrobe_ingest_accept_all', {batch: batch}) }}"
+                            class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black transition disabled:opacity-50">
+                        Принять всё уверенное ({{ highCount }})
+                    </button>
+                {% endif %}
+            </div>
+
+            <datalist id="wardrobe-ingest-categories">
+                {% for c in constant('App\\Entity\\WardrobeItem::SUGGESTED_CATEGORIES') %}<option value="{{ c }}">{% endfor %}
+            </datalist>
+
+            <div id="ingest-grid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {% set confBadge = {high: 'bg-green-100 text-green-700', med: 'bg-amber-100 text-amber-700', low: 'bg-red-100 text-red-700'} %}
+                {% set confLabel = {high: 'Уверенно', med: 'Проверьте', low: 'Проверьте'} %}
+                {% for draft in reviewDrafts %}
+                <div class="overflow-hidden rounded-2xl bg-white shadow-sm"
+                     data-draft-id="{{ draft.id }}"
+                     data-accept-url="{{ path('account_wardrobe_ingest_accept', {id: draft.id}) }}"
+                     data-reject-url="{{ path('account_wardrobe_ingest_reject', {id: draft.id}) }}">
+                    <div class="relative aspect-square bg-gray-100">
+                        {% if draft.photo %}
+                            <img src="{{ vich_uploader_asset(draft, 'photoFile') }}"
+                                 class="h-full w-full object-cover" alt="{{ draft.name ?: 'Фото вещи' }}">
+                        {% else %}
+                            <div class="flex h-full w-full items-center justify-center text-5xl opacity-20">👕</div>
+                        {% endif %}
+                        {% if draft.status == 'recognized' %}
+                            <span class="absolute left-2 top-2 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm {{ confBadge[draft.confidence] ?? 'bg-gray-100 text-gray-500' }}">
+                                {{ confLabel[draft.confidence] ?? draft.confidence }}
+                            </span>
+                        {% endif %}
+                    </div>
+                    <div class="p-4">
+                        {% if draft.status == 'failed' %}
+                            <div class="form-error mb-3 text-sm text-red-600">{{ draft.error ?: 'Не удалось распознать фото' }}</div>
+                            <button type="button" class="ingest-reject-btn w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Отклонить</button>
+                        {% else %}
+                            <div class="mb-2">
+                                <label class="{{ tw_label }}">Категория</label>
+                                <input type="text" class="ingest-field {{ tw_input }}" data-field="category" value="{{ draft.category }}" list="wardrobe-ingest-categories">
+                            </div>
+                            <div class="mb-2">
+                                <label class="{{ tw_label }}">Название</label>
+                                <input type="text" class="ingest-field {{ tw_input }}" data-field="name" value="{{ draft.name }}">
+                            </div>
+                            <div class="mb-2">
+                                <label class="{{ tw_label }}">Размер</label>
+                                <input type="text" class="ingest-field {{ tw_input }}" data-field="size" value="{{ draft.size }}">
+                            </div>
+                            <div class="mb-3">
+                                <label class="{{ tw_label }}">Заметки</label>
+                                <textarea class="ingest-field {{ tw_input }}" data-field="notes" rows="2">{{ draft.notes }}</textarea>
+                            </div>
+                            <div class="ingest-error form-error mb-2 hidden text-sm text-red-600"></div>
+                            <div class="flex gap-2">
+                                <button type="button" class="ingest-accept-btn flex-1 rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black transition disabled:opacity-50">Принять</button>
+                                <button type="button" class="ingest-reject-btn rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">Отклонить</button>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
+                <div class="mb-4 text-5xl opacity-30">✅</div>
+                <p class="mb-1 font-semibold text-gray-700">Все фото обработаны</p>
+                <a href="{{ path('account_wardrobe_index') }}"
+                   class="mt-3 inline-block rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">В гардероб</a>
+            </div>
+        {% endif %}
+    </div>
+
+{% endif %}
+
+</div>
+
+<script>
+(function () {
+    var root = document.getElementById('wardrobe-ingest-root');
+    var CSRF_TOKEN = root.dataset.csrf;
+    var UPLOAD_URL = root.dataset.uploadUrl;
+    var STATUS_URL = root.dataset.statusUrl;
+
+    // ── Дропзона: загрузка + переход на страницу проверки ──
+    var area = document.getElementById('ingest-upload-area');
+    var fileInput = document.getElementById('ingest-file-input');
+    var progress = document.getElementById('ingest-upload-progress');
+    var bar = document.getElementById('ingest-progress-bar');
+    var errorBox = document.getElementById('ingest-upload-error');
+    var rejectedList = document.getElementById('ingest-rejected-list');
+
+    area.addEventListener('click', function () { fileInput.click(); });
+    area.addEventListener('dragover', function (e) { e.preventDefault(); area.classList.add('bg-gray-50'); });
+    area.addEventListener('dragleave', function () { area.classList.remove('bg-gray-50'); });
+    area.addEventListener('drop', function (e) {
+        e.preventDefault();
+        area.classList.remove('bg-gray-50');
+        uploadFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', function () { uploadFiles(fileInput.files); });
+
+    function showRejected(rejected) {
+        if (!rejected || !rejected.length) return;
+        rejectedList.innerHTML = rejected.map(function (r) {
+            return '<div class="form-error text-xs text-red-600">' + escapeHtml(r.name) + ' — ' + escapeHtml(r.reason) + '</div>';
+        }).join('');
+        rejectedList.classList.remove('hidden');
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+    }
+
+    function uploadFiles(files) {
+        if (!files || !files.length) return;
+
+        var fd = new FormData();
+        [].forEach.call(files, function (f) { fd.append('photos', f); });
+
+        errorBox.classList.add('hidden');
+        rejectedList.classList.add('hidden');
+        progress.classList.remove('hidden');
+        bar.style.width = '0%';
+
+        var xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = function (e) {
+            if (e.lengthComputable) bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+        };
+        xhr.onload = function () {
+            var data = {};
+            try { data = JSON.parse(xhr.responseText); } catch (e) {}
+            if (xhr.status === 200 && data.ok) {
+                showRejected(data.rejected);
+                if (data.reviewUrl) {
+                    window.location.href = data.reviewUrl;
+                    return;
+                }
+                progress.classList.add('hidden');
+            } else {
+                progress.classList.add('hidden');
+                errorBox.textContent = data.error || 'Не удалось загрузить фото';
+                errorBox.classList.remove('hidden');
+            }
+        };
+        xhr.onerror = function () {
+            progress.classList.add('hidden');
+            errorBox.textContent = 'Сеть недоступна, попробуйте ещё раз';
+            errorBox.classList.remove('hidden');
+        };
+        xhr.open('POST', UPLOAD_URL);
+        xhr.setRequestHeader('X-CSRF-Token', CSRF_TOKEN);
+        xhr.send(fd);
+    }
+
+    if (!STATUS_URL) return;
+
+    // ── Поллинг статуса распознавания ──
+    var banner = document.getElementById('ingest-progress-banner');
+    var progressText = document.getElementById('ingest-progress-text');
+    var reviewSection = document.getElementById('ingest-review-section');
+    var poll = null;
+
+    function checkStatus() {
+        fetch(STATUS_URL, { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (s) {
+                if (!s || typeof s.pending === 'undefined') return;
+                if (progressText) progressText.textContent = s.pending + ' из ' + s.total;
+                if (s.pending === 0) {
+                    if (poll) clearInterval(poll);
+                    window.location.reload();
+                }
+            })
+            .catch(function () {});
+    }
+
+    if (banner && !banner.classList.contains('hidden')) {
+        poll = setInterval(checkStatus, 3000);
+    }
+
+    // ── Принять / Отклонить одну карточку ──
+    var grid = document.getElementById('ingest-grid');
+    if (grid) {
+        grid.addEventListener('click', function (e) {
+            var acceptBtn = e.target.closest('.ingest-accept-btn');
+            var rejectBtn = e.target.closest('.ingest-reject-btn');
+            if (!acceptBtn && !rejectBtn) return;
+
+            var card = e.target.closest('[data-draft-id]');
+            if (!card) return;
+
+            if (acceptBtn) {
+                var payload = {};
+                card.querySelectorAll('.ingest-field').forEach(function (el) {
+                    payload[el.dataset.field] = el.value;
+                });
+                var errBox = card.querySelector('.ingest-error');
+                acceptBtn.disabled = true;
+
+                fetch(card.dataset.acceptUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+                    body: JSON.stringify(payload),
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data && data.ok) {
+                            card.classList.add('opacity-0', 'transition-opacity');
+                            setTimeout(function () { card.remove(); }, 300);
+                        } else {
+                            acceptBtn.disabled = false;
+                            if (errBox) {
+                                errBox.textContent = (data && data.error) ? data.error : 'Не удалось принять вещь';
+                                errBox.classList.remove('hidden');
+                            }
+                        }
+                    })
+                    .catch(function () {
+                        acceptBtn.disabled = false;
+                        if (errBox) {
+                            errBox.textContent = 'Сеть недоступна, попробуйте ещё раз';
+                            errBox.classList.remove('hidden');
+                        }
+                    });
+            } else if (rejectBtn) {
+                rejectBtn.disabled = true;
+                fetch(card.dataset.rejectUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'X-CSRF-Token': CSRF_TOKEN },
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function () {
+                        card.classList.add('opacity-0', 'transition-opacity');
+                        setTimeout(function () { card.remove(); }, 300);
+                    })
+                    .catch(function () { rejectBtn.disabled = false; });
+            }
+        });
+    }
+
+    // ── Принять всё уверенное ──
+    var acceptAllBtn = document.getElementById('ingest-accept-all-btn');
+    if (acceptAllBtn) {
+        acceptAllBtn.addEventListener('click', function () {
+            acceptAllBtn.disabled = true;
+            fetch(acceptAllBtn.dataset.url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRF-Token': CSRF_TOKEN },
+            })
+                .then(function () { window.location.reload(); })
+                .catch(function () { acceptAllBtn.disabled = false; });
+        });
+    }
+})();
+</script>
+{% endblock %}
