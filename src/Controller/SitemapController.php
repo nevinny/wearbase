@@ -190,4 +190,39 @@ class SitemapController extends AbstractController
             'Content-Type' => 'application/xml; charset=utf-8',
         ]);
     }
+
+    /**
+     * Отдельный sitemap только со статьями блога — для точечного сабмита в GSC
+     * (диагностика индексации блога отдельно от каталога брендов).
+     * Дублирует URL из /sitemap.xml — это ожидаемо и безвредно.
+     */
+    #[Route('/sitemap-blog.xml', name: 'sitemap_blog_xml', defaults: ['_format' => 'xml'])]
+    public function sitemapBlog(ArticleRepository $articleRepo, UrlGeneratorInterface $urlGenerator): Response
+    {
+        $siteBase = parse_url((string) $this->getParameter('app.site_base_url'));
+        $context  = $urlGenerator->getContext();
+        $context->setScheme($siteBase['scheme'] ?? 'https');
+        $context->setHost($siteBase['host'] ?? 'wearbase.ru');
+
+        $urls = [];
+        foreach ($articleRepo->findPublished('ru', 500) as $article) {
+            $urls[] = [
+                'loc' => $this->generateUrl('blog_show', [
+                    '_locale' => 'ru',
+                    'slug' => $article->getSlug(),
+                ], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'monthly',
+                'priority' => '0.7',
+                'lastmod' => $article->getUpdatedAt()?->format('Y-m-d'),
+            ];
+        }
+
+        $xml = $this->renderView('sitemap/xml.html.twig', [
+            'urls' => $urls,
+        ]);
+
+        return new Response($xml, 200, [
+            'Content-Type' => 'application/xml; charset=utf-8',
+        ]);
+    }
 }
