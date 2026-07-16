@@ -53,6 +53,7 @@ class PublishTickCommand extends Command
         private readonly \App\Service\IndexNowPinger $indexNow,
         private readonly \App\Service\BrandLinkGraphService $linkGraph,
         private readonly \App\Notification\AdminNotifier $notifier,
+        private readonly \App\Service\BrandActionSigner $actionSigner,
         #[Autowire('%env(default::PUBLISH_LAUNCH_DATE)%')]
         private readonly ?string $launchDate,
         #[Autowire('%kernel.project_dir%')]
@@ -197,7 +198,7 @@ class PublishTickCommand extends Command
         $published = 0;
         $newUrls = [];
         $tgLines = [];
-        $tgButtons = []; // по одной кнопке «🚫 Скрыть» на бренд (callback → BrandUnpublisher::hide)
+        $tgButtons = []; // по одной кнопке-ссылке «🚫 Скрыть» на бренд (подписанный URL → BrandModerationController)
         foreach ($ids as $id) {
             $brand = $this->em->find(Brand::class, (int) $id);
             if ($brand === null) {
@@ -232,7 +233,14 @@ class PublishTickCommand extends Command
                 $url, htmlspecialchars((string) $brand->getTitle()),
                 $snippet !== '' ? "\n<i>" . htmlspecialchars($snippet) . '</i>' : '',
             );
-            $tgButtons[] = ['text' => '🚫 Скрыть: ' . mb_substr((string) $brand->getTitle(), 0, 40), 'data' => 'unpub:' . $brand->getId()];
+            // URL-кнопка на прод: клик открывает подписанную ссылку (?action=unpublish&id&key),
+            // BrandModerationController скрывает бренд. Не зависит от callback-вебхука (тот таймаутит).
+            $hideUrl = sprintf(
+                'https://wearbase.ru/mod/brand-action?action=unpublish&id=%d&key=%s',
+                $brand->getId(),
+                $this->actionSigner->sign('unpublish', $brand->getId()),
+            );
+            $tgButtons[] = ['text' => '🚫 Скрыть: ' . mb_substr((string) $brand->getTitle(), 0, 40), 'url' => $hideUrl];
             $published++;
         }
 

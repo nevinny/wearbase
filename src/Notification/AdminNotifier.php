@@ -45,7 +45,11 @@ readonly class AdminNotifier
     /**
      * Уведомление с НЕСКОЛЬКИМИ inline-кнопками (по одной на строку), напр. список
      * опубликованных брендов, у каждого «🚫 Скрыть».
-     * @param list<array{text:string, data:string}> $buttons
+     *
+     * Каждая кнопка — либо callback (`data`), либо ссылка (`url`). URL-кнопки надёжнее
+     * callback'ов: клик открывает подписанную ссылку в браузере, не зависит от вебхука
+     * (вебхук Telegram→прод таймаутит). Дрип использует именно `url`.
+     * @param list<array{text:string, data?:string, url?:string}> $buttons
      */
     public function sendWithButtons(string $html, array $buttons): void
     {
@@ -53,7 +57,16 @@ readonly class AdminNotifier
             return;
         }
         $rows = array_map(
-            static fn(array $b) => [['text' => $b['text'], 'callback_data' => $b['data']]],
+            static function (array $b): array {
+                $btn = ['text' => $b['text']];
+                if (isset($b['url'])) {
+                    $btn['url'] = $b['url'];
+                } else {
+                    $btn['callback_data'] = $b['data'] ?? '';
+                }
+
+                return [$btn];
+            },
             $buttons,
         );
         $this->telegram->send($this->adminChatId, $html, ['inline_keyboard' => $rows]);
