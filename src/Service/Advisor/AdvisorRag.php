@@ -20,8 +20,8 @@ use App\Service\VectorStoreService;
  */
 final class AdvisorRag
 {
-    /** Роли-источники идей (tone намеренно исключён). */
-    public const IDEA_ROLES = ['idea', 'framing', 'case'];
+    /** Роли-источники идей (tone намеренно исключён; seo — SEO/GEO-приёмы DrMax, подмешиваются семантически). */
+    public const IDEA_ROLES = ['idea', 'framing', 'case', 'seo'];
 
     /** Человекочитаемые имена каналов для провенанс-пометки в дайджесте. */
     private const CHANNEL_NAMES = [
