@@ -12,7 +12,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 /**
  * Публикация в VK-сообщество через wall.post (нативный API; работает с РФ-прода).
  * Токен — community access token, хранится зашифрованным (SecretCipher). target = owner_id
- * сообщества (отрицательный). MVP: текстовый пост; вложение фото — TODO (photos.* flow).
+ * сообщества (отрицательный). Если передан $mediaAbsPath — фото грузится через
+ * photos.getWallUploadServer → upload_url → photos.saveWallPhoto и прикрепляется к посту.
  */
 class VkPublisher implements SocialPublisherInterface
 {
@@ -46,14 +47,30 @@ class VkPublisher implements SocialPublisherInterface
             $message .= "\n\n" . trim(($post->getCtaLabel() ?? '') . ': ' . $post->getCtaUrl(), ': ');
         }
 
+        $token = $this->cipher->decrypt($enc);
+
+        $wallPostBody = [
+            'owner_id'     => $ownerId,
+            'from_group'   => 1,
+            'message'      => $message,
+            'access_token' => $token,
+            'v'            => self::API_VERSION,
+        ];
+
+        if ($mediaAbsPath !== null && is_file($mediaAbsPath)) {
+            // Фото-аплоуд деградирует мягко: не роняем пост, если фото не прикрепилось.
+            // Частая причина — community-токен не имеет доступа к photos.* upload (VK требует
+            // user-токен админа сообщества с правами photos,wall,groups). С таким токеном тот же
+            // флоу отработает без правок кода. При провале — публикуем текстом.
+            try {
+                $wallPostBody['attachment'] = $this->uploadWallPhoto((int) $ownerId, $mediaAbsPath, $token);
+            } catch (\Throwable $e) {
+                error_log('[VkPublisher] фото не прикреплено, публикую текстом: ' . $e->getMessage());
+            }
+        }
+
         $response = $this->httpClient->request('POST', 'https://api.vk.com/method/wall.post', [
-            'body' => [
-                'owner_id'     => $ownerId,
-                'from_group'   => 1,
-                'message'      => $message,
-                'access_token' => $this->cipher->decrypt($enc),
-                'v'            => self::API_VERSION,
-            ],
+            'body'    => $wallPostBody,
             'timeout' => 60,
         ]);
 
@@ -68,5 +85,64 @@ class VkPublisher implements SocialPublisherInterface
         }
 
         return $ownerId . '_' . $postId;
+    }
+
+    /**
+     * Стандартный VK wall-photo upload flow: getWallUploadServer → upload → saveWallPhoto.
+     * @return string attachment вида "photo{owner_id}_{id}" для wall.post
+     */
+    private function uploadWallPhoto(int $ownerId, string $mediaAbsPath, string $token): string
+    {
+        $groupId = abs($ownerId);
+
+        $serverResp = $this->httpClient->request('POST', 'https://api.vk.com/method/photos.getWallUploadServer', [
+            'body' => [
+                'group_id'     => $groupId,
+                'access_token' => $token,
+                'v'            => self::API_VERSION,
+            ],
+            'timeout' => 60,
+        ]);
+        $serverData = $serverResp->toArray(false);
+        if (isset($serverData['error'])) {
+            throw new \RuntimeException('VK photos.getWallUploadServer error: ' . ($serverData['error']['error_msg'] ?? 'unknown'));
+        }
+        $uploadUrl = $serverData['response']['upload_url'] ?? null;
+        if ($uploadUrl === null) {
+            throw new \RuntimeException('VK photos.getWallUploadServer не вернул upload_url: ' . json_encode($serverData, JSON_UNESCAPED_UNICODE));
+        }
+
+        $uploadResp = $this->httpClient->request('POST', $uploadUrl, [
+            'body' => [
+                'photo' => fopen($mediaAbsPath, 'r'),
+            ],
+            'timeout' => 60,
+        ]);
+        $uploadData = $uploadResp->toArray(false);
+        if (empty($uploadData['photo']) || $uploadData['photo'] === '[]') {
+            throw new \RuntimeException('VK upload_url не вернул фото: ' . json_encode($uploadData, JSON_UNESCAPED_UNICODE));
+        }
+
+        $saveResp = $this->httpClient->request('POST', 'https://api.vk.com/method/photos.saveWallPhoto', [
+            'body' => [
+                'group_id'     => $groupId,
+                'server'       => $uploadData['server'],
+                'photo'        => $uploadData['photo'],
+                'hash'         => $uploadData['hash'],
+                'access_token' => $token,
+                'v'            => self::API_VERSION,
+            ],
+            'timeout' => 60,
+        ]);
+        $saveData = $saveResp->toArray(false);
+        if (isset($saveData['error'])) {
+            throw new \RuntimeException('VK photos.saveWallPhoto error: ' . ($saveData['error']['error_msg'] ?? 'unknown'));
+        }
+        $savedPhoto = $saveData['response'][0] ?? null;
+        if (!isset($savedPhoto['owner_id'], $savedPhoto['id'])) {
+            throw new \RuntimeException('VK photos.saveWallPhoto не вернул фото: ' . json_encode($saveData, JSON_UNESCAPED_UNICODE));
+        }
+
+        return 'photo' . $savedPhoto['owner_id'] . '_' . $savedPhoto['id'];
     }
 }
