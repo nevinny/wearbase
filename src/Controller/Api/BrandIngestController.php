@@ -483,6 +483,8 @@ class BrandIngestController extends AbstractController
     /**
      * ID/slug брендов, опубликованных дрипом (app:brand:publish-tick) за последние N часов —
      * dev не видит, что реально вывел дрип на проде (публикация происходит только тут).
+     *
+     * hours=0 → все опубликованные (для полного синка prod→Mac, app:brand:publish-sync).
      */
     #[Route('/brands/published', name: 'api_brands_published', methods: ['GET'])]
     public function publishedRecent(
@@ -494,13 +496,21 @@ class BrandIngestController extends AbstractController
             return $deny;
         }
 
-        $hours = max(1, min(168, (int) $request->query->get('hours', 24)));
-        $since = (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->modify("-{$hours} hours")->format('Y-m-d H:i:s');
+        $hours = (int) $request->query->get('hours', 24);
+        if ($hours <= 0) {
+            $since = null;
+            $rows = $em->getConnection()->fetchAllAssociative(
+                'SELECT id, slug, title, published_at FROM brand WHERE published_at IS NOT NULL ORDER BY published_at DESC',
+            );
+        } else {
+            $hours = max(1, min(168, $hours));
+            $since = (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->modify("-{$hours} hours")->format('Y-m-d H:i:s');
+            $rows = $em->getConnection()->fetchAllAssociative(
+                'SELECT id, slug, title, published_at FROM brand WHERE published_at >= ? ORDER BY published_at DESC',
+                [$since],
+            );
+        }
 
-        $rows = $em->getConnection()->fetchAllAssociative(
-            'SELECT id, slug, title, published_at FROM brand WHERE published_at >= ? ORDER BY published_at DESC',
-            [$since],
-        );
         // Ключ сопоставления с dev — slug (prod brand.id ≠ dev brand.id, свой autoincrement,
         // см. BrandIngestService: матчинг по slug), поэтому id переименован в prod_id и
         // не первым полем — только для аудита на стороне прода.
