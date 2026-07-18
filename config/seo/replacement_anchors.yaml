@@ -112,3 +112,38 @@ anchors:
     niche: sport
     count: 5
     keywords: ["decathlon в россии", "чем заменить decathlon", "аналоги decathlon"]
+  # --- Добавлено 2026-07-18: якоря из аудита ~190 опубликованных иностранных брендов ---
+  # Спрос — brand_keyword (raw monthly_shows, с отсевом омонимов/люкса/косметики/парфюма).
+  # Факт ухода/отсутствия в РФ подтверждён по KSE (~/seo-archives/leave-russia/fashion_brands.tsv:
+  # корпоративный родитель или карточка бренда со статусом Leave/Exited) + policy §116.
+  # ⚠️ origin_status этих брендов в БД пока 'unknown' (llm-only-foreign, ждут origin-review) —
+  # app:seo:replace-listicle сгенерит их ТОЛЬКО после ревью-флипа status→'foreign' (гейт команды,
+  # ReplaceListicleCommand строка 154). До ревью якоря лежат «заряженными», но не публикуются.
+  - foreign: salomon         # Amer Sports — Leave/Suspension (KSE); trail/outdoor
+    niche: sport
+    count: 5
+    keywords: ["salomon в россии", "чем заменить salomon", "аналоги salomon"]
+  - foreign: roxy            # Authentic Brands Group — Exited (KSE); women surf/beach
+    niche: beach
+    count: 5
+    keywords: ["roxy в россии", "чем заменить roxy", "аналоги roxy"]
+  - foreign: quiksilver      # Authentic Brands Group — Exited (KSE); surf/streetwear
+    niche: streetwear
+    count: 5
+    keywords: ["quiksilver в россии", "чем заменить quiksilver", "аналоги quiksilver"]
+  - foreign: dcshoes         # Authentic Brands Group — Exited (KSE); skate/streetwear
+    niche: streetwear
+    count: 5
+    keywords: ["dc shoes в россии", "чем заменить dc shoes", "аналоги dc shoes"]
+  - foreign: gerryweber      # Gerry Weber — Exited (KSE + policy §116); женская классика
+    niche: classic
+    count: 5
+    keywords: ["gerry weber в россии", "чем заменить gerry weber", "аналоги gerry weber"]
+  - foreign: reima           # Reima — Exited (KSE + policy §116); детская верхняя одежда
+    niche: casual
+    count: 5
+    keywords: ["reima в россии", "чем заменить reima", "аналоги reima"]
+  - foreign: samsonite       # Samsonite — Exited (KSE + policy §116); ⚠ ниша-fit слабый (багаж)
+    niche: casual
+    count: 5
+    keywords: ["samsonite в россии", "чем заменить samsonite", "аналоги samsonite"]
