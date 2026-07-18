@@ -16,7 +16,7 @@ parameters:
     # Гардероб авто-ингест: 0=remote vision (WARDROBE_VISION_MODEL, работает на проде),
     # 1=local vision на LLM-сервере (dev/.env.local, где достаётся риг — бесплатно).
     env(WARDROBE_VISION_LOCAL): '0'
-    # Соц-автоматизация: дрип-рамп (предохранитель) + Postiz для Instagram
+    # Соц-автоматизация: дрип-рамп (предохранитель)
     env(SOCIAL_LAUNCH_DATE): ''
     env(SOCIAL_START_RATE): '3'
     env(SOCIAL_CAP): '14'
@@ -24,8 +24,6 @@ parameters:
     # источник кликов nginx-логи прода через ssh+zgrep. Дефолты — реальные прод-пути.
     env(SOCIAL_CLICK_LOG_HOST): 'regru'
     env(SOCIAL_CLICK_LOG_GLOB): '/var/www/u3042786/data/logs/wearbase.ru.access.log*'
-    env(POSTIZ_URL): ''
-    env(POSTIZ_API_KEY): ''
     env(GEMINI_API_KEY): ''
     env(CLOUDFLARE_ACCOUNT_ID): ''
     env(CLOUDFLARE_AI_TOKEN): ''
@@ -291,11 +289,6 @@ services:
     App\Social\Publisher\TelegramPublisher:
         arguments:
             $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
-
-    App\Social\Publisher\InstagramPublisher:
-        arguments:
-            $postizUrl: '%env(POSTIZ_URL)%'
-            $postizApiKey: '%env(POSTIZ_API_KEY)%'
 
     # Брендированная карточка для IG-рубрик-шаблонов (вместо слабой AI-сцены) — точечная добавка,
     # не меняет существующий MediaRenderer/TG/VK.

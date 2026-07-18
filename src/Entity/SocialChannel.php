@@ -7,7 +7,7 @@ use Doctrine\ORM\Mapping as ORM;
 use Nevinny\AdminCoreBundle\Entity\Trait\Created;
 
 /**
- * Подключённый канал автопостинга: Telegram-канал / VK-сообщество / Instagram (через Postiz).
+ * Подключённый канал автопостинга: Telegram-канал / VK-сообщество / Instagram (Graph API).
  * Токен хранится зашифрованным (SecretCipher, как реквизиты платёжек).
  *
  * egressHost определяет, ГДЕ крутится publish-tick для этого канала: TG/IG недоступны с
@@ -40,12 +40,12 @@ class SocialChannel
 
     /**
      * Целевой идентификатор площадки: TG — @handle или chat_id канала; VK — owner_id (со знаком,
-     * для сообщества отрицательный); IG — id интеграции в Postiz.
+     * для сообщества отрицательный); IG — Instagram Business Account id.
      */
     #[ORM\Column(length: 190, options: ['default' => ''])]
     private string $target = '';
 
-    /** Зашифрованный токен/ключ (SecretCipher). Для IG через Postiz может быть пустым. */
+    /** Зашифрованный токен/ключ (SecretCipher). Для IG — System User Token, обязателен. */
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $tokenEnc = null;
 

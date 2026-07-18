@@ -58,7 +58,7 @@ class SocialChannelCrudController extends AbstractCrudController
         yield TextField::new('name', 'Название')->setColumns(5);
         yield BooleanField::new('enabled', 'Включён');
         yield TextField::new('target', 'Target')
-            ->setHelp('TG — @handle/chat_id; VK — owner_id сообщества (отриц.); IG — id интеграции Postiz')
+            ->setHelp('TG — @handle/chat_id; VK — owner_id сообщества (отриц.); IG — Instagram Business Account id')
             ->setColumns(6);
         yield ChoiceField::new('egressHost', 'Egress-хост')
             ->setChoices(['Mac (TG/IG)' => SocialChannel::HOST_MAC, 'Prod (VK)' => SocialChannel::HOST_PROD])
