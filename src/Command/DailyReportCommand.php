@@ -37,6 +37,10 @@ class DailyReportCommand extends Command
         private readonly ?string $agentToken,
         #[Autowire('%env(default::YANDEX_PARTNER_TOKEN)%')]
         private readonly ?string $rsyaToken,
+        #[Autowire('%env(default::YANDEX_METRIKA_TOKEN)%')]
+        private readonly ?string $metrikaToken,
+        #[Autowire('%env(default::YANDEX_METRIKA_COUNTER)%')]
+        private readonly ?string $metrikaCounter,
     ) {
         parent::__construct();
     }
@@ -147,25 +151,54 @@ class DailyReportCommand extends Command
     }
 
     /**
-     * Дзен не отдаёт статистику подписчиков по публичному API (студия за паспортом) — best-effort
-     * пробуем вытащить subscribersCount из HTML публичной страницы канала; страница SPA, поэтому
-     * fallback — число статей с текущей Дзен-копией в БД (что реально отдаётся в /rss/dzen.xml).
+     * Дзен: нативной статистики (подписчики/дочитывания) в публичном API нет (студия за паспортом).
+     * Реальная ценность канала — переходы с dzen.ru на сайт: тянем из Яндекс.Метрики (за 7 дней).
+     * При отсутствии токена/сбое — fallback: число статей в Дзен-фиде (что отдаём в /rss/dzen.xml).
      */
     private function fetchDzenStats(): array
     {
-        try {
-            $body = $this->httpClient->request('GET', 'https://dzen.ru/wearbase', ['timeout' => 10])->getContent(false);
-            if (preg_match('/"subscribersCount"\s*:\s*(\d+)/', $body, $m)) {
-                return ['subscribers' => (int) $m[1]];
-            }
-        } catch (\Throwable) {
-            // падаем в fallback ниже
+        $referral = $this->fetchDzenReferralMetrika();
+        if ($referral !== null) {
+            return $referral;
         }
         $articlesInFeed = (int) $this->db->fetchOne(
             "SELECT COUNT(*) FROM article_distribution WHERE platform = 'dzen' AND is_current = 1",
         );
 
         return ['articles_in_feed' => $articlesInFeed];
+    }
+
+    /**
+     * Переходы с Дзена на сайт за 7 дней через Яндекс.Метрику (визиты/посетители).
+     * Фильтр по домену-рефереру dzen.ru; totals = [visits, users]. null при отсутствии токена/ошибке.
+     */
+    private function fetchDzenReferralMetrika(): ?array
+    {
+        if (trim((string) $this->metrikaToken) === '') {
+            return null;
+        }
+        try {
+            $counter = trim((string) $this->metrikaCounter) !== '' ? $this->metrikaCounter : '105219484';
+            $qs = http_build_query([
+                'ids'     => $counter,
+                'metrics' => 'ym:s:visits,ym:s:users',
+                'filters' => "ym:s:refererDomain=='dzen.ru'",
+                'date1'   => '7daysAgo',
+                'date2'   => 'yesterday',
+            ]);
+            $data = $this->httpClient->request('GET', 'https://api-metrika.yandex.net/stat/v1/data?' . $qs, [
+                'headers' => ['Authorization' => 'OAuth ' . $this->metrikaToken],
+                'timeout' => 15,
+            ])->toArray(false);
+            $totals = $data['totals'] ?? null;
+            if (!is_array($totals) || count($totals) < 2) {
+                return null;
+            }
+
+            return ['visits' => (int) round((float) $totals[0]), 'users' => (int) round((float) $totals[1])];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -338,9 +371,9 @@ class DailyReportCommand extends Command
             $ig !== null ? $ig['followers'] : '—',
             $ig !== null ? $ig['media'] : '—',
             $igEngage,
-            isset($dzen['subscribers'])
-                ? $dzen['subscribers'] . ' подписч.'
-                : ($dzen['articles_in_feed'] ?? '—') . ' статей в фиде (нет API статистики Дзена)',
+            isset($dzen['visits'])
+                ? sprintf('→ сайт за 7 дн: %s визитов, %s посетителей', $dzen['visits'], $dzen['users'])
+                : ($dzen['articles_in_feed'] ?? '—') . ' статей в фиде (Метрика недоступна)',
         );
 
         $msg = sprintf(
