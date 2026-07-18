@@ -10,6 +10,7 @@ use App\Repository\BrandRepository;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
+use App\Service\Seo\BrandFactSheet;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -54,15 +55,14 @@ class ReplaceListicleCommand extends Command
     private const MIN_REPLACEMENTS = 3;       // меньше — статья-замена не имеет смысла
     private const PLATFORMS = ['site', 'dzen'];
 
-    /** Авторы-персоны (ротация по индексу якоря). */
-    private const PERSONAS = [
-        'независимый fashion-стилист из Москвы',
-        'маркетолог в fashion-ритейле',
-        'автор блога про осознанное потребление и российские бренды',
-        'журналист, пишущий о моде и локальных дизайнерах',
-        'предприниматель в e-commerce одежды',
-        'покупатель-энтузиаст, который делится личным опытом',
-    ];
+    /**
+     * Единственный автор блога (E-E-A-T, docs/author-eeat) — куратор-женщина
+     * Анна Семянникова (author.slug=anna-semyannikova). Голос генерации — ЕЁ,
+     * первое лицо женского рода; никакой ротации фиктивных персон-мужчин.
+     */
+    private const PERSONA = 'Анна Семянникова — консультант по осознанному шопингу и автор-куратор WEARBASE, '
+        . 'экономист по образованию, смотрит на бренды через цену и качество, мама большой семьи с опытом '
+        . 'собирать рабочий гардероб без лишних трат';
 
     /** Тон под площадку (пара site/dzen из PLATFORM_TONES донора). */
     private const PLATFORM_TONES = [
@@ -78,6 +78,7 @@ class ReplaceListicleCommand extends Command
         private readonly LlmService             $llm,
         private readonly BrandRagService        $rag,
         private readonly ContentValidator       $validator,
+        private readonly BrandFactSheet         $factSheet,
     ) {
         parent::__construct();
     }
@@ -90,7 +91,6 @@ class ReplaceListicleCommand extends Command
             ->addOption('out',     null, InputOption::VALUE_REQUIRED, 'Базовая папка ({out}/blog + {out}/dzen)', 'var/seo')
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Сохранять даже при провале quality-gate (с предупреждением)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Показать план (X, ниша, замены, ключевики) без генерации')
-            ->addOption('persona', null, InputOption::VALUE_REQUIRED, 'Стартовый индекс автора-персоны (0..' . (count(self::PERSONAS) - 1) . ')', '0')
         ;
     }
 
@@ -98,12 +98,11 @@ class ReplaceListicleCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
-        $anchorSlug   = $input->getOption('anchor');
-        $limit        = $input->getOption('limit') !== null ? max(1, (int) $input->getOption('limit')) : null;
-        $outDir       = rtrim((string) $input->getOption('out'), '/');
-        $force        = (bool) $input->getOption('force');
-        $dryRun       = (bool) $input->getOption('dry-run');
-        $personaStart = (int) $input->getOption('persona');
+        $anchorSlug = $input->getOption('anchor');
+        $limit      = $input->getOption('limit') !== null ? max(1, (int) $input->getOption('limit')) : null;
+        $outDir     = rtrim((string) $input->getOption('out'), '/');
+        $force      = (bool) $input->getOption('force');
+        $dryRun     = (bool) $input->getOption('dry-run');
 
         $anchors = $this->loadAnchors($io);
         if ($anchors === null) {
@@ -129,7 +128,7 @@ class ReplaceListicleCommand extends Command
         $rejected = 0;
         $skipped = 0;
 
-        foreach ($anchors as $idx => $cfg) {
+        foreach ($anchors as $cfg) {
             $slug = (string) $cfg['foreign'];
             $io->section("Якорь: {$slug}");
 
@@ -184,14 +183,15 @@ class ReplaceListicleCommand extends Command
                 continue;
             }
 
-            $keywords = $this->replacementKeywords($anchor, (array) ($cfg['keywords'] ?? []));
+            $phrases  = $this->collectReplacementPhrases($anchor, (array) ($cfg['keywords'] ?? []));
+            $keywords = $phrases === [] ? null : implode(', ', $phrases);
 
             $io->definitionList(
                 ['Бренд X'   => sprintf('%s (id %d)', $anchor->getTitle(), $anchor->getId())],
                 ['Ниша'      => sprintf('%s (%s)', $style->getTitle(), $style->getSlug())],
                 ['Замен'     => count($replacements) . ': ' . implode(', ', array_map(static fn(Brand $b) => (string) $b->getTitle(), $replacements))],
                 ['Ключевики' => $keywords ?? '— (нет replacement-фраз)'],
-                ['Персона'   => self::PERSONAS[($personaStart + $idx) % count(self::PERSONAS)]],
+                ['Персона'   => self::PERSONA],
             );
 
             if ($dryRun) {
@@ -199,6 +199,22 @@ class ReplaceListicleCommand extends Command
             }
 
             $io->text('Сбор фактов (описание + RAG)…');
+            // Факты X собираем тоже — ТОЛЬКО для rename-хука (переименование точек X в РФ,
+            // если факт есть) и для grounded-FAQ; сам X подробно не описываем (nominative use).
+            // brand.description часто написан ДО ограничения работы X в РФ (легаси-контент) и
+            // может утверждать «официально работает/продаётся в России» — стале-факт, который
+            // без caveat-а протекает как текущий (напр. в FAQ «где купить X»). Явно предупреждаем.
+            $anchorFacts = $this->collectFacts($anchor);
+            if (trim($anchorFacts) !== '') {
+                $anchorFacts = sprintf(
+                    "ВАЖНО: %s ограничил официальную работу в России. Если ниже написано, что бренд "
+                    . "«официально работает» или продаётся в РФ — это устаревшая информация ДО ограничения; "
+                    . "НЕ утверждай это как текущий факт.\n\n%s",
+                    $anchor->getTitle(),
+                    $anchorFacts,
+                );
+            }
+            $io->text(sprintf('  · %s (X) — %d симв. фактов', $anchor->getTitle(), mb_strlen($anchorFacts)));
             $llmBrands = [];
             foreach ($replacements as $b) {
                 $facts = $this->collectFacts($b);
@@ -206,9 +222,12 @@ class ReplaceListicleCommand extends Command
                 $io->text(sprintf('  · %s — %d симв. фактов', $b->getTitle(), mb_strlen($facts)));
             }
 
-            $persona = self::PERSONAS[($personaStart + $idx) % count(self::PERSONAS)];
+            $io->text('FAQ (Wordstat replacement-фразы → grounded)…');
+            $faq = $this->buildFaq($anchor, $anchorFacts, $replacements, $phrases);
+            $io->text($faq === [] ? '  нет подходящих фраз/фактов — FAQ пропущен' : sprintf('  %d Q/A пар', count($faq)));
+
             foreach (self::PLATFORMS as $platform) {
-                if ($this->generateForPlatform($anchor, $style, $replacements, $llmBrands, $keywords, $persona, $platform, $outDir, $force, $io)) {
+                if ($this->generateForPlatform($anchor, $style, $replacements, $llmBrands, $keywords, $anchorFacts, $faq, $platform, $outDir, $force, $io)) {
                     $ok++;
                 } else {
                     $rejected++;
@@ -242,7 +261,8 @@ class ReplaceListicleCommand extends Command
         array $replacements,
         array $llmBrands,
         ?string $keywords,
-        string $persona,
+        string $anchorFacts,
+        array $faq,
         string $platform,
         string $outDir,
         bool $force,
@@ -250,6 +270,7 @@ class ReplaceListicleCommand extends Command
     ): bool {
         $anchorName = (string) $anchor->getTitle();
         $tone       = self::PLATFORM_TONES[$platform];
+        $persona    = self::PERSONA;
 
         $io->text(sprintf('Генерация · %s · %s', $platform, $persona));
 
@@ -261,7 +282,7 @@ class ReplaceListicleCommand extends Command
         $issues = ['пусто'];
         for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
             try {
-                $raw = $this->llm->generateReplacementListicle($anchorName, (string) $style->getTitle(), $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen');
+                $raw = $this->llm->generateReplacementListicle($anchorName, (string) $style->getTitle(), $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen', anchorFacts: $anchorFacts);
             } catch (\Throwable $e) {
                 // LLM-блип (gemma под майнингом перезапускается) — ждём и ретраим.
                 $issues = ['LLM ошибка: ' . mb_substr($e->getMessage(), 0, 80)];
@@ -295,15 +316,17 @@ class ReplaceListicleCommand extends Command
         $body = $this->softenCliches($this->applyProofread($body, $io));
 
         // X в title — по построению (гейт (a) для title закрыт детерминированно).
-        $title    = sprintf('Чем заменить %s в России: %d российских брендов (%s)', $anchorName, count($replacements), date('Y'));
+        $title    = $this->buildTitle($anchorName, count($replacements), $platform);
         $campaign = sprintf('replace-%s-%s', $anchor->getSlug(), $platform);
 
         // X НЕ входит в $replacements → не линкуется и не попадает в ItemList.
         $linkedBody = $this->linkifyBody($body, $replacements, $platform, $campaign);
+        $linkedBody = $this->injectFactSheets($linkedBody, $replacements);
         $toc        = $this->buildToc($linkedBody);
         $cta        = $this->buildCta($platform, $campaign);
-        $jsonLd     = $this->buildJsonLd($title, $replacements, $platform, $campaign);
-        $document   = $this->renderDocument($title, $persona, $platform, $toc, $linkedBody, $cta, $jsonLd);
+        $faqMd      = $this->buildFaqMarkdown($faq);
+        $jsonLd     = $this->buildJsonLd($title, $replacements, $faq, $platform, $campaign);
+        $document   = $this->renderDocument($title, $persona, $platform, $toc, $linkedBody, $faqMd, $cta, $jsonLd);
 
         $path = $this->saveDocument($outDir, (string) $anchor->getSlug(), $platform, $document, $io);
         $io->success("Сохранено: {$path}");
@@ -367,12 +390,14 @@ class ReplaceListicleCommand extends Command
     }
 
     /**
-     * Ключевики статьи: replacement-фразы X из brand_keyword («в россии», «как называется»,
-     * «аналог», «замен», «вместо», «ушел») + доп. фразы из yaml. До 6, строкой.
+     * Replacement-фразы X из brand_keyword («в россии», «как называется», «аналог», «замен»,
+     * «вместо», «ушел») + доп. фразы из yaml. До 6. Источник и для ключевиков статьи (см. вызов
+     * с implode), и для вопросов FAQ (buildFaq) — один и тот же спросовый интент.
      *
      * @param string[] $extra
+     * @return string[]
      */
-    private function replacementKeywords(Brand $anchor, array $extra): ?string
+    private function collectReplacementPhrases(Brand $anchor, array $extra): array
     {
         /** @var BrandKeywordRepository $kwRepo */
         $kwRepo = $this->em->getRepository(BrandKeyword::class);
@@ -392,9 +417,47 @@ class ReplaceListicleCommand extends Command
                 $phrases[] = $p;
             }
         }
-        $phrases = array_slice(array_values(array_unique($phrases)), 0, 6);
 
-        return $phrases === [] ? null : implode(', ', $phrases);
+        return array_slice(array_values(array_unique($phrases)), 0, 6);
+    }
+
+    /**
+     * FAQ якоря X: replacement-фразы Wordstat → вопросы, ответы СТРОГО из фактов X + краткого
+     * списка брендов-замен статьи (generateBrandFaq сам пропускает вопрос без опоры в фактах —
+     * напр. «как называется X теперь» без rename-факта просто не попадёт в результат).
+     *
+     * @param Brand[] $replacements
+     * @param string[] $phrases
+     * @return array<int,array{question:string,answer:string}>
+     */
+    private function buildFaq(Brand $anchor, string $anchorFacts, array $replacements, array $phrases): array
+    {
+        if ($phrases === [] || trim($anchorFacts) === '') {
+            return [];
+        }
+
+        $list = implode(', ', array_map(
+            static fn(Brand $b) => $b->getCity() ? sprintf('%s (%s)', $b->getTitle(), $b->getCity()) : (string) $b->getTitle(),
+            $replacements,
+        ));
+        $facts = trim($anchorFacts) . "\n\nРоссийские бренды-замены в этой статье: {$list}.";
+
+        return $this->llm->generateBrandFaq((string) $anchor->getTitle(), $phrases, $facts, $anchor->getCity());
+    }
+
+    /** @param array<int,array{question:string,answer:string}> $faq */
+    private function buildFaqMarkdown(array $faq): string
+    {
+        if ($faq === []) {
+            return '';
+        }
+
+        $blocks = array_map(
+            static fn(array $qa) => "**{$qa['question']}**\n\n{$qa['answer']}",
+            $faq,
+        );
+
+        return "## Частые вопросы\n\n" . implode("\n\n", $blocks);
     }
 
     /** Факты бренда: описание (он-пейдж истина) + RAG-корпус, обрезано до лимита. */
@@ -492,7 +555,9 @@ class ReplaceListicleCommand extends Command
     private function legalDenylist(string $body, string $anchorName): array
     {
         $x = preg_quote($anchorName, '/');
-        if (preg_match('/подделк|контрафакт|реплик|копия бренда|официальн\w*\s+представител|(лучше|хуже),?\s+чем\s+' . $x . '/iu', $body, $m)) {
+        // Оценочные/эквивалентные сравнения с X запрещены («лучше/хуже [чем] X», «не хуже X»,
+        // «на уровне X») — нейтральный функциональный мэтч (без оценки) разрешён и не ловится.
+        if (preg_match('/подделк|контрафакт|реплик|копия бренда|официальн\w*\s+представител|(?:не\s+)?(?:лучше|хуже)(?:,?\s+чем)?\s+' . $x . '|на\s+уровне\s+' . $x . '/iu', $body, $m)) {
             return ["legal-denylist: «{$m[0]}»"];
         }
 
@@ -665,6 +730,25 @@ class ReplaceListicleCommand extends Command
         return implode("\n", $lines);
     }
 
+    /**
+     * Фикс-поля карточки бренда (приём Т—Ж): markdown-список «Кратко/Хиты/Цены/
+     * Город/Офлайн» из БД (BrandFactSheet) сразу после заголовка «## N. …» каждой замены.
+     *
+     * @param Brand[] $ordered
+     */
+    private function injectFactSheets(string $body, array $ordered): string
+    {
+        return (string) preg_replace_callback('/^##\s+(\d+)\.[^\n]*$/mu', function (array $m) use ($ordered): string {
+            $brand = $ordered[(int) $m[1] - 1] ?? null;
+            if ($brand === null) {
+                return $m[0];
+            }
+            $sheet = $this->factSheet->build($brand);
+
+            return $sheet === '' ? $m[0] : $m[0] . "\n\n" . $sheet;
+        }, $body);
+    }
+
     /** Оглавление из H2-секций статьи (UX + анкоры). */
     private function buildToc(string $body): string
     {
@@ -691,12 +775,41 @@ class ReplaceListicleCommand extends Command
     }
 
     /**
-     * JSON-LD детерминированно в коде: ItemList из замен (X не входит). Для своего
-     * блога — только ItemList (Article+author даёт шаблон), для внешних — Article.
-     *
-     * @param Brand[] $ordered
+     * Заголовок статьи: X всегда по имени (гейт «X в лид-блоке» проверяет тело, не title,
+     * но title тоже должен подтверждаться телом — заголовок без кликбейта). site — SEO-формат
+     * с годом; dzen — «живой голос» (позитивная интрига, item 2 ТЗ), НИКАКОГО принижения X.
      */
-    private function buildJsonLd(string $title, array $ordered, string $platform, string $campaign): string
+    private function buildTitle(string $anchorName, int $count, string $platform): string
+    {
+        if ($platform === 'dzen') {
+            return sprintf('Не бегите за %s: %d российских брендов, которые стоит присмотреть', $anchorName, $count);
+        }
+
+        return sprintf('Чем заменить %s в России: %d российских брендов (%s)', $anchorName, $count, date('Y'));
+    }
+
+    /**
+     * DrMax-freshness (docs/drmax_seo_2026_digest.md, «Свежесть — срок годности ~90 дней»):
+     * видимая дата обновления в HTML — сигнал Google/LLM, что материал не протух.
+     */
+    private function freshnessLabel(): string
+    {
+        $fmt = new \IntlDateFormatter('ru', \IntlDateFormatter::LONG, \IntlDateFormatter::NONE, null, \IntlDateFormatter::GREGORIAN, 'LLLL yyyy');
+        $label = (string) $fmt->format(new \DateTimeImmutable());
+
+        return mb_strtoupper(mb_substr($label, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($label, 1, null, 'UTF-8');
+    }
+
+    /**
+     * JSON-LD детерминированно в коде: ItemList из замен (X не входит) + FAQPage, если есть
+     * FAQ. Для своего блога — только ItemList (Article+author даёт шаблон), для внешних —
+     * Article. FAQPage сохраняем, даже если Google убрал rich-сниппет (docs/drmax_seo_2026_digest.md,
+     * «FAQ Rich Results — конец эпохи»): разметка всё ещё помогает LLM понимать контент/AIO.
+     *
+     * @param Brand[]                                           $ordered
+     * @param array<int,array{question:string,answer:string}>  $faq
+     */
+    private function buildJsonLd(string $title, array $ordered, array $faq, string $platform, string $campaign): string
     {
         $items = [];
         foreach ($ordered as $i => $b) {
@@ -719,23 +832,38 @@ class ReplaceListicleCommand extends Command
             ]];
         }
 
+        if ($faq !== []) {
+            $graph[] = [
+                '@type'      => 'FAQPage',
+                'mainEntity' => array_map(static fn(array $qa) => [
+                    '@type'          => 'Question',
+                    'name'           => $qa['question'],
+                    'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa['answer']],
+                ], $faq),
+            ];
+        }
+
         $data = ['@context' => 'https://schema.org', '@graph' => $graph];
 
         return (string) json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    private function renderDocument(string $title, string $persona, string $platform, string $toc, string $body, string $cta, string $jsonLd): string
+    private function renderDocument(string $title, string $persona, string $platform, string $toc, string $body, string $faqMd, string $cta, string $jsonLd): string
     {
         $tocSection = $toc === '' ? '' : "{$toc}\n\n";
+        $faqSection = $faqMd === '' ? '' : "\n\n{$faqMd}";
         $ctaSection = $cta === '' ? '' : "\n\n{$cta}";
         $ld = $jsonLd === '' ? '' : "\n\n---\n\n<script type=\"application/ld+json\">\n{$jsonLd}\n</script>";
+        $freshness = $this->freshnessLabel();
 
         return <<<MD
         <!-- площадка: {$platform} · автор-персона: {$persona} -->
 
         # {$title}
 
-        {$tocSection}{$body}{$ctaSection}{$ld}
+        Обновлено: {$freshness}
+
+        {$tocSection}{$body}{$faqSection}{$ctaSection}{$ld}
         MD;
     }
 
