@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Service\SecretCipher;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -29,6 +30,7 @@ class DailyReportCommand extends Command
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
         private readonly HttpClientInterface $httpClient,
+        private readonly SecretCipher $cipher,
         #[Autowire('%env(default::PROD_API_URL)%')]
         private readonly ?string $prodApiUrl,
         #[Autowire('%env(default::AGENT_API_TOKEN)%')]
@@ -37,6 +39,92 @@ class DailyReportCommand extends Command
         private readonly ?string $rsyaToken,
     ) {
         parent::__construct();
+    }
+
+    /**
+     * VK-сообщество (groups.getById, community-токен): подписчики. stats.get (охваты/реакции)
+     * недоступен community-токену (error_code 27, group auth) — не запрашиваем.
+     * Возвращает ['members','posts_total'] или null (нет канала/токена/ошибка API).
+     */
+    private function fetchVkStats(): ?array
+    {
+        $row = $this->db->fetchAssociative(
+            "SELECT id, target, token_enc FROM social_channel WHERE platform='vk' AND enabled=1 LIMIT 1",
+        );
+        if (!$row || !$row['token_enc']) {
+            return null;
+        }
+        try {
+            $token = $this->cipher->decrypt($row['token_enc']);
+            $groupId = ltrim((string) $row['target'], '-');
+            $resp = $this->httpClient->request('GET', 'https://api.vk.com/method/groups.getById', [
+                'query'   => ['group_id' => $groupId, 'fields' => 'members_count', 'access_token' => $token, 'v' => '5.199'],
+                'timeout' => 10,
+            ])->toArray(false);
+            $members = $resp['response']['groups'][0]['members_count'] ?? null;
+            if ($members === null) {
+                return null;
+            }
+            $postsTotal = (int) $this->db->fetchOne(
+                "SELECT COUNT(*) FROM social_post WHERE channel_id = ? AND status = 'published'",
+                [$row['id']],
+            );
+
+            return ['members' => (int) $members, 'posts_total' => $postsTotal];
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * IG (Instagram Login токен, graph.instagram.com): подписчики + число публикаций.
+     * Инсайты охвата требуют доп. scope сверх instagram_business_basic — не запрашиваем.
+     * Возвращает ['followers','media'] или null (нет канала/токена/ошибка API).
+     */
+    private function fetchIgStats(): ?array
+    {
+        $row = $this->db->fetchAssociative(
+            "SELECT target, token_enc FROM social_channel WHERE platform='ig' AND enabled=1 LIMIT 1",
+        );
+        if (!$row || !$row['token_enc']) {
+            return null;
+        }
+        try {
+            $token = $this->cipher->decrypt($row['token_enc']);
+            $resp = $this->httpClient->request('GET', "https://graph.instagram.com/v22.0/{$row['target']}", [
+                'query'   => ['fields' => 'followers_count,media_count', 'access_token' => $token],
+                'timeout' => 10,
+            ])->toArray(false);
+            if (!isset($resp['followers_count'], $resp['media_count'])) {
+                return null;
+            }
+
+            return ['followers' => (int) $resp['followers_count'], 'media' => (int) $resp['media_count']];
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Дзен не отдаёт статистику подписчиков по публичному API (студия за паспортом) — best-effort
+     * пробуем вытащить subscribersCount из HTML публичной страницы канала; страница SPA, поэтому
+     * fallback — число статей с текущей Дзен-копией в БД (что реально отдаётся в /rss/dzen.xml).
+     */
+    private function fetchDzenStats(): array
+    {
+        try {
+            $body = $this->httpClient->request('GET', 'https://dzen.ru/wearbase', ['timeout' => 10])->getContent(false);
+            if (preg_match('/"subscribersCount"\s*:\s*(\d+)/', $body, $m)) {
+                return ['subscribers' => (int) $m[1]];
+            }
+        } catch (\Throwable) {
+            // падаем в fallback ниже
+        }
+        $articlesInFeed = (int) $this->db->fetchOne(
+            "SELECT COUNT(*) FROM article_distribution WHERE platform = 'dzen' AND is_current = 1",
+        );
+
+        return ['articles_in_feed' => $articlesInFeed];
     }
 
     /**
@@ -195,6 +283,21 @@ class DailyReportCommand extends Command
             $rsyaLine .= '— (нет токена или API недоступен)';
         }
 
+        // --- Соцсети (VK/IG API напрямую; Дзен best-effort + fallback из БД) ---
+        $vk   = $this->fetchVkStats();
+        $ig   = $this->fetchIgStats();
+        $dzen = $this->fetchDzenStats();
+        $socialLine = sprintf(
+            "\n\n<b>📱 Соцсети:</b> VK %s подписч. (%s постов) · IG %s подписч. (%s публ.)\n<b>Дзен:</b> %s",
+            $vk !== null ? $vk['members'] : '—',
+            $vk !== null ? $vk['posts_total'] : '—',
+            $ig !== null ? $ig['followers'] : '—',
+            $ig !== null ? $ig['media'] : '—',
+            isset($dzen['subscribers'])
+                ? $dzen['subscribers'] . ' подписч.'
+                : ($dzen['articles_in_feed'] ?? '—') . ' статей в фиде (нет API статистики Дзена)',
+        );
+
         $msg = sprintf(
             "<b>📅 Дайджест · %s</b>\n\n" .
             "<b>Публикации (прод):</b> вчера %s · всего %s · ждут %s\n" .
@@ -203,7 +306,7 @@ class DailyReportCommand extends Command
             "Когорта 14д+ в индексе: %s\n" .
             "Последняя проверка: %s\n\n" .
             "<b>Яндекс:</b> в поиске %d (%s) · запросы: %s\n" .
-            "Последняя проверка: %s%s%s",
+            "Последняя проверка: %s%s%s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
             $pub['published_yesterday'], $pub['published_total'], $pub['queue_pending'],
             $pub['last_published'],
@@ -214,6 +317,7 @@ class DailyReportCommand extends Command
             $yaLast,
             $contactLine,
             $rsyaLine,
+            $socialLine,
         );
 
         $io->text(strip_tags($msg));
