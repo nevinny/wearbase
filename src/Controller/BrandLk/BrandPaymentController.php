@@ -41,7 +41,7 @@ class BrandPaymentController extends BrandDashboardController
 
         return $this->render('brand_lk/payments/index.html.twig', [
             'brand'               => $brand,
-            'legal_entities'      => $legalEntities->findBy(['brand' => $brand], ['id' => 'DESC']),
+            'legal_entities'      => $legalEntities->findVisibleForBrand($brand),
             'cipher_ready'        => $cipher->isConfigured(),
             'available_providers' => $providers->findActive(),
         ]);
@@ -82,7 +82,14 @@ class BrandPaymentController extends BrandDashboardController
     {
         $entity = $this->ownedLegalEntity($id, $em);
         if ($this->isCsrfTokenValid('le_delete_' . $id, (string) $request->request->get('_token'))) {
-            $em->remove($entity);
+            // Soft-delete: помечаем юр.лицо и его счета удалёнными (снимки в Order сохраняют FK).
+            $entity->setStatus(SellerLegalEntity::STATUS_DELETED);
+            foreach ($entity->getPaymentAccounts() as $account) {
+                if ($account->getStatus() !== SellerPaymentAccount::STATUS_DELETED) {
+                    $account->setStatus(SellerPaymentAccount::STATUS_DELETED);
+                    $account->setIsPrimary(false);
+                }
+            }
             $em->flush();
             $this->addFlash('success', 'Юр.лицо удалено');
         }
@@ -164,12 +171,17 @@ class BrandPaymentController extends BrandDashboardController
     {
         $brand = $this->getActiveBrand();
         $account = $em->getRepository(SellerPaymentAccount::class)->find($id);
-        if ($account === null || $account->getLegalEntity()?->getBrand()?->getId() !== $brand->getId()) {
+        if ($account === null
+            || $account->getLegalEntity()?->getBrand()?->getId() !== $brand->getId()
+            || $account->getStatus() === SellerPaymentAccount::STATUS_DELETED
+        ) {
             throw $this->createAccessDeniedException();
         }
 
         if ($this->isCsrfTokenValid('acc_delete_' . $id, (string) $request->request->get('_token'))) {
-            $em->remove($account);
+            // Soft-delete: помечаем счёт удалённым и снимаем признак основного.
+            $account->setStatus(SellerPaymentAccount::STATUS_DELETED);
+            $account->setIsPrimary(false);
             $em->flush();
             $this->addFlash('success', 'Счёт удалён');
         }
@@ -180,7 +192,10 @@ class BrandPaymentController extends BrandDashboardController
     private function ownedLegalEntity(int $id, EntityManagerInterface $em): SellerLegalEntity
     {
         $entity = $em->getRepository(SellerLegalEntity::class)->find($id);
-        if ($entity === null || $entity->getBrand()?->getId() !== $this->getActiveBrand()->getId()) {
+        if ($entity === null
+            || $entity->getBrand()?->getId() !== $this->getActiveBrand()->getId()
+            || $entity->getStatus() === SellerLegalEntity::STATUS_DELETED
+        ) {
             throw $this->createAccessDeniedException();
         }
 

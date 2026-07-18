@@ -29,6 +29,7 @@ class SellerLegalEntity
 
     public const STATUS_ACTIVE = 'active';
     public const STATUS_ARCHIVED = 'archived';
+    public const STATUS_DELETED = 'deleted';   // soft-delete (никогда не физический DELETE — см. CLAUDE.md)
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -169,5 +170,19 @@ class SellerLegalEntity
         $primary = $this->getPrimaryPaymentAccount();
 
         return $primary !== null && $primary->isReadyToAcceptOnline() ? $primary : null;
+    }
+
+    /**
+     * Счета, видимые в ЛК (не удалённые soft-delete). Для показа/подсчёта подключённых
+     * провайдеров — удалённые не должны «занимать» платёжку.
+     *
+     * @return list<SellerPaymentAccount>
+     */
+    public function getVisiblePaymentAccounts(): array
+    {
+        return array_values(array_filter(
+            $this->paymentAccounts->toArray(),
+            static fn (SellerPaymentAccount $a): bool => $a->getStatus() !== SellerPaymentAccount::STATUS_DELETED,
+        ));
     }
 }

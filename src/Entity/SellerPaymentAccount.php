@@ -27,6 +27,7 @@ class SellerPaymentAccount
 
     public const STATUS_ACTIVE = 'active';
     public const STATUS_DISABLED = 'disabled';
+    public const STATUS_DELETED = 'deleted';   // soft-delete (никогда не физический DELETE — см. CLAUDE.md)
 
     #[ORM\Id]
     #[ORM\GeneratedValue]

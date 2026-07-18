@@ -19,6 +19,23 @@ class SellerLegalEntityRepository extends ServiceEntityRepository
         parent::__construct($registry, SellerLegalEntity::class);
     }
 
+    /**
+     * Юр.лица бренда, видимые в ЛК (не удалённые soft-delete), новые сверху.
+     *
+     * @return list<SellerLegalEntity>
+     */
+    public function findVisibleForBrand(Brand $brand): array
+    {
+        return $this->createQueryBuilder('e')
+            ->andWhere('e.brand = :brand')
+            ->andWhere('e.status != :deleted')
+            ->setParameter('brand', $brand)
+            ->setParameter('deleted', SellerLegalEntity::STATUS_DELETED)
+            ->orderBy('e.id', 'DESC')
+            ->getQuery()
+            ->getResult();
+    }
+
     /** Действующее (active) юр.лицо бренда — продавец-of-record на сейчас. */
     public function findActiveForBrand(Brand $brand): ?SellerLegalEntity
     {

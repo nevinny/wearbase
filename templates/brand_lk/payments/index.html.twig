@@ -62,7 +62,7 @@
             <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Счета приёма оплаты</div>
 
             {# Подключение платёжек: активные провайдеры, ещё не подключённые к этому юр.лицу #}
-            {% set connected_codes = entity.paymentAccounts|map(a => a.provider.code) %}
+            {% set connected_codes = entity.visiblePaymentAccounts|map(a => a.provider.code) %}
             <div class="mb-4 flex flex-wrap gap-2">
                 {% for p in available_providers %}
                     {% if p.code not in connected_codes %}
@@ -77,7 +77,7 @@
                 {% endif %}
             </div>
 
-            {% if entity.paymentAccounts is empty %}
+            {% if entity.visiblePaymentAccounts is empty %}
                 <div class="text-xs text-gray-500">Счетов нет — оплата заказов через это юр.лицо невозможна.</div>
             {% else %}
                 <div class="overflow-x-auto rounded-lg border border-gray-100">
@@ -88,7 +88,7 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
-                        {% for acc in entity.paymentAccounts %}
+                        {% for acc in entity.visiblePaymentAccounts %}
                             <tr>
                                 <td class="px-4 py-2">{{ acc.provider.name }}</td>
                                 <td class="px-4 py-2 text-xs">{{ acc.mode == 'direct' ? 'Прямой' : 'Сплит' }}</td>

@@ -86,4 +86,29 @@ class SellerLegalEntityRepositoryTest extends KernelTestCase
 
         $this->assertNull($this->repo->findActiveForBrand($brand));
     }
+
+    public function testFindVisibleExcludesDeletedButKeepsActiveAndArchived(): void
+    {
+        $brand = $this->brand('brand-d');
+        $active   = $this->legalEntity($brand, SellerLegalEntity::STATUS_ACTIVE);
+        $archived = $this->legalEntity($brand, SellerLegalEntity::STATUS_ARCHIVED);
+        $this->legalEntity($brand, SellerLegalEntity::STATUS_DELETED);
+        $this->em->flush();
+
+        $visible = $this->repo->findVisibleForBrand($brand);
+        $ids = array_map(static fn (SellerLegalEntity $e) => $e->getId(), $visible);
+
+        $this->assertCount(2, $visible, 'Удалённое юр.лицо не должно попадать в листинг ЛК');
+        $this->assertContains($active->getId(), $ids);
+        $this->assertContains($archived->getId(), $ids);
+    }
+
+    public function testSoftDeletedEntityIsNotActive(): void
+    {
+        $brand = $this->brand('brand-e');
+        $this->legalEntity($brand, SellerLegalEntity::STATUS_DELETED);
+        $this->em->flush();
+
+        $this->assertNull($this->repo->findActiveForBrand($brand), 'Удалённое юр.лицо не должно быть продавцом-of-record');
+    }
 }
