@@ -4,10 +4,18 @@ namespace App\Command;
 
 use App\Entity\AioRemediation;
 use App\Entity\Brand;
+use App\Entity\BrandAttribute;
 use App\Entity\BrandContentRevision;
+use App\Entity\BrandDatapoint;
+use App\Entity\BrandFaq;
+use App\Entity\BrandRagPipeline;
 use App\Notification\AdminNotifier;
 use App\Repository\BrandContentRevisionRepository;
+use App\Repository\BrandFaqRepository;
 use App\Repository\BrandRepository;
+use App\Service\BrandRagService;
+use App\Service\ContentValidator;
+use App\Service\LlmService;
 use App\Service\Seo\AioQueryClassifier;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -24,51 +32,76 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Closed-loop авто-ремедиация AIO-утечки (docs/seo_sitewide_backlog.md HIGH#2,
  * docs/drmax_seo_2026_digest.md §5). Раньше срез генерил FAQ-кандидатов и слал
  * TG-кнопки «Применить/Отклонить» — сломано кросс-хостово (вебхук на проде,
- * данные на Mac). Теперь: detect → map → skip-гейты → generate+gate+auto-apply
- * через BrandContentVersioner, БЕЗ ручного подтверждения. Замер win/loss и
- * авто-rollback делает EvaluateExperimentsCommand — здесь только старт эксперимента.
+ * данные на Mac). Теперь: detect → map → ГИБРИД по типу бренда → generate/gate
+ * → auto-apply, БЕЗ ручного подтверждения.
  *
  * - detect: gsc_query_stats, группа brand_entity («чей бренд») через
  *   AioQueryClassifier, impressions≥min-impr, clicks=0, сорт по показам DESC.
  * - map: вычленяем имя бренда из запроса (маркеры группы brand_entity), матчим
  *   на опубликованный активный НЕ-foreign бренд (BrandRepository::findOneActiveByTitle,
  *   precision>recall). Не смэтчено / foreign — счётчик, skip.
- * - skip-гейты: (1) активная ревизия ещё PENDING (эксперимент в полёте — не
- *   стартуем новый поверх неизмеренного); (2) описание уже содержательное —
- *   ТОТ ЖЕ порог, что и generate-content (GenerateBrandContentCommand::
- *   MIN_REAL_DESCRIPTION_CHARS), не выдумываем новый.
- * - generate+gate+record: ПЕРЕИСПОЛЬЗУЕТ путь GenerateBrandContentCommand —
- *   эта команда инжектится как сервис и вызывается через run(--id=N
- *   --grounded-only[--dry-run]), а не дублирует RAG/quality-gate/versioner
- *   логику. Успех определяется дельтой counters()['processed'] до/после (нет
- *   фактов/не прошёл гейт → processed не растёт → skip+счётчик, без разбора причины —
- *   она уже в логе generate-content). Auto-apply = generate-content сам вызывает
- *   ensureBaseline()/record() при успехе; здесь только дописываем note='aio:{query}'
- *   на только что созданную активную ревизию для трассировки повода.
- * - audit: аудит-лог применённого — новая строка в aio_remediation
- *   (kind=description, status=applied, query, brand, applied_at,
- *   proposed_answer=сгенерированное description). Только в apply-режиме.
+ * - ГИБРИД по type бренда (owner-решение 2026-07-19, обоснование — DrMax: не
+ *   переписывать уже ранжирующееся, тонкое — генерить, богатое — добавлять
+ *   layered видимый блок, а не переписывать):
  *
- * Только Mac (dev, чтение gsc_query_stats + локальная ollama/RAG через generate-content).
+ *   THIN (описание < GenerateBrandContentCommand::MIN_REAL_DESCRIPTION_CHARS):
+ *   без изменений — тот же путь, что был раньше. skip-гейт: активная ревизия
+ *   ещё PENDING (эксперимент в полёте — не стартуем новый поверх неизмеренного).
+ *   Generate+gate ПЕРЕИСПОЛЬЗУЕТ GenerateBrandContentCommand — она инжектится
+ *   как сервис и вызывается через run(--id=N --grounded-only[--dry-run]), а не
+ *   дублирует RAG/quality-gate/versioner логику. Успех = дельта
+ *   counters()['processed'] до/после. Auto-apply = generate-content сам вызывает
+ *   ensureBaseline()/record(); здесь только дописываем note='aio:{query}' на
+ *   только что созданную активную ревизию + аудит-строка (kind=description).
+ *
+ *   RICH (описание ≥ порога — переписывать рискованно, ранжирование уже есть):
+ *   additive gap-блок, НЕ трогаем description/BrandContentVersioner.
+ *   1. Skip «уже покрыто», если на карточке уже рендерится детерминированный
+ *      HIGH#5-блок «Что за бренд X?» (tailwind/brand/show.html.twig, ТО ЖЕ
+ *      условие: city ИЛИ foundingYear ИЛИ видимый category-атрибут) ИЛИ у
+ *      бренда уже есть entity-FAQ (BrandFaqRepository::hasBrandEntityQuestion) —
+ *      не плодим дубль.
+ *   2. Иначе — grounded entity-FAQ: факты = описание + RAG-контекст
+ *      (BrandRagService, ТОТ ЖЕ способ сборки фактов, что GenerateBrandFaqCommand).
+ *      Нет фактов → skip. Один Q&A через LlmService::generateBrandFaq с
+ *      вопросом-затравкой «что за бренд/чей бренд», берём первую пару.
+ *      Гейт ContentValidator::isRefusal на ответ (+ сам факт, что LLM вернул
+ *      пустой список = grounded-отказ) → не прошёл → тот же skip-счётчик, что
+ *      у thin-гейта (единая строка сводки «нет фактов/гейт»).
+ *   3. --apply: persist BrandFaq(brand, question, answer, position=след.,
+ *      source=llm), бампаем BrandRagPipeline::contentChangedAt (та же механика
+ *      свежести, что GenerateBrandFaqCommand при FAQ_DONE) — НО faqStatus НЕ
+ *      трогаем: batch app:brand:faq (Wordstat-фразы, findForFaq требует
+ *      faqStatus IS NULL) должен остаться доступен этому бренду отдельно.
+ *      Аудит-строка aio_remediation(kind=faq, status=applied). --dry-run
+ *      (дефолт) — только превью.
+ *
+ * ⚠️ Честно: rich-ветка (доп. FAQ) НЕ измеряется и НЕ откатывается revision-
+ * loop'ом EvaluateExperimentsCommand — это additive-контент (не замена
+ * ранжирующегося текста), grounded+gated, риск низкий. Полноценный замер
+ * win/loss для FAQ — будущая доработка (не в этом срезе).
+ *
+ * Только Mac (dev, чтение gsc_query_stats + локальная ollama/RAG).
  *
  *   php bin/console app:seo:aio-remediate --limit=10 --min-impr=8            # dry-run (по умолчанию)
  *   php bin/console app:seo:aio-remediate --apply --limit=10 --notify
  */
 #[AsCommand(
     name: 'app:seo:aio-remediate',
-    description: 'AIO-утечка («чей бренд», gsc_query_stats) → closed-loop auto-apply grounded description через BrandContentVersioner',
+    description: 'AIO-утечка («чей бренд», gsc_query_stats) → гибрид thin-generate/rich-gap-FAQ closed-loop auto-apply',
 )]
 class AioRemediateCommand extends Command
 {
     /** Сколько строк gsc_query_stats перебрать в поисках $limit валидных кандидатов. */
     private const POOL_LIMIT = 300;
 
-    private int $applied            = 0; // применено (или было бы применено в dry-run)
-    private int $unmatched          = 0;
-    private int $foreignSkipped     = 0;
-    private int $pendingExperiment  = 0; // активная ревизия ещё не измерена
-    private int $alreadyStrong      = 0; // описание уже содержательное (MIN_REAL_DESCRIPTION_CHARS)
-    private int $gateSkipped        = 0; // generate-content не дал processed (нет фактов/QA/near-dup/ошибка)
+    private int $appliedThin       = 0; // thin: описание сгенерировано (или было бы в dry-run)
+    private int $appliedFaq        = 0; // rich: gap-FAQ добавлен (или было бы в dry-run)
+    private int $unmatched         = 0;
+    private int $foreignSkipped    = 0;
+    private int $pendingExperiment = 0; // thin: активная ревизия ещё не измерена
+    private int $alreadyCovered    = 0; // rich: HIGH#5-блок уже рендерится ИЛИ entity-FAQ уже есть
+    private int $gateSkipped       = 0; // thin: generate-content не дал processed; rich: нет фактов/isRefusal
 
     public function __construct(
         private readonly Connection $db,
@@ -76,7 +109,11 @@ class AioRemediateCommand extends Command
         private readonly AioQueryClassifier $classifier,
         private readonly BrandRepository $brandRepo,
         private readonly BrandContentRevisionRepository $revisionRepo,
+        private readonly BrandFaqRepository $faqRepo,
         private readonly GenerateBrandContentCommand $generateCommand,
+        private readonly BrandRagService $rag,
+        private readonly LlmService $llm,
+        private readonly ContentValidator $validator,
         private readonly AdminNotifier $adminNotifier,
     ) {
         parent::__construct();
@@ -88,7 +125,7 @@ class AioRemediateCommand extends Command
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Макс. брендов за прогон', '10')
             ->addOption('min-impr', null, InputOption::VALUE_REQUIRED, 'Порог показов для AIO-утечки', '8')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Превью (по умолчанию и так dry-run — флаг для явности в логах/кроне)')
-            ->addOption('apply', null, InputOption::VALUE_NONE, 'Реально применить (записать brand.*/versioner/audit)')
+            ->addOption('apply', null, InputOption::VALUE_NONE, 'Реально применить (записать brand.*/versioner/faq/audit)')
             ->addOption('notify', null, InputOption::VALUE_NONE, 'Слать информационную сводку в Telegram (текст, без кнопок)')
         ;
     }
@@ -102,9 +139,9 @@ class AioRemediateCommand extends Command
         $dryRun  = !$apply; // dry-run — дефолт; --dry-run — тот же смысл явно
         $notify  = (bool) $input->getOption('notify');
 
-        $io->title('SEO · AIO-ремедиация («чей бренд») — closed-loop auto-apply');
+        $io->title('SEO · AIO-ремедиация («чей бренд») — гибрид thin-generate/rich-gap-FAQ');
         if ($dryRun) {
-            $io->note('dry-run: превью, без записи brand.*/versioner/audit (нужен --apply)');
+            $io->note('dry-run: превью, без записи brand.*/versioner/faq/audit (нужен --apply)');
         }
 
         $rows = $this->fetchLeakQueries($minImpr);
@@ -166,10 +203,10 @@ class AioRemediateCommand extends Command
     }
 
     /**
-     * map → skip-гейты → generate+gate (reuse GenerateBrandContentCommand) → auto-apply → audit.
+     * map → гибрид-роутинг по содержательности описания (thin/rich) → соответствующая ветка.
      * null — пропущен (соответствующий счётчик уже увеличен).
      *
-     * @return ?array{brand:string,query:string,impressions:int}
+     * @return ?array{brand:string,query:string,impressions:int,kind:string}
      */
     private function processQuery(string $query, int $impressions, bool $dryRun): ?array
     {
@@ -189,26 +226,34 @@ class AioRemediateCommand extends Command
             return null;
         }
 
-        // skip-гейт 1: эксперимент в полёте — не стартуем новый поверх неизмеренного.
+        // Гибрид-развилка: тот же порог, что и generate-content, — не выдумываем новый
+        // критерий «содержательное описание».
+        $existingDescription = trim((string) $brand->getDescription());
+        if (mb_strlen($existingDescription) < GenerateBrandContentCommand::MIN_REAL_DESCRIPTION_CHARS) {
+            return $this->processThin($brand, $query, $impressions, $dryRun);
+        }
+
+        return $this->processRich($brand, $query, $impressions, $dryRun);
+    }
+
+    /**
+     * THIN: описание тонкое — переиспользуем полный путь GenerateBrandContentCommand
+     * (grounded RAG, refusal/QA/near-dup гейты, versioner.record при успехе).
+     *
+     * @return ?array{brand:string,query:string,impressions:int,kind:string}
+     */
+    private function processThin(Brand $brand, string $query, int $impressions, bool $dryRun): ?array
+    {
+        // skip-гейт: эксперимент в полёте — не стартуем новый поверх неизмеренного.
         $active = $this->revisionRepo->findActive($brand);
         if ($active !== null && $active->getVerdict() === BrandContentRevision::VERDICT_PENDING) {
             $this->pendingExperiment++;
             return null;
         }
 
-        // skip-гейт 2: описание уже содержательное — тот же порог, что в generate-content
-        // (не выдумываем новый критерий «сильное/свежее»).
-        $existingDescription = trim((string) $brand->getDescription());
-        if (mb_strlen($existingDescription) >= GenerateBrandContentCommand::MIN_REAL_DESCRIPTION_CHARS) {
-            $this->alreadyStrong++;
-            return null;
-        }
-
         $brandId = $brand->getId();
         $brandTitle = (string) $brand->getTitle();
 
-        // Generate+gate: тот же путь, что batch/--id прогон generate-content (grounded RAG,
-        // refusal/QA/near-dup гейты, versioner.record при успехе) — reuse, не дублируем.
         $genOptions = [
             '--id'            => (string) $brandId,
             '--grounded-only' => true,
@@ -247,9 +292,140 @@ class AioRemediateCommand extends Command
             $this->em->clear();
         }
 
-        $this->applied++;
+        $this->appliedThin++;
 
-        return ['brand' => $brandTitle, 'query' => $query, 'impressions' => $impressions];
+        return ['brand' => $brandTitle, 'query' => $query, 'impressions' => $impressions, 'kind' => 'thin'];
+    }
+
+    /**
+     * RICH: описание уже содержательное (переписывать рискованно — DrMax) — additive
+     * gap-блок: один grounded entity-FAQ («что за бренд/чей бренд») поверх страницы.
+     *
+     * @return ?array{brand:string,query:string,impressions:int,kind:string}
+     */
+    private function processRich(Brand $brand, string $query, int $impressions, bool $dryRun): ?array
+    {
+        if ($this->isEntityCoverageAlreadyPresent($brand)) {
+            $this->alreadyCovered++;
+            return null;
+        }
+
+        $brandId = $brand->getId();
+        $brandTitle = (string) $brand->getTitle();
+
+        // Факты: описание бренда (он-пейдж истина) + RAG-корпус, если прошёл gate —
+        // ТОТ ЖЕ способ сборки, что GenerateBrandFaqCommand.
+        $facts = trim((string) $brand->getDescription());
+        $ragContext = $this->rag->retrieve($brand)['context'];
+        if ($ragContext !== null) {
+            $facts .= "\n\nДополнительные факты из источников:\n" . $ragContext;
+        }
+        if ($facts === '') {
+            $this->gateSkipped++;
+            return null;
+        }
+
+        // Вопрос-затравка entity-интента («что за бренд / чей бренд») — не Wordstat-фразы,
+        // нам нужен ровно один детерминированный Q&A под HIGH#2-утечку, а не полный FAQ.
+        $seeds = [
+            sprintf('что за бренд %s?', $brandTitle),
+            sprintf('%s чей бренд', $brandTitle),
+        ];
+        try {
+            $qa = $this->llm->generateBrandFaq($brandTitle, $seeds, $facts, $brand->getCity());
+        } catch (\Throwable) {
+            // Сетевая/LLM-ошибка не должна ронять весь batch-прогон (как в GenerateBrandFaqCommand).
+            $this->gateSkipped++;
+            $this->em->clear();
+            return null;
+        }
+        if ($qa === []) {
+            // Модель сама grounded-отказалась (нет фактов под вопрос) — тот же счётчик, что thin-гейт.
+            $this->gateSkipped++;
+            return null;
+        }
+
+        $pair = $qa[0];
+        if ($this->validator->isRefusal($pair['answer'])) {
+            $this->gateSkipped++;
+            return null;
+        }
+
+        if (!$dryRun) {
+            $freshBrand = $this->em->find(Brand::class, $brandId) ?? $brand;
+            $position = count($this->faqRepo->findByBrandOrdered($freshBrand));
+
+            $this->em->persist((new BrandFaq())
+                ->setBrand($freshBrand)
+                ->setQuestion($pair['question'])
+                ->setAnswer($pair['answer'])
+                ->setPosition($position)
+                ->setSource(BrandFaq::SOURCE_LLM));
+
+            // Свежесть для push-конвейера на прод — та же механика, что GenerateBrandFaqCommand
+            // при FAQ_DONE. faqStatus НЕ трогаем: batch app:brand:faq (Wordstat-фразы,
+            // findForFaq требует faqStatus IS NULL) должен остаться доступен этому бренду.
+            $this->em->getRepository(BrandRagPipeline::class)
+                ->getOrCreate($freshBrand)
+                ->setContentChangedAt(new \DateTime());
+
+            $this->em->persist((new AioRemediation())
+                ->setBrand($freshBrand)
+                ->setQuery($query)
+                ->setKind(AioRemediation::KIND_FAQ)
+                ->setProposedQuestion(mb_substr($pair['question'], 0, 255))
+                ->setProposedAnswer($pair['answer'])
+                ->setStatus(AioRemediation::STATUS_APPLIED)
+                ->setAppliedAt(new \DateTime()));
+
+            $this->em->flush();
+            $this->em->clear();
+        }
+
+        $this->appliedFaq++;
+
+        return ['brand' => $brandTitle, 'query' => $query, 'impressions' => $impressions, 'kind' => 'faq'];
+    }
+
+    /**
+     * «Уже покрыто» для rich-ветки: (а) на карточке уже рендерится детерминированный
+     * HIGH#5-блок «Что за бренд X?» — ТО ЖЕ условие, что tailwind/brand/show.html.twig
+     * (_short_has_bio = brand.city or brand.foundingYear or attrGroups['category']);
+     * ИЛИ (б) у бренда уже есть entity-FAQ.
+     */
+    private function isEntityCoverageAlreadyPresent(Brand $brand): bool
+    {
+        if ($brand->getCity() || $brand->getFoundingYear()) {
+            return true;
+        }
+        if ($this->hasVisibleCategoryAttribute($brand)) {
+            return true;
+        }
+
+        return $this->faqRepo->hasBrandEntityQuestion($brand);
+    }
+
+    /**
+     * attrGroups['category'] в show.html.twig отфильтрован от краудсорс-скрытых точек
+     * (BrandDatapoint state=hidden) — воспроизводим тот же фильтр, иначе «уже покрыто»
+     * ложно сработает на атрибуте, который на странице фактически не виден.
+     */
+    private function hasVisibleCategoryAttribute(Brand $brand): bool
+    {
+        $hiddenAttrIds = [];
+        foreach ($this->em->getRepository(BrandDatapoint::class)->findHiddenByBrand($brand) as $dp) {
+            if ($dp->getTargetType() === BrandDatapoint::TYPE_ATTRIBUTE && $dp->getField() === 'value') {
+                $hiddenAttrIds[$dp->getTargetId()] = true;
+            }
+        }
+
+        foreach ($this->em->getRepository(BrandAttribute::class)->findBy(['brand' => $brand, 'name' => BrandAttribute::NAME_CATEGORY]) as $attr) {
+            if (!isset($hiddenAttrIds[$attr->getId()])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -277,14 +453,14 @@ class AioRemediateCommand extends Command
         return $name !== '' ? $name : null;
     }
 
-    /** @param array<int,array{brand:string,query:string,impressions:int}> $results */
+    /** @param array<int,array{brand:string,query:string,impressions:int,kind:string}> $results */
     private function printResults(SymfonyStyle $io, array $results): void
     {
         if ($results !== []) {
             $io->table(
-                ['Бренд', 'Запрос', 'Показы'],
+                ['Бренд', 'Запрос', 'Показы', 'Ветка'],
                 array_map(
-                    static fn(array $r) => [$r['brand'], mb_substr($r['query'], 0, 40), $r['impressions']],
+                    static fn(array $r) => [$r['brand'], mb_substr($r['query'], 0, 40), $r['impressions'], $r['kind']],
                     $results,
                 ),
             );
@@ -292,16 +468,17 @@ class AioRemediateCommand extends Command
 
         $io->newLine();
         $io->table(['Результат', 'Кол-во'], [
-            ['Применено (auto-apply)',                  $this->applied],
-            ['Не смэтчено на бренд',                     $this->unmatched],
-            ['Foreign — пропущено',                      $this->foreignSkipped],
-            ['Эксперимент в полёте (PENDING) — пропуск', $this->pendingExperiment],
-            ['Описание уже содержательное — пропуск',    $this->alreadyStrong],
+            ['Thin — описание сгенерировано',            $this->appliedThin],
+            ['Rich — gap-FAQ добавлен',                   $this->appliedFaq],
+            ['Rich — уже покрыто (блок/FAQ)',             $this->alreadyCovered],
             ['Нет фактов / не прошёл гейт',               $this->gateSkipped],
+            ['Не смэтчено на бренд',                      $this->unmatched],
+            ['Foreign — пропущено',                       $this->foreignSkipped],
+            ['Thin — эксперимент в полёте (PENDING)',     $this->pendingExperiment],
         ]);
     }
 
-    /** @param array<int,array{brand:string,query:string,impressions:int}> $results */
+    /** @param array<int,array{brand:string,query:string,impressions:int,kind:string}> $results */
     private function notify(array $results, bool $dryRun): void
     {
         $verb = $dryRun ? 'было бы применено (dry-run)' : 'применено';
@@ -312,7 +489,12 @@ class AioRemediateCommand extends Command
         }
 
         $lines = array_map(
-            static fn(array $r) => sprintf('%s ← %s', htmlspecialchars($r['brand']), htmlspecialchars($r['query'])),
+            static fn(array $r) => sprintf(
+                '%s ← %s [%s]',
+                htmlspecialchars($r['brand']),
+                htmlspecialchars($r['query']),
+                $r['kind'] === 'faq' ? 'rich-FAQ' : 'thin',
+            ),
             $results,
         );
 

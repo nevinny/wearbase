@@ -11,11 +11,18 @@ use Doctrine\ORM\Mapping as ORM;
  * clicks=0) app:seo:aio-remediate теперь closed-loop — auto-apply через
  * BrandContentVersioner (grounded-описание бренда, quality-gate, окно замера
  * ведёт EvaluateExperimentsCommand). Каждая применённая строка сразу пишется
- * сюда со status=applied (KIND_DESCRIPTION) — pending/rejected/TG-кнопки
- * (aioapply:/aioreject:) убраны, ручного подтверждения больше нет.
+ * сюда со status=applied — pending/rejected/TG-кнопки (aioapply:/aioreject:)
+ * убраны, ручного подтверждения больше нет.
  *
- * KIND_FAQ — legacy: старые pending-кандидаты FAQ (до перехода на closed-loop),
- * их обработчик в TelegramController удалён — они остаются в БД неприменёнными.
+ * Гибрид по типу бренда (owner-решение, DrMax: не переписывать ранжирующееся):
+ * KIND_DESCRIPTION — thin-бренд (описание < MIN_REAL_DESCRIPTION_CHARS),
+ * grounded-регенерация description через GenerateBrandContentCommand.
+ * KIND_FAQ — rich-бренд (описание уже содержательное, переписывать рискованно):
+ * additive entity-FAQ (один grounded Q&A «что за бренд/чей бренд») поверх
+ * страницы, без замера revision-loop'ом (низкий риск: additive+grounded+gated).
+ * Старые pending-строки KIND_FAQ до перехода на closed-loop (их обработчик в
+ * TelegramController удалён) остались в БД неприменёнными — не путать со
+ * status=applied, которые пишет текущий rich-путь.
  */
 #[ORM\Entity(repositoryClass: AioRemediationRepository::class)]
 #[ORM\Table(name: 'aio_remediation')]
@@ -28,9 +35,9 @@ class AioRemediation
     public const STATUS_APPLIED  = 'applied';
     public const STATUS_REJECTED = 'rejected';
 
-    /** @deprecated legacy-кандидаты Q/A до перехода на closed-loop (описание бренда). */
+    /** Rich-бренд: additive grounded entity-FAQ поверх страницы (app:seo:aio-remediate). */
     public const KIND_FAQ = 'faq';
-    /** Closed-loop: grounded-регенерация description бренда (app:seo:aio-remediate). */
+    /** Thin-бренд: grounded-регенерация description бренда (app:seo:aio-remediate). */
     public const KIND_DESCRIPTION = 'description';
 
     #[ORM\Id]
