@@ -19,10 +19,12 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 /**
  * Только Mac. Прод-дрип (app:brand:publish-tick) флипает публикацию НА ПРОДЕ,
  * назад в Mac это не зеркалится — Mac-статусы/`published_at` со временем врут.
- * Команда тянет с прода реально опубликованные бренды (agent-API
- * GET /api/v1/brands/published) и приводит Mac в соответствие через доменный
- * `Brand::publish($prodPublishedAt)` — по slug (ключ сопоставления prod↔dev,
- * id разные autoincrement'ы).
+ * Команда тянет с прода полный active-набор (agent-API GET /api/v1/brands/published,
+ * hours=0 → status='active', включая 294 легаси-бренда без published_at) и приводит
+ * Mac в ТОЧНОЕ соответствие — по slug (ключ сопоставления prod↔dev, id разные
+ * autoincrement'ы): status копируется в active, published_at копируется вербатим
+ * (включая null у легаси) — никакого фабрикования now(), Mac должен быть побитово
+ * тем же, что прод.
  *
  * Обратной синхронизации (снятие с публикации) НЕТ — если бренда нет в прод-ответе,
  * Mac не трогаем, это не задача команды.
@@ -119,34 +121,44 @@ class BrandPublishSyncCommand extends Command
                 continue;
             }
 
-            if ($brand->getStatus() === Statuses::Active && $brand->getPublishedAt() !== null) {
+            if (in_array($brand->getStatus(), [Statuses::Deleted, Statuses::System], true)) {
+                // Удалён/системный на Mac, а на проде active — реальный рассинхрон,
+                // активировать вслепую нельзя (нужно ручное решение).
+                $conflictSlugs[] = $slug;
+                $io->progressAdvance();
+                continue;
+            }
+
+            $prodStr = $item['published_at'] ?? null;
+            $prodDate = $prodStr ? \DateTime::createFromFormat('Y-m-d H:i:s', (string) $prodStr) : null;
+            if (!$prodDate instanceof \DateTime) {
+                $prodDate = null;
+            }
+
+            $macStr = $brand->getPublishedAt()?->format('Y-m-d H:i:s');
+            $needStatus = $brand->getStatus() !== Statuses::Active;
+            $needDate = $macStr !== $prodStr;
+
+            if (!$needStatus && !$needDate) {
                 $already++;
                 $io->progressAdvance();
                 continue;
             }
 
-            $prodPublishedAtRaw = $item['published_at'] ?? null;
-            $prodPublishedAt = $prodPublishedAtRaw ? \DateTime::createFromFormat('Y-m-d H:i:s', (string) $prodPublishedAtRaw) : null;
-            $prodPublishedAt = $prodPublishedAt instanceof \DateTime ? $prodPublishedAt : null;
-
             if ($dryRun) {
                 $wouldSync++;
                 $io->text("  → синканем: {$slug}");
-            } elseif ($brand->getStatus() === Statuses::Active) {
-                // Сюда попадает только active БЕЗ published_at (иначе бы ушёл в $already выше):
-                // publish() для active — no-op и дату НЕ проставит, поэтому бэкфиллим напрямую.
-                // Иначе такой бренд «синкался» бы каждый прогон, оставаясь без даты (не идемпотентно).
-                $brand->setPublishedAt($prodPublishedAt ?? new \DateTime('now', new \DateTimeZone('Europe/Moscow')));
-                $synced++;
             } else {
-                try {
-                    $brand->publish($prodPublishedAt);
-                    $synced++;
-                } catch (\DomainException) {
-                    // Deleted/system на Mac, а на проде опубликован — реальный рассинхрон,
-                    // публиковать вслепую нельзя (нужно ручное решение).
-                    $conflictSlugs[] = $slug;
+                if ($needStatus) {
+                    $brand->setStatus(Statuses::Active);
+                    $brand->setPublishPending(false);
                 }
+                if ($needDate) {
+                    // Вербатим-копия прод-даты, включая null у легаси — точное зеркало,
+                    // никакого фабрикования now().
+                    $brand->setPublishedAt($prodDate);
+                }
+                $synced++;
             }
 
             $processed++;

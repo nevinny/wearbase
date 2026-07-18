@@ -484,7 +484,7 @@ class BrandIngestController extends AbstractController
      * ID/slug брендов, опубликованных дрипом (app:brand:publish-tick) за последние N часов —
      * dev не видит, что реально вывел дрип на проде (публикация происходит только тут).
      *
-     * hours=0 → все опубликованные (для полного синка prod→Mac, app:brand:publish-sync).
+     * hours=0 → все active (полный опубликованный набор, published_at может быть null у легаси).
      */
     #[Route('/brands/published', name: 'api_brands_published', methods: ['GET'])]
     public function publishedRecent(
@@ -499,8 +499,11 @@ class BrandIngestController extends AbstractController
         $hours = (int) $request->query->get('hours', 24);
         if ($hours <= 0) {
             $since = null;
+            // Опубликовано = status='active' (853), а не published_at IS NOT NULL (559) —
+            // 294 легаси-бренда (сид 11.2025) активны на витрине, но предшествуют дрипу
+            // и published_at у них NULL. Полный синк должен видеть весь active-набор.
             $rows = $em->getConnection()->fetchAllAssociative(
-                'SELECT id, slug, title, published_at FROM brand WHERE published_at IS NOT NULL ORDER BY published_at DESC',
+                "SELECT id, slug, title, published_at FROM brand WHERE status = 'active' ORDER BY published_at DESC, id DESC",
             );
         } else {
             $hours = max(1, min(168, $hours));
