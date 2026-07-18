@@ -68,6 +68,39 @@ class GscClient
     }
 
     /**
+     * Search Analytics: дневные агрегаты по ТЕКСТУ ЗАПРОСА (второй pull, отдельный от
+     * searchAnalyticsByPage — нужен для regex-свипа под AI Overviews, gsc_query_stats).
+     *
+     * @return array<int,array{query:string,date:string,impressions:int,clicks:int,ctr:float,position:float}>
+     */
+    public function searchAnalyticsByQuery(\DateTimeInterface $from, \DateTimeInterface $to, int $rowLimit = 25000): array
+    {
+        $data = $this->post(
+            'https://searchconsole.googleapis.com/webmasters/v3/sites/' . rawurlencode((string) $this->siteUrl) . '/searchAnalytics/query',
+            [
+                'startDate'  => $from->format('Y-m-d'),
+                'endDate'    => $to->format('Y-m-d'),
+                'dimensions' => ['query', 'date'],
+                'rowLimit'   => $rowLimit,
+            ],
+        );
+
+        $out = [];
+        foreach (($data['rows'] ?? []) as $row) {
+            $out[] = [
+                'query'       => (string) ($row['keys'][0] ?? ''),
+                'date'        => (string) ($row['keys'][1] ?? ''),
+                'impressions' => (int) ($row['impressions'] ?? 0),
+                'clicks'      => (int) ($row['clicks'] ?? 0),
+                'ctr'         => round((float) ($row['ctr'] ?? 0), 4),
+                'position'    => round((float) ($row['position'] ?? 0), 1),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * URL Inspection (лимит Google 2000/день — квоту бережёт вызывающий).
      *
      * @return array{verdict:string,coverageState:?string,indexed:bool}

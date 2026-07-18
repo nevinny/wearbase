@@ -16,6 +16,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Синк Google Search Console (cron 1 раз в день, дизайн «аналитика+GSC»):
  *  1. Search Analytics одним батчем (до 25k строк, лаг GSC ~2-3 дня) → gsc_page_stats;
  *     brand_id резолвится по slug (срезая /{locale}/brands/) — суммирует 9 локалей.
+ *  1a. Второй батч Search Analytics — dimensions=['query','date'] → gsc_query_stats
+ *     (отдельный запрос, отдельная квота-строка; нужен для regex-свипа запросов под
+ *     AI Overviews, см. app:seo:aio-queries). gsc_page_stats.query всегда NULL — это
+ *     агрегат по странице, не по тексту запроса.
  *  1b. Индекс по Search Analytics: бренд с показами (ЛЮБАЯ локаль) = де-факто в индексе
  *     (показ невозможен без индексации). Помечаем indexed=1 БЕЗ инспекции — иначе инспекция
  *     одного ru-URL недосчитывает индексацию в разы (ранжируется en/tr/…, а ru ещё нет).
@@ -33,7 +37,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 #[AsCommand(
     name: 'app:gsc:sync',
-    description: 'GSC: Search Analytics + покрытие индекса → gsc_page_stats / gsc_index_status',
+    description: 'GSC: Search Analytics + покрытие индекса → gsc_page_stats / gsc_query_stats / gsc_index_status',
 )]
 class SyncGscCommand extends Command
 {
@@ -75,6 +79,7 @@ class SyncGscCommand extends Command
         try {
             if (!$input->getOption('inspect-only')) {
                 $this->syncAnalytics($io);
+                $this->syncQueryAnalytics($io);
                 $this->markServedFromAnalytics($io);
             }
             if (!$input->getOption('analytics-only')) {
@@ -121,6 +126,44 @@ class SyncGscCommand extends Command
             $upserted++;
         }
         $io->text("Upsert в gsc_page_stats: {$upserted}");
+    }
+
+    /**
+     * Второй pull Search Analytics — dimensions=['query','date'] → gsc_query_stats.
+     * Отдельный от syncAnalytics() запрос (та же квота-логика, отдельная строка запроса),
+     * т.к. GSC агрегирует show-per-page и show-per-query по-разному — их нельзя получить
+     * одним вызовом без взрыва размера ответа (query×page). Разблокирует regex-свип
+     * запросов под AI Overviews (docs/drmax_seo_2026_digest.md §5) — см. app:seo:aio-queries.
+     */
+    private function syncQueryAnalytics(SymfonyStyle $io): void
+    {
+        $to   = (new \DateTime('-2 days'));
+        $from = (new \DateTime(sprintf('-%d days', 2 + self::ANALYTICS_DAYS)));
+
+        $rows = $this->gsc->searchAnalyticsByQuery($from, $to);
+        $io->text(sprintf('Search Analytics (query): %d строк (%s … %s)', count($rows), $from->format('Y-m-d'), $to->format('Y-m-d')));
+
+        $upserted = 0;
+        foreach ($rows as $row) {
+            if ($row['query'] === '' || $row['date'] === '') {
+                continue;
+            }
+            $this->db->executeStatement(
+                'INSERT INTO gsc_query_stats (query, day, impressions, clicks, ctr, position)
+                 VALUES (:query, :day, :imp, :clicks, :ctr, :pos)
+                 ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, ctr = :ctr, position = :pos',
+                [
+                    'query'   => mb_substr($row['query'], 0, 255),
+                    'day'     => $row['date'],
+                    'imp'     => $row['impressions'],
+                    'clicks'  => $row['clicks'],
+                    'ctr'     => $row['ctr'],
+                    'pos'     => $row['position'],
+                ],
+            );
+            $upserted++;
+        }
+        $io->text("Upsert в gsc_query_stats: {$upserted}");
     }
 
     /**
