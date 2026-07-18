@@ -33,8 +33,52 @@ class DailyReportCommand extends Command
         private readonly ?string $prodApiUrl,
         #[Autowire('%env(default::AGENT_API_TOKEN)%')]
         private readonly ?string $agentToken,
+        #[Autowire('%env(default::YANDEX_PARTNER_TOKEN)%')]
+        private readonly ?string $rsyaToken,
     ) {
         parent::__construct();
+    }
+
+    /**
+     * Доход/показы РСЯ за вчера через Partner Statistics API.
+     * Возвращает ['revenue','impressions','clicks','ecpm'] или null (токен пуст / ошибка / прод-блок).
+     * Ответ statistics2: data.totals[<currency_id>][0] — ассоц. по имени поля; RUB = id "2".
+     * partner_wo_nds — вознаграждение партнёра без НДС (доход).
+     */
+    private function fetchRsyaYesterday(): ?array
+    {
+        if (trim((string) $this->rsyaToken) === '') {
+            return null;
+        }
+        try {
+            // API ждёт повторяющийся ?field=…&field=…; Symfony query-массив дал бы field[0]= → 400.
+            // Поэтому query-строку собираем сами.
+            $fields = ['impressions', 'clicks', 'partner_wo_nds', 'ecpm_partner_wo_nds'];
+            $qs = 'lang=ru&period=yesterday&dimension_field=' . rawurlencode('date|day')
+                . '&' . implode('&', array_map(fn($f) => 'field=' . $f, $fields));
+            $resp = $this->httpClient->request('GET', 'https://partner.yandex.ru/api/statistics2/get.json?' . $qs, [
+                'headers' => ['Authorization' => 'OAuth ' . $this->rsyaToken],
+                'timeout' => 10,
+            ])->toArray(false);
+
+            $totals = $resp['data']['totals'] ?? null;
+            if (!is_array($totals) || $totals === []) {
+                return null;
+            }
+            // RUB = "2"; иначе первая доступная валюта
+            $row = ($totals['2'][0] ?? null) ?? (reset($totals)[0] ?? null);
+            if (!is_array($row)) {
+                return null;
+            }
+            return [
+                'impressions' => (int) round((float) ($row['impressions'] ?? 0)),
+                'clicks'      => (int) round((float) ($row['clicks'] ?? 0)),
+                'revenue'     => (float) ($row['partner_wo_nds'] ?? 0),
+                'ecpm'        => (float) ($row['ecpm_partner_wo_nds'] ?? 0),
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     protected function configure(): void
@@ -136,6 +180,21 @@ class DailyReportCommand extends Command
             );
         }
 
+        // --- РСЯ (доход/показы за вчера; Partner API, только с Mac) ---
+        $rsya    = $this->fetchRsyaYesterday();
+        $rsyaLine = "\n\n<b>💰 РСЯ (вчера):</b> ";
+        if ($rsya !== null) {
+            $rsyaLine .= sprintf(
+                'доход %s ₽ · показы %s · клики %d · eCPM %s ₽',
+                number_format($rsya['revenue'], 2, '.', ' '),
+                number_format($rsya['impressions'], 0, '.', ' '),
+                $rsya['clicks'],
+                number_format($rsya['ecpm'], 2, '.', ' '),
+            );
+        } else {
+            $rsyaLine .= '— (нет токена или API недоступен)';
+        }
+
         $msg = sprintf(
             "<b>📅 Дайджест · %s</b>\n\n" .
             "<b>Публикации (прод):</b> вчера %s · всего %s · ждут %s\n" .
@@ -144,7 +203,7 @@ class DailyReportCommand extends Command
             "Когорта 14д+ в индексе: %s\n" .
             "Последняя проверка: %s\n\n" .
             "<b>Яндекс:</b> в поиске %d (%s) · запросы: %s\n" .
-            "Последняя проверка: %s%s",
+            "Последняя проверка: %s%s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
             $pub['published_yesterday'], $pub['published_total'], $pub['queue_pending'],
             $pub['last_published'],
@@ -154,6 +213,7 @@ class DailyReportCommand extends Command
             $yaInSearch, $yaTypesTxt, $yaQtxt,
             $yaLast,
             $contactLine,
+            $rsyaLine,
         );
 
         $io->text(strip_tags($msg));
