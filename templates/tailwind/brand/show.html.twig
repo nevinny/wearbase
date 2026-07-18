@@ -401,6 +401,11 @@
                     </section>
                 {% endif %}
 
+                {# --- Реклама РСЯ --- #}
+                <div class="mb-6">
+                    {% include 'tailwind/_yandex_rsa_block.html.twig' with {block_id: 'R-A-19612178-1'} %}
+                </div>
+
                 {# --- Товары бренда --- #}
                 {% if products is defined and products|length > 0 %}
                     <section class="bg-white rounded-xl shadow-sm p-6">

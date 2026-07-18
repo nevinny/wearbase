@@ -1,0 +1,15 @@
+{# Рекламный блок РСЯ. Загрузчик context.js подключён в base.html.twig (head).
+   Использование: {% include 'tailwind/_yandex_rsa_block.html.twig' with {block_id: 'R-A-19612178-1'} %}
+   На одной странице каждый block_id должен встречаться один раз (renderTo — уникальный id). #}
+{% set rsa_block_id = block_id|default('R-A-19612178-1') %}
+<!-- Yandex.RTB {{ rsa_block_id }} -->
+<div id="yandex_rtb_{{ rsa_block_id }}"></div>
+<script>
+window.yaContextCb=window.yaContextCb||[];
+window.yaContextCb.push(() => {
+    Ya.Context.AdvManager.render({
+        "blockId": "{{ rsa_block_id }}",
+        "renderTo": "yandex_rtb_{{ rsa_block_id }}"
+    })
+})
+</script>
