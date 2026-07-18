@@ -4,6 +4,7 @@ namespace App\Command;
 
 use App\Notification\AdminNotifier;
 use App\Service\SecretCipher;
+use App\Service\Seo\AioQueryClassifier;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -31,6 +32,7 @@ class DailyReportCommand extends Command
         private readonly AdminNotifier $notifier,
         private readonly HttpClientInterface $httpClient,
         private readonly SecretCipher $cipher,
+        private readonly AioQueryClassifier $aio,
         #[Autowire('%env(default::PROD_API_URL)%')]
         private readonly ?string $prodApiUrl,
         #[Autowire('%env(default::AGENT_API_TOKEN)%')]
@@ -243,6 +245,47 @@ class DailyReportCommand extends Command
         }
     }
 
+    /**
+     * AIO-радар приоритетов: запросы с показами, но нулём кликов (клик забирает
+     * AI Overview / выдача), где формат запроса вероятно триггерит AIO
+     * (AioQueryClassifier — тот же, что в app:seo:aio-queries). Из gsc_query_stats
+     * (локальная БД). Пусто → нет данных/утечки. Кап $limit.
+     *
+     * @return list<array{query:string,impr:int,pos:float,label:string}>
+     */
+    private function fetchAioLeakQueries(int $minImpr = 8, int $limit = 5): array
+    {
+        try {
+            $rows = $this->db->fetchAllAssociative(
+                'SELECT query, SUM(impressions) impr, SUM(clicks) clk, AVG(position) pos
+                 FROM gsc_query_stats GROUP BY query
+                 HAVING impr >= ? AND clk = 0
+                 ORDER BY impr DESC LIMIT 200',
+                [$minImpr],
+            );
+        } catch (\Throwable) {
+            return []; // таблицы нет / не синкали — секция просто не покажется
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $q = (string) $r['query'];
+            if (!$this->aio->isAioLikely($q)) {
+                continue;
+            }
+            $out[] = [
+                'query' => $q,
+                'impr'  => (int) $r['impr'],
+                'pos'   => round((float) $r['pos'], 1),
+                'label' => $this->aio->classify($q)['label'],
+            ];
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
     protected function configure(): void
     {
         $this->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Не слать в Telegram, только вывести');
@@ -376,6 +419,21 @@ class DailyReportCommand extends Command
                 : ($dzen['articles_in_feed'] ?? '—') . ' статей в фиде (Метрика недоступна)',
         );
 
+        // --- AIO-радар: запросы с показами, но клик уходит в ИИ-ответ (топ приоритетов на доработку) ---
+        $aioLeak = $this->fetchAioLeakQueries();
+        $aioLine = "\n\n<b>🔎 AIO-утечка (клик → ИИ-ответ):</b> ";
+        if ($aioLeak !== []) {
+            $aioLine .= "топ по показам\n" . implode("\n", array_map(
+                fn (array $q) => sprintf(
+                    '• %s — %d показ. · поз.%s <i>[%s]</i>',
+                    htmlspecialchars($q['query']), $q['impr'], $q['pos'], $q['label'],
+                ),
+                $aioLeak,
+            ));
+        } else {
+            $aioLine .= '— (нет данных gsc_query_stats или утечки)';
+        }
+
         $msg = sprintf(
             "<b>📅 Дайджест · %s</b>\n\n" .
             "<b>Публикации (прод):</b> вчера %s · всего %s · ждут %s\n" .
@@ -384,7 +442,7 @@ class DailyReportCommand extends Command
             "Когорта 14д+ в индексе: %s\n" .
             "Последняя проверка: %s\n\n" .
             "<b>Яндекс:</b> в поиске %d (%s) · запросы: %s\n" .
-            "Последняя проверка: %s%s%s%s",
+            "Последняя проверка: %s%s%s%s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
             $pub['published_yesterday'], $pub['published_total'], $pub['queue_pending'],
             $pub['last_published'],
@@ -396,6 +454,7 @@ class DailyReportCommand extends Command
             $contactLine,
             $rsyaLine,
             $socialLine,
+            $aioLine,
         );
 
         $io->text(strip_tags($msg));
