@@ -132,6 +132,12 @@ class BrandPublishSyncCommand extends Command
             if ($dryRun) {
                 $wouldSync++;
                 $io->text("  → синканем: {$slug}");
+            } elseif ($brand->getStatus() === Statuses::Active) {
+                // Сюда попадает только active БЕЗ published_at (иначе бы ушёл в $already выше):
+                // publish() для active — no-op и дату НЕ проставит, поэтому бэкфиллим напрямую.
+                // Иначе такой бренд «синкался» бы каждый прогон, оставаясь без даты (не идемпотентно).
+                $brand->setPublishedAt($prodPublishedAt ?? new \DateTime('now', new \DateTimeZone('Europe/Moscow')));
+                $synced++;
             } else {
                 try {
                     $brand->publish($prodPublishedAt);
