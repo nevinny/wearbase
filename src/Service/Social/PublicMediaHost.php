@@ -10,7 +10,12 @@ use Symfony\Component\Process\Process;
 /**
  * Instagram Graph API требует публичный URL картинки (не файл-аплоуд). Наш MediaRenderer
  * генерит PNG локально на Mac — этот сервис конвертит его в JPEG (IG не ест PNG с альфой
- * стабильно) и точечно rsync'ит на прод, откуда Graph API его и заберёт по HTTP.
+ * стабильно) и точечно rsync'ит на НЕ-РФ хост, откуда Graph API его и заберёт по HTTP.
+ *
+ * ⚠️ Картинку НЕЛЬЗЯ хостить на РФ-проде wearbase.ru: Meta-краулер не может скачать медиа
+ * с РФ-хоста (error 9004/2207052), хотя curl с VPN-Mac отдаёт 200. Поэтому заливаем на
+ * внешний хост (env IG_MEDIA_SSH_DEST / IG_MEDIA_PUBLIC_BASE). Картинка нужна Meta лишь
+ * на время публикации — дальше IG хранит свою копию.
  *
  * ⚠️ cron PATH пуст — rsync ищем по фиксированным абсолютным путям, не полагаясь на PATH.
  */
@@ -25,14 +30,21 @@ class PublicMediaHost
     public function __construct(
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
+        #[Autowire('%env(default::IG_MEDIA_SSH_DEST)%')]
+        private readonly ?string $sshDest = null,
+        #[Autowire('%env(default::IG_MEDIA_PUBLIC_BASE)%')]
+        private readonly ?string $publicBase = null,
     ) {
     }
 
     /**
-     * PNG (локальный, абсолютный путь) → JPEG рядом → rsync на прод → публичный HTTPS-URL.
+     * PNG (локальный, абсолютный путь) → JPEG рядом → rsync на внешний хост → публичный URL.
      */
     public function publicJpegUrl(string $localAbsPath): string
     {
+        if (trim((string) $this->sshDest) === '' || trim((string) $this->publicBase) === '') {
+            throw new \RuntimeException('IG_MEDIA_SSH_DEST/IG_MEDIA_PUBLIC_BASE не заданы — некуда заливать картинку для IG.');
+        }
         if (!str_starts_with($localAbsPath, $this->projectDir)) {
             throw new \RuntimeException("Путь вне проекта: {$localAbsPath}");
         }
@@ -45,9 +57,9 @@ class PublicMediaHost
             $this->convertToJpeg($localAbsPath, $jpegPath);
         }
 
-        $this->uploadToProd($jpegPath);
+        $this->uploadToHost($jpegPath);
 
-        return 'https://wearbase.ru/images/social/' . basename($jpegPath);
+        return rtrim((string) $this->publicBase, '/') . '/' . basename($jpegPath);
     }
 
     private function toJpegPath(string $pngPath): string
@@ -85,18 +97,20 @@ class PublicMediaHost
         }
     }
 
-    private function uploadToProd(string $jpegPath): void
+    private function uploadToHost(string $jpegPath): void
     {
         $rsync = $this->resolveRsyncBinary();
 
         $process = new Process([
-            $rsync, '-az', $jpegPath, 'regru:wearbase.ru/public_html/images/social/',
+            $rsync, '-az',
+            '-e', 'ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20',
+            $jpegPath, (string) $this->sshDest,
         ], timeout: 60);
         $process->run();
 
         if (!$process->isSuccessful()) {
             throw new \RuntimeException(
-                "rsync на прод не удался: " . trim($process->getErrorOutput() ?: $process->getOutput())
+                "rsync картинки на внешний хост не удался: " . trim($process->getErrorOutput() ?: $process->getOutput())
             );
         }
     }

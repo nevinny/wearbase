@@ -11,16 +11,18 @@ use App\Service\Social\PublicMediaHost;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * Публикация в Instagram через официальный Instagram Graph API (контейнерная публикация:
- * создать медиа-контейнер → поллинг статуса → опубликовать). target канала = IG Business
- * Account id, токен — System User Token (бессрочный), хранится зашифрованным (SecretCipher).
+ * Публикация в Instagram через официальный Instagram API with Instagram Login
+ * (контейнерная публикация: создать медиа-контейнер → поллинг статуса → опубликовать).
+ * Хост — graph.instagram.com (не graph.facebook.com: у нас Instagram Login, без FB-страницы).
+ * target канала = IG user id (из /me), токен — долгоживущий IG-токен (~60 дней, продлевается
+ * кроном app:social:refresh-ig-token), хранится зашифрованным (SecretCipher).
  *
  * Graph API требует публичный URL картинки (не файл) — конвертация PNG→JPEG и заливка на
  * прод делает PublicMediaHost.
  */
 class InstagramPublisher implements SocialPublisherInterface
 {
-    private const API_BASE = 'https://graph.facebook.com/v22.0';
+    private const API_BASE = 'https://graph.instagram.com/v22.0';
     private const POLL_MAX_ATTEMPTS = 12;
     private const POLL_SLEEP_SEC = 5;
 
