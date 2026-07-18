@@ -92,6 +92,51 @@
             </div>
         </article>
 
+        {% if articleBrands is defined and articleBrands|length > 0 %}
+            <section class="mt-10 bg-white rounded-xl shadow-sm p-6">
+                <h2 class="text-xl font-semibold mb-4">Бренды из статьи</h2>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {% for b in articleBrands %}
+                        <a href="{{ path('brand_show', {_locale: page_locale, slug: b.slug}) }}"
+                           class="group bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition border">
+                            {% if b.logo %}
+                                <img src="{{ asset('images/logos/' ~ b.logo) }}"
+                                     alt="Логотип бренда {{ b.title }}{% if b.city %} из {{ b.city }}{% endif %}"
+                                     class="w-full h-24 object-contain p-2 group-hover:scale-105 transition">
+                            {% else %}
+                                <div class="w-full h-24 bg-gray-200 flex items-center justify-center">
+                                    <span class="text-gray-400 text-sm">{{ b.title }}</span>
+                                </div>
+                            {% endif %}
+                            <div class="p-3 text-center">
+                                <div class="font-medium text-sm truncate">{{ b.title }}</div>
+                                {% if b.city %}
+                                    <div class="text-xs text-gray-500">{{ b.city }}</div>
+                                {% endif %}
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endif %}
+
+        {% if similarArticles is defined and similarArticles|length > 0 %}
+            <section class="mt-10 bg-white rounded-xl shadow-sm p-6">
+                <h2 class="text-xl font-semibold mb-4">По этой теме</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {% for related in similarArticles %}
+                        <a href="{{ path('blog_show', {_locale: page_locale, slug: related.slug}) }}"
+                           class="block bg-gray-50 rounded-lg p-4 hover:shadow-md transition">
+                            <time datetime="{{ related.publishedAt|date('Y-m-d') }}" class="text-xs text-gray-400">
+                                {{ related.publishedAt|date('d.m.Y') }}
+                            </time>
+                            <h3 class="text-sm font-semibold mt-1">{{ related.title }}</h3>
+                        </a>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endif %}
+
         <div class="mt-10">
             {% include 'tailwind/_yandex_rsa_block.html.twig' with {block_id: 'R-A-19612178-1'} %}
         </div>

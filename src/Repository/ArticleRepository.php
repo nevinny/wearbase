@@ -47,6 +47,24 @@ class ArticleRepository extends ServiceEntityRepository
             ->getOneOrNullResult();
     }
 
+    /**
+     * Похожие статьи для блока «По этой теме» (docs/seo_sitewide_backlog.md HIGH-4).
+     * У Article нет тегов/категорий — подбор по общей таксономии невозможен, поэтому
+     * fallback сразу на свежие опубликованные статьи той же локали (кроме текущей).
+     *
+     * @return Article[]
+     */
+    public function findSimilar(Article $article, string $locale, int $limit = 5): array
+    {
+        return $this->publishedQb($locale)
+            ->andWhere('a.id != :id')
+            ->setParameter('id', $article->getId())
+            ->orderBy('a.publishedAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     /** @return Article[] */
     public function findPublishedByAuthor(int $authorId, string $locale, int $limit = 50): array
     {
