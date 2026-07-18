@@ -13,7 +13,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class SitemapController extends AbstractController
 {
     #[Route('/sitemap.xml', name: 'sitemap_xml', defaults: ['_format' => 'xml'])]
-    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Repository\AuthorRepository $authorRepo, \App\Service\CitySlugger $citySlugger, UrlGeneratorInterface $urlGenerator): Response
+    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Repository\AuthorRepository $authorRepo, \App\Repository\CityHubRepository $cityHubRepo, \App\Service\CitySlugger $citySlugger, UrlGeneratorInterface $urlGenerator): Response
     {
         $urls = [];
 
@@ -83,20 +83,30 @@ class SitemapController extends AbstractController
             'priority' => '0.7',
         ];
 
-        $cityNames = $repo->createQueryBuilder('b')
-            ->select('DISTINCT b.city')
+        // Гейт индексации тонких гео-хабов (docs/seo_sitewide_backlog.md HIGH-1): в sitemap
+        // попадают только города с >= MIN_INDEXABLE_BRANDS брендов ИЛИ с активным кураторским
+        // CityHub (индексируется независимо от числа брендов, как и на самой странице).
+        $cityCounts = $repo->createQueryBuilder('b')
+            ->select('b.city, COUNT(b.id) as cnt')
             ->where('b.status = :status')
             ->andWhere('b.city IS NOT NULL')
             ->andWhere('b.city != \'\'')
             ->setParameter('status', 'active')
+            ->groupBy('b.city')
             ->getQuery()
-            ->getSingleColumnResult();
+            ->getResult();
 
-        foreach ($cityNames as $cityName) {
+        foreach ($cityCounts as $cityRow) {
+            $citySlug = $citySlugger->slugify($cityRow['city']);
+            $isIndexable = (int) $cityRow['cnt'] >= \App\Controller\Brands\BrandsController::MIN_INDEXABLE_BRANDS
+                || $cityHubRepo->findActiveBySlug($citySlug) !== null;
+            if (!$isIndexable) {
+                continue;
+            }
             $urls[] = [
                 'loc' => $this->generateUrl('brand_city', [
                     '_locale' => 'ru',
-                    'slug' => $citySlugger->slugify($cityName),
+                    'slug' => $citySlug,
                 ], UrlGeneratorInterface::ABSOLUTE_URL),
                 'changefreq' => 'weekly',
                 'priority' => '0.7',
@@ -109,7 +119,8 @@ class SitemapController extends AbstractController
             'priority' => '0.7',
         ];
 
-        // Стилевые хабы — только стили с хотя бы одним активным брендом (пустые не индексируем).
+        // Стилевые хабы — гейт индексации тонких хабов (docs/seo_sitewide_backlog.md HIGH-1):
+        // только стили с >= MIN_INDEXABLE_BRANDS активных брендов (пустые/тонкие не индексируем).
         $styleSlugs = $repo->createQueryBuilder('b')
             ->select('s.slug')
             ->join('b.styles', 's')
@@ -117,6 +128,8 @@ class SitemapController extends AbstractController
             ->andWhere('s.slug IS NOT NULL')
             ->setParameter('status', 'active')
             ->groupBy('s.id')
+            ->having('COUNT(DISTINCT b.id) >= :minBrands')
+            ->setParameter('minBrands', \App\Controller\Brands\BrandsController::MIN_INDEXABLE_BRANDS)
             ->getQuery()
             ->getSingleColumnResult();
 

@@ -8,6 +8,10 @@
 
 {% block meta_keywords %}{{ style.title|lower }} бренды, {{ style.title|lower }} одежда россия, российские бренды {{ style.title|lower }}, бренды одежды в стиле {{ style.title|lower }}{% endblock %}
 
+{# Гейт индексации тонких стиль-хабов (docs/seo_sitewide_backlog.md HIGH-1): < MIN_INDEXABLE_BRANDS
+   → noindex,follow, чтобы не плодить шаблонные «[бренды]+[стиль]» страницы. #}
+{% block meta_robots %}{% if not indexable %}<meta name="robots" content="noindex, follow">{% endif %}{% endblock %}
+
 {% block og_title %}Бренды одежды в стиле {{ style.title }} | WEARBASE{% endblock %}
 
 {% block og_description %}{{ brands|length }} российских брендов одежды в стиле «{{ style.title }}» — с сайтами и контактами.{% endblock %}
@@ -58,6 +62,18 @@
 
         <h1 class="text-3xl md:text-4xl font-bold mb-3">Бренды одежды в стиле {{ style.title }}</h1>
         <p class="text-gray-600 max-w-2xl mb-10">{% if style.description %}{{ style.description }}{% else %}{{ brands|length }} {{ brands|length == 1 ? 'российский бренд' : 'российских брендов' }} одежды в стиле «{{ style.title }}» в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей напрямую: без комиссии маркетплейсов цена честнее.{% endif %}</p>
+
+        {# Extractable-блок (docs/drmax_seo_2026_digest.md §1/§9): H2-вопрос + самодостаточный
+           ответ первым предложением, только grounded-данные из контроллера. Только для
+           индексируемых хабов — на noindex-страницах это лишний шаблонный текст. #}
+        {% if indexable %}
+            <section class="max-w-2xl mb-10">
+                <h2 class="text-lg font-semibold mb-2">Какие российские бренды шьют одежду в стиле {{ style.title }}?</h2>
+                <p class="text-gray-700 text-sm leading-relaxed">
+                    В каталоге WEARBASE представлено {{ brands|length }} {{ brands|length == 1 ? 'российский бренд' : 'российских брендов' }} одежды в стиле «{{ style.title }}»{% if topCities|length %}, чаще всего они базируются в городах {% for c in topCities %}{{ c.city }} ({{ c.cnt }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif %}. Все бренды продают напрямую, без комиссии маркетплейсов и с более честной ценой, чем в масс-маркете.
+                </p>
+            </section>
+        {% endif %}
 
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
             {% for brand in brands %}

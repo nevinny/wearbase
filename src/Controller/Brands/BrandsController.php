@@ -24,6 +24,14 @@ class BrandsController extends AbstractController
     /** Минимум ссылок в блоке «похожие бренды» — чтобы страница не была тупиком для PageRank. */
     private const MIN_SIMILAR_BRANDS = 6;
 
+    /**
+     * Порог индексации гео/стиль-хаба: тонкие (< N брендов) без кураторского контента
+     * отдаём noindex,follow и не пускаем в sitemap — иначе шаблон «[бренды]+[город]»
+     * в масштабе = мишень SpamBrain (docs/drmax_seo_2026_digest.md §7) и нулевой
+     * information gain. Кураторский CityHub индексируется независимо от числа брендов.
+     */
+    public const MIN_INDEXABLE_BRANDS = 3;
+
     #[Route('/{_locale}/brands', name: 'brand_index', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
     public function brand_index(Request $request, BrandRepository $repo): Response
     {
@@ -583,12 +591,37 @@ class BrandsController extends AbstractController
             ->getQuery()
             ->getResult();
 
+        $hub = $cityHubRepo->findActiveBySlug($slug);
+
+        // Гейт индексации тонких хабов (docs/seo_sitewide_backlog.md HIGH-1): кураторский
+        // CityHub индексируется всегда, формульный — только от MIN_INDEXABLE_BRANDS брендов.
+        $indexable = count($brands) >= self::MIN_INDEXABLE_BRANDS || $hub !== null;
+
+        // Grounded extractable-блок: топ-3 стиля среди брендов города (для «ответа в первый экран»).
+        $topStyles = [];
+        if ($indexable) {
+            $topStyles = $repo->createQueryBuilder('b')
+                ->select('s.title, COUNT(DISTINCT b.id) as cnt')
+                ->join('b.styles', 's')
+                ->where('b.status = :status')
+                ->andWhere('b.city = :city')
+                ->setParameter('status', Statuses::Active)
+                ->setParameter('city', $city)
+                ->groupBy('s.id')
+                ->orderBy('cnt', 'DESC')
+                ->setMaxResults(3)
+                ->getQuery()
+                ->getResult();
+        }
+
         return $this->render('tailwind/city.html.twig', [
             'city' => $city,
             'slug' => $slug,
             'brands' => $brands,
             // Кураторский SEO-контент (Москва-плацдарм и т.п.); null → формульная мета
-            'hub' => $cityHubRepo->findActiveBySlug($slug),
+            'hub' => $hub,
+            'indexable' => $indexable,
+            'topStyles' => $topStyles,
             'locale' => $request->getLocale(),
         ]);
     }
@@ -634,15 +667,40 @@ class BrandsController extends AbstractController
 
         // Пустой стиль-хаб (0 опубликованных брендов) = нет контента → 404, а не пустая 200.
         // Иначе soft-404 в sitemap жжёт индекс-бюджет (luxury/opium/beach/school/upcycle/y2k).
-        // Тонкие (1-2 бренда) остаются 200/индексируемыми — это НЕ про noindex.
+        // Тонкие (1-2 бренда) остаются 200, но уходят под noindex (см. $indexable ниже) —
+        // это разные вещи: 404 про «нет контента», noindex про «контента мало».
         if ($brands === []) {
             throw $this->createNotFoundException('В этом стиле пока нет опубликованных брендов');
+        }
+
+        // Гейт индексации тонких хабов (docs/seo_sitewide_backlog.md HIGH-1).
+        $indexable = count($brands) >= self::MIN_INDEXABLE_BRANDS;
+
+        // Grounded extractable-блок: топ-3 города среди брендов стиля.
+        $topCities = [];
+        if ($indexable) {
+            $topCities = $repo->createQueryBuilder('b')
+                ->select('b.city, COUNT(DISTINCT b.id) as cnt')
+                ->join('b.styles', 's')
+                ->where('b.status = :status')
+                ->andWhere('s.slug = :slug')
+                ->andWhere('b.city IS NOT NULL')
+                ->andWhere('b.city != \'\'')
+                ->setParameter('status', Statuses::Active)
+                ->setParameter('slug', $slug)
+                ->groupBy('b.city')
+                ->orderBy('cnt', 'DESC')
+                ->setMaxResults(3)
+                ->getQuery()
+                ->getResult();
         }
 
         return $this->render('tailwind/style.html.twig', [
             'style' => $style,
             'slug' => $slug,
             'brands' => $brands,
+            'indexable' => $indexable,
+            'topCities' => $topCities,
             'locale' => $request->getLocale(),
         ]);
     }
