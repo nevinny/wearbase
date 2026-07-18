@@ -1,6 +1,6 @@
 # WEARBASE — Instagram: контент-план в авто-режиме (drip)
 
-**Обновлено:** 2026-06-16 · Стержень: [`marketing_strategy.md`](marketing_strategy.md).
+**Обновлено:** 2026-07-18 · Стержень: [`marketing_strategy.md`](marketing_strategy.md).
 Тон/анти-AI правила подписей — [`seo_rules.md`](seo_rules.md) Часть 0. Дрип-дисциплина —
 по образцу SEO publish-tick ([`seo_adoption_plan.md`](seo_adoption_plan.md)).
 
@@ -131,9 +131,11 @@ plan → generate(caption+image) → qa_gate → scheduled → published / faile
      троттлить до ручного ревью.
    - требования к аккаунту (см. §4а): **нужен Professional-аккаунт (Creator достаточно)**;
      **FB-страница БОЛЬШЕ НЕ нужна** — с июля 2024 есть «Instagram API with Instagram Login»
-     (прямой логин в IG), и Postiz умеет standalone-подключение по нему. Посты публикуются
-     немедленно по вызову (нативного «расписания» в API нет — держит наш тик).
-     ⚠️ Официальная Meta-интеграция в РФ юридически спорна (см. §0).
+     (прямой логин в IG). ✅ **Реализовано и работает** (первый живой пост 2026-07-18):
+     `src/Social/Publisher/InstagramPublisher.php` публикует контейнерным способом
+     (`/media` → поллинг `status_code` → `/media_publish`) напрямую на `graph.instagram.com`,
+     без Postiz. Посты публикуются немедленно по вызову (нативного «расписания» в API нет —
+     держит наш тик). ⚠️ Официальная Meta-интеграция в РФ юридически спорна (см. §0).
 
 **Что реально «в автоматическом режиме»:** plan → generate → qa → scheduled-publish для
 карточек/каруселей **и faceless/data-Reels** из данных (рубрики ✅ в §2, медиа-генерация §5).
@@ -145,15 +147,23 @@ Founder talking-head и UGC остаются ручными — встают в 
 
 | Путь | Что нужно | Авто-постинг | Риск |
 |---|---|---|---|
-| **Official API (рекомендуется)** | **Professional-аккаунт (Creator достаточно)** — переключение из личного бесплатно, мгновенно, обратимо, без публичных «бизнес»-маркеров. **FB-страница НЕ нужна** — «Instagram API with Instagram Login» (с 07.2024) логинится прямо в IG; Postiz даёт standalone-коннект по нему | ✅ легально (в рамках ToS) | хард-лимит 25 медиа/24ч; токен |
+| **Official API (реализовано)** | **Professional-аккаунт (Creator достаточно)** — переключение из личного бесплатно, мгновенно, обратимо, без публичных «бизнес»-маркеров. **FB-страница НЕ нужна** — «Instagram API with Instagram Login» (с 07.2024) логинится прямо в IG. Meta-app `wearbase` в **Dev Mode** (App Review не нужен для своего аккаунта), сценарий «Управление сообщениями и контентом в Instagram», права `instagram_business_content_publish` + `instagram_business_basic` | ✅ легально (в рамках ToS), **работает с 2026-07-18** | хард-лимит 25 медиа/24ч; токен ~60 дней, продление кроном (см. ниже) |
 | **Личный аккаунт + неофиц. private API** (instagrapi и пр.) | логин по username/password + сохранённая сессия | ⚙️ технически да | 🚫 **против ToS Meta; в 2026 жёсткий энфорсмент** (challenges, 2FA, device-fingerprint) → высокий риск бана/блокировки. Только для тестов/мелочи, **не для основного аккаунта бренда** |
 | **«Просто личный аккаунт»** (как делают многие в РФ) | ничего | ❌ только **ручной** постинг с телефона | — |
 
 **Вывод:** «многие в РФ заводят личные аккаунты» — но постят **руками**. Для *автоматической*
 публикации достаточно один раз переключить аккаунт в **Creator** (это не «бизнес-страница в FB»,
-а бесплатный флажок в настройках IG) → дальше Postiz/официальный API без FB-страницы.
-instagrapi на основном аккаунте — не рекомендуем (бан-риск). Юр-рамка РФ (§0) — отдельно от
-технического вопроса аккаунта.
+а бесплатный флажок в настройках IG) → дальше официальный API (Instagram Login) без FB-страницы,
+без сторонних сервисов. instagrapi на основном аккаунте — не рекомендуем (бан-риск). Юр-рамка РФ
+(§0) — отдельно от технического вопроса аккаунта.
+
+**Картинки:** Meta-краулер не может скачать `image_url` с РФ-прода wearbase.ru (error 9004/2207052)
+→ `src/Service/Social/PublicMediaHost.php` конвертит картинку в JPEG и rsync'ит на не-РФ хост
+(шведский VPS, systemd-сервис `igmedia` = `python3 -m http.server 80`); Meta качает по обычному
+HTTP с голого IP (домен/HTTPS не нужны). Env: `IG_MEDIA_SSH_DEST`, `IG_MEDIA_PUBLIC_BASE`.
+Токен — `IG_ACCESS_TOKEN` (сид в `.env.local`, живой токен хранится в `social_channel` id=5,
+egress=mac), продление — крон `app:social:refresh-ig-token` (`0 5 * * 1`, Mac). Egress IG — только
+с Mac (там поднят VPN, Meta доступна); прод РФ для Meta заблокирован.
 
 ---
 
@@ -165,7 +175,7 @@ instagrapi на основном аккаунте — не рекомендуе�
 **Стек (конкретные сервисы — дёшево/бесплатно, проверено 2026-06):**
 | Слой | Рекомендация | Бесплатный fallback / альтернатива | Стоимость |
 |---|---|---|---|
-| **Публикация TG+VK+IG** | **Postiz** (open-source AGPL, self-host Docker) — нативно VK + Telegram + Instagram, есть public API + n8n/Make → наш `app:social:*` пушит в Postiz, адаптеры под каналы не пишем | нативные Telegram Bot API + VK API (free, больше кода); Mixpost (11 сетей, без VK) | **free** (self-host) |
+| **Публикация TG+VK+IG** | ✅ **РЕАЛИЗОВАНО** — нативные паблишеры без сторонних сервисов: Telegram Bot API, VK `wall.post`, Instagram — официальный **Instagram API with Instagram Login** (`graph.instagram.com`, `InstagramPublisher.php`); Postiz нигде не используется (ни развёрнут, ни в коде) | — | **free** |
 | **Картинки** (фоны/сцены) | ✅ **РЕАЛИЗОВАНО** в `MediaRenderer`: цепочка с фолбэком **Gemini → Cloudflare → Pollinations**. По умолчанию **Cloudflare Flux-schnell** (free 10k/день, из РФ, без VPN). Pollinations — фолбэк (free, без ключа). Gemini «Nano Banana» — опц. (качественнее, но image-модель **не бесплатна**: free-квота=0, нужен биллинг ~$0.039/img + Google геоблок РФ → прокси/VPN) | ComfyUI локально только off-peak (см. ниже про железо) | **free** (Cloudflare/Pollinations) |
 | **Видео faceless/data** (калькулятор, манифест, статистика) | **Revideo** или **Motion Canvas** (оба MIT, без лицензии) — программный рендер из данных, без AI и без GPU | ⚠️ Remotion мощнее, но BUSL-лицензия ($0 до $1M ARR, дальше платно) — берём MIT-варианты | **free** |
 | **Видео product-motion** (image-to-video из реальных фото) | локально **LTX-Video** (быстрый: ~121 кадр/11с на 4090) или **WAN 2.2 5B** (влезает в 24GB) на отдельной GPU | облако по запросу: fal.ai — ByteDance Seedance Fast ~$0.03/сек, Kling 2.5 Turbo ~$0.07/сек | free локально / центы за клип |
@@ -267,21 +277,27 @@ UTM на ссылке в шапке → видеть в аналитике са�
 
 ---
 
-## 9. Реализация и запуск (Ф1–Ф5 готовы в коде)
+## 9. Реализация и запуск (Ф1–Ф5 готовы в коде, IG живой с 2026-07-18)
 
-Конвейер реализован и протестирован офлайн (миграция, schema:validate, lint:container,
-plan→generate end-to-end, publish-tick claim→publish с реальным TG-вызовом, юнит-тест рампа).
-**Что осталось до живого постинга — внешняя обвязка (Ф0) и догенерация медиа.**
+Конвейер реализован, протестирован офлайн (миграция, schema:validate, lint:container,
+plan→generate end-to-end, publish-tick claim→publish с реальным TG-вызовом, юнит-тест рампа)
+и постит вживую: TG/VK давно работают, **IG отгружен 2026-07-18** (первый живой пост
+instagram.com/p/Da8VEqHDZnq/) через Instagram API with Instagram Login — без FB-Страницы,
+без Postiz. **Что осталось — догенерация медиа и метрик-коллектор (§8/бэклог tasktracker).**
 
 **Сущности/таблицы:** `social_channel`, `social_post` (статус-машина), `social_post_metric`.
 **Команды:** `app:social:plan` · `app:social:generate` · `app:social:publish-tick --host=mac|prod` · `app:social:evaluate`.
 **Админка:** EasyAdmin → «Соцсети» → Каналы / Посты (ввод токена → шифруется; «Одобрить» для held).
 
-**Запуск (по шагам):**
-1. Ф0-аккаунты: TG-канал (+@wearbase_bot админом), VK-сообщество (community token), IG→Creator + Postiz.
+**Запуск (по шагам, IG-часть уже пройдена и работает):**
+1. Ф0-аккаунты: TG-канал (+@wearbase_bot админом), VK-сообщество (community token), IG →
+   переключить в Creator, завести Meta-app в Dev Mode (App Review не нужен), сценарий
+   «Управление сообщениями и контентом в Instagram» → получить `IG_ACCESS_TOKEN` (Instagram
+   Login, без FB-Страницы) + поднять не-РФ хост картинок (`igmedia`, см. §4а).
 2. `.env.local` (на Mac — конвейер живёт там): `SOCIAL_LAUNCH_DATE=YYYY-MM-DD`, `SOCIAL_START_RATE`,
-   `SOCIAL_CAP`, `POSTIZ_URL`/`POSTIZ_API_KEY` (для IG), `TELEGRAM_BOT_TOKEN` (уже есть),
-   `PAYMENT_SECRET_KEY` (шифр VK-токена). Картинки: **`CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_AI_TOKEN`**
+   `SOCIAL_CAP`, `IG_ACCESS_TOKEN`, `IG_MEDIA_SSH_DEST`, `IG_MEDIA_PUBLIC_BASE` (для IG),
+   `TELEGRAM_BOT_TOKEN` (уже есть), `PAYMENT_SECRET_KEY` (шифр VK-токена). Картинки:
+   **`CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_AI_TOKEN`**
    (free, дефолт-генератор) — без них работает Pollinations без ключа; `GEMINI_API_KEY` опц.
    (нужен биллинг + прокси к Google).
 3. Завести каналы в админке (платформа, target, egress-host: TG/IG→mac, VK→prod, токен).
@@ -296,5 +312,6 @@ plan→generate end-to-end, publish-tick claim→publish с реальным TG-
 **Осталось доделать (TODO, заведено в tasktracker):**
 - Медиа-карточки текст-рубрик (Cloudflare/Pollinations + оверлей) и data-Reels (Revideo) — §5;
   сейчас текст-рубрики постятся текстом (TG/VK ок; для IG уходят в held — нужна картинка).
-- VK photo-attach (сейчас текстовый wall.post), Postiz API-контракт под версию инстанса (§4а).
+- VK photo-attach (сейчас текстовый wall.post) — **на паузе**: community-токен не даёт грузить
+  фото на стену, нужен user-токен.
 - Метрик-коллектор по площадкам → наполнение `social_post_metric` (включает closed-loop §7).

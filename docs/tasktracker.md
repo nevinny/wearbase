@@ -854,19 +854,20 @@ enemy/культурный контент отрабатывает индекс�
 **Соц-блок (Instagram/Telegram/VK авто-постинг, drip).** План — [`marketing_instagram.md`](marketing_instagram.md).
 ⚠️ Meta/Instagram запрещена в РФ, платное продвижение нельзя (только органика) → движок
 канал-агностичный, приоритет Telegram+VK, Instagram вторичен.
-**✅ Реализовано (Ф1–Ф5, 2026-06-17), гибрид нативные TG/VK + Postiz для IG (см. marketing_instagram §9):**
+**✅ Реализовано (Ф1–Ф5, 2026-06-17), нативные паблишеры TG/VK/IG — без Postiz (см. marketing_instagram §9; IG отгружен 2026-07-18):**
 - [x] [S] Статус-машина `social_post`/`social_channel`/`social_post_metric` + claim `FOR UPDATE SKIP LOCKED`.
 - [x] [S] `app:social:plan` (сетка рубрик, MSK) + `app:social:generate` (подпись+медиа+QA, held при провале).
 - [x] [S] Генерация подписей: шаблонный банк (ядро-сообщения, без LLM) + LLM из описания бренда; QA = banned-слова `ContentValidator`.
-- [x] [S] Публикаторы TG (Bot API) / VK (wall.post) / IG (Postiz) через тег-реестр; `app:social:publish-tick` (рамп-предохранитель + 24ч-квота, ретраи, per-host egress).
+- [x] [S] Публикаторы TG (Bot API) / VK (wall.post) / IG (`InstagramPublisher`, официальный Instagram API with Instagram Login, `graph.instagram.com`, без FB-Страницы и без Postiz) через тег-реестр; `app:social:publish-tick` (рамп-предохранитель + 24ч-квота, ретраи, per-host egress).
 - [x] [S] `app:social:evaluate` (read-only отчёт по рубрикам) + админка (каналы/посты, approve held). Рамп вынесен в `RampSchedule` + юнит-тест.
 
-**Осталось (Ф0 внешнее + догенерация):**
-- [ ] [prereq] Аккаунты: TG-канал (+бот-админ), VK-сообщество+токен, IG→Creator + Postiz self-host (egress к Meta!).
-- [ ] [M] **Развернуть Postiz** (self-host) — только для IG (standalone Instagram-Login, без FB-страницы, §4а).
+**Осталось (догенерация + метрики; IG-аккаунт/публикация — сделано, см. 2026-07-18 ниже):**
+- [x] [prereq] Аккаунты: TG-канал (+бот-админ), VK-сообщество+токен, IG→Creator + Instagram Login
+      токен (**план «Postiz для IG» снят** — публикуем напрямую через Instagram API, без self-host).
 - [ ] [prereq] Сбор UGC/видео от подключённых брендов (Day-0 активационного письма + бейдж «Прямой бренд»).
 - [ ] [M] **Метрик-коллектор** по площадкам → наполнение `social_post_metric` (включает closed-loop; авто-правка сетки рубрик).
-- [ ] [S] VK photo-attach (сейчас текстовый wall.post); Postiz API-контракт под версию инстанса.
+- [ ] [S] VK photo-attach (сейчас текстовый wall.post) — **на паузе**, нужен VK user-токен
+      (community-токен не грузит фото на стену).
 - [x] [S] **Image-gen — РЕАЛИЗОВАНО** в `MediaRenderer`: Gemini→Cloudflare→Pollinations (дефолт Cloudflare Flux, free, из РФ). UTM в CTA + per-platform рендер ссылки. ComfyUI на боксе off-peak — TODO (не нужно, картинки бесплатны в облаке).
 - [ ] [M] **Faceless/data-Reels рендер** — **Revideo или Motion Canvas (MIT, free)**, детерминированный рендер из данных, без AI/GPU. (НЕ Remotion — BUSL-лицензия.) → апгрейд рубрик в ✅ полный авто.
 - [ ] [S] **Product-motion (image-to-video)** — локально **LTX-Video / WAN 2.2 5B** на выделенной карте; либо облако fal.ai (Seedance ~$0.03/с, Kling Turbo ~$0.07/с). WAN 14B (40–48GB) — только облако/мультиGPU. Полу-авто.
@@ -1634,6 +1635,30 @@ Pollinations/Cloudflare Flux, без текста/лого-оверлея) дл�
 **Дальше:** прогнать `app:social:plan` + `app:social:generate --limit=5` на реальных
 planned-постах IG-канала (сначала `--dry-run`) и визуально проверить карточки перед
 включением в живой `publish-tick`.
+
+---
+
+## 2026-07-18 — IG: живой постинг через Instagram API (Postiz снят с плана)
+
+Первый живой пост — instagram.com/p/Da8VEqHDZnq/. План «поднять Postiz для IG» из
+`marketing_instagram.md` **снят**: Postiz нигде не используется (ни развёрнут, ни в коде).
+
+- Публикация — официальный **Instagram API with Instagram Login** (`graph.instagram.com`),
+  без Facebook-Страницы (Meta не даёт создать FB-Страницу с РФ-аккаунта). Meta-app `wearbase`
+  в Dev Mode (App Review не нужен для своего аккаунта), сценарий «Управление сообщениями и
+  контентом в Instagram», права `instagram_business_content_publish` + `instagram_business_basic`.
+- Новый паблишер `src/Social/Publisher/InstagramPublisher.php`: контейнерная публикация
+  (`/media` → поллинг `status_code` → `/media_publish`).
+- Картинки: Meta-краулер не может скачать `image_url` с РФ-прода wearbase.ru
+  (error 9004/2207052) → `src/Service/Social/PublicMediaHost.php` конвертит в JPEG и rsync'ит
+  на не-РФ хост (шведский VPS, systemd `igmedia`); Meta качает по голому HTTP/IP.
+  Env: `IG_MEDIA_SSH_DEST`, `IG_MEDIA_PUBLIC_BASE`.
+- Токен ~60 дней (`IG_ACCESS_TOKEN` в `.env.local`, живой — в `social_channel` id=5,
+  egress=mac); продление — новый крон `app:social:refresh-ig-token` (`0 5 * * 1`, Mac).
+- Env `POSTIZ_URL`/`POSTIZ_API_KEY` удалены из `services.yaml` — больше не используются.
+- VK photo-attach остаётся на паузе (нужен VK user-токен, community-токен фото не грузит).
+
+Подробности — `marketing_instagram.md` §4а/§5/§9, карта env — `production.md`.
 
 ---
 
