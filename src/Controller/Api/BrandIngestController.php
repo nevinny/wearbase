@@ -480,6 +480,41 @@ class BrandIngestController extends AbstractController
         ]);
     }
 
+    /**
+     * ID/slug брендов, опубликованных дрипом (app:brand:publish-tick) за последние N часов —
+     * dev не видит, что реально вывел дрип на проде (публикация происходит только тут).
+     */
+    #[Route('/brands/published', name: 'api_brands_published', methods: ['GET'])]
+    public function publishedRecent(
+        Request $request,
+        EntityManagerInterface $em,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter, checkSignature: false)) !== null) {
+            return $deny;
+        }
+
+        $hours = max(1, min(168, (int) $request->query->get('hours', 24)));
+        $since = (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->modify("-{$hours} hours")->format('Y-m-d H:i:s');
+
+        $rows = $em->getConnection()->fetchAllAssociative(
+            'SELECT id, slug, title, published_at FROM brand WHERE published_at >= ? ORDER BY published_at DESC',
+            [$since],
+        );
+        // Ключ сопоставления с dev — slug (prod brand.id ≠ dev brand.id, свой autoincrement,
+        // см. BrandIngestService: матчинг по slug), поэтому id переименован в prod_id и
+        // не первым полем — только для аудита на стороне прода.
+        $items = array_map(static fn (array $r) => [
+            'slug'         => $r['slug'],
+            'title'        => $r['title'],
+            'published_at' => $r['published_at'],
+            'url'          => 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $r['slug']),
+            'prod_id'      => (int) $r['id'],
+        ], $rows);
+
+        return $this->json(['hours' => $hours, 'since' => $since, 'count' => count($items), 'items' => $items]);
+    }
+
     /** 401/403/429 либо null (доступ разрешён). Подпись тела — только для POST. */
     private function authorize(Request $request, RateLimiterFactory $limiter, bool $checkSignature = true): ?JsonResponse
     {

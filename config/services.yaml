@@ -24,8 +24,6 @@ parameters:
     # источник кликов nginx-логи прода через ssh+zgrep. Дефолты — реальные прод-пути.
     env(SOCIAL_CLICK_LOG_HOST): 'regru'
     env(SOCIAL_CLICK_LOG_GLOB): '/var/www/u3042786/data/logs/wearbase.ru.access.log*'
-    # Статус публикаций дрипа (app:prod:publish-status) — ssh-хост прода по умолчанию.
-    env(PROD_SSH_HOST): 'regru'
     env(GEMINI_API_KEY): ''
     env(CLOUDFLARE_ACCOUNT_ID): ''
     env(CLOUDFLARE_AI_TOKEN): ''
