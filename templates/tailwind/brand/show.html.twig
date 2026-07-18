@@ -288,6 +288,26 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
             {# Контент бренда #}
             <div class="lg:col-span-2">
+                {# --- «Коротко о бренде»: детерминированный answer-first extractable-блок,
+                   ПЕРВЫМ в контенте (не LLM — только реальные поля, grounded).
+                   docs/drmax_seo_2026_digest.md §1 msg 1189/1267: первые 150–200 слов страницы —
+                   машинный интерфейс для AI-выжимок, нужен самодостаточный ответ 40–80 слов.
+                   §3 msg 1590: negative definition (+70% цитируемости) — только когда есть на
+                   чём её основать (price_segment ≠ «масс-маркет»), иначе не выдумываем контраст. #}
+                {% set _short_category = attrGroups['category'] is defined ? attrGroups['category']|first.value : null %}
+                {% set _short_price = attrGroups['price_segment'] is defined ? attrGroups['price_segment']|first.value : null %}
+                {% set _short_has_bio = brand.city or brand.foundingYear or _short_category %}
+                {% if _short_has_bio %}
+                    <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
+                        <h2 class="text-2xl font-semibold mb-4">Что за бренд {{ _bt }}?</h2>
+                        <p class="text-gray-700 leading-relaxed">
+                            {{ _bt }} — {% if not brand.isForeignOrigin %}российский {% endif %}бренд одежды{% if brand.city %} из {{ brand.city }}{% endif %}{% if brand.foundingYear %}, основан в {{ brand.foundingYear }} году{% endif %}.
+                            {%- if _short_category %} Ассортимент: {{ _short_category }}.{% endif %}
+                            {%- if not brand.isForeignOrigin and _short_price and _short_price|lower != 'масс-маркет' %} В отличие от масс-маркета, {{ _bt }} работает в сегменте «{{ _short_price|lower }}».{% endif %}
+                        </p>
+                    </section>
+                {% endif %}
+
                 {% if _bd %}
                     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
                         <h2 class="text-2xl font-semibold mb-4">О бренде {{ _bt }}</h2>
