@@ -32,6 +32,9 @@ class BrandPayloadAssembler
             // Вердикт ниша-классификатора (считается на Mac): без синка прод-гейт дрипа слеп.
             'nicheStatus'     => $brand->getNicheStatus(),
             'nicheReason'     => $brand->getNicheReason(),
+            // Вердикт origin-классификатора (считается на Mac): без синка прод-гейт дрипа слеп.
+            'originStatus'    => $brand->getOriginStatus(),
+            'originReason'    => $brand->getOriginReason(),
             'description'     => $brand->getDescription(),
             'anons'           => $brand->getAnons(),
             'meta'            => [

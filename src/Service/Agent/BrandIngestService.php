@@ -80,6 +80,16 @@ class BrandIngestService
                 );
             }
 
+            // Вердикт origin-классификатора (Mac): прод сам не классифицирует, гейт дрипа
+            // (origin_status IN ('foreign','unknown')) без синка слеп. NULL не затирает вердикт.
+            if (in_array($payload['originStatus'] ?? null, ['ru', 'foreign', 'unknown'], true)) {
+                $brand->markOrigin(
+                    (string) $payload['originStatus'],
+                    isset($payload['originReason']) ? (string) $payload['originReason'] : null,
+                    new \DateTime(),
+                );
+            }
+
             $meta = $payload['meta'] ?? [];
             if (isset($meta['title'])) {
                 $brand->setMetaTitle((string) $meta['title']);
