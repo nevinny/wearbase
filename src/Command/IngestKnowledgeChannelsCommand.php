@@ -46,6 +46,7 @@ class IngestKnowledgeChannelsCommand extends Command
         'mtokovinin'         => 'framing',
         'AlexanderSokolovskiy' => 'case',
         'FedotovM'           => 'tone',
+        'drmaxseo'           => 'seo',
     ];
 
     private int $files   = 0;

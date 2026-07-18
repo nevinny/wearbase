@@ -30,6 +30,7 @@ final class AdvisorRag
         'mtokovinin'           => 'Токовинин',
         'AlexanderSokolovskiy' => 'Соколовский',
         'FedotovM'             => 'Федотов',
+        'drmaxseo'             => 'DrMax SEO',
     ];
 
     public function __construct(
