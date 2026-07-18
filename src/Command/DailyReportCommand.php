@@ -77,29 +77,70 @@ class DailyReportCommand extends Command
     }
 
     /**
-     * IG (Instagram Login токен, graph.instagram.com): подписчики + число публикаций.
-     * Инсайты охвата требуют доп. scope сверх instagram_business_basic — не запрашиваем.
-     * Возвращает ['followers','media'] или null (нет канала/токена/ошибка API).
+     * IG (Instagram Login токен, graph.instagram.com): подписчики, число публикаций,
+     * охват (account reach, скользящие 28 дней) и сумма лайков/комментов по нашим постам
+     * (последние 30, каждый — отдельный запрос). Охват/лайки — best-effort (null при сбое),
+     * подписчики/медиа обязательны, иначе null.
      */
     private function fetchIgStats(): ?array
     {
         $row = $this->db->fetchAssociative(
-            "SELECT target, token_enc FROM social_channel WHERE platform='ig' AND enabled=1 LIMIT 1",
+            "SELECT id, target, token_enc FROM social_channel WHERE platform='ig' AND enabled=1 LIMIT 1",
         );
         if (!$row || !$row['token_enc']) {
             return null;
         }
         try {
             $token = $this->cipher->decrypt($row['token_enc']);
-            $resp = $this->httpClient->request('GET', "https://graph.instagram.com/v22.0/{$row['target']}", [
+            $igId = (string) $row['target'];
+            $resp = $this->httpClient->request('GET', "https://graph.instagram.com/v22.0/{$igId}", [
                 'query'   => ['fields' => 'followers_count,media_count', 'access_token' => $token],
                 'timeout' => 10,
             ])->toArray(false);
             if (!isset($resp['followers_count'], $resp['media_count'])) {
                 return null;
             }
+            $out = [
+                'followers' => (int) $resp['followers_count'],
+                'media'     => (int) $resp['media_count'],
+                'reach'     => null,
+                'likes'     => null,
+                'comments'  => null,
+            ];
 
-            return ['followers' => (int) $resp['followers_count'], 'media' => (int) $resp['media_count']];
+            // Охват аккаунта (unique reach, скользящие 28 дней) — один запрос.
+            try {
+                $r = $this->httpClient->request('GET', "https://graph.instagram.com/v22.0/{$igId}/insights", [
+                    'query'   => ['metric' => 'reach', 'period' => 'days_28', 'metric_type' => 'total_value', 'access_token' => $token],
+                    'timeout' => 10,
+                ])->toArray(false);
+                $out['reach'] = (int) ($r['data'][0]['total_value']['value'] ?? 0);
+            } catch (\Throwable) {
+                // охват недоступен — оставляем null
+            }
+
+            // Лайки/комменты по нашим опубликованным постам (кап 30 последних).
+            try {
+                $ids = $this->db->fetchFirstColumn(
+                    "SELECT external_id FROM social_post WHERE channel_id = " . (int) $row['id'] . " AND status = 'published' AND external_id IS NOT NULL ORDER BY published_at DESC LIMIT 30",
+                );
+                $likes = 0;
+                $comments = 0;
+                foreach ($ids as $mid) {
+                    $m = $this->httpClient->request('GET', "https://graph.instagram.com/v22.0/{$mid}", [
+                        'query'   => ['fields' => 'like_count,comments_count', 'access_token' => $token],
+                        'timeout' => 10,
+                    ])->toArray(false);
+                    $likes += (int) ($m['like_count'] ?? 0);
+                    $comments += (int) ($m['comments_count'] ?? 0);
+                }
+                $out['likes'] = $likes;
+                $out['comments'] = $comments;
+            } catch (\Throwable) {
+                // лайки недоступны — оставляем null
+            }
+
+            return $out;
         } catch (\Throwable) {
             return null;
         }
@@ -287,12 +328,16 @@ class DailyReportCommand extends Command
         $vk   = $this->fetchVkStats();
         $ig   = $this->fetchIgStats();
         $dzen = $this->fetchDzenStats();
+        $igEngage = $ig !== null
+            ? sprintf('охват 28д %s · лайки %s · комм. %s', $ig['reach'] ?? '—', $ig['likes'] ?? '—', $ig['comments'] ?? '—')
+            : '—';
         $socialLine = sprintf(
-            "\n\n<b>📱 Соцсети:</b> VK %s подписч. (%s постов) · IG %s подписч. (%s публ.)\n<b>Дзен:</b> %s",
+            "\n\n<b>📱 Соцсети:</b> VK %s подписч. (%s постов) · IG %s подписч. (%s публ.)\n<b>IG вовлечённость:</b> %s\n<b>Дзен:</b> %s",
             $vk !== null ? $vk['members'] : '—',
             $vk !== null ? $vk['posts_total'] : '—',
             $ig !== null ? $ig['followers'] : '—',
             $ig !== null ? $ig['media'] : '—',
+            $igEngage,
             isset($dzen['subscribers'])
                 ? $dzen['subscribers'] . ' подписч.'
                 : ($dzen['articles_in_feed'] ?? '—') . ' статей в фиде (нет API статистики Дзена)',
