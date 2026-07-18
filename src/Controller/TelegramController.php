@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Entity\AioRemediation;
+use App\Entity\BrandFaq;
 use App\Entity\User;
 use App\Notification\AdminNotifier;
 use App\Notification\TelegramNotifier;
@@ -99,7 +101,7 @@ class TelegramController extends AbstractController
         return new JsonResponse(['ok' => true]);
     }
 
-    /** Обработка нажатия inline-кнопки. «unpub:<id>» — скрыть бренд (admin-only); «wl:*»/«wa:*» — гардероб (по привязке chatId→User). */
+    /** Обработка нажатия inline-кнопки. «unpub:<id>» — скрыть бренд (admin-only); «aioapply:/aioreject:<id>» — ремедиация AIO-утечки (admin-only); «wl:*»/«wa:*» — гардероб (по привязке chatId→User). */
     private function handleCallback(
         array $cq,
         EntityManagerInterface $em,
@@ -144,11 +146,67 @@ class TelegramController extends AbstractController
             if ($msgId !== null) {
                 $telegram->editMessageText($chatId, (int) $msgId, $msgText . "\n\n🚫 <b>Скрыт:</b> {$res['message']}");
             }
+        } elseif (str_starts_with($data, 'aioapply:') || str_starts_with($data, 'aioreject:')) {
+            $apply = str_starts_with($data, 'aioapply:');
+            $id    = (int) substr($data, $apply ? 9 : 10);
+            $note  = $this->handleAioRemediationCallback($em, $id, $apply);
+            $telegramLogger->info('TG aio-ремедиация', ['data' => $data, 'note' => $note]);
+            $telegram->answerCallbackQuery($cqId, $note !== '' ? $note : ($apply ? 'Применено' : 'Отклонено'));
+            if ($msgId !== null && $note !== '') {
+                $telegram->editMessageText($chatId, (int) $msgId, $msgText . "\n\n" . $note);
+            }
         } else {
             $telegram->answerCallbackQuery($cqId, '');
         }
 
         return new JsonResponse(['ok' => true]);
+    }
+
+    /**
+     * «aioapply:<id>» / «aioreject:<id>» (app:seo:aio-remediate, admin-only, вызывающая сторона
+     * уже проверила isAdminChat). Apply создаёт brand_faq из предложенной пары и бампает
+     * contentChangedAt пайплайна бренда (свежесть для доставки на прод, как FAQ_DONE в
+     * GenerateBrandFaqCommand) — сам aio_remediation НИКОГДА не пишется автоматически,
+     * только по этому клику. @return string короткая заметка для ответа/правки сообщения
+     */
+    private function handleAioRemediationCallback(EntityManagerInterface $em, int $id, bool $apply): string
+    {
+        $remediation = $em->find(AioRemediation::class, $id);
+        if ($remediation === null || $remediation->getStatus() !== AioRemediation::STATUS_PENDING) {
+            return 'Кандидат не найден или уже обработан';
+        }
+
+        if (!$apply) {
+            $remediation->setStatus(AioRemediation::STATUS_REJECTED);
+            $em->flush();
+            return '❌ Отклонено';
+        }
+
+        $brand = $remediation->getBrand();
+        if ($brand === null) {
+            return 'Бренд не найден — применить нельзя';
+        }
+
+        /** @var \App\Repository\BrandFaqRepository $faqRepo */
+        $faqRepo = $em->getRepository(BrandFaq::class);
+        $position = count($faqRepo->findByBrandOrdered($brand));
+
+        $em->persist((new BrandFaq())
+            ->setBrand($brand)
+            ->setQuestion($remediation->getProposedQuestion())
+            ->setAnswer($remediation->getProposedAnswer())
+            ->setPosition($position)
+            ->setSource(BrandFaq::SOURCE_LLM));
+
+        $remediation->setStatus(AioRemediation::STATUS_APPLIED)->setAppliedAt(new \DateTime());
+
+        // Свежесть для прод-доставки — тот же маркер, что и обычная генерация FAQ (FAQ_DONE).
+        $pipeline = $em->getRepository(\App\Entity\BrandRagPipeline::class)->getOrCreate($brand);
+        $pipeline->setContentChangedAt(new \DateTime());
+
+        $em->flush();
+
+        return '✅ Применено в FAQ бренда «' . htmlspecialchars((string) $brand->getTitle()) . '»';
     }
 
     #[Route('/link', name: 'link')]

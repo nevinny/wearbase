@@ -30,6 +30,30 @@ class BrandFaqRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * У бренда уже есть FAQ-вопрос про «чей/что за бренд/какой страны» — не плодим
+     * дубль в app:seo:aio-remediate (уже отвечено на entity-вопрос).
+     */
+    public function hasBrandEntityQuestion(Brand $brand): bool
+    {
+        $count = $this->createQueryBuilder('f')
+            ->select('COUNT(f.id)')
+            ->where('f.brand = :brand')
+            ->andWhere(
+                'LOWER(f.question) LIKE :m1 OR LOWER(f.question) LIKE :m2 '
+                . 'OR LOWER(f.question) LIKE :m3 OR LOWER(f.question) LIKE :m4',
+            )
+            ->setParameter('brand', $brand)
+            ->setParameter('m1', '%чей%бренд%')
+            ->setParameter('m2', '%что за бренд%')
+            ->setParameter('m3', '%как%стран%')
+            ->setParameter('m4', '%производ%')
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return ((int) $count) > 0;
+    }
+
     /** Перегенерация: delete-and-replace по бренду. */
     public function deleteForBrand(Brand $brand): void
     {

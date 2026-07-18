@@ -57,6 +57,24 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Точный матч бренда по названию (регистронезависимо) — для app:seo:aio-remediate:
+     * связка запроса GSC («{бренд} чей бренд») с существующей карточкой. Только
+     * опубликованные активные бренды; foreign-фильтр — на вызывающей стороне (isForeignOrigin).
+     */
+    public function findOneActiveByTitle(string $title): ?Brand
+    {
+        return $this->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->andWhere('b.publishedAt IS NOT NULL')
+            ->andWhere('LOWER(b.title) = LOWER(:title)')
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('title', $title)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
+    /**
      * Все активные бренды
      */
     public function findAllActiveBrands(): array
