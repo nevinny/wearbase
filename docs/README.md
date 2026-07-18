@@ -43,6 +43,7 @@
 | [dzen_seo_methodology.md](dzen_seo_methodology.md) | Реверс методологии конкурента (транскрипт видео + разбор реальной Dzen-статьи + КП): анатомия статьи (TOC, ссылки+UTM, CTA, FAQ, Schema, 1300–2000 слов), gap-анализ под `app:seo:listicle`, приоритеты внедрения. От 2026-06-24 |
 | [model-ab-bench.md](model-ab-bench.md) | Бенчмарк LLM-моделей генерации (вердикт: gemma4:26b) |
 | [drmax_seo_2026_digest.md](drmax_seo_2026_digest.md) | Дайджест канала DrMax SEO (янв–июл 2026): GEO/AI Overviews, GSC-regex, GIST, entity-poisoning, семантический коллапс i18n, линкбилдинг + применение в WEARBASE. Дубль в RAG `topic_chunks` (role=seo). От 2026-07-18 |
+| [seo_sitewide_backlog.md](seo_sitewide_backlog.md) | Приоритезированный SEO/GEO-бэклог (страница бренда + site-wide) по grounded-аудиту: тонкие гео-лендинги, GSC-query/Bing Citation Share (измерение), линковка блог↔каталог, robots crawl-бюджет, дубль Organization, свежесть. Только предложения. От 2026-07-19 |
 
 ## Продукт и фичи
 
