@@ -3,72 +3,80 @@
 namespace App\Command;
 
 use App\Entity\AioRemediation;
+use App\Entity\Brand;
+use App\Entity\BrandContentRevision;
 use App\Notification\AdminNotifier;
-use App\Repository\AioRemediationRepository;
-use App\Repository\BrandFaqRepository;
+use App\Repository\BrandContentRevisionRepository;
 use App\Repository\BrandRepository;
-use App\Service\BrandRagService;
-use App\Service\ContentValidator;
-use App\Service\LlmService;
 use App\Service\Seo\AioQueryClassifier;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Первый срез авто-ремедиации AIO-утечки (docs/seo_sitewide_backlog.md HIGH#2,
- * docs/drmax_seo_2026_digest.md §5). Цикл: detect → map → generate → gate → persist
- * (→ apply — ТОЛЬКО вручную по кнопке в Telegram, см. TelegramController::handleCallback
- * «aioapply:»/«aioreject:»). Эта команда НИКОГДА не пишет в brand_faq — только
- * кандидатов в aio_remediation со status=pending.
+ * Closed-loop авто-ремедиация AIO-утечки (docs/seo_sitewide_backlog.md HIGH#2,
+ * docs/drmax_seo_2026_digest.md §5). Раньше срез генерил FAQ-кандидатов и слал
+ * TG-кнопки «Применить/Отклонить» — сломано кросс-хостово (вебхук на проде,
+ * данные на Mac). Теперь: detect → map → skip-гейты → generate+gate+auto-apply
+ * через BrandContentVersioner, БЕЗ ручного подтверждения. Замер win/loss и
+ * авто-rollback делает EvaluateExperimentsCommand — здесь только старт эксперимента.
  *
- * - detect: gsc_query_stats, группа brand_entity («чей бренд»), impressions≥min-impr, clicks=0.
- * - map: вычленяем имя бренда из запроса (маркеры группы brand_entity), матчим на
- *   опубликованный активный НЕ-foreign бренд (BrandRepository::findOneActiveByTitle);
- *   если у бренда уже есть FAQ с entity-вопросом — пропуск (уже отвечено).
- * - generate: BrandRagService::retrieve() + описание бренда → факты; LlmService::
- *   generateBrandFaq() на один запрос → одна Q/A-пара (нет фактов/ответа — grounded-skip).
- * - gate: ContentValidator::isRefusal() на ответе (тот же grounded-гейт, что и в
- *   остальных генерациях контента проекта).
- * - persist: dedup по (brand, kind=faq) — существующий pending обновляется, не дублируется.
+ * - detect: gsc_query_stats, группа brand_entity («чей бренд») через
+ *   AioQueryClassifier, impressions≥min-impr, clicks=0, сорт по показам DESC.
+ * - map: вычленяем имя бренда из запроса (маркеры группы brand_entity), матчим
+ *   на опубликованный активный НЕ-foreign бренд (BrandRepository::findOneActiveByTitle,
+ *   precision>recall). Не смэтчено / foreign — счётчик, skip.
+ * - skip-гейты: (1) активная ревизия ещё PENDING (эксперимент в полёте — не
+ *   стартуем новый поверх неизмеренного); (2) описание уже содержательное —
+ *   ТОТ ЖЕ порог, что и generate-content (GenerateBrandContentCommand::
+ *   MIN_REAL_DESCRIPTION_CHARS), не выдумываем новый.
+ * - generate+gate+record: ПЕРЕИСПОЛЬЗУЕТ путь GenerateBrandContentCommand —
+ *   эта команда инжектится как сервис и вызывается через run(--id=N
+ *   --grounded-only[--dry-run]), а не дублирует RAG/quality-gate/versioner
+ *   логику. Успех определяется дельтой counters()['processed'] до/после (нет
+ *   фактов/не прошёл гейт → processed не растёт → skip+счётчик, без разбора причины —
+ *   она уже в логе generate-content). Auto-apply = generate-content сам вызывает
+ *   ensureBaseline()/record() при успехе; здесь только дописываем note='aio:{query}'
+ *   на только что созданную активную ревизию для трассировки повода.
+ * - audit: аудит-лог применённого — новая строка в aio_remediation
+ *   (kind=description, status=applied, query, brand, applied_at,
+ *   proposed_answer=сгенерированное description). Только в apply-режиме.
  *
- * Только Mac (dev, чтение gsc_query_stats + локальная ollama/RAG).
+ * Только Mac (dev, чтение gsc_query_stats + локальная ollama/RAG через generate-content).
  *
- *   php bin/console app:seo:aio-remediate --limit=10 --min-impr=8
- *   php bin/console app:seo:aio-remediate --notify
+ *   php bin/console app:seo:aio-remediate --limit=10 --min-impr=8            # dry-run (по умолчанию)
+ *   php bin/console app:seo:aio-remediate --apply --limit=10 --notify
  */
 #[AsCommand(
     name: 'app:seo:aio-remediate',
-    description: 'AIO-утечка («чей бренд», gsc_query_stats) → grounded FAQ-кандидат в aio_remediation (apply — только по кнопке в Telegram)',
+    description: 'AIO-утечка («чей бренд», gsc_query_stats) → closed-loop auto-apply grounded description через BrandContentVersioner',
 )]
 class AioRemediateCommand extends Command
 {
     /** Сколько строк gsc_query_stats перебрать в поисках $limit валидных кандидатов. */
     private const POOL_LIMIT = 300;
 
-    private int $candidates      = 0;
-    private int $unmatched       = 0;
-    private int $foreignSkipped  = 0;
-    private int $alreadyAnswered = 0;
-    private int $noFacts         = 0;
-    private int $llmSkipped      = 0;
-    private int $gateRejected    = 0;
+    private int $applied            = 0; // применено (или было бы применено в dry-run)
+    private int $unmatched          = 0;
+    private int $foreignSkipped     = 0;
+    private int $pendingExperiment  = 0; // активная ревизия ещё не измерена
+    private int $alreadyStrong      = 0; // описание уже содержательное (MIN_REAL_DESCRIPTION_CHARS)
+    private int $gateSkipped        = 0; // generate-content не дал processed (нет фактов/QA/near-dup/ошибка)
 
     public function __construct(
         private readonly Connection $db,
         private readonly EntityManagerInterface $em,
         private readonly AioQueryClassifier $classifier,
         private readonly BrandRepository $brandRepo,
-        private readonly BrandFaqRepository $faqRepo,
-        private readonly AioRemediationRepository $remediationRepo,
-        private readonly BrandRagService $rag,
-        private readonly LlmService $llm,
-        private readonly ContentValidator $validator,
+        private readonly BrandContentRevisionRepository $revisionRepo,
+        private readonly GenerateBrandContentCommand $generateCommand,
         private readonly AdminNotifier $adminNotifier,
     ) {
         parent::__construct();
@@ -77,9 +85,11 @@ class AioRemediateCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Макс. кандидатов за прогон', '10')
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Макс. брендов за прогон', '10')
             ->addOption('min-impr', null, InputOption::VALUE_REQUIRED, 'Порог показов для AIO-утечки', '8')
-            ->addOption('notify', null, InputOption::VALUE_NONE, 'Слать в Telegram (по умолчанию — только консоль)')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Превью (по умолчанию и так dry-run — флаг для явности в логах/кроне)')
+            ->addOption('apply', null, InputOption::VALUE_NONE, 'Реально применить (записать brand.*/versioner/audit)')
+            ->addOption('notify', null, InputOption::VALUE_NONE, 'Слать информационную сводку в Telegram (текст, без кнопок)')
         ;
     }
 
@@ -88,9 +98,14 @@ class AioRemediateCommand extends Command
         $io      = new SymfonyStyle($input, $output);
         $limit   = max(1, (int) $input->getOption('limit'));
         $minImpr = max(1, (int) $input->getOption('min-impr'));
+        $apply   = (bool) $input->getOption('apply');
+        $dryRun  = !$apply; // dry-run — дефолт; --dry-run — тот же смысл явно
         $notify  = (bool) $input->getOption('notify');
 
-        $io->title('SEO · AIO-ремедиация («чей бренд») — grounded-кандидаты в FAQ');
+        $io->title('SEO · AIO-ремедиация («чей бренд») — closed-loop auto-apply');
+        if ($dryRun) {
+            $io->note('dry-run: превью, без записи brand.*/versioner/audit (нужен --apply)');
+        }
 
         $rows = $this->fetchLeakQueries($minImpr);
         if ($rows === []) {
@@ -98,14 +113,14 @@ class AioRemediateCommand extends Command
             return Command::SUCCESS;
         }
 
-        $io->section(sprintf('Запросов-утечек (brand_entity) в пуле: %d, цель: %d кандидатов', count($rows), $limit));
+        $io->section(sprintf('Запросов-утечек (brand_entity) в пуле: %d, цель: %d брендов', count($rows), $limit));
 
-        $results = []; // персистнутые/обновлённые в этом прогоне — для консоли и TG
+        $results = []; // обработанные в этом прогоне — для консоли и TG
         foreach ($rows as $row) {
             if (count($results) >= $limit) {
                 break;
             }
-            $candidate = $this->processQuery((string) $row['query'], (int) $row['impressions']);
+            $candidate = $this->processQuery((string) $row['query'], (int) $row['impressions'], $dryRun);
             if ($candidate !== null) {
                 $results[] = $candidate;
             }
@@ -114,7 +129,7 @@ class AioRemediateCommand extends Command
         $this->printResults($io, $results);
 
         if ($notify && $this->adminNotifier->isEnabled()) {
-            $this->notify($results);
+            $this->notify($results, $dryRun);
         }
 
         return Command::SUCCESS;
@@ -142,7 +157,7 @@ class AioRemediateCommand extends Command
         foreach ($rows as $r) {
             $q = (string) $r['query'];
             if ($this->classifier->classify($q)['name'] !== 'brand_entity') {
-                continue; // первый срез — только «чей бренд»-формат
+                continue; // тот же первый срез — только «чей бренд»-формат
             }
             $out[] = ['query' => $q, 'impressions' => (int) $r['impressions']];
         }
@@ -151,12 +166,12 @@ class AioRemediateCommand extends Command
     }
 
     /**
-     * map → generate → gate → persist для одного запроса.
+     * map → skip-гейты → generate+gate (reuse GenerateBrandContentCommand) → auto-apply → audit.
      * null — пропущен (соответствующий счётчик уже увеличен).
      *
-     * @return ?array{id:int,brand:string,query:string,impressions:int,question:string,answer:string}
+     * @return ?array{brand:string,query:string,impressions:int}
      */
-    private function processQuery(string $query, int $impressions): ?array
+    private function processQuery(string $query, int $impressions, bool $dryRun): ?array
     {
         $name = $this->extractBrandName($query);
         if ($name === null) {
@@ -173,59 +188,68 @@ class AioRemediateCommand extends Command
             $this->foreignSkipped++;
             return null;
         }
-        if ($this->faqRepo->hasBrandEntityQuestion($brand)) {
-            $this->alreadyAnswered++;
+
+        // skip-гейт 1: эксперимент в полёте — не стартуем новый поверх неизмеренного.
+        $active = $this->revisionRepo->findActive($brand);
+        if ($active !== null && $active->getVerdict() === BrandContentRevision::VERDICT_PENDING) {
+            $this->pendingExperiment++;
             return null;
         }
 
-        // Факты: описание бренда (он-пейдж истина) + RAG-корпус, если прошёл gate качества.
-        $facts = trim((string) $brand->getDescription());
-        $ragContext = $this->rag->retrieve($brand)['context'];
-        if ($ragContext !== null) {
-            $facts .= "\n\nДополнительные факты из источников:\n" . $ragContext;
-        }
-        if ($facts === '') {
-            $this->noFacts++;
+        // skip-гейт 2: описание уже содержательное — тот же порог, что в generate-content
+        // (не выдумываем новый критерий «сильное/свежее»).
+        $existingDescription = trim((string) $brand->getDescription());
+        if (mb_strlen($existingDescription) >= GenerateBrandContentCommand::MIN_REAL_DESCRIPTION_CHARS) {
+            $this->alreadyStrong++;
             return null;
         }
 
-        $qa = $this->llm->generateBrandFaq((string) $brand->getTitle(), [$query], $facts, $brand->getCity());
-        if ($qa === []) {
-            // Модель честно не нашла в фактах ответа на этот запрос — grounded-skip, не ошибка.
-            $this->llmSkipped++;
-            return null;
-        }
-        $pair = $qa[0];
+        $brandId = $brand->getId();
+        $brandTitle = (string) $brand->getTitle();
 
-        if ($this->validator->isRefusal($pair['answer'])) {
-            $this->gateRejected++;
-            return null;
-        }
-
-        // Dedup: (brand, kind) уже pending — обновляем вместо нового ряда.
-        $remediation = $this->remediationRepo->findOnePending($brand, AioRemediation::KIND_FAQ)
-            ?? new AioRemediation();
-        $remediation
-            ->setBrand($brand)
-            ->setQuery($query)
-            ->setKind(AioRemediation::KIND_FAQ)
-            ->setProposedQuestion($pair['question'])
-            ->setProposedAnswer($pair['answer'])
-            ->setStatus(AioRemediation::STATUS_PENDING);
-
-        $this->em->persist($remediation);
-        $this->em->flush();
-
-        $this->candidates++;
-
-        return [
-            'id'          => $remediation->getId(),
-            'brand'       => (string) $brand->getTitle(),
-            'query'       => $query,
-            'impressions' => $impressions,
-            'question'    => $pair['question'],
-            'answer'      => $pair['answer'],
+        // Generate+gate: тот же путь, что batch/--id прогон generate-content (grounded RAG,
+        // refusal/QA/near-dup гейты, versioner.record при успехе) — reuse, не дублируем.
+        $genOptions = [
+            '--id'            => (string) $brandId,
+            '--grounded-only' => true,
         ];
+        if ($dryRun) {
+            $genOptions['--dry-run'] = true;
+        }
+        $before = $this->generateCommand->counters();
+        $this->generateCommand->run(new ArrayInput($genOptions), new NullOutput());
+        $after = $this->generateCommand->counters();
+
+        if ($after['processed'] <= $before['processed']) {
+            // Нет фактов / не прошёл refusal-QA-near-dup гейт / ошибка LLM — единый счётчик,
+            // причина уже видна в логе generate-content (deferred/review/generate_failed).
+            $this->gateSkipped++;
+            return null;
+        }
+
+        if (!$dryRun) {
+            // generate-content сам сделал flush()+clear() при успехе — перечитываем свежую
+            // активную ревизию, чтобы дописать note (повод) и залогировать в aio_remediation.
+            $freshBrand = $this->em->find(Brand::class, $brandId);
+            $rev = $freshBrand !== null ? $this->revisionRepo->findActive($freshBrand) : null;
+            if ($rev !== null) {
+                $rev->setNote('aio:' . mb_substr($query, 0, 240));
+            }
+            $this->em->persist((new AioRemediation())
+                ->setBrand($freshBrand)
+                ->setQuery($query)
+                ->setKind(AioRemediation::KIND_DESCRIPTION)
+                ->setProposedQuestion(mb_substr($query, 0, 255))
+                ->setProposedAnswer($rev?->getDescription() ?? '')
+                ->setStatus(AioRemediation::STATUS_APPLIED)
+                ->setAppliedAt(new \DateTime()));
+            $this->em->flush();
+            $this->em->clear();
+        }
+
+        $this->applied++;
+
+        return ['brand' => $brandTitle, 'query' => $query, 'impressions' => $impressions];
     }
 
     /**
@@ -253,14 +277,14 @@ class AioRemediateCommand extends Command
         return $name !== '' ? $name : null;
     }
 
-    /** @param array<int,array{id:int,brand:string,query:string,impressions:int,question:string,answer:string}> $results */
+    /** @param array<int,array{brand:string,query:string,impressions:int}> $results */
     private function printResults(SymfonyStyle $io, array $results): void
     {
         if ($results !== []) {
             $io->table(
-                ['ID', 'Бренд', 'Запрос', 'Показы', 'Вопрос'],
+                ['Бренд', 'Запрос', 'Показы'],
                 array_map(
-                    static fn(array $r) => [$r['id'], $r['brand'], mb_substr($r['query'], 0, 40), $r['impressions'], mb_substr($r['question'], 0, 60)],
+                    static fn(array $r) => [$r['brand'], mb_substr($r['query'], 0, 40), $r['impressions']],
                     $results,
                 ),
             );
@@ -268,42 +292,35 @@ class AioRemediateCommand extends Command
 
         $io->newLine();
         $io->table(['Результат', 'Кол-во'], [
-            ['Кандидатов сохранено (pending)', $this->candidates],
-            ['Не смэтчено на бренд',           $this->unmatched],
-            ['Foreign — пропущено',            $this->foreignSkipped],
-            ['Уже отвечено (FAQ есть)',        $this->alreadyAnswered],
-            ['Нет фактов',                     $this->noFacts],
-            ['LLM не нашла ответ в фактах',    $this->llmSkipped],
-            ['Отклонено гейтом (refusal)',     $this->gateRejected],
+            ['Применено (auto-apply)',                  $this->applied],
+            ['Не смэтчено на бренд',                     $this->unmatched],
+            ['Foreign — пропущено',                      $this->foreignSkipped],
+            ['Эксперимент в полёте (PENDING) — пропуск', $this->pendingExperiment],
+            ['Описание уже содержательное — пропуск',    $this->alreadyStrong],
+            ['Нет фактов / не прошёл гейт',               $this->gateSkipped],
         ]);
     }
 
-    /** @param array<int,array{id:int,brand:string,query:string,impressions:int,question:string,answer:string}> $results */
-    private function notify(array $results): void
+    /** @param array<int,array{brand:string,query:string,impressions:int}> $results */
+    private function notify(array $results, bool $dryRun): void
     {
+        $verb = $dryRun ? 'было бы применено (dry-run)' : 'применено';
+
         if ($results === []) {
-            $this->adminNotifier->send('🔎 <b>AIO-ремедиация</b>: новых кандидатов нет.');
+            $this->adminNotifier->send(sprintf('🔎 <b>AIO-ремедиация</b>: %s 0.', $verb));
             return;
         }
 
-        $this->adminNotifier->send(sprintf(
-            "🔎 <b>AIO-ремедиация</b>: %d кандидат(ов) FAQ по утечке «чей бренд».\nПроверьте карточки ниже — применение только по кнопке.",
-            count($results),
-        ));
+        $lines = array_map(
+            static fn(array $r) => sprintf('%s ← %s', htmlspecialchars($r['brand']), htmlspecialchars($r['query'])),
+            $results,
+        );
 
-        foreach ($results as $r) {
-            $html = sprintf(
-                "<b>%s</b>\nЗапрос: %s (показы: %d)\n\n<b>Q:</b> %s\n<b>A:</b> %s",
-                htmlspecialchars($r['brand']),
-                htmlspecialchars($r['query']),
-                $r['impressions'],
-                htmlspecialchars($r['question']),
-                htmlspecialchars(mb_substr($r['answer'], 0, 500)),
-            );
-            $this->adminNotifier->sendWithButtons($html, [
-                ['text' => '✅ Применить',  'data' => 'aioapply:' . $r['id']],
-                ['text' => '❌ Отклонить', 'data' => 'aioreject:' . $r['id']],
-            ]);
-        }
+        $this->adminNotifier->send(sprintf(
+            "🔎 <b>AIO-ремедиация</b>: %s %d:\n%s",
+            $verb,
+            count($results),
+            implode("\n", $lines),
+        ));
     }
 }

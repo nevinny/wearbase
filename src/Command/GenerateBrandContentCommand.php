@@ -32,8 +32,10 @@ class GenerateBrandContentCommand extends Command
 
     /** Порог «содержательного» описания: короче — это заглушка/legacy-обрывок, нужна
      *  полная генерация, а не только meta. Иначе бренды с 20-символьной заглушкой
-     *  бесконечно идут в meta-only (статус не двигается → reselect, §2① хвост). */
-    private const MIN_REAL_DESCRIPTION_CHARS = 400;
+     *  бесконечно идут в meta-only (статус не двигается → reselect, §2① хвост).
+     *  Public — тот же критерий переиспользует AioRemediateCommand (skip-гейт
+     *  «описание уже содержательное»), чтобы не заводить свой магический порог. */
+    public const MIN_REAL_DESCRIPTION_CHARS = 400;
 
     // Счётчики результатов
     private int $processed       = 0; // успешно обработано (description + meta)
@@ -225,6 +227,27 @@ class GenerateBrandContentCommand extends Command
         $this->printResults($io, $metaOnly);
 
         return $this->failed > 0 ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * Снимок счётчиков результата — для программного вызова этой команды из другой
+     * (AioRemediateCommand: reuse-not-duplicate генерации через $command->run()).
+     * Счётчики кумулятивны за время жизни сервиса (singleton) — вызывающая сторона
+     * берёт дельту «до/после» одного run(), а не абсолютное значение.
+     *
+     * @return array{processed:int,metaGenerated:int,failed:int,validationFailed:int,qaFailed:int,nearDupDropped:int,deferred:int}
+     */
+    public function counters(): array
+    {
+        return [
+            'processed'        => $this->processed,
+            'metaGenerated'    => $this->metaGenerated,
+            'failed'           => $this->failed,
+            'validationFailed' => $this->validationFailed,
+            'qaFailed'         => $this->qaFailed,
+            'nearDupDropped'   => $this->nearDupDropped,
+            'deferred'         => $this->deferred,
+        ];
     }
 
     // -------------------------------------------------------------------------
