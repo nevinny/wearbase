@@ -11,6 +11,7 @@ use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
 use App\Service\Seo\BrandFactSheet;
+use App\Service\Seo\SpellChecker;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -79,6 +80,7 @@ class ReplaceListicleCommand extends Command
         private readonly BrandRagService        $rag,
         private readonly ContentValidator       $validator,
         private readonly BrandFactSheet         $factSheet,
+        private readonly SpellChecker           $spellChecker,
     ) {
         parent::__construct();
     }
@@ -322,6 +324,27 @@ class ReplaceListicleCommand extends Command
         // X НЕ входит в $replacements → не линкуется и не попадает в ItemList.
         $linkedBody = $this->linkifyBody($body, $replacements, $platform, $campaign);
         $linkedBody = $this->injectFactSheets($linkedBody, $replacements);
+
+        // Yandex Speller — доп-проход поверх LLM-корректуры (applyProofread): ловит
+        // орфографические артефакты, которые модель-корректор пропускает (docs: не
+        // требует ollama, отдельный бесплатный HTTP-API). Protected — X + все замены,
+        // чтобы не тронуть капитализированные брендовые имена.
+        $protected = array_map(static fn(Brand $b) => (string) $b->getTitle(), $replacements);
+        $protected[] = $anchorName;
+        $spellResult = $this->spellChecker->proofread($linkedBody, $protected);
+        $linkedBody  = $spellResult['fixed'];
+        if ($spellResult['flags'] !== []) {
+            $io->text('  Yandex Speller:');
+            foreach ($spellResult['flags'] as $flag) {
+                $io->text(sprintf(
+                    '    · «%s» → %s%s',
+                    $flag['word'],
+                    $flag['suggestion'] ?? '(нет варианта)',
+                    $flag['applied'] ? ' — исправлено' : ' — только флаг, проверить вручную',
+                ));
+            }
+        }
+
         $toc        = $this->buildToc($linkedBody);
         $cta        = $this->buildCta($platform, $campaign);
         $faqMd      = $this->buildFaqMarkdown($faq);
