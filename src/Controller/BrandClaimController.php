@@ -8,6 +8,7 @@ use App\Entity\Brand;
 use App\Entity\BrandClaim;
 use App\Entity\Notification;
 use App\Entity\User;
+use App\Notification\AdminNotifier;
 use App\Notification\EmailNotifier;
 use App\Notification\NotificationDispatcher;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -34,6 +35,7 @@ class BrandClaimController extends AbstractController
         private readonly VkVerifier             $vkVerifier,
         private readonly NotificationDispatcher $notifier,
         private readonly EmailNotifier          $emailNotifier,
+        private readonly AdminNotifier          $adminNotifier,
         #[Autowire('%env(default::ADMIN_EMAIL)%')]
         private readonly ?string                $adminEmail,
     ) {}
@@ -420,8 +422,8 @@ class BrandClaimController extends AbstractController
         $this->em->flush();
 
         // ⚠️ dispatch выше адресован ЗАЯВИТЕЛЮ (in-app след в его кабинете). Админ до 03.07.2026
-        // не узнавал о заявках вообще (только заглянув в /admin). Шлём письмо на ADMIN_EMAIL —
-        // TG с прода заблокирован, email через RuSender-транспорт работает. Soft-fail внутри send.
+        // не узнавал о заявках вообще (только заглянув в /admin). Шлём письмо на ADMIN_EMAIL
+        // (soft-fail внутри send) + TG в админ-чат (мгновеннее, не зависит от почтового транспорта).
         if (trim((string) $this->adminEmail) !== '') {
             $this->emailNotifier->send(
                 (string) $this->adminEmail,
@@ -430,6 +432,14 @@ class BrandClaimController extends AbstractController
                 ['claim' => $claim],
             );
         }
+
+        $this->adminNotifier->send(sprintf(
+            "📝 <b>Новая заявка на бренд «%s»</b> — %s\nОт: %s\nКомментарий: %s",
+            htmlspecialchars((string) $brand->getTitle(), ENT_QUOTES, 'UTF-8'),
+            $label,
+            htmlspecialchars((string) $user->getEmail(), ENT_QUOTES, 'UTF-8'),
+            htmlspecialchars($claim->getComment() ?? '—', ENT_QUOTES, 'UTF-8'),
+        ));
     }
 
     private function notifyUser(BrandClaim $claim, bool $approved): void
