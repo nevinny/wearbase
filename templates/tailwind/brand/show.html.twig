@@ -296,13 +296,17 @@
                    чём её основать (price_segment ≠ «масс-маркет»), иначе не выдумываем контраст. #}
                 {% set _short_category = attrGroups['category'] is defined ? attrGroups['category']|first.value : null %}
                 {% set _short_price = attrGroups['price_segment'] is defined ? attrGroups['price_segment']|first.value : null %}
-                {% set _short_has_bio = brand.city or brand.foundingYear or _short_category %}
+                {# geo = «страна/регион производства», извлечён из RAG-контента (ExtractBrandAttributesCommand) —
+                   grounded-ответ на интент «кто производитель / откуда бренд X», не выдумываем. #}
+                {% set _short_geo = attrGroups['geo'] is defined ? attrGroups['geo']|first.value : null %}
+                {% set _short_has_bio = brand.city or brand.foundingYear or _short_category or _short_geo %}
                 {% if _short_has_bio %}
                     <section class="bg-white rounded-xl shadow-sm p-6 mb-6">
                         <h2 class="text-2xl font-semibold mb-4">Что за бренд {{ _bt }}?</h2>
                         <p class="text-gray-700 leading-relaxed">
                             {{ _bt }} — {% if not brand.isForeignOrigin %}российский {% endif %}бренд одежды{% if brand.city %} из {{ brand.city }}{% endif %}{% if brand.foundingYear %}, основан в {{ brand.foundingYear }} году{% endif %}.
                             {%- if _short_category %} Ассортимент: {{ _short_category }}.{% endif %}
+                            {%- if _short_geo %} Производство: {{ _short_geo }}.{% endif %}
                             {%- if not brand.isForeignOrigin and _short_price and _short_price|lower != 'масс-маркет' %} В отличие от масс-маркета, {{ _bt }} работает в сегменте «{{ _short_price|lower }}».{% endif %}
                         </p>
                     </section>
