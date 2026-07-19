@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Service\Report\CardConversionCalculator;
 use App\Service\SecretCipher;
 use App\Service\Seo\AioQueryClassifier;
 use Doctrine\DBAL\Connection;
@@ -33,6 +34,7 @@ class DailyReportCommand extends Command
         private readonly HttpClientInterface $httpClient,
         private readonly SecretCipher $cipher,
         private readonly AioQueryClassifier $aio,
+        private readonly CardConversionCalculator $cardConversion,
         #[Autowire('%env(default::PROD_API_URL)%')]
         private readonly ?string $prodApiUrl,
         #[Autowire('%env(default::AGENT_API_TOKEN)%')]
@@ -286,6 +288,40 @@ class DailyReportCommand extends Command
         return $out;
     }
 
+    /**
+     * Conversion-loop: сквозная конверсия карточки (поисковые клики → клик на сайт бренда)
+     * за 7 дней vs пред. неделю + топ-3/анти-топ-3 карточек (мин. 5 входящих кликов).
+     */
+    private function buildConversionLine(): string
+    {
+        $conv = $this->cardConversion->compute();
+        if (!$conv['available']) {
+            return "\n\n<b>🎯 Конверсия карточек (7дн):</b> — (" . $conv['reason'] . ')';
+        }
+
+        $this_ = $conv['this_week'];
+        $prev  = $conv['prev_week'];
+        $delta = $this_['rate'] - $prev['rate'];
+
+        $fmt = static fn(array $r) => sprintf(
+            '%s %s%% (%d→%d)',
+            htmlspecialchars((string) $r['title']), $r['rate'], $r['incoming'], $r['outgoing'],
+        );
+
+        $line1 = sprintf(
+            "\n\n<b>🎯 Конверсия карточек (7дн):</b> %s%% (пред. %s%%, Δ%+.2f)",
+            $this_['rate'], $prev['rate'], $delta,
+        );
+
+        $line2 = '';
+        if ($conv['top'] !== [] || $conv['bottom'] !== []) {
+            $line2 = "\nТоп: " . implode(' · ', array_map($fmt, $conv['top']))
+                . ' — Анти-топ: ' . implode(' · ', array_map($fmt, $conv['bottom']));
+        }
+
+        return $line1 . $line2;
+    }
+
     protected function configure(): void
     {
         $this->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Не слать в Telegram, только вывести');
@@ -419,6 +455,9 @@ class DailyReportCommand extends Command
                 : ($dzen['articles_in_feed'] ?? '—') . ' статей в фиде (Метрика недоступна)',
         );
 
+        // --- Conversion-loop: сквозная конверсия карточки (поиск → карточка → клик на сайт бренда) ---
+        $convLine = $this->buildConversionLine();
+
         // --- AIO-радар: запросы с показами, но клик уходит в ИИ-ответ (топ приоритетов на доработку) ---
         $aioLeak = $this->fetchAioLeakQueries();
         $aioLine = "\n\n<b>🔎 AIO-утечка (клик → ИИ-ответ):</b> ";
@@ -442,7 +481,7 @@ class DailyReportCommand extends Command
             "Когорта 14д+ в индексе: %s\n" .
             "Последняя проверка: %s\n\n" .
             "<b>Яндекс:</b> в поиске %d (%s) · запросы: %s\n" .
-            "Последняя проверка: %s%s%s%s%s",
+            "Последняя проверка: %s%s%s%s%s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
             $pub['published_yesterday'], $pub['published_total'], $pub['queue_pending'],
             $pub['last_published'],
@@ -454,6 +493,7 @@ class DailyReportCommand extends Command
             $contactLine,
             $rsyaLine,
             $socialLine,
+            $convLine,
             $aioLine,
         );
 

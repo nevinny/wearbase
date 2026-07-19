@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Entity\StateSnapshot;
 use App\Repository\StateSnapshotRepository;
 use App\Service\Advisor\SignalCollector;
+use App\Service\Report\CardConversionCalculator;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -30,6 +31,7 @@ class AdvisorSnapshotCommand extends Command
         private readonly SignalCollector $collector,
         private readonly StateSnapshotRepository $snapshots,
         private readonly EntityManagerInterface $em,
+        private readonly CardConversionCalculator $cardConversion,
     ) {
         parent::__construct();
     }
@@ -48,6 +50,14 @@ class AdvisorSnapshotCommand extends Command
         if ($metrics === []) {
             $io->error('SignalCollector не собрал ни одной метрики (все источники недоступны?).');
             return Command::FAILURE;
+        }
+
+        // Conversion-loop KPI (не из SignalCollector — сквозная конверсия карточки,
+        // gsc_page_stats локально + /go/ клики с прода по агент-API). Best-effort:
+        // недоступно (нет прод-URL, синк не залил GSC) → метрика просто не добавляется.
+        $conv = $this->cardConversion->compute();
+        if ($conv['available']) {
+            $metrics['card_conversion_weekly'] = $conv['this_week']['rate'];
         }
 
         $prev  = $this->snapshots->findLatest();

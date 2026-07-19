@@ -431,6 +431,37 @@ class BrandIngestController extends AbstractController
     }
 
     /**
+     * Исходящие клики /go/ по брендам за 2 недели (conversion-loop): dev считает сквозную
+     * конверсию карточки (поисковые клики GSC локально vs исходящие клики отсюда) — реальные
+     * посетители и клики живут ТОЛЬКО на проде, dev тянет агрегат по slug (id брендов не
+     * совпадают между dev/прод, матчинг по slug — тот же паттерн, что publishedRecent()).
+     * Два окна одним запросом: this = 0-7д, prev = 7-14д (сравнение неделя-к-неделе).
+     */
+    #[Route('/outbound-click-stats', name: 'api_outbound_click_stats', methods: ['GET'])]
+    public function outboundClickStats(
+        Request $request,
+        EntityManagerInterface $em,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter, checkSignature: false)) !== null) {
+            return $deny;
+        }
+
+        $rows = $em->getConnection()->fetchAllAssociative(<<<'SQL'
+            SELECT b.slug,
+                   SUM(CASE WHEN c.created_at >= NOW() - INTERVAL 7 DAY THEN 1 ELSE 0 END) AS clicks_this_week,
+                   SUM(CASE WHEN c.created_at >= NOW() - INTERVAL 14 DAY
+                             AND c.created_at <  NOW() - INTERVAL 7 DAY THEN 1 ELSE 0 END) AS clicks_prev_week
+            FROM brand_outbound_click c
+            JOIN brand b ON b.id = c.brand_id
+            WHERE c.created_at >= NOW() - INTERVAL 14 DAY
+            GROUP BY b.slug
+        SQL);
+
+        return $this->json(['window_days' => 7, 'items' => $rows]);
+    }
+
+    /**
      * Статьи блога (для pull-конвейера closed-loop «индексация→Дзен»): `app:seo:publish-blog`
      * публикует статьи НА ПРОДЕ, а GSC-вотчер (checkBlogIndex в SyncGscCommand) живёт на Mac
      * и читает локальную таблицу article — без синка она стейл. `app:blog:pull-articles`
