@@ -70,4 +70,30 @@ class ArticleMarkdownParserTest extends TestCase
 
         self::assertNull($metaTitle);
     }
+
+    /**
+     * Регресс: строка-артефакт «##»/«### » без текста после маркера раньше вешала
+     * mdToHtml() в бесконечный цикл (accumulator абзаца и ветка заголовка обе
+     * отвергали строку, не продвигая курсор). set_time_limit — страховка: если
+     * защита когда-нибудь регрессирует, тест упадёт по таймауту, а не подвесит
+     * весь прогон.
+     */
+    public function testStrayHeadingMarkerDoesNotHang(): void
+    {
+        set_time_limit(5);
+
+        $md = "# Заголовок\n\n## Коротко\n\nОтвет.\n\nтекст\n##\n\nещё текст\n### \n\n"
+            . "## Раздел\n\n- пункт [ссылка](https://example.com)\n";
+
+        $result = (new ArticleMarkdownParser())->parse($md);
+
+        self::assertNotNull($result);
+        [$title, , $html] = $result;
+        self::assertSame('Заголовок', $title);
+        self::assertStringContainsString('<h2', $html);
+        self::assertStringContainsString('<p>текст ##</p>', $html);
+        self::assertStringContainsString('<p>ещё текст</p>', $html);
+        self::assertStringContainsString('<p>###</p>', $html);
+        self::assertStringContainsString('<li>пункт <a href="https://example.com">ссылка</a></li>', $html);
+    }
 }

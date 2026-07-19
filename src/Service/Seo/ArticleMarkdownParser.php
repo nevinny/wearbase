@@ -90,12 +90,20 @@ class ArticleMarkdownParser
                 continue;
             }
             // абзац: до пустой строки
+            $cursorBefore = $i;
             $para = [];
             while ($i < $n && trim($lines[$i]) !== '' && !preg_match('/^(#{1,3}\s|[-*]\s|\||\*\*\*|---|___|@@LDJSON)/', ltrim($lines[$i]))) {
                 $para[] = trim($lines[$i]); $i++;
             }
             if ($para !== []) {
                 $html[] = '<p>' . $this->inline(implode(' ', $para)) . '</p>';
+            } elseif ($i === $cursorBefore) {
+                // Строка-артефакт похожа на начало конструкции (#/-/|/---), но не
+                // подошла ни под один разбор выше (напр. голое "##" или "### " без
+                // текста) — курсор обязан продвинуться, иначе вечный цикл. Отдаём
+                // строку как обычный текст.
+                $html[] = '<p>' . $this->inline(trim($lines[$i])) . '</p>';
+                $i++;
             }
         }
 
