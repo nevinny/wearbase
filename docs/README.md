@@ -51,6 +51,7 @@
 
 | Документ | О чём |
 |---|---|
+| [mechanic_experiments.md](mechanic_experiments.md) | **Петля экспериментов над механиками**: контур «гипотеза → правка механики → замер → вывод», `app:experiment:propose` (ICE, человек-гейт TG) + `evaluate` (diff-in-diff когорт A/B). От 2026-07-19 |
 | [brand_lifecycle.md](brand_lifecycle.md) | **Ниша-гейт + HTTP-семантика бренда**: классификатор `app:brand:niche-check` (мода+красота vs off-niche), гейт конвейера/публикации, 410 для deleted + tombstone для закрывшихся. От 2026-06-24 |
 | [international.md](international.md) | Международные рынки: 9 локалей, валюты, SEO непереведённых локалей (noindex) |
 | [payments.md](payments.md) | Платежи, провайдеры, юр-слой (оферты/юрлица/возврат предоплаты) |
