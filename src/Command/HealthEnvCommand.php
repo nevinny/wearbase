@@ -19,8 +19,14 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * (потерян ADMIN_TELEGRAM_CHAT_ID → все TG-уведомления no-op с exit 0;
  * протух WORDSTAT_API_KEY → «0 ключевиков, ошибок 0»).
  *
- * Проверяет: обязательные env, доступность ollama/Qdrant/SearXNG, свежесть синков GSC/Яндекс.
+ * Проверяет: обязательные env, доступность ollama/Qdrant/SearXNG, свежесть синков GSC/Яндекс/
+ * снимков советника (state_snapshot). Qdrant: 401 тоже считаем «жив» (сервис ответил, дело
+ * в ключе, а не в падении процесса).
  * Анти-спам: TG-алерт по каждой проверке не чаще 1 раза в сутки (var/health_env_state.json).
+ *
+ * Это и есть health-loop (nightly self-healing мониторинг): дополнительной команды
+ * `app:ops:health` намеренно НЕТ — она дублировала бы эту же (те же проверки: env-ключи,
+ * ollama/Qdrant, свежесть GSC/Яндекс) и завела бы второй источник TG-алертов о тех же сбоях.
  *
  *   php bin/console app:health:env             # тихо: сводка в stdout, алерт только по новым fail
  *   php bin/console app:health:env --report    # полная сводка в stdout + в TG независимо от состояния
@@ -76,11 +82,15 @@ class HealthEnvCommand extends Command
             'bot_token'      => $this->checkEnv('TELEGRAM_BOT_TOKEN', $this->botToken),
             'wordstat_key'   => $this->checkEnv('WORDSTAT_API_KEY', $this->wordstatApiKey),
             'ollama'         => $this->checkOllama(),
+            // 401 = сервис жив, но не тот/просроченный api-key — само по себе не признак падения (conversion-loop ask).
             'qdrant'         => $this->checkHttp('Qdrant', $this->qdrantUrl, '/collections',
-                trim((string) $this->qdrantApiKey) !== '' ? ['api-key' => (string) $this->qdrantApiKey] : []),
+                trim((string) $this->qdrantApiKey) !== '' ? ['api-key' => (string) $this->qdrantApiKey] : [], [200, 401]),
             'searxng'        => $this->checkHttp('SearXNG', $this->searxngUrl, '/'),
             'gsc_fresh'      => $this->checkSyncFreshness('GSC', 'SELECT MAX(day) FROM gsc_page_stats'),
             'yandex_fresh'   => $this->checkSyncFreshness('Яндекс', 'SELECT MAX(last_checked_at) FROM yandex_index_status'),
+            // Health-loop: свежесть снимков советника (app:advisor:snapshot, крон 50 8 * * *) —
+            // тот же класс «протухшего синка», что GSC/Яндекс выше.
+            'advisor_fresh'  => $this->checkSyncFreshness('Советник', 'SELECT MAX(created_at) FROM state_snapshot'),
         ];
 
         // --- Сводка в stdout ---
@@ -166,9 +176,10 @@ class HealthEnvCommand extends Command
 
     /**
      * @param array<string, string> $headers
+     * @param list<int> $okStatuses HTTP-коды, считающиеся «сервис жив» (по умолчанию только 200)
      * @return array{bool, string}
      */
-    private function checkHttp(string $label, ?string $baseUrl, string $path, array $headers = []): array
+    private function checkHttp(string $label, ?string $baseUrl, string $path, array $headers = [], array $okStatuses = [200]): array
     {
         $baseUrl = trim((string) $baseUrl);
         if ($baseUrl === '') {
@@ -184,8 +195,8 @@ class HealthEnvCommand extends Command
             return [false, sprintf('%s недоступен (%s)', $label, $e->getMessage())];
         }
 
-        return $status === 200
-            ? [true, sprintf('%s отвечает (HTTP 200)', $label)]
+        return in_array($status, $okStatuses, true)
+            ? [true, sprintf('%s отвечает (HTTP %d)', $label, $status)]
             : [false, sprintf('%s: HTTP %d от %s', $label, $status, $url)];
     }
 
