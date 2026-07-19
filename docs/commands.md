@@ -30,6 +30,8 @@
 | `app:gsc:sync` | `0 6 * * *` (ежедневно) | 🖥 .43 | синк Google Search Console |
 | `app:seo:attach-distribution` | `40 5 * * *` (ежедневно) | 🍎 Mac | подстраховка: привязка копий статей под площадки (var/seo/**) — основной путь автопривязки — сразу при `app:seo:publish-blog`, см. [seo_publishing_strategy.md](seo_publishing_strategy.md) §6б |
 | `app:google:index-ping` | `0 7 * * *` (ежедневно) | 🍎 Mac | пинг Google Indexing API (≤200/день) |
+| `app:seo:aio-remediate` | `40 8 * * 1` (пн) | 🍎 Mac | closed-loop ремедиация AIO-утечки: thin→генерация / rich→gap-FAQ (`--apply --limit=10 --notify`) |
+| `app:seo:evaluate-experiments` | `0 10 * * *` (ежедневно) | 🍎 Mac | замер ревизий контента → вердикт/откат (closed-loop) |
 | `app:currency:update-rates` | `0 12 * * *` (ежедневно) | ☁️ prod | курсы валют ЦБ РФ |
 | `app:subscription:expire` | ежедневно (рекоменд.) | ☁️ prod | истечение подписок |
 | `app:brand:enrich-contacts` | `*/10 * * * *` (легаси) | 🖥 .43 | обогащение контактами |
@@ -140,7 +142,10 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 
 | Команда | Зачем | Как часто | Где |
 |---|---|---|---|
-| `app:gsc:sync` | Search Analytics → `gsc_page_stats` + URL Inspection (cap 1500/день, приоритет свежим) → `gsc_index_status`. Fail-open. | ⏰ `0 6 * * *` | 🖥 .43 |
+| `app:gsc:sync` | Search Analytics → `gsc_page_stats` (page) **+ `gsc_query_stats` (query-уровень, второй pull `dimensions=[query,date]`)** + URL Inspection (cap 1500/день, приоритет свежим) → `gsc_index_status`. Fail-open. | ⏰ `0 8 * * *` | 🍎 Mac |
+| `app:seo:aio-queries` | Regex-свип `gsc_query_stats` под AI Overviews (`AioQueryClassifier`): группирует запросы по формату (вопрос/how-to/сравнение/freshness/**brand_entity «чей бренд»**/…) + ожидаемый trigger rate. Только чтение. `--limit`. Полный reference — [aio_remediation.md](aio_remediation.md). | 👆 по запросу | 🍎 Mac |
+| `app:seo:aio-remediate` | **Closed-loop ремедиация AIO-утечки** (гибрид): brand_entity-запросы с показами/0 кликов → published-бренд → **thin** (описание<400) генерит через `generate-content` (measured); **rich** — grounded gap-FAQ (не переписывая тело). `--dry-run` дефолт, `--apply`, `--limit`, `--min-impr`, `--notify`. См. [aio_remediation.md](aio_remediation.md). | ⏰ `40 8 * * 1` (пн) | 🍎 Mac |
+| `app:seo:evaluate-experiments` | Closed-loop замер ревизий контента: `measureAfter≤now` → GSC+Яндекс «после» vs «до» → вердикт win/loss/neutral → **rollback при loss** (`BrandContentVersioner`). Первичный сигнал — Яндекс. | ⏰ `0 10 * * *` | 🍎 Mac |
 | `app:gsc:auth` | **Разовый** OAuth (refresh_token) вместо запрещённого SA-ключа. | 1️⃣ при настройке | 🖥 |
 | `app:google:index-ping` | Google Indexing API: пинг карточек активных брендов (приоритет свежим, cooldown 14 дней) → `google_index_ping`. Единственный Google-канал (anti-trifecta: Яндекс/Bing — IndexNow). `--limit` (default 180, потолок 200), `--dry-run`. Fail-open: креды `GSC_CREDENTIALS_PATH` только на Mac. | ⏰ `0 7 * * *` | 🍎 Mac |
 | `app:seo:meta-repair` | Ремонт дефектной SEO-meta (пустая / title>60 / desc>155): собирает/тримит по границе слова (`SeoMetaService::fit`), приоритет по показам GSC. `--dry-run`, `--limit`, `--min-impressions`. Чинит только дефектные поля. | 👆 по запросу / периодически | 🍎 .43 (GSC+brand-слой); ☁️ prod для прямой починки live-meta |
