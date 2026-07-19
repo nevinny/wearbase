@@ -5,6 +5,7 @@ namespace App\Command;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
 use App\Service\MarketplaceExitContext;
+use App\Service\Seo\SpellChecker;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -50,6 +51,7 @@ class MarketplaceArticleCommand extends Command
         private readonly LlmService             $llm,
         private readonly ContentValidator       $validator,
         private readonly MarketplaceExitContext $facts,
+        private readonly SpellChecker           $spellChecker,
     ) {
         parent::__construct();
     }
@@ -189,6 +191,11 @@ class MarketplaceArticleCommand extends Command
             }
             $raw  = $this->softenCliches($raw);
             $hard = $this->qualityGate($raw);
+            // Известный глюк gemma4:26b («му»/«ло»/«лан» внутри слова) — проверяем только
+            // когда остальной hard-гейт уже чист (иначе fixHint и так регенерит).
+            if ($hard === []) {
+                $hard = $this->glitchGate($raw);
+            }
             $soft = $this->numericWhitelist($raw, $factBlock);
             $body = $raw;
             if ($hard === [] && $soft === []) {
@@ -302,6 +309,37 @@ class MarketplaceArticleCommand extends Command
     }
 
     /**
+     * Гейт известного глюка gemma4:26b — слог «му»/«ло»/«лан» вклинивается внутрь слова
+     * (docs/tasktracker.md, баг от 2026-07-07). Двухфакторно: ContentValidator::
+     * findGlitchCandidateWords() — дёшево, но шумно (мидворд «ло»/«му» — обычная русская
+     * фонетика: «около», «смута»); подтверждаем только словом, которое сам Yandex Speller
+     * не узнаёт, — так реальные слова не флагуются, а «мессмуджеры»/«СДмуК» — флагуются.
+     *
+     * @return string[]
+     */
+    private function glitchGate(string $body): array
+    {
+        $candidates = $this->validator->findGlitchCandidateWords($body);
+        if ($candidates === []) {
+            return [];
+        }
+
+        $flaggedWords = array_map(
+            static fn(array $f) => mb_strtolower((string) $f['word'], 'UTF-8'),
+            $this->spellChecker->proofread($body)['flags'],
+        );
+
+        $confirmed = array_values(array_intersect(
+            array_map(static fn(string $w) => mb_strtolower($w, 'UTF-8'), $candidates),
+            $flaggedWords,
+        ));
+
+        return $confirmed === []
+            ? []
+            : [sprintf('похоже на глюк модели (слог «му»/«ло»/«лан» внутри слова, слово не по словарю): %s', implode(', ', $confirmed))];
+    }
+
+    /**
      * Legal-denylist: оценочные обвинения в адрес действующих площадок — безусловный брак
      * (нейтральность обязательна: Wildberries/Ozon/Яндекс.Маркет — работающие компании).
      *
@@ -384,6 +422,16 @@ class MarketplaceArticleCommand extends Command
         $after  = (int) preg_match_all('/\p{L}+/u', $clean);
         if (trim($clean) === '' || $after < (int) ($before * 0.8)) {
             $io->note(sprintf('  proofread: подозрительный результат (%d→%d слов) — оставлен оригинал', $before, $after));
+            return $body;
+        }
+
+        // proofread — САМ отдельный вызов gemma4:26b → сам может внести известный
+        // глюк («му»/«ло»/«лан» внутрь слова) в уже принятый чистый черновик; этот
+        // проход не проходит self-heal retry (только один шанс), поэтому при глюке —
+        // не регенерим, откатываемся к дочищенному оригиналу.
+        $glitch = $this->glitchGate($clean);
+        if ($glitch !== []) {
+            $io->note('  proofread: ' . implode('; ', $glitch) . ' — оставлен оригинал (без корректуры)');
             return $body;
         }
 

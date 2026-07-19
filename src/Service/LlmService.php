@@ -11,6 +11,17 @@ class LlmService
     private const DEFAULT_MAX_TOKENS = 1024;
 
     /**
+     * Дефолтная температура local-генерации, когда вызывающий её не передал.
+     * Модель gemma4:26b (кастомный мердж, Q4_K_M) без явных options использует
+     * свой Modelfile-дефолт temperature=1.0/top_p=0.95 — это ГОРЯЧЕ, чем 0.7,
+     * на котором эмпирически стоят SEO-серии (generateListicle и т.д., см. вызовы
+     * с $temps=[0.7,0.6,0.5]). 1.0 увеличивает риск известного глюка модели —
+     * паразитных слогов «му»/«ло»/«лан» внутри слов (docs/tasktracker.md, баг от
+     * 2026-07-07). Унифицируем: без явного значения тоже 0.7, а не «что даст модель».
+     */
+    private const DEFAULT_LOCAL_TEMPERATURE = 0.7;
+
+    /**
      * Usage последнего remote-вызова (учёт стоимости AI-запросов, AiUsageTracker).
      * null — вызов ещё не был / был local (ollama бесплатный) / провайдер не отдал usage.
      *
@@ -65,9 +76,7 @@ class LlmService
         if (!$think) {
             $payload['think'] = false;
         }
-        if ($temperature !== null) {
-            $payload['options'] = ['temperature' => $temperature];
-        }
+        $payload['options'] = ['temperature' => $temperature ?? self::DEFAULT_LOCAL_TEMPERATURE];
 
         try {
             $response = $this->httpClient->request('POST', $this->localUrl, [

@@ -274,6 +274,11 @@ class ReplaceListicleCommand extends Command
         $tone       = self::PLATFORM_TONES[$platform];
         $persona    = self::PERSONA;
 
+        // X + все замены — капитализированные имена, никогда не флагуем/не трогаем
+        // Speller'ом (использовано и в глюк-гейте ниже, и в финальной вычитке).
+        $protected = array_map(static fn(Brand $b) => (string) $b->getTitle(), $replacements);
+        $protected[] = $anchorName;
+
         $io->text(sprintf('Генерация · %s · %s', $platform, $persona));
 
         // Self-heal как в доноре: до MAX_GEN_ATTEMPTS попыток, на провал гейта чиним
@@ -298,6 +303,12 @@ class ReplaceListicleCommand extends Command
             }
             $raw = $this->softenCliches($raw);
             $issues = $this->qualityGate($raw, $replacements, $anchorName, $keywords);
+            // Известный глюк gemma4:26b («му»/«ло»/«лан» внутри слова, docs/tasktracker.md) —
+            // проверяем ТОЛЬКО когда остальной гейт уже чист (иначе fixHint и так регенерит,
+            // лишний вызов Speller не нужен).
+            if ($issues === []) {
+                $issues = $this->glitchGate($raw, $protected);
+            }
             $body = $raw;
             if ($issues === []) {
                 break;
@@ -315,7 +326,7 @@ class ReplaceListicleCommand extends Command
         }
 
         // Корректура — один раз на принятом черновике (+ повторный softenCliches).
-        $body = $this->softenCliches($this->applyProofread($body, $io));
+        $body = $this->softenCliches($this->applyProofread($body, $protected, $io));
 
         // X в title — по построению (гейт (a) для title закрыт детерминированно).
         $title    = $this->buildTitle($anchorName, count($replacements), $platform);
@@ -327,10 +338,8 @@ class ReplaceListicleCommand extends Command
 
         // Yandex Speller — доп-проход поверх LLM-корректуры (applyProofread): ловит
         // орфографические артефакты, которые модель-корректор пропускает (docs: не
-        // требует ollama, отдельный бесплатный HTTP-API). Protected — X + все замены,
-        // чтобы не тронуть капитализированные брендовые имена.
-        $protected = array_map(static fn(Brand $b) => (string) $b->getTitle(), $replacements);
-        $protected[] = $anchorName;
+        // требует ollama, отдельный бесплатный HTTP-API). $protected — X + все замены,
+        // посчитан выше (переиспользован в glitchGate() внутри self-heal).
         // Speller — ТОЛЬКО флаг, без авто-применения: тест показал (а) он пропускает контекстные
         // LLM-артефакты («шлоты» при правдоподобном окружении), (б) авто-правка корёжит реальные
         // слова (напр. «поло»→«половые»). Реальную вычитку делает LLM-proofread ниже; Speller —
@@ -563,6 +572,49 @@ class ReplaceListicleCommand extends Command
         return $issues;
     }
 
+    /**
+     * Гейт известного глюка gemma4:26b — слог «му»/«ло»/«лан» вклинивается внутрь слова
+     * (docs/tasktracker.md, баг от 2026-07-07: «ассортимумент», «мессмуджеры», «СДмуК»).
+     * Двухфакторно: ContentValidator::findGlitchCandidateWords() — дёшево, но шумно (мидворд
+     * «ло»/«му» — обычная русская фонетика: «около», «смута»); подтверждаем только словом,
+     * которое САМ Yandex Speller не узнаёт — так «смута»/«около» (реальные слова, Speller
+     * молчит) не флагуются, а «мессмуджеры»/«СДмуК» (не слово) — флагуются. Не авто-правит,
+     * только триггерит self-heal регенерацию (fixHint), как остальной qualityGate.
+     *
+     * @param string[] $protected имена брендов/X — не флагуем, даже если задели паттерн
+     * @return string[]
+     */
+    private function glitchGate(string $body, array $protected): array
+    {
+        $candidates = $this->validator->findGlitchCandidateWords($body);
+        if ($candidates === []) {
+            return [];
+        }
+
+        $protectedLower = array_map(static fn(string $p) => mb_strtolower($p, 'UTF-8'), $protected);
+        $candidates = array_values(array_filter(
+            $candidates,
+            static fn(string $w) => !in_array(mb_strtolower($w, 'UTF-8'), $protectedLower, true),
+        ));
+        if ($candidates === []) {
+            return [];
+        }
+
+        $flaggedWords = array_map(
+            static fn(array $f) => mb_strtolower((string) $f['word'], 'UTF-8'),
+            $this->spellChecker->proofread($body, $protected)['flags'],
+        );
+
+        $confirmed = array_values(array_intersect(
+            array_map(static fn(string $w) => mb_strtolower($w, 'UTF-8'), $candidates),
+            $flaggedWords,
+        ));
+
+        return $confirmed === []
+            ? []
+            : [sprintf('похоже на глюк модели (слог «му»/«ло»/«лан» внутри слова, слово не по словарю): %s', implode(', ', $confirmed))];
+    }
+
     /** X упомянут в лид-блоке «## Коротко» (ответ «чем заменить X» без X бессмыслен). @return string[] */
     private function verifyAnchorInLead(string $body, string $anchorName): array
     {
@@ -665,7 +717,10 @@ class ReplaceListicleCommand extends Command
      * Корректорский LLM-проход: чинит опечатки/грамматику до линковки.
      * Гард: пустой/заметно короче оригинала → откат к оригиналу.
      */
-    private function applyProofread(string $body, SymfonyStyle $io): string
+    /**
+     * @param string[] $protected имена брендов/X — передаём в глюк-гейт ниже
+     */
+    private function applyProofread(string $body, array $protected, SymfonyStyle $io): string
     {
         try {
             $clean = $this->llm->proofread($body);
@@ -677,6 +732,16 @@ class ReplaceListicleCommand extends Command
         $after  = (int) preg_match_all('/\p{L}+/u', $clean);
         if (trim($clean) === '' || $after < (int) ($before * 0.8)) {
             $io->note(sprintf('  proofread: подозрительный результат (%d→%d слов) — оставлен оригинал', $before, $after));
+            return $body;
+        }
+
+        // proofread — САМ отдельный вызов gemma4:26b → сам может внести известный
+        // глюк («му»/«ло»/«лан» внутрь слова) в уже принятый чистый черновик; этот
+        // проход не проходит self-heal retry (только один шанс), поэтому при глюке —
+        // не регенерим, откатываемся к дочищенному оригиналу.
+        $glitch = $this->glitchGate($clean, $protected);
+        if ($glitch !== []) {
+            $io->note('  proofread: ' . implode('; ', $glitch) . ' — оставлен оригинал (без корректуры)');
             return $body;
         }
 
