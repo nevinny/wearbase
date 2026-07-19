@@ -9,21 +9,20 @@ use Doctrine\DBAL\Connection;
  *
  * Принципы (docs/seo_adoption_plan.md, п.2):
  *  - рёбра строятся офлайн и НЕ пересчитываются на запрос — стабильный граф для Google;
- *  - существующие рёбра неприкосновенны: ребро заменяется только если target ушёл
- *    из active или при балансировке in-degree (вытесняются слабые source, не embedding);
- *  - инвариант: каждый активный бренд имеет >= MIN_IN входящих рёбер (нет сирот).
+ *  - существующие рёбра неприкосновенны: ребро заменяется только если target ушёл из active;
+ *  - out-degree переменный (0..OUT_DEGREE) — добиваем только реальными совпадениями,
+ *    без farm-like добивки произвольными брендами (тир `fill` убит, решение 2026-07-19,
+ *    docs/foreign_brands_policy.md по соседству); MIN_IN — не гарантия, а порог отчёта
+ *    для best-effort довязывания (см. ensureIncoming).
  *
- * Источники рёбер по силе: embedding (Qdrant) > style > city > fill.
+ * Источники рёбер по силе: embedding (Qdrant) > style > city.
  * Эмбеддинг-скоринг живёт в BuildLinkGraphCommand (Qdrant есть только в локальной сети);
  * этот сервис — чистый SQL, безопасен на проде (publish-tick).
  */
 class BrandLinkGraphService
 {
     public const OUT_DEGREE = 12; // исходящих рёбер на бренд (кратно сетке 2/3/4 колонок — ровные ряды на всех брейкпоинтах)
-    public const MIN_IN     = 2; // гарантированный минимум входящих
-
-    // Какие рёбра можно вытеснять при балансировке (слабые → сильные нельзя)
-    private const REPLACEABLE = ['fill', 'city'];
+    public const MIN_IN     = 2; // порог отчёта orphans()/best-effort довязывания, не гарантия
 
     public function __construct(private readonly Connection $db)
     {
@@ -95,8 +94,10 @@ class BrandLinkGraphService
     }
 
     /**
-     * SQL-кандидаты без Qdrant: пересечение стилей → тот же город → активные
-     * с наименьшим in-degree (добивка попутно лечит чужое сиротство).
+     * SQL-кандидаты без Qdrant: пересечение стилей → тот же город. Никакой
+     * farm-like добивки произвольными брендами (тир `fill` убит, решение
+     * 2026-07-19) — если пересечений нет, список может быть короче лимита
+     * или пустым, out-degree бренда останется переменным.
      * Кандидаты-таргеты origin_status='foreign' исключены — не линкуем российские
      * бренды на иностранные (docs/foreign_brands_policy.md, решение 2026-07-19).
      *
@@ -123,16 +124,8 @@ class BrandLinkGraphService
             ['id' => $brandId],
         );
 
-        $fill = $this->db->fetchFirstColumn(
-            "SELECT b.id FROM brand b
-             LEFT JOIN brand_related r ON r.related_brand_id = b.id
-             WHERE b.status = 'active' AND b.id != :id AND $notForeign
-             GROUP BY b.id ORDER BY COUNT(r.id) ASC, b.id LIMIT " . (int) ($limit * 2),
-            ['id' => $brandId],
-        );
-
         $merged = [];
-        foreach ([$byStyle, $byCity, $fill] as $bucket) {
+        foreach ([$byStyle, $byCity] as $bucket) {
             foreach ($bucket as $cid) {
                 $merged[(int) $cid] = true;
             }
@@ -143,6 +136,8 @@ class BrandLinkGraphService
 
     /**
      * Источник ребра для SQL-кандидата (для честной маркировки слабости).
+     * Вызывается только для пар из fallbackCandidates() — там гарантирован
+     * общий style либо city, третьего варианта (fill) больше нет.
      */
     public function classifyFallback(int $brandId, int $candidateId): string
     {
@@ -151,23 +146,18 @@ class BrandLinkGraphService
              WHERE a.brand_id = :a AND b.brand_id = :b LIMIT 1',
             ['a' => $brandId, 'b' => $candidateId],
         );
-        if ($sharesStyle) {
-            return 'style';
-        }
-        $sameCity = (bool) $this->db->fetchOne(
-            "SELECT 1 FROM brand a JOIN brand b ON b.city = a.city AND a.city IS NOT NULL AND a.city != ''
-             WHERE a.id = :a AND b.id = :b LIMIT 1",
-            ['a' => $brandId, 'b' => $candidateId],
-        );
 
-        return $sameCity ? 'city' : 'fill';
+        return $sharesStyle ? 'style' : 'city';
     }
 
     /**
-     * Гарантия входящих: врезаем бренд в чужие списки, пока in-degree < MIN_IN.
-     * Доноры — те, на кого бренд сам ссылается (взаимность близости), затем
-     * SQL-кандидаты. У донора занимаем свободную позицию, иначе вытесняем
-     * слабое ребро (fill/city), чей target не станет сиротой.
+     * Best-effort довязывание входящих: пока in-degree < MIN_IN, ищем среди
+     * релевантных SQL-кандидатов (style/city) донора со свободным исходящим
+     * слотом и добавляем ребро донор→бренд. Никакого форс-вытеснения чужих
+     * рёбер и никакой гарантии — если релевантных доноров со свободным слотом
+     * нет, бренд остаётся под MIN_IN (тир `fill`, который раньше это гарантировал,
+     * убит: farm-like ссылки хуже, чем часть брендов без полного покрытия;
+     * решение 2026-07-19).
      *
      * @return int сколько входящих добавлено
      */
@@ -178,23 +168,17 @@ class BrandLinkGraphService
             return 0;
         }
 
-        $donors = $this->db->fetchFirstColumn(
-            'SELECT related_brand_id FROM brand_related WHERE brand_id = :id ORDER BY position',
-            ['id' => $brandId],
-        );
-        $donors = array_merge($donors, $this->fallbackCandidates($brandId, self::OUT_DEGREE * 2));
+        $donors = $this->fallbackCandidates($brandId, self::OUT_DEGREE * 2);
 
         $added = 0;
-        $seen  = [];
         foreach ($donors as $donorId) {
             if ($added >= $need) {
                 break;
             }
             $donorId = (int) $donorId;
-            if ($donorId === $brandId || isset($seen[$donorId])) {
+            if ($donorId === $brandId || $this->outDegree($donorId) >= self::OUT_DEGREE) {
                 continue;
             }
-            $seen[$donorId] = true;
 
             $alreadyLinks = (bool) $this->db->fetchOne(
                 'SELECT 1 FROM brand_related WHERE brand_id = :donor AND related_brand_id = :target',
@@ -204,35 +188,9 @@ class BrandLinkGraphService
                 continue;
             }
 
-            if ($this->outDegree($donorId) < self::OUT_DEGREE) {
-                if ($this->addEdges($donorId, [$brandId], $this->classifyFallback($donorId, $brandId)) > 0) {
-                    $added++;
-                }
-                continue;
+            if ($this->addEdges($donorId, [$brandId], $this->classifyFallback($donorId, $brandId)) > 0) {
+                $added++;
             }
-
-            // Вытеснение: слабое ребро донора, чей target переживёт потерю входящего
-            $victim = $this->db->fetchAssociative(
-                'SELECT r.id, r.position FROM brand_related r
-                 WHERE r.brand_id = :donor AND r.source IN (:sources)
-                   AND (SELECT COUNT(*) FROM brand_related r2 WHERE r2.related_brand_id = r.related_brand_id) > :minIn
-                 ORDER BY FIELD(r.source, \'fill\', \'city\'), r.position DESC LIMIT 1',
-                ['donor' => $donorId, 'sources' => self::REPLACEABLE, 'minIn' => self::MIN_IN],
-                ['sources' => \Doctrine\DBAL\ArrayParameterType::STRING],
-            );
-            if ($victim === false) {
-                continue;
-            }
-            $this->db->executeStatement(
-                'UPDATE brand_related SET related_brand_id = :target, source = :source, created_at = CURRENT_TIMESTAMP
-                 WHERE id = :id',
-                [
-                    'target' => $brandId,
-                    'source' => $this->classifyFallback($donorId, $brandId),
-                    'id'     => $victim['id'],
-                ],
-            );
-            $added++;
         }
 
         return $added;

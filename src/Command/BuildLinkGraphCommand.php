@@ -16,8 +16,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Построение жёсткого графа перелинковки брендов (docs/seo_adoption_plan.md, п.2).
  *
  * Запускать локально/на LLM-сервере (нужен Qdrant). Граф жёсткий: повторный запуск
- * НЕ трогает существующие рёбра — только добивает брендам без полного out-degree,
- * чинит рёбра на скрытые бренды и гарантирует in-degree >= 2 (нет сирот).
+ * НЕ трогает существующие рёбра — только добивает брендам недостающие рёбра реальными
+ * совпадениями (embedding/style/city, без farm-like fill), чинит рёбра на скрытые
+ * бренды и пытается best-effort довязать in-degree < 2 (без гарантии, см. ensureIncoming).
  *
  *   php bin/console app:brand:build-link-graph            # инкрементально
  *   php bin/console app:brand:build-link-graph --rebuild  # снести и построить заново
