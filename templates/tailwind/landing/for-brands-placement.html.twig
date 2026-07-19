@@ -198,8 +198,7 @@
                 <div class="form-error mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 text-left">{{ message }}</div>
             {% endfor %}
 
-            {# TODO: заменить action на path('landing_placement_pay') когда роут вольётся #}
-            <form method="post" action="/ru/for-brands/placement/pay" class="rounded-2xl bg-white shadow-sm p-6 space-y-4 mb-4">
+            <form method="post" action="{{ path('landing_placement_pay', {_locale: app.request.locale|default('ru')}) }}" class="rounded-2xl bg-white shadow-sm p-6 space-y-4 mb-4">
                 <div class="text-left">
                     <label class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1" for="placement-pay-email">Email для чека</label>
                     <input type="email" id="placement-pay-email" name="email" required placeholder="you@brand.ru" class="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">

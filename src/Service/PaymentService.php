@@ -8,6 +8,7 @@ use App\Entity\Cart;
 use App\Entity\Notification;
 use App\Entity\Order;
 use App\Entity\Payment;
+use App\Entity\ServicePayment;
 use App\Entity\Subscription;
 use App\Entity\Tariff;
 use App\Notification\AdminNotifier;
@@ -147,6 +148,43 @@ readonly class PaymentService
         }
     }
 
+    // ── Service payments (разовые услуги, платформенные креды) ──
+
+    /**
+     * Разовая оплата платной услуги (напр. «Размещение под ключ» 5 000₽) — тот же
+     * платформенный YooKassa-клиент, что и подписки (доход площадки, не бренда).
+     */
+    public function createServicePayment(ServicePayment $servicePayment, string $returnUrl, string $description): ?string
+    {
+        try {
+            $idempotenceKey = sprintf('service-%d', $servicePayment->getId());
+            $response = $this->platformClient()->createPayment([
+                'amount' => [
+                    'value'    => $servicePayment->getAmount(),
+                    'currency' => 'RUB',
+                ],
+                'confirmation' => [
+                    'type'      => 'redirect',
+                    'return_url' => $returnUrl,
+                ],
+                'capture' => true,
+                'description' => $description,
+                'metadata' => [
+                    'service_payment_id' => $servicePayment->getId(),
+                    'payment_type'       => 'service',
+                ],
+            ], $idempotenceKey);
+
+            $servicePayment->setYookassaPaymentId($response->getId());
+            $this->em->flush();
+
+            return $response->getConfirmation()->getConfirmationUrl();
+        } catch (\Throwable $e) {
+            $this->logger->error('YooKassa: ошибка создания платежа услуги', ['exception' => $e]);
+            return null;
+        }
+    }
+
     // ── Order payments (через счёт бренда) ──────────────────
 
     /**
@@ -255,6 +293,12 @@ readonly class PaymentService
                 return $this->handleOrderPayment($bodyPaymentId, $metadata);
             }
 
+            if ($paymentType === 'service') {
+                // Авторитетный статус — через платформенный клиент (тот же путь, что подписки)
+                $info = $this->platformClient()->getPaymentInfo($bodyPaymentId);
+                return $this->handleServicePayment($bodyPaymentId, $info->getStatus(), $metadata, $info->getAmount());
+            }
+
             return false;
         } catch (\Throwable $e) {
             $this->logger->error('YooKassa: ошибка обработки webhook', ['exception' => $e]);
@@ -330,6 +374,52 @@ readonly class PaymentService
                 htmlspecialchars((string) $sub?->getBrand()?->getTitle(), ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars((string) $sub?->getTariff()?->getCode(), ENT_QUOTES, 'UTF-8'),
                 htmlspecialchars($payment->getAmount(), ENT_QUOTES, 'UTF-8'),
+            ));
+        }
+
+        return true;
+    }
+
+    private function handleServicePayment(string $paymentId, string $status, array $metadata, object $confirmedAmount): bool
+    {
+        $servicePaymentId = $metadata['service_payment_id'] ?? null;
+        if (!$servicePaymentId) {
+            return false;
+        }
+
+        $servicePayment = $this->em->getRepository(ServicePayment::class)->find((int) $servicePaymentId);
+        if (!$servicePayment || $servicePayment->getYookassaPaymentId() !== $paymentId) {
+            return false;
+        }
+
+        // Проверяем сумму/валюту
+        if ($confirmedAmount->getValue() !== $servicePayment->getAmount()) {
+            return false;
+        }
+        if ((string) $confirmedAmount->getCurrency() !== 'RUB') {
+            return false;
+        }
+
+        if ($status === 'succeeded') {
+            if ($servicePayment->getStatus() === ServicePayment::STATUS_SUCCEEDED) {
+                return true;
+            }
+            $servicePayment->markAsSucceeded($paymentId);
+        } elseif (in_array($status, ['canceled', 'failed'], true)) {
+            if ($servicePayment->getStatus() === ServicePayment::STATUS_SUCCEEDED) {
+                return true;
+            }
+            $servicePayment->markAsCanceled();
+        }
+
+        $this->em->flush();
+
+        if ($status === 'succeeded' && $servicePayment->getStatus() === ServicePayment::STATUS_SUCCEEDED) {
+            $this->admin->send(sprintf(
+                "💰 <b>ОПЛАТА УСЛУГИ 5000₽</b> от %s\nУслуга: %s\nБренд/подсказка: %s",
+                htmlspecialchars($servicePayment->getEmail(), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($servicePayment->getServiceCode(), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($servicePayment->getBrandHint() ?? '—', ENT_QUOTES, 'UTF-8'),
             ));
         }
 

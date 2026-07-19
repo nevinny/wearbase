@@ -24,6 +24,13 @@ framework:
             limit: 120
             interval: '1 minute'
 
+        # Разовая оплата услуг (напр. «Размещение под ключ» 5000₽): защита от мусорных
+        # платежей/долбёжки эндпоинта создания платежа YooKassa.
+        service_pay:
+            policy: sliding_window
+            limit: 10
+            interval: '1 hour'
+
         # AI-ассист добавления вещи в гардероб (фото/URL → LLM): per-user анти-абьюз,
         # поверх — общий дневной потолок инсталляции (WardrobeAiMeter, api_usage_daily).
         wardrobe_ai:

@@ -81,10 +81,22 @@
 ### Подписка (доход площадки)
 `PaymentController::subscribe` → `PaymentService::createSubscriptionPayment(...)` — **платформенный** YooKassa-клиент (`platformClient()`, env `YOOKASSA_SHOP_ID`/`YOOKASSA_SECRET_KEY`).
 
+### Разовая услуга (доход площадки) — «Размещение под ключ» 5 000₽
+`LandingController::placementPay` (`POST /{_locale}/for-brands/placement/pay`, CSRF `placement_pay`,
+rate-limit `service_pay` 10/час/IP) → создаёт `ServicePayment` (таблица `service_payment`, pending) →
+`PaymentService::createServicePayment(...)` — тот же **платформенный** клиент, что подписки. Без
+настроенных ключей (`isConfigured()===false`) или при ошибке шлюза — graceful-редирект на лендинг
+с флешем «оплата временно недоступна» (не 500). Return-URL — `landing_placement_paid` (нейтральная
+страница «оплата обрабатывается», `noindex`); фактический статус приходит вебхуком.
+⚠️ Публичной оферты на саму услугу нет (только `privacy_policy`/`personal_data_consent`) —
+юр.-TODO, см. sales_offer.md §3.
+
 ### Вебхук
 `POST /payment/yookassa/webhook` → `PaymentService::handleNotification()`:
 - IP-allowlist YooKassa; парсинг `NotificationFactory`.
 - **subscription** → авторитетный статус через `platformClient()->getPaymentInfo()`.
+- **service** → тот же платформенный `getPaymentInfo()`; при `succeeded` — `ServicePayment.status=succeeded`
+  + TG-уведомление владельцу («💰 ОПЛАТА УСЛУГИ 5000₽ от …»).
 - **order** → статус через `gateways->get(account.provider.code)->fetchStatus($account, $id)` (клиент того счёта, на который шёл платёж; для legacy без снимка — платформенный).
 - refund — без обращения к API.
 

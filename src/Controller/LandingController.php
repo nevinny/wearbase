@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\LandingLead;
+use App\Entity\ServicePayment;
 use App\Notification\AdminNotifier;
 use App\Notification\EmailNotifier;
 use App\Repository\ArticleRepository;
 use App\Repository\BrandRepository;
 use App\Repository\PaymentProviderRepository;
+use App\Service\PaymentService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 class LandingController extends AbstractController
 {
@@ -181,5 +185,73 @@ class LandingController extends AbstractController
 
         $this->addFlash('success', 'Спасибо! Мы свяжемся с вами в ближайшее время.');
         return $this->redirect($request->headers->get('referer', '/'));
+    }
+
+    /**
+     * Онлайн-оплата услуги «Размещение под ключ» 5 000₽ (sales_offer.md §3 TODO) — платформенный
+     * путь YooKassa (доход площадки, как подписки), не через шлюз бренда. Без готовых ключей
+     * YooKassa (dev/test) деградирует в редирект на форму заявки — не 500.
+     */
+    #[Route('/{_locale}/for-brands/placement/pay', name: 'landing_placement_pay', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'], methods: ['POST'])]
+    public function placementPay(
+        Request $request,
+        EntityManagerInterface $em,
+        PaymentService $paymentService,
+        RateLimiterFactory $servicePayLimiter,
+    ): Response {
+        $locale = $request->getLocale();
+
+        $token = $request->request->get('_csrf_token');
+        if (!$this->isCsrfTokenValid('placement_pay', $token)) {
+            return new Response('Invalid CSRF token', Response::HTTP_BAD_REQUEST);
+        }
+
+        if (!$servicePayLimiter->create($request->getClientIp() ?? 'unknown')->consume()->isAccepted()) {
+            return new Response('Too many requests', 429);
+        }
+
+        $email = trim((string) $request->request->get('email', ''));
+        $brandHint = trim((string) $request->request->get('brand_hint', ''));
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->addFlash('error', 'Укажите корректный email для оплаты');
+            return $this->redirectToRoute('landing_for_brands_placement', ['_locale' => $locale]);
+        }
+
+        if (!$paymentService->isConfigured()) {
+            $this->addFlash('error', 'Онлайн-оплата временно недоступна — оставьте заявку, мы свяжемся с вами');
+            return $this->redirectToRoute('landing_for_brands_placement', ['_locale' => $locale]);
+        }
+
+        $servicePayment = new ServicePayment();
+        $servicePayment->setServiceCode(ServicePayment::SERVICE_PLACEMENT);
+        $servicePayment->setEmail($email);
+        $servicePayment->setBrandHint($brandHint !== '' ? $brandHint : null);
+        $em->persist($servicePayment);
+        $em->flush();
+
+        $returnUrl = $this->generateUrl('landing_placement_paid', ['_locale' => $locale], UrlGeneratorInterface::ABSOLUTE_URL);
+        $paymentUrl = $paymentService->createServicePayment(
+            $servicePayment,
+            $returnUrl,
+            'Размещение бренда под ключ на WEARBASE',
+        );
+
+        if ($paymentUrl === null) {
+            $this->addFlash('error', 'Платёжный шлюз временно недоступен. Оставьте заявку — свяжемся с вами.');
+            return $this->redirectToRoute('landing_for_brands_placement', ['_locale' => $locale]);
+        }
+
+        return $this->redirect($paymentUrl);
+    }
+
+    /**
+     * Страница возврата после оплаты услуги — фактический статус приходит вебхуком YooKassa
+     * (PaymentService::handleNotification), здесь только нейтральное сообщение.
+     */
+    #[Route('/{_locale}/for-brands/placement/paid', name: 'landing_placement_paid', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
+    public function placementPaid(): Response
+    {
+        return $this->render('tailwind/landing/for-brands-placement-paid.html.twig');
     }
 }
