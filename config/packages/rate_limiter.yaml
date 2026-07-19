@@ -30,3 +30,12 @@ framework:
             policy: sliding_window
             limit: 30
             interval: '1 day'
+
+# В тестах дневное окно wardrobe_ai живёт в var/cache/test МЕЖДУ прогонами
+# (тест-БД одноразовая → user id повторяются) — после ~30 прогонов сьют
+# начинает флейкать 429. Лимитер в тестах отключаем.
+when@test:
+    framework:
+        rate_limiter:
+            wardrobe_ai:
+                policy: no_limit
