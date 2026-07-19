@@ -38,6 +38,10 @@ class TagBrandStylesCommand extends Command
         'y2k' => 'Y2K', 'gorpcore' => 'Горпкор', 'opium' => 'Опиум', 'archive' => 'Архив',
         'upcycle' => 'Апсайклинг', 'outdoor' => 'Аутдор', 'oversize' => 'Оверсайз',
         'luxury' => 'Премиум / Люкс', 'beach' => 'Пляжный / Курортный', 'school' => 'Школьный',
+        // 2026-07-19 (SEO: style-хабы дают лучший CTR каталога) — выделены из-под classic/gorpcore
+        // отдельными хабами: реальный, различимый спрос в brand_attribute(style), не покрытый
+        // общими категориями («тихая роскошь» ≠ «классика», «воркwear» ≠ «горпкор»).
+        'quiet-luxury' => 'Тихая роскошь', 'workwear' => 'Воркwear',
     ];
 
     /** Свободный текст (lowercased) => canonical slug. */
@@ -48,7 +52,7 @@ class TagBrandStylesCommand extends Command
         'скандинавский' => 'minimalism', 'базовые' => 'minimalism',
         'классика' => 'classic', 'классический' => 'classic', 'classic' => 'classic',
         'элегантный' => 'classic', 'элегантность' => 'classic', 'элегантная' => 'classic',
-        'elegant' => 'classic', 'timeless' => 'classic', 'классические' => 'classic', 'old money' => 'classic',
+        'elegant' => 'classic', 'timeless' => 'classic', 'классические' => 'classic',
         'спорт' => 'sport', 'спортивный' => 'sport', 'спортивная' => 'sport', 'sport' => 'sport',
         'sportswear' => 'sport', 'спортвир' => 'sport', 'атлетик' => 'sport', 'актив' => 'sport',
         'спорт-шик' => 'sport', 'athleisure' => 'sport', 'sporty' => 'sport', 'активный отдых' => 'sport',
@@ -80,8 +84,15 @@ class TagBrandStylesCommand extends Command
         'праздничный' => 'drama', 'свадебный' => 'drama', 'вечерние' => 'drama',
         'дэнди' => 'dendi', 'dandy' => 'dendi',
         'y2k' => 'y2k', 'у2к' => 'y2k', 'y2к' => 'y2k',
-        'горпкор' => 'gorpcore', 'gorpcore' => 'gorpcore', 'gorp' => 'gorpcore', 'горкор' => 'gorpcore', 'workwear' => 'gorpcore',
+        'горпкор' => 'gorpcore', 'gorpcore' => 'gorpcore', 'gorp' => 'gorpcore', 'горкор' => 'gorpcore',
         'гопкор' => 'gorpcore', 'функциональный' => 'gorpcore', 'технологичный' => 'gorpcore',
+        'workwear' => 'workwear', 'work wear' => 'workwear', 'modern workwear' => 'workwear',
+        'рабочая одежда' => 'workwear', 'спецодежда' => 'workwear', 'функциональная рабочая одежда' => 'workwear',
+        'old money' => 'quiet-luxury', 'quiet luxury' => 'quiet-luxury', 'тихая роскошь' => 'quiet-luxury',
+        'роскошь' => 'quiet-luxury', 'роскошный' => 'quiet-luxury', 'сдержанная роскошь' => 'quiet-luxury',
+        'элегантная роскошь' => 'quiet-luxury', 'спокойная роскошь' => 'quiet-luxury', 'непринужденная роскошь' => 'quiet-luxury',
+        'рациональная роскошь' => 'quiet-luxury', 'ленивая роскошь' => 'quiet-luxury', 'лакониная роскошь' => 'quiet-luxury',
+        'утонченная роскошь' => 'quiet-luxury', 'роскошь повседневности' => 'quiet-luxury', 'эстетика old money' => 'quiet-luxury',
         'опиум' => 'opium', 'opium' => 'opium',
         'архив' => 'archive', 'archive' => 'archive', 'архивный' => 'archive', 'архивная' => 'archive',
         'апсайкл' => 'upcycle', 'апсайклинг' => 'upcycle', 'upcycle' => 'upcycle', 'переработка' => 'upcycle', 'recycled' => 'upcycle',
