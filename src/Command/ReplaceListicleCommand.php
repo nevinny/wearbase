@@ -331,16 +331,18 @@ class ReplaceListicleCommand extends Command
         // чтобы не тронуть капитализированные брендовые имена.
         $protected = array_map(static fn(Brand $b) => (string) $b->getTitle(), $replacements);
         $protected[] = $anchorName;
+        // Speller — ТОЛЬКО флаг, без авто-применения: тест показал (а) он пропускает контекстные
+        // LLM-артефакты («шлоты» при правдоподобном окружении), (б) авто-правка корёжит реальные
+        // слова (напр. «поло»→«половые»). Реальную вычитку делает LLM-proofread ниже; Speller —
+        // лишь список подозрительных слов в консоль для ручной сверки.
         $spellResult = $this->spellChecker->proofread($linkedBody, $protected);
-        $linkedBody  = $spellResult['fixed'];
         if ($spellResult['flags'] !== []) {
-            $io->text('  Yandex Speller:');
+            $io->text('  Yandex Speller (только флаги, проверить вручную):');
             foreach ($spellResult['flags'] as $flag) {
                 $io->text(sprintf(
-                    '    · «%s» → %s%s',
+                    '    · «%s» → %s',
                     $flag['word'],
                     $flag['suggestion'] ?? '(нет варианта)',
-                    $flag['applied'] ? ' — исправлено' : ' — только флаг, проверить вручную',
                 ));
             }
         }
