@@ -326,6 +326,25 @@ class BrandIngestController extends AbstractController
         } catch (\Throwable) {
         }
 
+        // Заявки на забор карточки бренда (BrandClaim) — реальная бизнес-конверсия
+        // (не CTR механики карточки): по статусам + за неделю vs прошлую неделю.
+        try {
+            foreach ($db->fetchAllAssociative('SELECT status, COUNT(*) c FROM brand_claim GROUP BY status') as $r) {
+                $out['brand_claims_' . $r['status']] = (int) $r['c'];
+            }
+            $weekAgoMsk = (new \DateTime('-7 days', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
+            $twoWeeksAgoMsk = (new \DateTime('-14 days', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
+            $out['brand_claims_this_week'] = (int) $db->fetchOne(
+                'SELECT COUNT(*) FROM brand_claim WHERE created_at >= ?',
+                [$weekAgoMsk],
+            );
+            $out['brand_claims_prev_week'] = (int) $db->fetchOne(
+                'SELECT COUNT(*) FROM brand_claim WHERE created_at >= ? AND created_at < ?',
+                [$twoWeeksAgoMsk, $weekAgoMsk],
+            );
+        } catch (\Throwable) {
+        }
+
         return $this->json($out);
     }
 

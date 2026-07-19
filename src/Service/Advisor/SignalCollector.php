@@ -141,13 +141,16 @@ final class SignalCollector
                 $out['prod_' . $k] = (int) $d[$k];
             }
         }
-        // Живой бизнес: подписки по статусам, лиды, заказы. Имена уже осмысленные —
-        // переносим как есть. Появятся только после деплоя прода с новым эндпоинтом.
+        // Живой бизнес: подписки по статусам, лиды, заказы, заявки на забор карточки
+        // бренда (brand_claims_* — реальная конверсия, не CTR механики card_conversion_weekly).
+        // Имена уже осмысленные — переносим как есть. Появятся только после деплоя прода
+        // с новым эндпоинтом.
         foreach ($d as $k => $v) {
             if (is_numeric($v) && (
                 str_starts_with($k, 'subscriptions_')
                 || str_starts_with($k, 'leads_')
                 || str_starts_with($k, 'orders_')
+                || str_starts_with($k, 'brand_claims_')
             )) {
                 $out[$k] = (int) $v;
             }
