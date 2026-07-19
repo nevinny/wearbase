@@ -39,6 +39,7 @@
 | `app:rag:autoscale` | `*/3 * * * *` | 🍎 Mac | супервизор baseline + burst по очередям + health-gate |
 | `app:social:plan` / `generate` / `publish-tick` | `6:00` / `*/30` / `0 * * * *` | 🍎 Mac | контент-сетка → наполнение → дрип-публикация (TG/VK) |
 | `app:social:ingest-clicks` | `30 7 * * *` (ежедневно) | 🍎 Mac | closed-loop: UTM-клики из nginx-логов прода (ssh+zgrep) → `social_post_metric.link_taps` |
+| `app:outreach:warm-refresh` | `30 8 * * 1` (пн) | 🍎 Mac | SALES-LOOP: тёплые лиды (клики из GSC) → драфты письма-оффера 5000₽ + сводка в TG (человек-гейт, отправка вручную) |
 
 ### 🍎 Mac-крон: одна точка входа + расписание в БД
 
@@ -123,6 +124,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 |---|---|---|---|
 | `app:outreach:send` | Warmup: activation-письма когорте A (опубликованные бренды с данными), малыми батчами (10→15→25). После warmup — авто-врезка в publish-tick (`OUTREACH_AUTO=1`). | 👆 ручные батчи (warmup) | ☁️ prod |
 | `app:outreach:test` | Тест рендера письма на указанный адрес (RuSender REST), без записи в БД. | 👆 по запросу | 👆 |
+| `app:outreach:warm-refresh` | **SALES-LOOP** (docs/sales_offer.md): тёплые лиды = active-бренды с реальными кликами/показами из поиска за 28 дней (`gsc_page_stats`, дедуп дублей page_url-вариантов), которым ещё не готовили этот драфт (`outreach_log`). Шаблонные (не LLM) письма-офферы 5000₽ с цифрами трафика + похожими брендами (стиль/город) → `var/outreach/warm-YYYY-MM-DD.md` + сводка в TG. **Человек-гейт: писем не шлёт**, отправка — ручное решение владельца. | ⏰ `30 8 * * 1` (пн) | 🍎 Mac |
 
 ---
 
