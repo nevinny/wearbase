@@ -23,6 +23,7 @@
 | [big_player_roadmap.md](big_player_roadmap.md) | Быть и вести себя как большой игрок: стратегия (быть/вести себя) → роадмап фазами → измеримые действия с KPI. От 2026-06-19 |
 | [monetization_economics.md](monetization_economics.md) | Юнит-экономика: себестоимость ≈0, маржа, сколько брендов до MRR, конверсия как связывающее ограничение; услуга 5000₽ vs подписка. От 2026-06-22 |
 | [sales_offer.md](sales_offer.md) | Оффер «Размещение под ключ» 5000₽ + шаблон холодного письма + плейбук продажи + критерии списка кандидатов (`_docs/cold-sales-candidates.csv`). От 2026-06-22 |
+| [proof_pack.md](proof_pack.md) | **Proof-pack пути B**: проверенный результат в цифрах (Яндекс показы ×19 425→8135/нед, страниц 339→776 за 7 нед, себестоимость ≈0; GSC 111 кликов/28д, индекс 432/1056) + позиционирование услуги «результат за срок для ICP» (по Райту) + нейминг + кому продавать (fit-тесты) + слабые места пруфа. От 2026-07-19 |
 | [seo_adoption_plan.md](seo_adoption_plan.md) | Что берём из пакета `_seo` (CLOSEDLOOP-SEO-FULL + SEO 4.9): GSC, индексация, link-graph, closed-loop |
 | [seo_rules.md](seo_rules.md) | **Канон SEO-правил (v3.0.0)** — единый: WEARBASE-константы + нормативные MUST/SHOULD/NICE + by-design принципы. Свёл в себя бывшие `seo_rules_2.3.0` и `seo_rules_SEO_GUIDE` |
 | [seo_tools.md](seo_tools.md) | Справочник SEO-инструментов (коммерческие + open-source, бюджеты) |
