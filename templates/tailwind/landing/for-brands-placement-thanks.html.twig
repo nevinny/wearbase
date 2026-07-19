@@ -1,0 +1,18 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}Заявка принята | WEARBASE{% endblock %}
+
+{% block meta_robots %}<meta name="robots" content="noindex, follow">{% endblock %}
+
+{% block body %}
+<div class="bg-white">
+    <section class="container mx-auto px-4 py-24 max-w-xl text-center">
+        <div class="text-5xl mb-6">✅</div>
+        <h1 class="text-3xl font-black mb-4 text-gray-900">Заявка принята</h1>
+        <p class="text-gray-600 mb-10">Спасибо! Свяжемся в течение рабочего дня и покажем вашу карточку.</p>
+        <a href="{{ path('brand_index', {_locale: app.request.locale|default('ru')}) }}" class="inline-block rounded-xl bg-gray-900 px-8 py-3.5 text-sm font-semibold text-white hover:bg-black transition">
+            Смотреть каталог
+        </a>
+    </section>
+</div>
+{% endblock %}

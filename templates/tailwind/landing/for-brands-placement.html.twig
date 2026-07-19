@@ -1,0 +1,312 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}Размещение бренда под ключ — 5 000₽ разово | WEARBASE{% endblock %}
+
+{% block meta_description %}За 5 000₽ разово публикуем карточку вашего бренда из реальных фактов и расставляем по 12 поверхностям видимости WEARBASE — кроме маркетплейсов. Без комиссии с продаж, клиент и выручка остаются вашими.{% endblock %}
+
+{% block meta_keywords %}размещение бренда под ключ, разместить бренд одежды, карточка бренда wearbase, продвижение бренда одежды{% endblock %}
+
+{% block meta_robots %}<meta name="robots" content="index, follow">{% endblock %}
+
+{% block og_title %}Ваша карточка уже собрана. Осталось активировать{% endblock %}
+{% block og_description %}5 000₽ разово — публикация, FAQ-разметка, хабы, статья-рейтинг, индексация в Яндексе и Bing. Без комиссии с продаж.{% endblock %}
+
+{% block body %}
+<div class="bg-white">
+
+    {# hero #}
+    <section class="container mx-auto px-4 pt-16 pb-16 text-center max-w-3xl">
+        <span class="inline-block rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-6">Размещение под ключ · 5 000₽ разово</span>
+        <h1 class="text-4xl md:text-6xl font-black leading-tight mb-6 text-gray-900">
+            Ваша карточка уже собрана.<br>Осталось активировать.
+        </h1>
+        <p class="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+            За 5 000₽ разово публикуем бренд из ваших реальных фактов и расставляем по 12 поверхностям
+            видимости WEARBASE — кроме маркетплейсов. Клиент и выручка остаются вашими.
+        </p>
+        <div class="flex flex-col items-center gap-3">
+            <a href="#lead-form" class="inline-block rounded-xl bg-gray-900 px-10 py-4 text-base font-semibold text-white hover:bg-black transition shadow-sm">
+                Оставить заявку
+            </a>
+            {% if exampleBrand %}
+                <a href="{{ path('brand_show', {_locale: app.request.locale|default('ru'), slug: exampleBrand.slug}) }}" class="text-sm text-gray-500 hover:text-gray-900 underline underline-offset-2">
+                    Посмотреть пример карточки →
+                </a>
+            {% endif %}
+        </div>
+        <p class="mt-6 text-xs text-gray-400">Без комиссии с продаж. Разово, не подписка.</p>
+    </section>
+
+    {# anchor_pain #}
+    <section class="border-t border-gray-100 bg-gray-50">
+        <div class="container mx-auto px-4 py-14 max-w-3xl">
+            <div class="rounded-2xl bg-white shadow-sm p-6 md:p-8 space-y-3">
+                <div class="flex items-start gap-3">
+                    <span class="mt-0.5 text-red-500">✕</span>
+                    <p class="text-gray-700"><strong>Маркетплейс:</strong> 30–67% с каждой продажи</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <span class="mt-0.5 text-red-500">✕</span>
+                    <p class="text-gray-700"><strong>Яндекс.Директ:</strong> десятки тысяч ₽/мес</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <p class="text-gray-900"><strong>WEARBASE:</strong> 5 000₽ один раз, дальше клиент ваш</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {# sostav #}
+    <section class="border-t border-gray-100">
+        <div class="container mx-auto px-4 py-16 max-w-3xl">
+            <h2 class="text-3xl font-black text-center mb-10 text-gray-900">Что входит</h2>
+            <ul class="space-y-3 mb-8">
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">Карточка из реальных фактов (grounded, не вода) — публикация + индексация</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">FAQ-блок + микроразметка FAQPage под расширенные сниппеты и AI-ответы</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">Атрибуты, факты, логотип, до 50 фото</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">Кнопки перехода на ваш сайт с подсчётом каждого клика</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">Размещение в хабах города и стиля + блок «Похожие бренды»</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">SEO-статья «ТОП-N брендов ниши» с вами №1</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">Индексация: sitemap + IndexNow (Яндекс, Bing) + llms.txt</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">Анонс в Telegram и VK WEARBASE</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">Личный кабинет бренда — дальше управляете сами</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-green-600">✓</span>
+                    <span class="text-gray-700">Отчёт цифрами через 30 дней (показы/клики/переходы к вам)</span>
+                </li>
+                <li class="flex items-start gap-3 rounded-2xl bg-white shadow-sm p-4">
+                    <span class="mt-0.5 text-gray-400">＋</span>
+                    <span class="text-gray-700">По желанию — наполняем каталог товарами: импорт до 50 позиций из Excel/CSV (опция, если есть выгрузка)</span>
+                </li>
+            </ul>
+            <p class="text-center text-sm text-gray-500">Публикация 1–2 раб. дня, все поверхности — до ~5 раб. дней, отчёт — +30 дней</p>
+        </div>
+    </section>
+
+    {# proof #}
+    <section class="border-t border-gray-100 bg-gray-50">
+        <div class="container mx-auto px-4 py-16 max-w-4xl">
+            <h2 class="text-3xl font-black text-center mb-2 text-gray-900">Что даёт наш движок</h2>
+            <p class="text-center text-sm text-gray-500 mb-10">Факт, не обещание — проверено запросом к БД 2026-07-19</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="rounded-2xl bg-white shadow-sm p-6 text-center">
+                    <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Показы в Яндексе за 7 недель</div>
+                    <div class="text-2xl font-black text-gray-900">425 → 8 135</div>
+                    <div class="text-sm text-green-600 font-semibold mt-1">×19</div>
+                </div>
+                <div class="rounded-2xl bg-white shadow-sm p-6 text-center">
+                    <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Страниц в поиске</div>
+                    <div class="text-2xl font-black text-gray-900">339 → 776</div>
+                    <div class="text-sm text-green-600 font-semibold mt-1">×2,3</div>
+                </div>
+                <div class="rounded-2xl bg-white shadow-sm p-6 text-center">
+                    <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Себестоимость страницы</div>
+                    <div class="text-2xl font-black text-gray-900">≈ 0₽</div>
+                    <div class="text-sm text-gray-500 mt-1">grounded-генерация на своём GPU</div>
+                </div>
+            </div>
+            <div class="rounded-2xl bg-white shadow-sm p-6 max-w-2xl mx-auto">
+                <p class="text-sm text-gray-600">
+                    <strong class="text-gray-900">Честно:</strong> трафик пока навигационный и в абсолюте небольшой
+                    (231 клик Яндекс + 111 GSC за 28 дней). Мы показываем форму кривой и себестоимость ≈0,
+                    не объём. Продажи и трафик <strong>не гарантируем</strong>.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    {# how_it_works #}
+    <section class="border-t border-gray-100">
+        <div class="container mx-auto px-4 py-16 max-w-4xl">
+            <h2 class="text-3xl font-black text-center mb-10 text-gray-900">Как это работает</h2>
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
+                {% for step in ['Заявка', 'Вычитываете карточку', 'Оплата (счёт/перевод)', 'Публикуем и распространяем', 'Забираете ЛК', 'Отчёт через 30 дней'] %}
+                    <div class="rounded-2xl bg-white shadow-sm p-4 text-center">
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Шаг {{ loop.index }}</div>
+                        <div class="text-sm font-semibold text-gray-900">{{ step }}</div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    {# payment #}
+    <section class="border-t border-gray-100 bg-gray-50">
+        <div class="container mx-auto px-4 py-14 max-w-2xl text-center">
+            <h2 class="text-2xl font-black mb-4 text-gray-900">Оплата</h2>
+            <p class="text-gray-600">
+                Счёт или перевод по договорённости (карта/СБП/р-с), договор-оферта + чек.
+                Онлайн-кнопка оплаты услуги — в разработке.
+            </p>
+        </div>
+    </section>
+
+    {# guarantee #}
+    <section class="border-t border-gray-100">
+        <div class="container mx-auto px-4 py-14 max-w-2xl text-center">
+            <h2 class="text-2xl font-black mb-4 text-gray-900">Гарантия</h2>
+            <p class="text-gray-600">
+                Не опубликуем и не отправим в индекс за 10 рабочих дней — вернём 100%.
+                Предоплата возвращается до начала работ (ЗоЗПП). Гарантируем исполнение, не объём трафика.
+            </p>
+        </div>
+    </section>
+
+    {# faq #}
+    <section class="border-t border-gray-100 bg-gray-50">
+        <div class="container mx-auto px-4 py-16 max-w-3xl">
+            <h2 class="text-3xl font-black text-center mb-10 text-gray-900">Частые вопросы</h2>
+            <div class="space-y-4">
+                <details class="rounded-2xl bg-white shadow-sm p-6 group">
+                    <summary class="font-bold cursor-pointer list-none flex justify-between items-center gap-4">В других каталогах бесплатно — зачем платить?<span class="text-gray-400 group-open:rotate-45 transition shrink-0">＋</span></summary>
+                    <p class="text-gray-600 mt-3">Строчка в каталоге бесплатна везде. Вы платите за труд и за реальные поверхности: grounded-контент из ваших фактов, FAQ-разметку, статью-рейтинг, размещение в хабах и ускоренную индексацию в Яндексе и Bing. Это делаем за вас под ключ.</p>
+                </details>
+                <details class="rounded-2xl bg-white shadow-sm p-6 group">
+                    <summary class="font-bold cursor-pointer list-none flex justify-between items-center gap-4">Гарантируете трафик и продажи?<span class="text-gray-400 group-open:rotate-45 transition shrink-0">＋</span></summary>
+                    <p class="text-gray-600 mt-3">Нет, и обещать не будем. Гарантируем публикацию, индексацию и дистрибуцию + прозрачный отчёт цифр. Трафик у нас пока небольшой и навигационный, продажи зависят от вашего продукта. Врать про это — против наших правил.</p>
+                </details>
+                <details class="rounded-2xl bg-white shadow-sm p-6 group">
+                    <summary class="font-bold cursor-pointer list-none flex justify-between items-center gap-4">Откуда факты в карточке, не наврёте?<span class="text-gray-400 group-open:rotate-45 transition shrink-0">＋</span></summary>
+                    <p class="text-gray-600 mt-3">Описание собирает grounded-движок только из ваших реальных источников (сайт, Wildberries, публикации). Не хватает фактов — не пишем воду. Вы вычитываете текст перед публикацией.</p>
+                </details>
+                <details class="rounded-2xl bg-white shadow-sm p-6 group">
+                    <summary class="font-bold cursor-pointer list-none flex justify-between items-center gap-4">Захочу изменить или убрать карточку?<span class="text-gray-400 group-open:rotate-45 transition shrink-0">＋</span></summary>
+                    <p class="text-gray-600 mt-3">Забираете карточку в личный кабинет (подтверждение по email бренда или через VK) и правите сами. Ничего не удаляем физически — по вашему слову скроем.</p>
+                </details>
+                <details class="rounded-2xl bg-white shadow-sm p-6 group">
+                    <summary class="font-bold cursor-pointer list-none flex justify-between items-center gap-4">Вы маркетплейс? Заберёте моего клиента или комиссию?<span class="text-gray-400 group-open:rotate-45 transition shrink-0">＋</span></summary>
+                    <p class="text-gray-600 mt-3">Нет. 0% с продаж. Либо ведём трафик прямо на ваш сайт (и считаем переходы), либо деньги идут напрямую вам на реквизиты через YooKassa. Мы не встаём между вами и покупателем.</p>
+                </details>
+                <details class="rounded-2xl bg-white shadow-sm p-6 group">
+                    <summary class="font-bold cursor-pointer list-none flex justify-between items-center gap-4">Как оплатить?<span class="text-gray-400 group-open:rotate-45 transition shrink-0">＋</span></summary>
+                    <p class="text-gray-600 mt-3">Сейчас — счёт или перевод по договорённости, с договором-офертой и чеком. Онлайн-оплату услуги достраиваем.</p>
+                </details>
+                <details class="rounded-2xl bg-white shadow-sm p-6 group">
+                    <summary class="font-bold cursor-pointer list-none flex justify-between items-center gap-4">Не хочу спам.<span class="text-gray-400 group-open:rotate-45 transition shrink-0">＋</span></summary>
+                    <p class="text-gray-600 mt-3">Пишем одно персональное письмо про уже готовую карточку. Отписка — в один клик по ссылке в письме, глушит все касания.</p>
+                </details>
+            </div>
+        </div>
+    </section>
+
+    {# lead_form #}
+    <section id="lead-form" class="border-t border-gray-100">
+        <div class="container mx-auto px-4 py-16 max-w-md">
+            <h2 class="text-3xl font-black text-center mb-2 text-gray-900">Оставить заявку</h2>
+            <p class="text-center text-sm text-gray-500 mb-8">Покажем вашу готовую карточку и расскажем детали</p>
+
+            {% for message in app.flashes('error') %}
+                <div class="form-error mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{{ message }}</div>
+            {% endfor %}
+            {% for message in app.flashes('info') %}
+                <div class="mb-4 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-700">{{ message }}</div>
+            {% endfor %}
+
+            <form method="post" action="{{ path('landing_placement_lead', {_locale: app.request.locale|default('ru')}) }}" class="rounded-2xl bg-white shadow-sm p-6 space-y-4">
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1" for="placement-brand-name">Название бренда</label>
+                    <input type="text" id="placement-brand-name" name="brand_name" required placeholder="Ваш бренд" class="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1" for="placement-email">Email</label>
+                    <input type="email" id="placement-email" name="email" required placeholder="you@brand.ru" class="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1" for="placement-website">Ссылка на сайт/соцсеть (опц.)</label>
+                    <input type="text" id="placement-website" name="website" placeholder="instagram.com/yourbrand" class="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                </div>
+
+                {# honeypot: скрыто от людей CSS-ом, не display:none — часть антибот-эвристик его игнорируют #}
+                <div class="absolute -left-[9999px]" aria-hidden="true">
+                    <label for="placement-company-site">Оставьте это поле пустым</label>
+                    <input type="text" id="placement-company-site" name="company_site" tabindex="-1" autocomplete="off">
+                </div>
+
+                <label class="flex items-start gap-2 text-xs text-gray-500">
+                    <input type="checkbox" name="consent" required class="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900">
+                    <span>Согласен на <a href="{{ path('personal_data_consent', {_locale: 'ru'}) }}" target="_blank" class="underline hover:text-gray-900">обработку персональных данных</a> в соответствии с <a href="{{ path('privacy_policy', {_locale: 'ru'}) }}" target="_blank" class="underline hover:text-gray-900">Политикой конфиденциальности</a></span>
+                </label>
+
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('placement_lead') }}">
+
+                <button type="submit" class="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white hover:bg-black transition">
+                    Оставить заявку
+                </button>
+            </form>
+        </div>
+    </section>
+
+</div>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "В других каталогах бесплатно — зачем платить?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Строчка в каталоге бесплатна везде. Вы платите за труд и за реальные поверхности: grounded-контент из ваших фактов, FAQ-разметку, статью-рейтинг, размещение в хабах и ускоренную индексацию в Яндексе и Bing. Это делаем за вас под ключ."}
+    },
+    {
+      "@type": "Question",
+      "name": "Гарантируете трафик и продажи?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Нет, и обещать не будем. Гарантируем публикацию, индексацию и дистрибуцию + прозрачный отчёт цифр. Трафик у нас пока небольшой и навигационный, продажи зависят от вашего продукта. Врать про это — против наших правил."}
+    },
+    {
+      "@type": "Question",
+      "name": "Откуда факты в карточке, не наврёте?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Описание собирает grounded-движок только из ваших реальных источников (сайт, Wildberries, публикации). Не хватает фактов — не пишем воду. Вы вычитываете текст перед публикацией."}
+    },
+    {
+      "@type": "Question",
+      "name": "Захочу изменить или убрать карточку?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Забираете карточку в личный кабинет (подтверждение по email бренда или через VK) и правите сами. Ничего не удаляем физически — по вашему слову скроем."}
+    },
+    {
+      "@type": "Question",
+      "name": "Вы маркетплейс? Заберёте моего клиента или комиссию?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Нет. 0% с продаж. Либо ведём трафик прямо на ваш сайт (и считаем переходы), либо деньги идут напрямую вам на реквизиты через YooKassa. Мы не встаём между вами и покупателем."}
+    },
+    {
+      "@type": "Question",
+      "name": "Как оплатить?",
+      "acceptedAnswer": {"@type": "Answer", "text": "Сейчас — счёт или перевод по договорённости, с договором-офертой и чеком. Онлайн-оплату услуги достраиваем."}
+    },
+    {
+      "@type": "Question",
+      "name": "Не хочу спам.",
+      "acceptedAnswer": {"@type": "Answer", "text": "Пишем одно персональное письмо про уже готовую карточку. Отписка — в один клик по ссылке в письме, глушит все касания."}
+    }
+  ]
+}
+</script>
+{% endblock %}

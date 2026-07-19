@@ -24,9 +24,17 @@ class LandingLead
     #[Assert\Email]
     private string $email;
 
-    /** Откуда пришёл: no-marketplace, for-brands, etc. */
+    /** Откуда пришёл: no-marketplace, for-brands, for-brands-placement, etc. */
     #[ORM\Column(length: 50, nullable: true)]
     private ?string $source = null;
+
+    /** Название бренда — заполняется формой «Размещение под ключ» (for-brands-placement). */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $brandName = null;
+
+    /** Ссылка на сайт/соцсеть бренда (опц.) — форма «Размещение под ключ». */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $website = null;
 
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTime $createdAt;
@@ -43,6 +51,12 @@ class LandingLead
 
     public function getSource(): ?string { return $this->source; }
     public function setSource(?string $source): static { $this->source = $source; return $this; }
+
+    public function getBrandName(): ?string { return $this->brandName; }
+    public function setBrandName(?string $brandName): static { $this->brandName = $brandName; return $this; }
+
+    public function getWebsite(): ?string { return $this->website; }
+    public function setWebsite(?string $website): static { $this->website = $website; return $this; }
 
     public function getCreatedAt(): \DateTime { return $this->createdAt; }
 
