@@ -97,15 +97,19 @@ class BrandLinkGraphService
     /**
      * SQL-кандидаты без Qdrant: пересечение стилей → тот же город → активные
      * с наименьшим in-degree (добивка попутно лечит чужое сиротство).
+     * Кандидаты-таргеты origin_status='foreign' исключены — не линкуем российские
+     * бренды на иностранные (docs/foreign_brands_policy.md, решение 2026-07-19).
      *
      * @return array<int,int>
      */
     public function fallbackCandidates(int $brandId, int $limit = self::OUT_DEGREE): array
     {
+        $notForeign = "(b.origin_status IS NULL OR b.origin_status != 'foreign')";
+
         $byStyle = $this->db->fetchFirstColumn(
             "SELECT bs2.brand_id FROM brand_style_brand bs1
              JOIN brand_style_brand bs2 ON bs2.brand_style_id = bs1.brand_style_id AND bs2.brand_id != bs1.brand_id
-             JOIN brand b ON b.id = bs2.brand_id AND b.status = 'active'
+             JOIN brand b ON b.id = bs2.brand_id AND b.status = 'active' AND $notForeign
              WHERE bs1.brand_id = :id
              GROUP BY bs2.brand_id ORDER BY COUNT(*) DESC, bs2.brand_id LIMIT " . (int) $limit,
             ['id' => $brandId],
@@ -114,7 +118,7 @@ class BrandLinkGraphService
         $byCity = $this->db->fetchFirstColumn(
             "SELECT b2.id FROM brand b1
              JOIN brand b2 ON b2.city = b1.city AND b2.id != b1.id AND b2.status = 'active'
-             WHERE b1.id = :id AND b1.city IS NOT NULL AND b1.city != ''
+             WHERE b1.id = :id AND b1.city IS NOT NULL AND b1.city != '' AND (b2.origin_status IS NULL OR b2.origin_status != 'foreign')
              ORDER BY b2.id LIMIT " . (int) $limit,
             ['id' => $brandId],
         );
@@ -122,7 +126,7 @@ class BrandLinkGraphService
         $fill = $this->db->fetchFirstColumn(
             "SELECT b.id FROM brand b
              LEFT JOIN brand_related r ON r.related_brand_id = b.id
-             WHERE b.status = 'active' AND b.id != :id
+             WHERE b.status = 'active' AND b.id != :id AND $notForeign
              GROUP BY b.id ORDER BY COUNT(r.id) ASC, b.id LIMIT " . (int) ($limit * 2),
             ['id' => $brandId],
         );

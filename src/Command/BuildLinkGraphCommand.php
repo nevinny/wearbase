@@ -64,7 +64,14 @@ class BuildLinkGraphCommand extends Command
         $activeIds = array_map('intval', $this->db->fetchFirstColumn(
             "SELECT id FROM brand WHERE status = 'active' ORDER BY id",
         ));
-        $activeSet = array_flip($activeIds);
+        // Кандидаты на РЁБРА (embedding-таргеты) не включают foreign — не линкуем
+        // российские бренды на иностранные (docs/foreign_brands_policy.md). Сами
+        // foreign остаются в $activeIds — им тоже плетём исходящие (на российские
+        // альтернативы), просто не становятся чужой целью.
+        $candidateIds = array_map('intval', $this->db->fetchFirstColumn(
+            "SELECT id FROM brand WHERE status = 'active' AND (origin_status IS NULL OR origin_status != 'foreign') ORDER BY id",
+        ));
+        $activeSet = array_flip($candidateIds);
         $io->text(sprintf('Активных брендов: %d', count($activeIds)));
 
         foreach ($activeIds as $i => $brandId) {

@@ -5,7 +5,7 @@
 {% set _bd = brand_t(brand, 'description') %}
 
 {# meta_* из БД — уникальные на бренд + хвост | WEARBASE #}
-{% set _mt_raw = brand_t(brand, 'metaTitle') ?: (_bt ~ ' — ' ~ (brand.city ? 'бренд из ' ~ brand.city : 'российский бренд')) %}
+{% set _mt_raw = brand_t(brand, 'metaTitle') ?: (_bt ~ ' — ' ~ (brand.city ? 'бренд из ' ~ brand.city : (brand.isForeignOrigin ? 'бренд одежды' : 'российский бренд'))) %}
 {% set _bmt = 'WEARBASE' in _mt_raw ? _mt_raw : _mt_raw ~ ' | WEARBASE' %}
 {% set _bmd = brand_t(brand, 'metaDescription') ?: (_ba ? _ba|slice(0,155) : (_bd ? _bd|striptags|slice(0,155) : '')) %}
 
@@ -73,7 +73,7 @@
                 "@type": "Organization",
                 "@id": "{{ url('brand_show', {slug: brand.slug}) }}#brand",
                 "name": "{{ _bt }}",
-                "description": "{{ (_ba ?: _bd ?: 'Российский бренд')|striptags|slice(0,500)|escape('js') }}",{% if _price_range %}
+                "description": "{{ (_ba ?: _bd ?: (brand.isForeignOrigin ? 'Бренд одежды' : 'Российский бренд'))|striptags|slice(0,500)|escape('js') }}",{% if _price_range %}
                 "priceRange": "{{ _price_range }}",{% endif %}
                 "url": "{{ brand.links|first.linkUrl ?? '' }}",
                 {% if brand.foundingYear %}

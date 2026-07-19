@@ -6,6 +6,7 @@ use Nevinny\AdminCoreBundle\Enum\Statuses;
 use App\Entity\Brand;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -21,6 +22,21 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Исключить origin_status='foreign' из выборки — единая точка origin-гейта
+     * (docs/foreign_brands_policy.md). Применять в гео/стиль-хабах и общих
+     * листингах (index/a-z/home), где бренды неявно выдаются за российский каталог.
+     * origin_status='unknown' НЕ гейтим (отдельное решение владельца — их сотни).
+     * Страницу самого бренда (BrandsController::show) НЕ гейтить — иностранные
+     * карточки остаются активными как якоря редакционной серии «чем заменить»
+     * (решение владельца от 2026-07-19).
+     */
+    public function excludeForeignOrigin(QueryBuilder $qb, string $alias = 'b'): QueryBuilder
+    {
+        return $qb->andWhere(sprintf('(%1$s.originStatus IS NULL OR %1$s.originStatus != :originForeign)', $alias))
+            ->setParameter('originForeign', 'foreign');
+    }
+
+    /**
      * Найти бренды по букве
      */
     public function findBrandsByLetter(string $letter): array
@@ -29,6 +45,7 @@ class BrandRepository extends ServiceEntityRepository
             ->where('b.status = :status')
             ->setParameter('status', Statuses::Active)
             ->orderBy('b.title', 'ASC');
+        $this->excludeForeignOrigin($qb);
 
         if ($letter === '0-9') {
             $qb->andWhere('REGEXP(b.title, :regexp) = true')
@@ -46,14 +63,15 @@ class BrandRepository extends ServiceEntityRepository
      */
     public function findBrandsBySearch(string $search): array
     {
-        return $this->createQueryBuilder('b')
+        $qb = $this->createQueryBuilder('b')
             ->where('b.status = :status')
             ->andWhere('b.title LIKE :search')
             ->setParameter('status', Statuses::Active)
             ->setParameter('search', '%' . $search . '%')
-            ->orderBy('b.title', 'ASC')
-            ->getQuery()
-            ->getResult();
+            ->orderBy('b.title', 'ASC');
+        $this->excludeForeignOrigin($qb);
+
+        return $qb->getQuery()->getResult();
     }
 
     /**
@@ -79,12 +97,13 @@ class BrandRepository extends ServiceEntityRepository
      */
     public function findAllActiveBrands(): array
     {
-        return $this->createQueryBuilder('b')
+        $qb = $this->createQueryBuilder('b')
             ->where('b.status = :status')
             ->setParameter('status', Statuses::Active)
-            ->orderBy('b.title', 'ASC')
-            ->getQuery()
-            ->getResult();
+            ->orderBy('b.title', 'ASC');
+        $this->excludeForeignOrigin($qb);
+
+        return $qb->getQuery()->getResult();
     }
 
     /**
@@ -304,6 +323,7 @@ class BrandRepository extends ServiceEntityRepository
             ->setParameter('status', Statuses::Active)
             ->orderBy('b.created_at', 'DESC')
             ->setMaxResults($limit);
+        $this->excludeForeignOrigin($qb);
         if ($withLogo) {
             $qb->andWhere('b.logo IS NOT NULL');
         }
@@ -317,6 +337,7 @@ class BrandRepository extends ServiceEntityRepository
                 ->setParameter('status', Statuses::Active)
                 ->orderBy('b.created_at', 'DESC')
                 ->setMaxResults($limit);
+            $this->excludeForeignOrigin($qb);
             if ($withLogo) {
                 $qb->andWhere('b.logo IS NOT NULL');
             }

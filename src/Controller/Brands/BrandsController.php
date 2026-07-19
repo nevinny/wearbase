@@ -70,6 +70,7 @@ class BrandsController extends AbstractController
             ->andWhere('b.status = :active')
             ->setParameter('active', 'active')
         ;
+        $repo->excludeForeignOrigin($baseQb);
 
         if ($letter) {
             $baseQb->andWhere('UPPER(SUBSTRING(b.title, 1, 1)) = :letter')
@@ -92,6 +93,7 @@ class BrandsController extends AbstractController
             ->select('COUNT(DISTINCT b.id)')
             ->andWhere('b.status = :active')
             ->setParameter('active', 'active');
+        $repo->excludeForeignOrigin($totalItemsQb);
 
         if ($letter) {
             $totalItemsQb->andWhere('UPPER(SUBSTRING(b.title, 1, :letterLen)) = :letter')
@@ -118,6 +120,7 @@ class BrandsController extends AbstractController
         $brandsQb = $repo->createQueryBuilder('b')
             ->andWhere('b.status = :active')
             ->setParameter('active', 'active');
+        $repo->excludeForeignOrigin($brandsQb);
 
         if ($letter) {
             $brandsQb->andWhere('UPPER(SUBSTRING(b.title, 1, :letterLen)) = :letter')
@@ -155,14 +158,13 @@ class BrandsController extends AbstractController
             ->getResult()
         ;
 
-        $lettersQb = $repo->createQueryBuilder('b')
+        $lettersBuilder = $repo->createQueryBuilder('b')
             ->select('b.title')
             ->andWhere('b.status = :active')
             ->setParameter('active', 'active')
-            ->orderBy('b.title', 'ASC')
-            ->getQuery()
-            ->getArrayResult()
-        ;
+            ->orderBy('b.title', 'ASC');
+        $repo->excludeForeignOrigin($lettersBuilder);
+        $lettersQb = $lettersBuilder->getQuery()->getArrayResult();
         $foundLetters = [];
         foreach ($lettersQb as $brandData) {
             $firstChar = mb_strtoupper(mb_substr($brandData['title'], 0, 1));
@@ -201,9 +203,13 @@ class BrandsController extends AbstractController
         // Подставляем популярные бренды, если буква не выбрана
         $featured = [];
         if (!$letter) {
-            $featured = $repo->findBy([
-//                'isFeatured' => true
-            ], ['created_at' => 'DESC'], 12);
+            $featuredQb = $repo->createQueryBuilder('b')
+                ->andWhere('b.status = :active')
+                ->setParameter('active', 'active')
+                ->orderBy('b.created_at', 'DESC')
+                ->setMaxResults(12);
+            $repo->excludeForeignOrigin($featuredQb);
+            $featured = $featuredQb->getQuery()->getResult();
         }
 
         return $this->render('tailwind/brand/index.html.twig', [
@@ -492,7 +498,14 @@ class BrandsController extends AbstractController
         $locale = $request->getLocale();
 
         $featuredBrands = $repo->findFeaturedBrands(12);
-        $recentBrands = $repo->findBy(['status' => Statuses::Active], ['created_at' => 'DESC'], 12);
+
+        $recentQb = $repo->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->setParameter('status', Statuses::Active)
+            ->orderBy('b.created_at', 'DESC')
+            ->setMaxResults(12);
+        $repo->excludeForeignOrigin($recentQb);
+        $recentBrands = $recentQb->getQuery()->getResult();
 
         $qb = $repo->createQueryBuilder('b')
             ->select('b.city, COUNT(b.id) as cnt')
@@ -503,6 +516,7 @@ class BrandsController extends AbstractController
             ->groupBy('b.city')
             ->orderBy('cnt', 'DESC')
             ->setMaxResults(10);
+        $repo->excludeForeignOrigin($qb);
 
         $topCities = $qb->getQuery()->getResult();
         foreach ($topCities as &$cityRow) {
@@ -510,7 +524,7 @@ class BrandsController extends AbstractController
         }
         unset($cityRow);
 
-        $styles = $repo->createQueryBuilder('b')
+        $stylesQb = $repo->createQueryBuilder('b')
             ->select('s.id, s.slug, s.title, COUNT(DISTINCT b.id) as cnt')
             ->leftJoin('b.styles', 's')
             ->where('b.status = :status')
@@ -518,16 +532,16 @@ class BrandsController extends AbstractController
             ->setParameter('status', Statuses::Active)
             ->groupBy('s.id')
             ->orderBy('cnt', 'DESC')
-            ->setMaxResults(10)
-            ->getQuery()
-            ->getResult();
+            ->setMaxResults(10);
+        $repo->excludeForeignOrigin($stylesQb);
+        $styles = $stylesQb->getQuery()->getResult();
 
-        $totalBrands = $repo->createQueryBuilder('b')
+        $totalBrandsQb = $repo->createQueryBuilder('b')
             ->select('COUNT(b.id)')
             ->where('b.status = :status')
-            ->setParameter('status', Statuses::Active)
-            ->getQuery()
-            ->getSingleScalarResult();
+            ->setParameter('status', Statuses::Active);
+        $repo->excludeForeignOrigin($totalBrandsQb);
+        $totalBrands = $totalBrandsQb->getQuery()->getSingleScalarResult();
 
         return $this->render('tailwind/hub.html.twig', [
             'featuredBrands' => $featuredBrands,
@@ -541,7 +555,7 @@ class BrandsController extends AbstractController
     #[Route('/{_locale}/cities', name: 'brand_cities', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
     public function cities(BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger): Response
     {
-        $cities = $repo->createQueryBuilder('b')
+        $citiesQb = $repo->createQueryBuilder('b')
             ->select('b.city, COUNT(b.id) as cnt')
             ->where('b.status = :status')
             ->andWhere('b.city IS NOT NULL')
@@ -549,9 +563,9 @@ class BrandsController extends AbstractController
             ->setParameter('status', Statuses::Active)
             ->groupBy('b.city')
             ->orderBy('cnt', 'DESC')
-            ->addOrderBy('b.city', 'ASC')
-            ->getQuery()
-            ->getResult();
+            ->addOrderBy('b.city', 'ASC');
+        $repo->excludeForeignOrigin($citiesQb);
+        $cities = $citiesQb->getQuery()->getResult();
 
         foreach ($cities as &$city) {
             $city['slug'] = $slugger->slugify($city['city']);
@@ -568,28 +582,28 @@ class BrandsController extends AbstractController
     #[Route('/{_locale}/cities/{slug}', name: 'brand_city', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
     public function cityShow(string $slug, BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger, \App\Repository\CityHubRepository $cityHubRepo): Response
     {
-        $allCities = $repo->createQueryBuilder('b')
+        $allCitiesQb = $repo->createQueryBuilder('b')
             ->select('DISTINCT b.city')
             ->where('b.status = :status')
             ->andWhere('b.city IS NOT NULL')
             ->andWhere('b.city != \'\'')
-            ->setParameter('status', Statuses::Active)
-            ->getQuery()
-            ->getSingleColumnResult();
+            ->setParameter('status', Statuses::Active);
+        $repo->excludeForeignOrigin($allCitiesQb);
+        $allCities = $allCitiesQb->getQuery()->getSingleColumnResult();
 
         $city = $slugger->resolve($slug, $allCities);
         if (!$city) {
             throw $this->createNotFoundException('Город не найден');
         }
 
-        $brands = $repo->createQueryBuilder('b')
+        $brandsQb = $repo->createQueryBuilder('b')
             ->where('b.status = :status')
             ->andWhere('b.city = :city')
             ->setParameter('status', Statuses::Active)
             ->setParameter('city', $city)
-            ->orderBy('b.title', 'ASC')
-            ->getQuery()
-            ->getResult();
+            ->orderBy('b.title', 'ASC');
+        $repo->excludeForeignOrigin($brandsQb);
+        $brands = $brandsQb->getQuery()->getResult();
 
         $hub = $cityHubRepo->findActiveBySlug($slug);
 
@@ -600,7 +614,7 @@ class BrandsController extends AbstractController
         // Grounded extractable-блок: топ-3 стиля среди брендов города (для «ответа в первый экран»).
         $topStyles = [];
         if ($indexable) {
-            $topStyles = $repo->createQueryBuilder('b')
+            $topStylesQb = $repo->createQueryBuilder('b')
                 ->select('s.title, COUNT(DISTINCT b.id) as cnt')
                 ->join('b.styles', 's')
                 ->where('b.status = :status')
@@ -609,9 +623,9 @@ class BrandsController extends AbstractController
                 ->setParameter('city', $city)
                 ->groupBy('s.id')
                 ->orderBy('cnt', 'DESC')
-                ->setMaxResults(3)
-                ->getQuery()
-                ->getResult();
+                ->setMaxResults(3);
+            $repo->excludeForeignOrigin($topStylesQb);
+            $topStyles = $topStylesQb->getQuery()->getResult();
         }
 
         return $this->render('tailwind/city.html.twig', [
@@ -629,16 +643,16 @@ class BrandsController extends AbstractController
     #[Route('/{_locale}/styles', name: 'brand_styles', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
     public function styles(BrandRepository $repo, Request $request): Response
     {
-        $styles = $repo->createQueryBuilder('b')
+        $stylesQb = $repo->createQueryBuilder('b')
             ->select('s.slug, s.title, COUNT(DISTINCT b.id) as cnt')
             ->join('b.styles', 's')
             ->where('b.status = :status')
             ->setParameter('status', Statuses::Active)
             ->groupBy('s.id')
             ->orderBy('cnt', 'DESC')
-            ->addOrderBy('s.title', 'ASC')
-            ->getQuery()
-            ->getResult();
+            ->addOrderBy('s.title', 'ASC');
+        $repo->excludeForeignOrigin($stylesQb);
+        $styles = $stylesQb->getQuery()->getResult();
 
         return $this->render('tailwind/styles.html.twig', [
             'styles' => $styles,
@@ -655,15 +669,15 @@ class BrandsController extends AbstractController
             throw $this->createNotFoundException('Стиль не найден');
         }
 
-        $brands = $repo->createQueryBuilder('b')
+        $brandsQb = $repo->createQueryBuilder('b')
             ->join('b.styles', 's')
             ->where('b.status = :status')
             ->andWhere('s.slug = :slug')
             ->setParameter('status', Statuses::Active)
             ->setParameter('slug', $slug)
-            ->orderBy('b.title', 'ASC')
-            ->getQuery()
-            ->getResult();
+            ->orderBy('b.title', 'ASC');
+        $repo->excludeForeignOrigin($brandsQb);
+        $brands = $brandsQb->getQuery()->getResult();
 
         // Пустой стиль-хаб (0 опубликованных брендов) = нет контента → 404, а не пустая 200.
         // Иначе soft-404 в sitemap жжёт индекс-бюджет (luxury/opium/beach/school/upcycle/y2k).
@@ -679,7 +693,7 @@ class BrandsController extends AbstractController
         // Grounded extractable-блок: топ-3 города среди брендов стиля.
         $topCities = [];
         if ($indexable) {
-            $topCities = $repo->createQueryBuilder('b')
+            $topCitiesQb = $repo->createQueryBuilder('b')
                 ->select('b.city, COUNT(DISTINCT b.id) as cnt')
                 ->join('b.styles', 's')
                 ->where('b.status = :status')
@@ -690,9 +704,9 @@ class BrandsController extends AbstractController
                 ->setParameter('slug', $slug)
                 ->groupBy('b.city')
                 ->orderBy('cnt', 'DESC')
-                ->setMaxResults(3)
-                ->getQuery()
-                ->getResult();
+                ->setMaxResults(3);
+            $repo->excludeForeignOrigin($topCitiesQb);
+            $topCities = $topCitiesQb->getQuery()->getResult();
         }
 
         return $this->render('tailwind/style.html.twig', [

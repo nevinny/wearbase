@@ -86,15 +86,15 @@ class SitemapController extends AbstractController
         // Гейт индексации тонких гео-хабов (docs/seo_sitewide_backlog.md HIGH-1): в sitemap
         // попадают только города с >= MIN_INDEXABLE_BRANDS брендов ИЛИ с активным кураторским
         // CityHub (индексируется независимо от числа брендов, как и на самой странице).
-        $cityCounts = $repo->createQueryBuilder('b')
+        $cityCountsQb = $repo->createQueryBuilder('b')
             ->select('b.city, COUNT(b.id) as cnt')
             ->where('b.status = :status')
             ->andWhere('b.city IS NOT NULL')
             ->andWhere('b.city != \'\'')
             ->setParameter('status', 'active')
-            ->groupBy('b.city')
-            ->getQuery()
-            ->getResult();
+            ->groupBy('b.city');
+        $repo->excludeForeignOrigin($cityCountsQb);
+        $cityCounts = $cityCountsQb->getQuery()->getResult();
 
         foreach ($cityCounts as $cityRow) {
             $citySlug = $citySlugger->slugify($cityRow['city']);
@@ -121,7 +121,7 @@ class SitemapController extends AbstractController
 
         // Стилевые хабы — гейт индексации тонких хабов (docs/seo_sitewide_backlog.md HIGH-1):
         // только стили с >= MIN_INDEXABLE_BRANDS активных брендов (пустые/тонкие не индексируем).
-        $styleSlugs = $repo->createQueryBuilder('b')
+        $styleSlugsQb = $repo->createQueryBuilder('b')
             ->select('s.slug')
             ->join('b.styles', 's')
             ->where('b.status = :status')
@@ -129,9 +129,9 @@ class SitemapController extends AbstractController
             ->setParameter('status', 'active')
             ->groupBy('s.id')
             ->having('COUNT(DISTINCT b.id) >= :minBrands')
-            ->setParameter('minBrands', \App\Controller\Brands\BrandsController::MIN_INDEXABLE_BRANDS)
-            ->getQuery()
-            ->getSingleColumnResult();
+            ->setParameter('minBrands', \App\Controller\Brands\BrandsController::MIN_INDEXABLE_BRANDS);
+        $repo->excludeForeignOrigin($styleSlugsQb);
+        $styleSlugs = $styleSlugsQb->getQuery()->getSingleColumnResult();
 
         foreach ($styleSlugs as $styleSlug) {
             $urls[] = [
