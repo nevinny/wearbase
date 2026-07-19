@@ -48,6 +48,7 @@ final class AnomalyDetector
         'leads_newsletter'     => 'подписчики рассылки',
         'subscriptions_active' => 'подписок',
         'subscriptions_trial'  => 'подписок (trial)',
+        'brand_claims_this_week' => 'заявок на забор карточки (нед)',
     ];
 
     /**

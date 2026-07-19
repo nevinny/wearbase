@@ -53,6 +53,7 @@ class AdvisorTickCommand extends Command
         'prod_queue_pending'    => 'очередь дрипа (прод)',
         'subscriptions_active'  => 'подписок',
         'subscriptions_trial'   => 'подписок (trial)',
+        'brand_claims_this_week' => 'заявок на забор карточки (нед)',
     ];
 
     /** Сколько строк сигналов показываем в дайджесте, остальное — «…и ещё N». */
