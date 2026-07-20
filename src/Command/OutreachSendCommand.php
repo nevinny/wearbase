@@ -93,9 +93,11 @@ class OutreachSendCommand extends Command
                AND NOT EXISTS (SELECT 1 FROM brand_outreach o2 WHERE o2.email = b.email
                                AND (o2.unsubscribed_at IS NOT NULL OR o2.bounced_at IS NOT NULL))
                -- Инцидент: письма ушли иностранным брендам (Tissot, Agent Provocateur) —
-               -- когорта не фильтровала origin/niche, в отличие от PipelineQueueRepository::applyGates().
-               -- unknown НЕ исключаем (реальные ru-бренды часто не классифицированы).
-               AND (b.origin_status IS NULL OR b.origin_status != 'foreign')
+               -- когорта не фильтровала origin/niche. Blacklist (!= 'foreign') недостаточен:
+               -- масса иностранных брендов (Lee, Piquadro, Camp David) сидит в origin='unknown'.
+               -- Для холодной рассылки — строгий whitelist: пишем ТОЛЬКО подтверждённо российским
+               -- (origin='ru' даёт 175 кандидатов, с запасом). Ср. PipelineQueueRepository::applyGates().
+               AND b.origin_status = 'ru'
                AND (b.niche_status IS NULL OR b.niche_status != 'off')
              ORDER BY
                (SELECT COUNT(*) FROM brand_store s WHERE s.brand_id = b.id) DESC,
