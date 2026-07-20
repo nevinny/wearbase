@@ -137,6 +137,13 @@ class BrandOutreachMailer
             return false;
         }
 
+        // Частотный кап по email: не слать, если письмо на этот адрес уже уходило за 30 дней
+        // (любой канал/бренд). Повтор — не чаще раза в месяц.
+        if ($repo->recentlyContacted($email)) {
+            $this->logger->info('outreach skipped: email contacted within 30 days', ['email' => $email]);
+            return false;
+        }
+
         $existing = $repo->findByBrand($brand);
         if ($existing !== null && $existing->getSentAt() !== null && !$isRetry) {
             return false; // уже отправляли этому бренду
@@ -217,6 +224,13 @@ class BrandOutreachMailer
         /** @var BrandOutreachRepository $repo */
         $repo = $this->em->getRepository(BrandOutreach::class);
         if ($repo->isSuppressed($email)) {
+            return false;
+        }
+
+        // Частотный кап по email: не слать, если письмо на этот адрес уже уходило за 30 дней
+        // (любой канал/бренд). Повтор — не чаще раза в месяц.
+        if ($repo->recentlyContacted($email)) {
+            $this->logger->info('outreach skipped: email contacted within 30 days', ['email' => $email]);
             return false;
         }
 

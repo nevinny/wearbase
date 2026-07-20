@@ -27,6 +27,20 @@ class BrandOutreachRepository extends ServiceEntityRepository
         );
     }
 
+    /**
+     * Частотный кап: этому email уже уходило письмо (любой канал/бренд) за последние $days дней?
+     * True = НЕ слать. Повтор допустим только по истечении окна (требование: не чаще раза в месяц).
+     */
+    public function recentlyContacted(string $email, int $days = 30): bool
+    {
+        return (bool) $this->getEntityManager()->getConnection()->fetchOne(
+            'SELECT EXISTS(SELECT 1 FROM brand_outreach
+              WHERE email = :email AND sent_at IS NOT NULL
+                AND sent_at > (NOW() - INTERVAL :days DAY))',
+            ['email' => $email, 'days' => $days],
+        );
+    }
+
     public function findByBrand(Brand $brand): ?BrandOutreach
     {
         return $this->findOneBy(['brand' => $brand]);
