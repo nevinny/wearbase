@@ -71,4 +71,10 @@ class PageController extends AbstractController
     {
         return $this->render('pages/consent.html.twig');
     }
+
+    #[Route('/{_locale}/for-brands/placement/offer', name: 'placement_offer', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
+    public function placementOffer(): Response
+    {
+        return $this->render('pages/placement_offer.html.twig');
+    }
 }
