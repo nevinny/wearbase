@@ -112,6 +112,17 @@ class BrandOutreachMailer
             return false;
         }
 
+        // Belt-and-suspenders (инцидент: письма ушли иностранным брендам — Tissot, Agent
+        // Provocateur — когорта не фильтровала origin/niche). Даже ручной --slugs/прямой вызов
+        // не должен уйти иностранному или вне-нишевому бренду.
+        if ($brand->isForeignOrigin() || $brand->isOffNiche()) {
+            $this->logger->warning('outreach skipped: foreign/off-niche brand', [
+                'brand' => $brand->getId(), 'origin_status' => $brand->getOriginStatus(), 'niche_status' => $brand->getNicheStatus(),
+            ]);
+
+            return false;
+        }
+
         // Guard чужой сущности: email на брендовом домене ≠ own-site домена (инцидент
         // Majestic — корпус/контакты от majestic.com при бренде majestic.store). Free-провайдеры
         // (gmail/yandex/mail.ru) пропускаем — у мелких брендов это норма.
