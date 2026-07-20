@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Service\Outreach\WarmOfferService;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -46,16 +47,15 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 )]
 class OutreachWarmRefreshCommand extends Command
 {
-    private const WINDOW_DAYS    = 28;
+    private const WINDOW_DAYS    = WarmOfferService::WINDOW_DAYS;
     private const DEFAULT_LIMIT  = 20;
     private const DEFAULT_MIN_CLICKS = 1;
-    private const SIMILAR_LIMIT  = 3;
     private const LOG_TYPE       = 'warm_offer_draft';
-    private const CATALOG_BASE   = 'https://wearbase.ru';
 
     public function __construct(
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
+        private readonly WarmOfferService $warmOffer,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {
@@ -89,8 +89,8 @@ class OutreachWarmRefreshCommand extends Command
         $io->section(sprintf('Тёплых лидов: %d', count($leads)));
         $drafts = [];
         foreach ($leads as $lead) {
-            $similar = $this->findSimilarBrands((int) $lead['id'], (string) ($lead['city'] ?? ''));
-            $draft   = $this->buildDraft($lead, $similar);
+            $similar = $this->warmOffer->findSimilarBrands((int) $lead['id'], (string) ($lead['city'] ?? ''));
+            $draft   = $this->warmOffer->buildDraft($lead, $similar);
             $drafts[] = $draft;
 
             $io->text(sprintf(
@@ -178,91 +178,6 @@ class OutreachWarmRefreshCommand extends Command
             'clicks'      => (int) $r['clicks'],
             'impressions' => (int) $r['impressions'],
         ], $rows);
-    }
-
-    /**
-     * Похожие бренды для in-group-конформизма в письме: сперва по общему стилю, если
-     * не набрали лимит — добираем по городу. Только active, сам бренд исключён.
-     *
-     * @return list<array{title:string,slug:string}>
-     */
-    private function findSimilarBrands(int $brandId, string $city): array
-    {
-        $byStyle = $this->db->fetchAllAssociative(
-            <<<'SQL'
-                SELECT DISTINCT b2.title, b2.slug
-                FROM brand_style_brand bsb1
-                JOIN brand_style_brand bsb2 ON bsb2.brand_style_id = bsb1.brand_style_id AND bsb2.brand_id != bsb1.brand_id
-                JOIN brand b2 ON b2.id = bsb2.brand_id AND b2.status = 'active'
-                WHERE bsb1.brand_id = :id
-                LIMIT
-            SQL . ' ' . self::SIMILAR_LIMIT,
-            ['id' => $brandId],
-        );
-
-        $result = array_map(static fn (array $r) => ['title' => (string) $r['title'], 'slug' => (string) $r['slug']], $byStyle);
-
-        if (count($result) >= self::SIMILAR_LIMIT || trim($city) === '') {
-            return $result;
-        }
-
-        $missing = self::SIMILAR_LIMIT - count($result);
-        $known   = array_column($result, 'slug');
-        $byCity  = $this->db->fetchAllAssociative(
-            'SELECT title, slug FROM brand WHERE city = :city AND status = \'active\' AND id != :id ORDER BY id LIMIT ' . ($missing + count($known)),
-            ['city' => $city, 'id' => $brandId],
-        );
-        foreach ($byCity as $r) {
-            if (count($result) >= self::SIMILAR_LIMIT) {
-                break;
-            }
-            if (in_array($r['slug'], $known, true)) {
-                continue;
-            }
-            $result[] = ['title' => (string) $r['title'], 'slug' => (string) $r['slug']];
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param array{id:int,title:string,slug:string,email:string,city:?string,clicks:int,impressions:int} $lead
-     * @param list<array{title:string,slug:string}> $similar
-     * @return array{lead: array, similar: array, subject: string, body: string}
-     */
-    private function buildDraft(array $lead, array $similar): array
-    {
-        $url = sprintf('%s/ru/brands/%s', self::CATALOG_BASE, $lead['slug']);
-
-        $subject = sprintf(
-            '«%s» — вашу карточку уже нашли %d раз в поиске за месяц',
-            $lead['title'], $lead['impressions'],
-        );
-
-        $similarLine = $similar !== []
-            ? implode(', ', array_map(
-                static fn (array $s) => sprintf('«%s» (%s/ru/brands/%s)', $s['title'], self::CATALOG_BASE, $s['slug']),
-                $similar,
-            ))
-            : null;
-
-        $body = sprintf(
-            "Здравствуйте!\n\n" .
-            "Представьте: следующий заказ приходит через Wearbase. У «%s» это уже начало " .
-            "происходить — ваша карточка уже собрана и работает без вашего участия:\n%s\n\n" .
-            "За последние 28 дней её нашли в поиске %d раз, %d человек перешли посмотреть.\n\n" .
-            "%s" .
-            "Можем полностью укомплектовать карточку и разместить вас в 10+ прямых каналах " .
-            "(каталоги российских брендов, наша витрина, анонс в Telegram/VK) — кроме " .
-            "маркетплейсов. Разово 5 000₽, дальше клиент и выручка — ваши.\n\n" .
-            "Интересно — отвечу деталями. Если нет — просто напишите «не надо», больше не побеспокою.\n\n" .
-            'Анна Семянникова, куратор Wearbase',
-            $lead['title'], $url,
-            $lead['impressions'], $lead['clicks'],
-            $similarLine !== null ? sprintf("Рядом с вами уже: %s.\n\n", $similarLine) : '',
-        );
-
-        return ['lead' => $lead, 'similar' => $similar, 'subject' => $subject, 'body' => $body];
     }
 
     /**
