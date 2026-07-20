@@ -349,9 +349,14 @@ class BrandIngestController extends AbstractController
     }
 
     /**
-     * Вебхук SMTP-сервиса (RuSender): bounce/complaint/unsub. Токен в query
-     * (Authorization срезается). Маппинг устойчив к форматам; hard bounce →
+     * Вебхук SMTP-сервиса (RuSender): delivered/bounce/complaint/unsub/open/click. Токен
+     * в query (Authorization срезается). Маппинг устойчив к форматам; hard bounce →
      * bounced_at (suppression), soft → last_error (retryable). Апдейты ПО EMAIL.
+     *
+     * Дедуп: реальный payload (var/log/webhook-payload.log, снят 02.07.2026) содержит
+     * стабильный `eventId` на каждое событие — дедупим по нему через rusender_webhook_event
+     * (иначе ретраи RuSender задвоили бы open_count/click_count; delivered/bounce и так
+     * идемпотентны через COALESCE, но событие лучше обработать один раз).
      */
     #[Route('/email/webhook', name: 'api_email_webhook', methods: ['POST'])]
     public function emailWebhook(
@@ -384,12 +389,25 @@ class BrandIngestController extends AbstractController
                 continue;
             }
             // Фактический формат RuSender (снят с прода 02.07.2026, var/log/webhook-payload.log):
-            // {"count":1,"events":[{"trigger":"external_mail.delivered","payload":{"email":"..."}}]}
+            // {"count":1,"events":[{"eventId":"...","trigger":"external_mail.delivered","occurredAt":"...","payload":{"email":"..."}}]}
             $type   = strtolower((string) ($e['trigger'] ?? $e['type'] ?? $e['event'] ?? $e['eventType'] ?? ''));
             $email  = (string) ($e['payload']['email'] ?? $e['email'] ?? $e['recipient'] ?? $e['to'] ?? ($e['data']['email'] ?? ''));
             $reason = mb_substr((string) ($e['reason'] ?? $e['description'] ?? $e['bounceType'] ?? ''), 0, 500);
             if ($email === '') {
                 continue;
+            }
+
+            // Дедуп по eventId (rusender_webhook_event.event_id UNIQUE): INSERT IGNORE —
+            // если строка уже была (ретрай), affected rows = 0, событие пропускаем.
+            $eventId = (string) ($e['eventId'] ?? '');
+            if ($eventId !== '') {
+                $inserted = $db->executeStatement(
+                    'INSERT IGNORE INTO rusender_webhook_event (event_id, trigger_name) VALUES (:id, :t)',
+                    ['id' => $eventId, 't' => mb_substr($type, 0, 64)],
+                );
+                if ($inserted === 0) {
+                    continue;
+                }
             }
 
             // Номенклатура RuSender (рус.) + универсальные англ. кандидаты.
@@ -407,8 +425,17 @@ class BrandIngestController extends AbstractController
                 $db->executeStatement('UPDATE brand_outreach SET unsubscribed_at = COALESCE(unsubscribed_at, NOW()) WHERE email = :e', ['e' => $email]);
             } elseif (str_contains($type, 'deliver') || str_contains($type, 'доставлено')) {
                 $db->executeStatement('UPDATE brand_outreach SET delivered_at = COALESCE(delivered_at, NOW()) WHERE email = :e', ['e' => $email]);
+            } elseif (str_contains($type, 'click') || str_contains($type, 'клик')) {
+                $db->executeStatement(
+                    'UPDATE brand_outreach SET click_count = click_count + 1, first_clicked_at = COALESCE(first_clicked_at, NOW()) WHERE email = :e',
+                    ['e' => $email],
+                );
+            } elseif (str_contains($type, 'open') || str_contains($type, 'открыт')) {
+                $db->executeStatement(
+                    'UPDATE brand_outreach SET open_count = open_count + 1, first_opened_at = COALESCE(first_opened_at, NOW()) WHERE email = :e',
+                    ['e' => $email],
+                );
             }
-            // open/click — игнорируем: свой пиксель и /e/c надёжнее
         }
 
         return $this->json(['ok' => true]); // всегда 200 на валидный токен — иначе сервис ретраит
