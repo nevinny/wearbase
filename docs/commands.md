@@ -40,6 +40,7 @@
 | `app:social:plan` / `generate` / `publish-tick` | `6:00` / `*/30` / `0 * * * *` | 🍎 Mac | контент-сетка → наполнение → дрип-публикация (TG/VK) |
 | `app:social:ingest-clicks` | `30 7 * * *` (ежедневно) | 🍎 Mac | closed-loop: UTM-клики из nginx-логов прода (ssh+zgrep) → `social_post_metric.link_taps` |
 | `app:outreach:warm-refresh` | `30 8 * * 1` (пн) | 🍎 Mac | SALES-LOOP: тёплые лиды (клики из GSC) → драфты письма-оффера 5000₽ + сводка в TG (человек-гейт, отправка вручную) |
+| `app:seo:gap-report` | `0 8 * * 1` (пн) | 🍎 Mac | автопилот position-gap листа (`--notify`): yandex/gsc `position>10` + спрос → группы интента + сводка в TG |
 
 ### 🍎 Mac-крон: одна точка входа + расписание в БД
 
@@ -135,6 +136,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:report:pipeline` | Сводка RAG-конвейера в TG: парсинг/генерация/ключевики/готовность + темпы за час. | ⏰ `0 */3 * * *` | 🖥/🍎 (TG) |
 | `app:report:daily` | Ежедневный дайджест: публикации прода (агент-API) + индексация GSC. **Только Mac** (TG заблокирован на .43 и проде). | ⏰ `17 9 * * *` | 🍎 Mac |
 | `app:report:weekly` | Недельный дайджест видимости в поиске (неделя-к-неделе): GSC (индекс/показы/клики/позиция), Яндекс (в поиске + топ-500 фраз), публикации прода. Всё из `state_snapshot` (пишет `app:advisor:snapshot`) + `gsc_page_stats`; сравнивает последний снимок с ближайшим к −7д (fallback — самый старый, пока история <7д). **Только Mac.** | ⏰ `0 10 * * 1` (пн) | 🍎 Mac |
+| `app:seo:gap-report` | Автопилот position-gap листа (docs/yandex_ai_visibility_monitoring.md) — раньше два ручных SQL по пятницам. `yandex_query_stats` (последний `date_to`) + `gsc_query_stats` (сумма по окну), `position>10 AND shows/impressions>0`, группировка по интенту тем же `AioQueryClassifier`, что `app:seo:aio-queries`: brand_entity / replace_comparison / geo_category / navigation (совпал title/slug опубликованного бренда) / other. Пишет снапшот `seo_gap_snapshot` (по `source`+`intent_group`, для тренда неделя-к-неделе), не мутирует бренды. `--notify` шлёт компактную сводку в TG тем же `AdminNotifier`, что `app:seo:aio-remediate` — **отдельный крон, не вклеено в report:daily/weekly** (изоляция: не трогаем существующие проверенные дайджест-команды). `--source=yandex\|gsc\|both`, `--min-shows`, `--limit`, `--stdout-only`, `--json`. | ⏰ `0 8 * * 1` (пн, до aio-remediate 8:40) | 🍎 Mac |
 | `app:brand:stats` | Статистика по брендам (консоль). | 👆 по запросу | 👆 |
 | `app:brand:check-content` | Проверка качества контента (`--type=description\|meta\|all`, `--export` в JSON). | 👆 по запросу | 🖥 |
 
