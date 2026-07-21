@@ -48,6 +48,7 @@ class IngestKnowledgeChannelsCommand extends Command
         'FedotovM'           => 'tone',
         'drmaxseo'           => 'seo',
         'freychu'            => 'seo',
+        'big_bad_coach'      => 'seo',
     ];
 
     private int $files   = 0;
