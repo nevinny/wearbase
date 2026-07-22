@@ -70,6 +70,7 @@
 
 | Документ | О чём |
 |---|---|
+| [onboarding.md](onboarding.md) | **Локальный запуск с нуля для нового разработчика**: `.env.local.example` → `.env.local`, MySQL (не SQLite), миграции; что LAN-only (LLM-сервер/RAG) и не нужно для разработки. От 2026-07-22 |
 | [production.md](production.md) | Прод-окружение (reg.ru): env-карта, деплой, известные проблемы |
 | [commands.md](commands.md) | Справочник всех console-команд (зачем/как часто/где + cron) |
 
