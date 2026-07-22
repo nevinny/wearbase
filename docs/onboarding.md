@@ -67,17 +67,38 @@ SQLite используется **только** для PHPUnit (`var/test.db`, 
 
 ## Разработка гардероба (AI-подсказки)
 
-Гардероб (`WardrobeAiService`) использует **vision-модель**, а не текстовую gemma с рига.
-При `WARDROBE_VISION_LOCAL=0` (дефолт из committed `.env`) фото/URL-подсказки идут в
-**облако через OpenRouter** (`google/gemini-2.5-flash-lite`) — **LAN-сервер не нужен**.
+Гардероб (`WardrobeAiService`) использует **vision-модель** (фото/URL → категория / название /
+размер / заметки в JSON), а не текстовую gemma. Флаг `WARDROBE_VISION_LOCAL` переключает
+провайдера:
 
-Что достаточно сделать:
-1. Вписать свой `OPENROUTER_API_KEY` в `.env.local` (см. подсказку в `.env.local.example`).
-2. Оставить `WARDROBE_VISION_LOCAL=0` (не ставить `=1` — это путь на риг в LAN).
+- `=1` → **локальная vision-модель через ollama** (`generateVisionLocal`: POST на
+  `LOCAL_LLM_URL` `/api/chat` с `images:[base64]`, модель = `LOCAL_LLM_MODEL`). **Основной
+  путь** — фото семьи не уходят в облако.
+- `=0` → облачный OpenRouter (`WARDROBE_VISION_MODEL`). **Запасной вариант**, оставлен как
+  переключатель.
 
-`WARDROBE_VISION_MODEL` и `WARDROBE_AI_DAILY_CAP` уже заданы в committed `.env` — трогать
-не нужно. Модель `gemini-2.5-flash-lite` дешёвая, дневной кап (100) страхует от перерасхода.
-Кэш подсказок 24ч (по sha1 фото / нормализованному URL) — повторный тот же запрос бюджет не жрёт.
+### Основной путь — локальная модель на своей машине
+
+1. Установить ollama и поднять локально (`ollama serve`, слушает `:11434`).
+2. Скачать vision-модель, напр. `ollama pull qwen2.5vl:7b` (или `gemma3:4b` — легче для Mac;
+   нужна именно **vision**-модель, обычная текстовая gemma картинки не разберёт).
+3. В `.env.local`:
+   ```dotenv
+   WARDROBE_VISION_LOCAL=1
+   LOCAL_LLM_URL=http://127.0.0.1:11434/api/chat
+   LOCAL_LLM_MODEL=qwen2.5vl:7b
+   ```
+   Модель отдаёт JSON — проверь, что выбранная тянет структурированный ответ на русском
+   (qwen2.5vl / gemma3 — ок; moondream слишком слабая).
+
+`WARDROBE_AI_DAILY_CAP` в committed `.env` (100) — общий кап на инсталляцию; при local кап
+не проверяется (бесплатно), см. `WardrobeAiService::analyzePhoto`. Кэш подсказок 24ч
+(по sha1 фото / нормализованному URL) — повторный тот же запрос модель не дёргает.
+
+### Запасной путь — OpenRouter
+
+Если локальная модель недоступна: `WARDROBE_VISION_LOCAL=0` + `OPENROUTER_API_KEY` в
+`.env.local`. Модель (`google/gemini-2.5-flash-lite`) и кап уже в committed `.env`.
 
 ## memory_limit
 
