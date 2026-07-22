@@ -65,6 +65,20 @@ SQLite используется **только** для PHPUnit (`var/test.db`, 
 `OPENROUTER_MODEL` (облачный LLM через OpenRouter, платный, но работает у любого без LAN).
 Для чистой фронт/бэк/каталог-разработки никакой LLM не требуется вообще.
 
+## Разработка гардероба (AI-подсказки)
+
+Гардероб (`WardrobeAiService`) использует **vision-модель**, а не текстовую gemma с рига.
+При `WARDROBE_VISION_LOCAL=0` (дефолт из committed `.env`) фото/URL-подсказки идут в
+**облако через OpenRouter** (`google/gemini-2.5-flash-lite`) — **LAN-сервер не нужен**.
+
+Что достаточно сделать:
+1. Вписать свой `OPENROUTER_API_KEY` в `.env.local` (см. подсказку в `.env.local.example`).
+2. Оставить `WARDROBE_VISION_LOCAL=0` (не ставить `=1` — это путь на риг в LAN).
+
+`WARDROBE_VISION_MODEL` и `WARDROBE_AI_DAILY_CAP` уже заданы в committed `.env` — трогать
+не нужно. Модель `gemini-2.5-flash-lite` дешёвая, дневной кап (100) страхует от перерасхода.
+Кэш подсказок 24ч (по sha1 фото / нормализованному URL) — повторный тот же запрос бюджет не жрёт.
+
 ## memory_limit
 
 Дефолтный `memory_limit` у Homebrew PHP — 128M, этого мало для `cache:clear` и батчевых
