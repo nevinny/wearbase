@@ -65,12 +65,20 @@ class WardrobeItem
     #[ORM\JoinColumn(nullable: false)]
     private ?User $user = null;
 
+    #[ORM\ManyToOne(inversedBy: 'items')]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Wardrobe $wardrobe = null;
+
     // Сквозной номер вещи внутри гардероба пользователя (уникален per-user, включая удалённые)
     #[ORM\Column]
     private int $itemNo = 0;
 
     #[ORM\Column(length: 100)]
     private ?string $category = null;
+
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?WardrobeCategory $categoryRef = null;
 
     #[ORM\Column(length: 255)]
     private ?string $name = null;
@@ -149,6 +157,14 @@ class WardrobeItem
         return $this;
     }
 
+    public function getWardrobe(): ?Wardrobe { return $this->wardrobe; }
+
+    public function setWardrobe(?Wardrobe $wardrobe): static
+    {
+        $this->wardrobe = $wardrobe;
+        return $this;
+    }
+
     public function getItemNo(): int { return $this->itemNo; }
 
     public function setItemNo(int $itemNo): static
@@ -167,6 +183,17 @@ class WardrobeItem
     public function setCategory(string $category): static
     {
         $this->category = $category;
+        return $this;
+    }
+
+    public function getCategoryRef(): ?WardrobeCategory { return $this->categoryRef; }
+
+    public function setCategoryRef(?WardrobeCategory $categoryRef): static
+    {
+        $this->categoryRef = $categoryRef;
+        if ($categoryRef !== null) {
+            $this->category = $categoryRef->getName();
+        }
         return $this;
     }
 

@@ -1751,3 +1751,14 @@ Google Gemma, а кастомный мердж («RENDERER/PARSER gemma4», фо
 GenerateListicleCommand/SeoGuideCommand (SEO Boost, не входит в явно названные «обе
 серии» этого бага) и путь генерации описаний брендов (`GenerateBrandContentCommand`,
 нет self-heal retry-цикла) — тем же паттерном ещё не покрыты, механический follow-up.
+
+# 2026-07-23 — Wardrobe MVP: новый фундамент без потери family/AI
+
+- [x] Принято решение сохранить семейные передачи, Telegram и локальный vision AI.
+- [x] Добавлены контейнер `Wardrobe` и справочник `WardrobeCategory`.
+- [x] `WardrobeItem` получил совместимые nullable-связи `wardrobe` и `categoryRef`;
+  прежние поля сохранены на переходный период.
+- [x] Веб, batch-ingest, Telegram и JSON-импорт создают default-гардероб лениво.
+- [x] Идемпотентная миграция создаёт 10 верхних категорий и бэкфиллит существующие вещи.
+- [ ] Следующий срез: подкатегории, quick/full формы и вычисляемый completion status.
+- [ ] Затем: галерея/cover, фильтры, архив/restore, статистика и JSON/CSV export.

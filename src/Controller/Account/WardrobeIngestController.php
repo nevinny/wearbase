@@ -9,6 +9,7 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
 use App\Repository\WardrobeItemDraftRepository;
 use App\Repository\WardrobeItemRepository;
+use App\Service\Wardrobe\WardrobeManager;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -33,6 +34,8 @@ use Vich\UploaderBundle\Storage\StorageInterface;
 #[Route('/account/wardrobe/ingest', name: 'account_wardrobe_ingest_')]
 class WardrobeIngestController extends AbstractController
 {
+    public function __construct(private readonly WardrobeManager $wardrobeManager) {}
+
     #[Route('/upload', name: 'upload', methods: ['POST'])]
     public function upload(
         Request $request,
@@ -255,6 +258,7 @@ class WardrobeIngestController extends AbstractController
         $item->setNotes($notes);
         $item->setSource(WardrobeItem::SOURCE_IMPORT);
         $item->setUser($user);
+        $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($user));
         $item->setOriginalOwner($user);
         $item->setItemNo($itemRepo->nextItemNo($user));
 

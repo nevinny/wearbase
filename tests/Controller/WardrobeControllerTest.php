@@ -68,6 +68,9 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertNotNull($item);
         $this->assertSame(1, $item->getItemNo());
         $this->assertSame(WardrobeItem::SOURCE_WEB, $item->getSource());
+        $this->assertNotNull($item->getWardrobe());
+        $this->assertSame($user->getId(), $item->getWardrobe()->getOwner()?->getId());
+        $this->assertTrue($item->getWardrobe()->isDefault());
     }
 
     public function testIndexShowsStats(): void

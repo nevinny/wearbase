@@ -14,6 +14,7 @@ use App\Repository\WardrobeTransferRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeManager;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -31,7 +32,10 @@ use Vich\UploaderBundle\Storage\StorageInterface;
 #[Route('/account/wardrobe', name: 'account_wardrobe_')]
 class WardrobeController extends AbstractController
 {
-    public function __construct(private readonly FamilyService $familyService) {}
+    public function __construct(
+        private readonly FamilyService $familyService,
+        private readonly WardrobeManager $wardrobeManager,
+    ) {}
 
     #[Route('', name: 'index', methods: ['GET'])]
     public function index(Request $request, WardrobeItemRepository $repo): Response
@@ -72,6 +76,7 @@ class WardrobeController extends AbstractController
 
         if ($form->isSubmitted() && $form->isValid()) {
             $item->setUser($currentMember);
+            $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($currentMember));
             $item->setOriginalOwner($currentMember);
             $item->setItemNo($repo->nextItemNo($currentMember));
             $item->setSource(WardrobeItem::SOURCE_WEB);

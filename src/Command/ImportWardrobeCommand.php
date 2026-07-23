@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Service\Wardrobe\WardrobeManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -30,6 +31,7 @@ class ImportWardrobeCommand extends Command
 
     public function __construct(
         private readonly EntityManagerInterface $em,
+        private readonly WardrobeManager $wardrobeManager,
     ) {
         parent::__construct();
     }
@@ -143,6 +145,7 @@ class ImportWardrobeCommand extends Command
 
             $item = (new WardrobeItem())
                 ->setUser($user)
+                ->setWardrobe($this->wardrobeManager->getOrCreateDefault($user))
                 ->setItemNo($itemNo)
                 ->setCategory($category)
                 ->setName($name)
