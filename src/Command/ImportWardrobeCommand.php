@@ -15,6 +15,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
  * Импорт вещей гардероба пользователя из JSON-файла (напр. выгрузка из Telegram-бота
@@ -32,6 +33,7 @@ class ImportWardrobeCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly WardrobeManager $wardrobeManager,
+        private readonly UserPasswordHasherInterface $passwordHasher,
     ) {
         parent::__construct();
     }
@@ -41,6 +43,7 @@ class ImportWardrobeCommand extends Command
         $this
             ->addArgument('file', InputArgument::REQUIRED, 'Путь к JSON-файлу с массивом вещей')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Email пользователя-владельца гардероба')
+            ->addOption('create-user', null, InputOption::VALUE_NONE, 'Создать обычного пользователя, если email ещё не зарегистрирован')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Только показать, что было бы создано/пропущено')
         ;
     }
@@ -59,8 +62,24 @@ class ImportWardrobeCommand extends Command
 
         $user = $this->em->getRepository(User::class)->findOneBy(['email' => $email]);
         if (!$user) {
-            $io->error("Пользователь не найден: {$email}");
-            return Command::FAILURE;
+            if (!$input->getOption('create-user') || $dryRun) {
+                $io->error("Пользователь не найден: {$email}. Для создания используйте --create-user без --dry-run");
+                return Command::FAILURE;
+            }
+
+            $temporaryPassword = bin2hex(random_bytes(10));
+            $user = (new User())
+                ->setEmail((string) $email)
+                ->setRoles(['ROLE_CUSTOMER']);
+            $user->setPassword($this->passwordHasher->hashPassword($user, $temporaryPassword));
+            $this->em->persist($user);
+            $this->em->flush();
+
+            $io->warning([
+                "Создан новый пользователь: {$email}",
+                "Временный пароль: {$temporaryPassword}",
+                'Смените пароль после первого входа.',
+            ]);
         }
 
         if (!is_file($file)) {
@@ -84,6 +103,7 @@ class ImportWardrobeCommand extends Command
             ),
         );
         $existingNos = array_flip($existingNos);
+        $nextItemNo = $existingNos === [] ? 1 : max(array_keys($existingNos)) + 1;
 
         $io->section(sprintf('Импорт вещей для %s: записей в файле %d%s', $email, count($rows), $dryRun ? ' (dry-run)' : ''));
 
@@ -99,6 +119,12 @@ class ImportWardrobeCommand extends Command
             }
 
             $itemNo = (int) ($row['item_no'] ?? 0);
+            if ($itemNo <= 0) {
+                while (isset($existingNos[$nextItemNo])) {
+                    $nextItemNo++;
+                }
+                $itemNo = $nextItemNo++;
+            }
             $category = trim((string) ($row['category'] ?? ''));
             $name = trim((string) ($row['name'] ?? ''));
 
@@ -108,7 +134,7 @@ class ImportWardrobeCommand extends Command
                 continue;
             }
 
-            $love = $row['love_at_first_sight'] ?? null;
+            $love = $row['love_at_first_sight'] ?? $row['loveAtFirstSight'] ?? null;
             if ($love !== null && !\in_array($love, self::VALID_LOVE, true)) {
                 $skipped++;
                 $tableRows[] = [$itemNo, $category, $name, "skip: недопустимое love_at_first_sight «{$love}»"];
@@ -122,11 +148,12 @@ class ImportWardrobeCommand extends Command
             }
 
             $purchasedAt = null;
-            if (!empty($row['purchased_at'])) {
-                $purchasedAt = \DateTimeImmutable::createFromFormat('!Y-m-d', (string) $row['purchased_at']) ?: null;
+            $purchasedAtValue = $row['purchased_at'] ?? $row['purchasedAt'] ?? null;
+            if (!empty($purchasedAtValue)) {
+                $purchasedAt = \DateTimeImmutable::createFromFormat('!Y-m-d', (string) $purchasedAtValue) ?: null;
                 if (!$purchasedAt) {
                     $skipped++;
-                    $tableRows[] = [$itemNo, $category, $name, "skip: неверная дата purchased_at «{$row['purchased_at']}»"];
+                    $tableRows[] = [$itemNo, $category, $name, "skip: неверная дата покупки «{$purchasedAtValue}»"];
                     continue;
                 }
             }
@@ -152,15 +179,22 @@ class ImportWardrobeCommand extends Command
                 ->setSize($this->nullableString($row['size'] ?? null))
                 ->setPrice($price)
                 ->setPurchasedAt($purchasedAt)
-                ->setProductUrl($this->nullableString($row['product_url'] ?? null))
+                ->setProductUrl($this->nullableString($row['product_url'] ?? $row['productUrl'] ?? null))
                 ->setNotes($this->nullableString($row['notes'] ?? null))
-                ->setPurchaseReason($this->nullableString($row['purchase_reason'] ?? null))
+                ->setPurchaseReason($this->nullableString($row['purchase_reason'] ?? $row['purchaseReason'] ?? null))
                 ->setLoveAtFirstSight($love)
+                ->setCustomBrandName($this->nullableString($row['custom_brand_name'] ?? $row['customBrandName'] ?? null))
+                ->setColorName($this->nullableString($row['color_name'] ?? $row['colorName'] ?? null))
+                ->setMaterialText($this->nullableString($row['material_text'] ?? $row['materialText'] ?? null))
+                ->setCountryOfOrigin($this->nullableString($row['country_of_origin'] ?? $row['countryOfOrigin'] ?? null))
+                ->setSeason($this->nullableString($row['season'] ?? null))
+                ->setCareText($this->nullableString($row['care_text'] ?? $row['careText'] ?? null))
                 ->setPros($this->nullableString($row['pros'] ?? null))
                 ->setCons($this->nullableString($row['cons'] ?? null))
                 ->setVerdict($this->nullableString($row['verdict'] ?? null))
                 ->setSource(WardrobeItem::SOURCE_IMPORT);
 
+            $this->wardrobeManager->refreshCompletionStatus($item);
             $this->em->persist($item);
             $existingNos[$itemNo] = true; // дедуп внутри одного прогона
         }
