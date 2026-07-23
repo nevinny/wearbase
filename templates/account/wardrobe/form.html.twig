@@ -19,6 +19,7 @@
 </div>
 
 {{ form_start(form) }}
+{{ form_widget(form.remotePhotoUrl) }}
 
 {# ── Основное ── #}
 <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
@@ -456,9 +457,11 @@
                     if (res.data && res.data.ok) {
                         fillEmpty(res.data.fields || {});
                         if (res.data.imageUrl && urlPreview && photoInput && (!photoInput.files || !photoInput.files.length)) {
+                            var remotePhotoInput = document.getElementById('wardrobe_item_form_remotePhotoUrl');
+                            if (remotePhotoInput) remotePhotoInput.value = res.data.imageUrl;
                             urlPreview.innerHTML =
                                 '<img src="' + res.data.imageUrl + '" alt="Фото из магазина" class="max-h-40 rounded-lg border border-gray-200">' +
-                                '<div class="mt-1 text-xs text-gray-400">Фото из магазина будет НЕ сохранено автоматически — прикрепите файл</div>';
+                                '<div class="mt-1 text-xs text-green-600">Фото из Wildberries сохранится вместе с карточкой</div>';
                             urlPreview.classList.remove('hidden');
                         }
                         if (urlStatus) {

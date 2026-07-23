@@ -34,7 +34,8 @@ class WardrobeManager
     {
         $hasName = $this->filled($item->getName());
         $hasCategory = $item->getCategoryRef() !== null || $this->filled($item->getCategory());
-        $hasPhotoOrUrl = $this->filled($item->getPhoto()) || $this->filled($item->getProductUrl());
+        $hasPhoto = $this->filled($item->getPhoto()) || $item->getPhotoFile() !== null;
+        $hasPhotoOrUrl = $hasPhoto || $this->filled($item->getProductUrl());
         $hasIdentifier = $this->filled($item->getSize()) || $this->filled($item->getColorName());
 
         $status = WardrobeItem::COMPLETION_DRAFT;
@@ -45,7 +46,7 @@ class WardrobeManager
         $hasPurchase = $item->getPrice() !== null || $item->getPurchasedAt() !== null;
         if (
             $status === WardrobeItem::COMPLETION_BASIC
-            && $this->filled($item->getPhoto())
+            && $hasPhoto
             && $this->filled($item->getSize())
             && $this->filled($item->getCustomBrandName())
             && $this->filled($item->getColorName())

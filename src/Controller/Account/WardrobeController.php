@@ -15,6 +15,7 @@ use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeManager;
+use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -35,6 +36,7 @@ class WardrobeController extends AbstractController
     public function __construct(
         private readonly FamilyService $familyService,
         private readonly WardrobeManager $wardrobeManager,
+        private readonly WardrobeRemotePhotoFetcher $remotePhotoFetcher,
     ) {}
 
     #[Route('', name: 'index', methods: ['GET'])]
@@ -75,6 +77,9 @@ class WardrobeController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            if ($item->getPhotoFile() === null) {
+                $this->remotePhotoFetcher->attachWildberriesPhoto($item, $form->get('remotePhotoUrl')->getData());
+            }
             $item->setUser($currentMember);
             $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($currentMember));
             $item->setOriginalOwner($currentMember);
@@ -288,6 +293,9 @@ class WardrobeController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            if ($item->getPhotoFile() === null && $item->getPhoto() === null) {
+                $this->remotePhotoFetcher->attachWildberriesPhoto($item, $form->get('remotePhotoUrl')->getData());
+            }
             $this->wardrobeManager->refreshCompletionStatus($item);
             $em->flush();
             $this->addFlash('success', 'Изменения сохранены');
