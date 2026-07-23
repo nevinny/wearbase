@@ -54,8 +54,8 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseIsSuccessful();
 
         $form = $crawler->selectButton('Сохранить')->form([
-            'wardrobe_item_form[category]' => 'Футболки',
-            'wardrobe_item_form[name]'     => 'Тестовая футболка',
+            'wardrobe_item_form[size]'       => 'M',
+            'wardrobe_item_form[productUrl]' => 'https://example.com/test-item',
         ]);
         $client->submit($form);
 
@@ -63,11 +63,12 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
 
         /** @var EntityManagerInterface $em */
         $em   = static::getContainer()->get('doctrine.orm.entity_manager');
-        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['user' => $user, 'name' => 'Тестовая футболка']);
+        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['user' => $user, 'productUrl' => 'https://example.com/test-item']);
 
         $this->assertNotNull($item);
         $this->assertSame(1, $item->getItemNo());
         $this->assertSame(WardrobeItem::SOURCE_WEB, $item->getSource());
+        $this->assertSame(WardrobeItem::COMPLETION_DRAFT, $item->getCompletionStatus());
         $this->assertNotNull($item->getWardrobe());
         $this->assertSame($user->getId(), $item->getWardrobe()->getOwner()?->getId());
         $this->assertTrue($item->getWardrobe()->isDefault());
@@ -249,8 +250,8 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseIsSuccessful();
 
         $form = $crawler->selectButton('Сохранить')->form([
-            'wardrobe_item_form[category]' => 'Платья',
-            'wardrobe_item_form[name]'     => 'Платье для Оли',
+            'wardrobe_item_form[size]'       => '128',
+            'wardrobe_item_form[productUrl]' => 'https://example.com/child-dress',
         ]);
         $client->submit($form);
 
@@ -258,7 +259,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
 
         /** @var EntityManagerInterface $em */
         $em   = static::getContainer()->get('doctrine.orm.entity_manager');
-        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['name' => 'Платье для Оли']);
+        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['productUrl' => 'https://example.com/child-dress']);
 
         $this->assertNotNull($item);
         $this->assertSame($child->getId(), $item->getUser()->getId());

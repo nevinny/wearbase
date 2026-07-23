@@ -1760,5 +1760,5 @@ GenerateListicleCommand/SeoGuideCommand (SEO Boost, не входит в явн�
   прежние поля сохранены на переходный период.
 - [x] Веб, batch-ingest, Telegram и JSON-импорт создают default-гардероб лениво.
 - [x] Идемпотентная миграция создаёт 10 верхних категорий и бэкфиллит существующие вещи.
-- [ ] Следующий срез: подкатегории, quick/full формы и вычисляемый completion status.
+- [x] Второй срез: 30 подкатегорий, quick/full формы и вычисляемый completion status.
 - [ ] Затем: галерея/cover, фильтры, архив/restore, статистика и JSON/CSV export.

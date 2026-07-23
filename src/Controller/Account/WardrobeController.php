@@ -71,7 +71,7 @@ class WardrobeController extends AbstractController
         $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
 
         $item = new WardrobeItem();
-        $form = $this->createForm(WardrobeItemFormType::class, $item);
+        $form = $this->createForm(WardrobeItemFormType::class, $item, ['full' => false]);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
@@ -80,6 +80,7 @@ class WardrobeController extends AbstractController
             $item->setOriginalOwner($currentMember);
             $item->setItemNo($repo->nextItemNo($currentMember));
             $item->setSource(WardrobeItem::SOURCE_WEB);
+            $this->wardrobeManager->refreshCompletionStatus($item);
 
             $em = $doctrine->getManager();
             try {
@@ -92,13 +93,18 @@ class WardrobeController extends AbstractController
                 /** @var User $currentMember */
                 $currentMember = $em->find(User::class, $currentMember->getId());
                 $item->setUser($currentMember);
+                $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($currentMember));
                 $item->setOriginalOwner($currentMember);
                 $item->setItemNo($repo->nextItemNo($currentMember));
+                $this->wardrobeManager->refreshCompletionStatus($item);
                 $em->persist($item);
                 $em->flush();
             }
 
             $this->addFlash('success', 'Вещь добавлена');
+            if ($request->request->has('save_and_add')) {
+                return $this->redirectToRoute('account_wardrobe_new', $this->memberQuery($user, $currentMember));
+            }
             return $this->redirectToRoute('account_wardrobe_index', $this->memberQuery($user, $currentMember));
         }
 
@@ -111,6 +117,7 @@ class WardrobeController extends AbstractController
             )),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'fullMode'      => false,
         ]);
     }
 
@@ -281,6 +288,7 @@ class WardrobeController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            $this->wardrobeManager->refreshCompletionStatus($item);
             $em->flush();
             $this->addFlash('success', 'Изменения сохранены');
             return $this->redirectToRoute(
@@ -298,6 +306,7 @@ class WardrobeController extends AbstractController
             )),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'fullMode'      => true,
         ]);
     }
 
