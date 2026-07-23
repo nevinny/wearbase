@@ -62,6 +62,14 @@ class ArticleDistribution
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $sourceFile = null;
 
+    /** Когда именно эта версия была опубликована на внешней площадке. */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTime $publishedAt = null;
+
+    /** URL опубликованной версии на внешней площадке. */
+    #[ORM\Column(length: 512, nullable: true)]
+    private ?string $externalUrl = null;
+
     public function getId(): ?int { return $this->id; }
 
     public function getArticle(): Article { return $this->article; }
@@ -87,4 +95,10 @@ class ArticleDistribution
 
     public function getSourceFile(): ?string { return $this->sourceFile; }
     public function setSourceFile(?string $sourceFile): static { $this->sourceFile = $sourceFile; return $this; }
+
+    public function getPublishedAt(): ?\DateTime { return $this->publishedAt; }
+    public function setPublishedAt(?\DateTime $publishedAt): static { $this->publishedAt = $publishedAt; return $this; }
+
+    public function getExternalUrl(): ?string { return $this->externalUrl; }
+    public function setExternalUrl(?string $externalUrl): static { $this->externalUrl = $externalUrl; return $this; }
 }
