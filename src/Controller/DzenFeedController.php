@@ -105,12 +105,30 @@ class DzenFeedController extends AbstractController
         ]);
     }
 
+    // Белый список Дзена (dzen.ru/help/ru/website/rss-modify.html): любой другой тег
+    // разворачивается (unwrap), а не вырезается вместе с текстом.
+    private const ALLOWED_TAGS = [
+        'p', 'a', 'b', 'i', 'u', 's', 'h1', 'h2', 'h3', 'h4',
+        'blockquote', 'ul', 'ol', 'li', 'figure', 'img', 'video',
+    ];
+
+    // Атрибуты, которые Дзен явно поддерживает — единственное исключение из
+    // «никаких атрибутов» (id/class/style и т.п. со всех тегов снимаются).
+    private const ALLOWED_ATTRS = [
+        'a'     => ['href'],
+        'img'   => ['src', 'alt'],
+        'video' => ['src'],
+    ];
+
     /**
      * Приводит HTML статьи к подмножеству, которое обрабатывает Дзен
      * (dzen.ru/help/ru/website/rss-modify.html): только p, a, b, i, u, s, h1-h4,
-     * blockquote, ul/ol>li. Таблицы Дзен выбрасывает, поэтому конвертируем их в
-     * список: первая ячейка строки — <b>, остальные — «заголовок: значение».
-     * Блоговый HTML не трогаем — трансформ только для фида.
+     * blockquote, ul/ol>li, figure, img, video — БЕЗ атрибутов, кроме href/src/alt.
+     * Таблицы Дзен выбрасывает, поэтому конвертируем их в список: первая ячейка
+     * строки — <b>, остальные — «заголовок: значение». Теги вне белого списка
+     * (например, <span>, <h2 id="...">) разворачиваются — их содержимое остаётся,
+     * сам тег и его атрибуты пропадают. Блоговый HTML не трогаем — трансформ
+     * только для фида.
      */
     private function toDzenHtml(string $html): string
     {
@@ -120,10 +138,6 @@ class DzenFeedController extends AbstractController
             $html,
         );
         $html = (string) preg_replace('#<hr\s*/?>#', '', $html);
-
-        if (!str_contains($html, '<table')) {
-            return $html;
-        }
 
         $dom = new \DOMDocument();
         $dom->loadHTML(
@@ -172,12 +186,54 @@ class DzenFeedController extends AbstractController
             $table->parentNode->replaceChild($list, $table);
         }
 
+        $this->sanitizeDzenNode($dom->getElementsByTagName('body')->item(0));
+
         $out = '';
         foreach ($dom->getElementsByTagName('body')->item(0)->childNodes as $child) {
             $out .= $dom->saveHTML($child);
         }
 
         return $out;
+    }
+
+    /**
+     * Рекурсивно (снизу вверх — сперва потомки) приводит поддерево к белому списку
+     * Дзена: разворачивает не входящие в ALLOWED_TAGS теги (span, div, section, h5...)
+     * и снимает со всех оставшихся тегов атрибуты, не перечисленные в ALLOWED_ATTRS.
+     */
+    private function sanitizeDzenNode(\DOMNode $node): void
+    {
+        foreach (iterator_to_array($node->childNodes) as $child) {
+            if (!$child instanceof \DOMElement) {
+                continue;
+            }
+
+            $this->sanitizeDzenNode($child);
+
+            $tag = strtolower($child->tagName);
+
+            if (!in_array($tag, self::ALLOWED_TAGS, true)) {
+                $this->unwrapDzenNode($child);
+                continue;
+            }
+
+            $keep = self::ALLOWED_ATTRS[$tag] ?? [];
+            foreach (iterator_to_array($child->attributes) as $attr) {
+                if (!in_array($attr->nodeName, $keep, true)) {
+                    $child->removeAttribute($attr->nodeName);
+                }
+            }
+        }
+    }
+
+    /** Заменяет узел его содержимым (детьми), сам тег и атрибуты пропадают. */
+    private function unwrapDzenNode(\DOMElement $node): void
+    {
+        $parent = $node->parentNode;
+        foreach (iterator_to_array($node->childNodes) as $child) {
+            $parent->insertBefore($child, $node);
+        }
+        $parent->removeChild($node);
     }
 
     /**
