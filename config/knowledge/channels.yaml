@@ -1,0 +1,13 @@
+# Реестр TG/YouTube-каналов базы знаний советника (Qdrant `topic_chunks`).
+# Единственный источник role (для чанкинга/фильтра ретрива) и name (провенанс в дайджесте).
+# Добавление канала = запись сюда + крон-строка app:kb:sync-tg — без правки PHP
+# (KnowledgeIngestor / AdvisorRag читают через KnowledgeChannelRegistry).
+channels:
+  grebenukm:            { role: idea,    name: "Гребенюк" }
+  dolgov_alexandr:       { role: idea,    name: "Долгов" }
+  mtokovinin:            { role: framing, name: "Токовинин" }
+  AlexanderSokolovskiy:  { role: case,    name: "Соколовский" }
+  FedotovM:              { role: tone,    name: "Федотов" }
+  drmaxseo:              { role: seo,     name: "DrMax SEO" }
+  freychu:               { role: seo,     name: "Frey Chu (directories)" }
+  big_bad_coach:         { role: seo,     name: "big_bad_coach" }

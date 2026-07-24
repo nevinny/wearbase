@@ -10,9 +10,10 @@ use Symfony\Component\Uid\Uuid;
 /**
  * Общая логика ингеста документа базы знаний (транскрипт видео / пост канала)
  * в Qdrant `topic_chunks`: чанкинг → эмбеддинг → upsert. Вынесена из
- * IngestKnowledgeChannelsCommand, чтобы role-карта и UUID-namespace не расходились
- * между разовым ингестом транскриптов (app:kb:ingest-channels) и регулярным
- * инкрементом TG-каналов (app:kb:sync-tg).
+ * IngestKnowledgeChannelsCommand, чтобы UUID-namespace не расходился между разовым
+ * ингестом транскриптов (app:kb:ingest-channels) и регулярным инкрементом TG-каналов
+ * (app:kb:sync-tg). Role-карта каналов — в KnowledgeChannelRegistry
+ * (config/knowledge/channels.yaml), сюда только делегируется.
  *
  * ID точки детерминирован (UUIDv5 от channel:doc_id:chunk_index) → повторный
  * прогон делает upsert, а не дубли.
@@ -26,34 +27,23 @@ class KnowledgeIngestor
     // Своё namespace для UUIDv5 точек topic_chunks (стабильный, не пересекается с brand_chunks).
     private const ID_NAMESPACE = 'b3d5c1a2-7e4f-5c9a-9b21-8f0e1d2c3a4b';
 
-    /** Роль чанка в payload — определяется каналом-источником. */
-    private const ROLE_MAP = [
-        'grebenukm'          => 'idea',
-        'dolgov_alexandr'    => 'idea',
-        'mtokovinin'         => 'framing',
-        'AlexanderSokolovskiy' => 'case',
-        'FedotovM'           => 'tone',
-        'drmaxseo'           => 'seo',
-        'freychu'            => 'seo',
-        'big_bad_coach'      => 'seo',
-    ];
-
     public function __construct(
-        private readonly EmbeddingService   $embedder,
-        private readonly VectorStoreService $vectors,   // инстанс, привязанный к topic_chunks (services.yaml)
-        private readonly TextChunker        $chunker,
+        private readonly EmbeddingService         $embedder,
+        private readonly VectorStoreService       $vectors,   // инстанс, привязанный к topic_chunks (services.yaml)
+        private readonly TextChunker              $chunker,
+        private readonly KnowledgeChannelRegistry $channels,
     ) {
     }
 
-    /** @return string[] каналы, известные role-карте */
+    /** @return string[] каналы, известные реестру */
     public function channels(): array
     {
-        return array_keys(self::ROLE_MAP);
+        return $this->channels->channels();
     }
 
     public function roleFor(string $channel): ?string
     {
-        return self::ROLE_MAP[$channel] ?? null;
+        return $this->channels->roleFor($channel);
     }
 
     public function ensureCollection(): void
@@ -68,7 +58,7 @@ class KnowledgeIngestor
 
     /**
      * Режет документ на чанки, эмбеддит по одному (устойчиво к сбою на мусорном
-     * чанке) и грузит батчами в Qdrant. Канал обязан быть в role-карте.
+     * чанке) и грузит батчами в Qdrant. Канал обязан быть в реестре.
      *
      * @return array{chunks:int,points:int,skipped:int}
      */
@@ -76,7 +66,7 @@ class KnowledgeIngestor
     {
         $role = $this->roleFor($channel);
         if ($role === null) {
-            throw new \InvalidArgumentException("Неизвестный канал «{$channel}», нет в role-карте");
+            throw new \InvalidArgumentException("Неизвестный канал «{$channel}», нет в config/knowledge/channels.yaml");
         }
 
         $pieces = $this->chunker->chunk($text);

@@ -12,8 +12,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Регулярный инкремент публичного TG-канала (уже описанного в role-карте
- * KnowledgeIngestor::ROLE_MAP) в базу знаний советника: скрап `t.me/s/<channel>`
+ * Регулярный инкремент публичного TG-канала (уже описанного в реестре
+ * config/knowledge/channels.yaml) в базу знаний советника: скрап `t.me/s/<channel>`
  * → новые посты в ~/yt-kb/txt/<channel>/<id>.txt → чанкинг+эмбеддинг → Qdrant
  * topic_chunks. UUID точек, role-карта и чанкер — общие с app:kb:ingest-channels
  * (сервис KnowledgeIngestor), поэтому повторный прогон идемпотентен, а не плодит
