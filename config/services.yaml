@@ -104,7 +104,7 @@ services:
             $qdrantApiKey: '%env(QDRANT_API_KEY)%'
             $collection: 'topic_chunks'
 
-    App\Command\IngestKnowledgeChannelsCommand:
+    App\Service\Knowledge\KnowledgeIngestor:
         arguments:
             $vectors: '@app.vector_store.topic'
 
