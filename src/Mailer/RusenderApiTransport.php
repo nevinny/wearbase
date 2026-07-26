@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Mailer;
 
+use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Mailer\Envelope;
 use Symfony\Component\Mailer\Exception\HttpTransportException;
 use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mailer\Transport\AbstractApiTransport;
 use Symfony\Component\Mime\Email;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
@@ -22,11 +25,20 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
  */
 final class RusenderApiTransport extends AbstractApiTransport
 {
+    /**
+     * ⚠️ Dispatcher обязателен к передаче наверх: именно на `MessageEvent` висит
+     * twig-рендерер тела (`BodyRenderer`). Без него любое `TemplatedEmail` доходит до
+     * транспорта БЕЗ html/text и падает с «A message must have a text or an HTML part»
+     * — то есть молча умирают все письма из EmailNotifier (регрессия 12.06–26.07.2026).
+     */
     public function __construct(
         private readonly string $apiKey,
         private readonly ?string $keyId = null,
+        ?HttpClientInterface $client = null,
+        ?EventDispatcherInterface $dispatcher = null,
+        ?LoggerInterface $logger = null,
     ) {
-        parent::__construct();
+        parent::__construct($client, $dispatcher, $logger);
     }
 
     public function __toString(): string
