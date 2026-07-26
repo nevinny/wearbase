@@ -106,15 +106,7 @@ class WardrobeItemFormType extends AbstractType
             ->add('notes', TextareaType::class, ['label' => 'Заметки', 'required' => false, 'attr' => ['rows' => 3]])
             ->add('itemStatus', ChoiceType::class, [
                 'label' => 'Статус вещи',
-                'choices' => [
-                    'Активна' => WardrobeItem::ITEM_ACTIVE,
-                    'В ремонте' => WardrobeItem::ITEM_REPAIR,
-                    'В архиве' => WardrobeItem::ITEM_ARCHIVED,
-                    'Продана' => WardrobeItem::ITEM_SOLD,
-                    'Подарена' => WardrobeItem::ITEM_DONATED,
-                    'Передана' => WardrobeItem::ITEM_TRANSFERRED,
-                    'Потеряна' => WardrobeItem::ITEM_LOST,
-                ],
+                'choices' => array_flip(WardrobeItem::ITEM_LABELS),
             ])
             ->add('pros', TextareaType::class, ['label' => 'Плюсы', 'required' => false, 'attr' => ['rows' => 2]])
             ->add('cons', TextareaType::class, ['label' => 'Минусы', 'required' => false, 'attr' => ['rows' => 2]])

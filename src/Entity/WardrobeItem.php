@@ -35,6 +35,15 @@ class WardrobeItem
     public const ITEM_DONATED = 'donated';
     public const ITEM_TRANSFERRED = 'transferred';
     public const ITEM_LOST = 'lost';
+    public const ITEM_LABELS = [
+        self::ITEM_ACTIVE => 'Активна',
+        self::ITEM_REPAIR => 'В ремонте',
+        self::ITEM_ARCHIVED => 'В архиве',
+        self::ITEM_SOLD => 'Продана',
+        self::ITEM_DONATED => 'Подарена',
+        self::ITEM_TRANSFERRED => 'Передана',
+        self::ITEM_LOST => 'Потеряна',
+    ];
 
     public const LOVE_YES = 'yes';
     public const LOVE_NO = 'no';

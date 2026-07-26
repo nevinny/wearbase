@@ -18,6 +18,7 @@ use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeManager;
 use App\Service\Wardrobe\WardrobePhotoManager;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
+use App\Service\Wardrobe\WardrobeStatisticsService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -52,6 +53,14 @@ class WardrobeController extends AbstractController
 
         $isArchiveView = $request->query->get('view') === 'archive';
         $filters = $this->wardrobeFilters($request);
+        if ($isArchiveView) {
+            $filters['wear'] = '';
+            if ($filters['status'] !== WardrobeItem::ITEM_ARCHIVED) {
+                $filters['status'] = '';
+            }
+        } elseif ($filters['status'] === WardrobeItem::ITEM_ARCHIVED) {
+            $filters['status'] = '';
+        }
         $hasFilters = count(array_filter($filters, static fn (string $value): bool => $value !== '')) > 0;
         $items = $repo->searchForUser($currentMember, $filters, $isArchiveView);
         $stats = (!$isArchiveView && !$hasFilters) ? $repo->getStats($currentMember) : [];
@@ -69,6 +78,35 @@ class WardrobeController extends AbstractController
             'filters' => $filters,
             'hasFilters' => $hasFilters,
             'filterOptions' => $repo->getFilterOptions($currentMember, $isArchiveView),
+        ]);
+    }
+
+    #[Route('/statistics', name: 'statistics', methods: ['GET'])]
+    public function statistics(Request $request, WardrobeStatisticsService $statistics): Response
+    {
+        /** @var User $user */
+        $user = $this->getUser();
+        $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
+        $members = $this->familyService->membersFor($user);
+        $familyComparison = [];
+        $currentStatistics = null;
+        foreach ($members as $member) {
+            $memberStatistics = $statistics->forUser($member);
+            $familyComparison[] = [
+                'member' => $member,
+                'summary' => $memberStatistics['summary'],
+            ];
+            if ($member->getId() === $currentMember->getId()) {
+                $currentStatistics = $memberStatistics;
+            }
+        }
+
+        return $this->render('account/wardrobe/statistics.html.twig', [
+            'statistics' => $currentStatistics ?? $statistics->forUser($currentMember),
+            'members' => $members,
+            'currentMember' => $currentMember,
+            'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'familyComparison' => $familyComparison,
         ]);
     }
 
@@ -628,16 +666,22 @@ class WardrobeController extends AbstractController
         return $request->query->has('member') ? $request->query->getInt('member') : null;
     }
 
-    /** @return array{q: string, category: string, brand: string, color: string, size: string, season: string, completion: string} */
+    /** @return array{q: string, category: string, brand: string, color: string, size: string, season: string, completion: string, status: string, wear: string} */
     private function wardrobeFilters(Request $request): array
     {
         $filters = [];
-        foreach (['q', 'category', 'brand', 'color', 'size', 'season', 'completion'] as $name) {
+        foreach (['q', 'category', 'brand', 'color', 'size', 'season', 'completion', 'status', 'wear'] as $name) {
             $filters[$name] = mb_substr(trim((string) $request->query->get($name, '')), 0, 100);
         }
 
         if (!array_key_exists($filters['completion'], WardrobeItem::COMPLETION_LABELS)) {
             $filters['completion'] = '';
+        }
+        if (!array_key_exists($filters['status'], WardrobeItem::ITEM_LABELS)) {
+            $filters['status'] = '';
+        }
+        if (!array_key_exists($filters['wear'], WardrobeItem::WEAR_LABELS)) {
+            $filters['wear'] = '';
         }
 
         return $filters;
