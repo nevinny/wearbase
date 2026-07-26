@@ -50,7 +50,7 @@ class WardrobeItemRepository extends ServiceEntityRepository
     }
 
     /**
-     * @param array{q?: string, category?: string, brand?: string, color?: string, size?: string, season?: string, completion?: string} $filters
+     * @param array{q?: string, category?: string, brand?: string, color?: string, size?: string, season?: string, completion?: string, status?: string, wear?: string} $filters
      * @return WardrobeItem[]
      */
     public function searchForUser(User $user, array $filters, bool $archived = false): array
@@ -100,6 +100,18 @@ class WardrobeItemRepository extends ServiceEntityRepository
             'sizes' => $this->distinctFieldValues($user, 'size', $archived),
             'seasons' => $this->distinctFieldValues($user, 'season', $archived),
         ];
+    }
+
+    /** @return WardrobeItem[] */
+    public function findForStatistics(User $user): array
+    {
+        return $this->createQueryBuilder('w')
+            ->andWhere('w.user = :user')
+            ->andWhere('w.deletedAt IS NULL')
+            ->setParameter('user', $user)
+            ->orderBy('w.itemNo', 'DESC')
+            ->getQuery()
+            ->getResult();
     }
 
     /**
@@ -232,6 +244,8 @@ class WardrobeItemRepository extends ServiceEntityRepository
             'size' => 'size',
             'season' => 'season',
             'completion' => 'completionStatus',
+            'status' => 'itemStatus',
+            'wear' => 'wearStatus',
         ];
         foreach ($fields as $filter => $field) {
             if (($filters[$filter] ?? '') !== '') {

@@ -35,14 +35,14 @@ class WardrobeItem
     public const ITEM_DONATED = 'donated';
     public const ITEM_TRANSFERRED = 'transferred';
     public const ITEM_LOST = 'lost';
-    public const ITEM_STATUS_LABELS = [
-        self::ITEM_ACTIVE      => 'Активна',
-        self::ITEM_REPAIR      => 'В ремонте',
-        self::ITEM_ARCHIVED    => 'В архиве',
-        self::ITEM_SOLD        => 'Продана',
-        self::ITEM_DONATED     => 'Подарена',
+    public const ITEM_LABELS = [
+        self::ITEM_ACTIVE => 'Активна',
+        self::ITEM_REPAIR => 'В ремонте',
+        self::ITEM_ARCHIVED => 'В архиве',
+        self::ITEM_SOLD => 'Продана',
+        self::ITEM_DONATED => 'Подарена',
         self::ITEM_TRANSFERRED => 'Передана',
-        self::ITEM_LOST        => 'Потеряна',
+        self::ITEM_LOST => 'Потеряна',
     ];
 
     public const LOVE_YES = 'yes';
@@ -326,7 +326,7 @@ class WardrobeItem
 
     public function getItemStatusLabel(): string
     {
-        return self::ITEM_STATUS_LABELS[$this->itemStatus] ?? $this->itemStatus;
+        return self::ITEM_LABELS[$this->itemStatus] ?? $this->itemStatus;
     }
 
     public function setItemStatus(string $itemStatus): static

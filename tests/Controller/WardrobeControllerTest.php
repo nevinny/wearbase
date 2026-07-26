@@ -875,6 +875,42 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertStringContainsString('Льняная рубашка', $crawler->filter('body')->text());
     }
 
+    public function testStatisticsShowOnlyCurrentUsersAggregates(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $start = $em->getRepository(WardrobeItem::class)->count([]) + 7000;
+
+        $own = (new WardrobeItem())
+            ->setUser($user)->setItemNo($start)
+            ->setName('Своя статистическая вещь')
+            ->setCategory('Уникальная своя категория')
+            ->setCustomBrandName('Свой статистический бренд')
+            ->setPrice('1234.00')
+            ->setCompletionStatus(WardrobeItem::COMPLETION_COMPLETE);
+        $foreign = (new WardrobeItem())
+            ->setUser(UserFactory::brandOwner(static::getContainer()))->setItemNo($start)
+            ->setName('Чужая статистическая вещь')
+            ->setCategory('Секретная чужая категория')
+            ->setCustomBrandName('Чужой статистический бренд')
+            ->setPrice('999999.00');
+        $em->persist($own);
+        $em->persist($foreign);
+        $em->flush();
+
+        $crawler = $client->request('GET', '/account/wardrobe/statistics');
+
+        $this->assertResponseIsSuccessful();
+        $body = $crawler->filter('body')->text();
+        $this->assertStringContainsString('Статистика гардероба', $body);
+        $this->assertStringContainsString('Уникальная своя категория', $body);
+        $this->assertStringContainsString('Свой статистический бренд', $body);
+        $this->assertStringNotContainsString('Секретная чужая категория', $body);
+        $this->assertStringNotContainsString('Чужой статистический бренд', $body);
+    }
+
     public function testShowDeletedItemReturns404(): void
     {
         $client = static::createClient();
