@@ -158,6 +158,11 @@ class LandingController extends AbstractController
 
         $email = trim((string) $request->request->get('email', ''));
         $source = trim((string) $request->request->get('source', 'no-marketplace'));
+        // Название и ссылка — опциональны на уровне роута: форму `landing_lead` шлют три лендинга,
+        // и только `for-brands` спрашивает бренд (required в разметке). Без них лид всё равно пишем,
+        // иначе no-marketplace / marketplace-fees перестали бы собирать почту (sales_offer.md §11).
+        $brandName = trim((string) $request->request->get('brand_name', ''));
+        $website = trim((string) $request->request->get('website', ''));
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $this->addFlash('error', 'Введите корректный email');
@@ -166,6 +171,15 @@ class LandingController extends AbstractController
 
         $existing = $em->getRepository(LandingLead::class)->findOneBy(['email' => $email]);
         if ($existing) {
+            // Повторная заявка — не дублируем, но дозаполняем то, чего в прошлый раз не спросили.
+            if ($brandName !== '' && $existing->getBrandName() === null) {
+                $existing->setBrandName($brandName);
+            }
+            if ($website !== '' && $existing->getWebsite() === null) {
+                $existing->setWebsite($website);
+            }
+            $em->flush();
+
             $this->addFlash('info', 'Вы уже оставляли заявку — мы скоро свяжемся с вами');
             return $this->redirect($request->headers->get('referer', '/'));
         }
@@ -173,6 +187,8 @@ class LandingController extends AbstractController
         $lead = new LandingLead();
         $lead->setEmail($email);
         $lead->setSource($source);
+        $lead->setBrandName($brandName !== '' ? $brandName : null);
+        $lead->setWebsite($website !== '' ? $website : null);
         $em->persist($lead);
         $em->flush();
 
@@ -180,7 +196,7 @@ class LandingController extends AbstractController
             $notifier->getAdminEmail(),
             'Новый лид с лендинга — ' . $email,
             'new_lead',
-            ['email' => $email, 'source' => $source]
+            ['email' => $email, 'source' => $source, 'brandName' => $brandName, 'website' => $website]
         );
 
         $this->addFlash('success', 'Спасибо! Мы свяжемся с вами в ближайшее время.');
