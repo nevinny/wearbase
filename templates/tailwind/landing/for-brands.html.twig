@@ -92,12 +92,23 @@
     <section id="register" class="bg-gray-50 py-20">
         <div class="container mx-auto px-4 text-center">
             <h2 class="text-3xl font-black mb-4">Начать легко</h2>
-            <p class="text-gray-500 mb-10">Оставьте почту — мы проведём регистрацию за 5 минут</p>
-            <form method="post" action="{{ path('landing_lead') }}" class="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
-                <input type="email" name="email" required placeholder="your@brand.ru" class="flex-1 px-5 py-3 rounded-full text-sm border border-gray-300 outline-none focus:border-black">
+            <p class="text-gray-500 mb-10">Название бренда, ссылка и почта — мы проверим, есть ли у нас ваша карточка, и ответим в тот же рабочий день</p>
+            <form method="post" action="{{ path('landing_lead') }}" class="rounded-2xl bg-white shadow-sm p-6 space-y-4 max-w-md mx-auto text-left">
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1" for="lead-brand-name">Название бренда</label>
+                    <input type="text" id="lead-brand-name" name="brand_name" required placeholder="Ваш бренд" class="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1" for="lead-email">Email</label>
+                    <input type="email" id="lead-email" name="email" required placeholder="your@brand.ru" class="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1" for="lead-website">Ссылка на сайт/соцсеть (опц.)</label>
+                    <input type="text" id="lead-website" name="website" placeholder="instagram.com/yourbrand" class="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                </div>
                 <input type="hidden" name="source" value="for-brands">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('landing_lead') }}">
-                <button type="submit" class="bg-black text-white font-bold px-6 py-3 rounded-full hover:bg-gray-800 transition text-sm">Отправить</button>
+                <button type="submit" class="w-full rounded-xl bg-gray-900 text-white font-semibold px-6 py-3 hover:bg-black transition text-sm">Отправить</button>
             </form>
         </div>
     </section>
