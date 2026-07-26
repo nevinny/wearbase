@@ -20,10 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup PHP 8.2
+      - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          # 8.4 = dev-версия; composer.lock (PHPUnit 12) требует >=8.3. Прод на 8.2,
+          # но dev-зависимости в lock не оставляют выбора — тесты гоняем на dev-версии.
+          php-version: '8.4'
           extensions: ctype, iconv, mbstring, intl, pdo_sqlite, sqlite3, xml, tokenizer
           coverage: none
           tools: composer:v2
