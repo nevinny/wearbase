@@ -108,6 +108,25 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key -p ${P} -o UserKnownHostsFile=~/.ssh/known_hosts" \
             ./ "${U}@${H}:${D}/"
 
+      - name: Prune deleted code files
+        # Основной rsync идёт без --delete, поэтому удалённые в репозитории файлы жили на
+        # проде вечно: 26.07.2026 там нашлись бутстраповый templates/base.html.twig,
+        # showv2/showv3 и снесённый в этом же релизе слушатель — мёртвый код, который
+        # Symfony продолжает автозагружать. Второй проход с --delete идёт ТОЛЬКО по
+        # каталогам чистого кода: public_html (сгенерированные ассеты, загруженные
+        # картинки), bin, var и config/secrets сюда намеренно не входят.
+        env:
+          H: ${{ secrets.DEPLOY_HOST }}
+          U: ${{ secrets.DEPLOY_USER }}
+          P: ${{ secrets.DEPLOY_PORT }}
+          D: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          for DIR in src templates migrations translations; do
+            rsync -az --delete --exclude .DS_Store \
+              -e "ssh -i ~/.ssh/deploy_key -p ${P} -o UserKnownHostsFile=~/.ssh/known_hosts" \
+              "./$DIR/" "${U}@${H}:${D}/$DIR/"
+          done
+
       - name: Migrate + clear cache
         # cache:clear на проде ТОЛЬКО с -d memory_limit=512M (дефолт 128M падает).
         env:
