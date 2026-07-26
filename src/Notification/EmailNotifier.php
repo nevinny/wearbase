@@ -27,8 +27,12 @@ readonly class EmailNotifier
 
     /**
      * @param array<string, mixed> $context
+     *
+     * @return bool false — письмо НЕ ушло (ошибка залогирована). Вызовы, которым важен
+     *              факт отправки (ручные команды), обязаны проверять результат: soft-fail
+     *              иначе превращается в «отчитались об успехе, письма нет».
      */
-    public function send(User|string $recipient, string $subject, string $template, array $context = []): void
+    public function send(User|string $recipient, string $subject, string $template, array $context = []): bool
     {
         if ($recipient instanceof User) {
             $to = new Address((string) $recipient->getEmail(), $recipient->getFullName());
@@ -47,6 +51,8 @@ readonly class EmailNotifier
 
         try {
             $this->mailer->send($email);
+
+            return true;
         } catch (\Throwable $e) {
             // soft-fail: письмо не должно ронять заказ, но молчать об ошибке нельзя
             $this->logger->error('Email notification failed', [
@@ -55,6 +61,8 @@ readonly class EmailNotifier
                 'template' => $template,
                 'error' => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
 }

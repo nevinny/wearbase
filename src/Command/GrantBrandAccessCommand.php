@@ -134,7 +134,7 @@ class GrantBrandAccessCommand extends Command
         if ($input->getOption('send')) {
             // Письмо уходит через EmailNotifier → MAILER_DSN (на проде rusender+api).
             // Ключ `email` в контексте запрещён (см. память/sales_offer §11.2-bis) — только login.
-            $this->emailNotifier->send(
+            $sent = $this->emailNotifier->send(
                 $email,
                 'Доступ в кабинет бренда на WEARBASE',
                 'brand_access_granted',
@@ -144,6 +144,13 @@ class GrantBrandAccessCommand extends Command
                     'brandTitle' => (string) $brand->getTitle(),
                 ],
             );
+
+            if (!$sent) {
+                $io->error('Письмо НЕ отправлено — причина в логе (app.ERROR «Email notification failed»). Доступ выдан, пароль передать вручную.');
+
+                return Command::FAILURE;
+            }
+
             $io->success('Пригласительное письмо отправлено на ' . $email);
         } else {
             $io->warning('Пароль передать владельцу и попросить сменить: /forgot-password → письмо со ссылкой на новый пароль. Отправить письмо автоматически: --send');
