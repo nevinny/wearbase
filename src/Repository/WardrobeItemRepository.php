@@ -27,9 +27,25 @@ class WardrobeItemRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('w')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus != :archived')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
+            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
+            ->orderBy('w.itemNo', 'DESC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /** @return WardrobeItem[] */
+    public function findArchivedForUser(User $user): array
+    {
+        return $this->createQueryBuilder('w')
+            ->andWhere('w.user = :user')
+            ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus = :archived')
+            ->setParameter('user', $user)
+            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
             ->orderBy('w.itemNo', 'DESC')
             ->getQuery()
             ->getResult();
@@ -62,8 +78,10 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select('COUNT(w.id)')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus != :archived')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
+            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->getQuery()
             ->getSingleScalarResult();
@@ -107,8 +125,10 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select("COALESCE(NULLIF(w.category, ''), 'Без категории') AS category", 'COUNT(w.id) AS cnt', 'COALESCE(SUM(w.price), 0) AS total')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus != :archived')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
+            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->groupBy('category')
             ->orderBy('cnt', 'DESC')
@@ -140,8 +160,10 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select('DISTINCT w.category')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus != :archived')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
+            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->getQuery()
             ->getSingleColumnResult();

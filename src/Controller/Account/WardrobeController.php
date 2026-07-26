@@ -7,6 +7,7 @@ namespace App\Controller\Account;
 use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeTransfer;
 use App\Form\Account\WardrobeItemFormType;
 use App\Repository\WardrobeItemRepository;
@@ -15,6 +16,7 @@ use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeManager;
+use App\Service\Wardrobe\WardrobePhotoManager;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,6 +38,7 @@ class WardrobeController extends AbstractController
     public function __construct(
         private readonly FamilyService $familyService,
         private readonly WardrobeManager $wardrobeManager,
+        private readonly WardrobePhotoManager $photoManager,
         private readonly WardrobeRemotePhotoFetcher $remotePhotoFetcher,
     ) {}
 
@@ -47,8 +50,11 @@ class WardrobeController extends AbstractController
 
         $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
 
-        $items = $repo->findActiveForUser($currentMember);
-        $stats = $repo->getStats($currentMember);
+        $isArchiveView = $request->query->get('view') === 'archive';
+        $items = $isArchiveView
+            ? $repo->findArchivedForUser($currentMember)
+            : $repo->findActiveForUser($currentMember);
+        $stats = $isArchiveView ? [] : $repo->getStats($currentMember);
 
         return $this->render('account/wardrobe/index.html.twig', [
             'items'         => $items,
@@ -58,7 +64,107 @@ class WardrobeController extends AbstractController
             'members'       => $this->familyService->membersFor($user),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'isArchiveView' => $isArchiveView,
         ]);
+    }
+
+    #[Route('/{id}/photos', name: 'photos_upload', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function uploadPhotos(
+        int $id,
+        Request $request,
+        WardrobeItemRepository $repo,
+    ): Response {
+        /** @var User $user */
+        $user = $this->getUser();
+        $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
+        $item = $repo->findActiveOneForUser($id, $currentMember);
+        if (!$item) {
+            throw $this->createNotFoundException();
+        }
+        if (!$this->isCsrfTokenValid('wardrobe_photos_'.$id, $request->request->get('_token'))) {
+            $this->addFlash('error', 'Недействительный токен');
+        } else {
+            try {
+                $files = $request->files->all('photos');
+                $this->photoManager->upload($item, is_array($files) ? $files : [], (string) $request->request->get('photo_type', 'product'));
+                $this->wardrobeManager->refreshCompletionStatus($item);
+                $this->addFlash('success', 'Фотографии добавлены');
+            } catch (\InvalidArgumentException $exception) {
+                $this->addFlash('error', $exception->getMessage());
+            }
+        }
+        return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
+    }
+
+    #[Route('/{id}/photos/{photoId}/cover', name: 'photo_cover', requirements: ['id' => '\d+', 'photoId' => '\d+'], methods: ['POST'])]
+    public function setPhotoCover(
+        int $id,
+        int $photoId,
+        Request $request,
+        WardrobeItemRepository $repo,
+        EntityManagerInterface $em,
+    ): Response {
+        [$user, $currentMember, $item, $photo] = $this->resolvePhotoAction($id, $photoId, $request, $repo, $em);
+        if ($this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
+            $this->photoManager->setCover($item, $photo);
+            $this->addFlash('success', 'Обложка обновлена');
+        } else {
+            $this->addFlash('error', 'Недействительный токен');
+        }
+        return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
+    }
+
+    #[Route('/{id}/photos/{photoId}/delete', name: 'photo_delete', requirements: ['id' => '\d+', 'photoId' => '\d+'], methods: ['POST'])]
+    public function deletePhoto(
+        int $id,
+        int $photoId,
+        Request $request,
+        WardrobeItemRepository $repo,
+        EntityManagerInterface $em,
+    ): Response {
+        [$user, $currentMember, $item, $photo] = $this->resolvePhotoAction($id, $photoId, $request, $repo, $em);
+        if ($this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
+            $this->photoManager->softDelete($item, $photo);
+            $this->wardrobeManager->refreshCompletionStatus($item);
+            $this->addFlash('success', 'Фотография убрана');
+        } else {
+            $this->addFlash('error', 'Недействительный токен');
+        }
+        return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
+    }
+
+    #[Route('/{id}/archive', name: 'archive', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function archive(int $id, Request $request, WardrobeItemRepository $repo): Response
+    {
+        /** @var User $user */
+        $user = $this->getUser();
+        $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
+        $item = $repo->findActiveOneForUser($id, $currentMember);
+        if (!$item) {
+            throw $this->createNotFoundException();
+        }
+        if ($this->isCsrfTokenValid('archive_wardrobe_item_'.$id, $request->request->get('_token'))) {
+            $this->wardrobeManager->archive($item);
+            $this->addFlash('success', 'Вещь перемещена в архив');
+        }
+        return $this->redirectToRoute('account_wardrobe_index', $this->memberQuery($user, $currentMember));
+    }
+
+    #[Route('/{id}/restore', name: 'restore', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function restore(int $id, Request $request, WardrobeItemRepository $repo): Response
+    {
+        /** @var User $user */
+        $user = $this->getUser();
+        $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
+        $item = $repo->findActiveOneForUser($id, $currentMember);
+        if (!$item) {
+            throw $this->createNotFoundException();
+        }
+        if ($this->isCsrfTokenValid('restore_wardrobe_item_'.$id, $request->request->get('_token'))) {
+            $this->wardrobeManager->restore($item);
+            $this->addFlash('success', 'Вещь восстановлена');
+        }
+        return $this->redirectToRoute('account_wardrobe_index', ['view' => 'archive'] + $this->memberQuery($user, $currentMember));
     }
 
     #[Route('/new', name: 'new', methods: ['GET', 'POST'])]
@@ -486,6 +592,28 @@ class WardrobeController extends AbstractController
 
         $em->persist($transfer);
         $em->flush();
+    }
+
+    /**
+     * @return array{User, User, WardrobeItem, WardrobeItemPhoto}
+     */
+    private function resolvePhotoAction(
+        int $itemId,
+        int $photoId,
+        Request $request,
+        WardrobeItemRepository $repo,
+        EntityManagerInterface $em,
+    ): array {
+        /** @var User $user */
+        $user = $this->getUser();
+        $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
+        $item = $repo->findActiveOneForUser($itemId, $currentMember);
+        $photo = $em->find(WardrobeItemPhoto::class, $photoId);
+        if (!$item || !$photo || $photo->getItem()?->getId() !== $item->getId()) {
+            throw $this->createNotFoundException();
+        }
+
+        return [$user, $currentMember, $item, $photo];
     }
 
     /**

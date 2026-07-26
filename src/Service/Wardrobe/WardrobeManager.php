@@ -76,6 +76,18 @@ class WardrobeManager
         return $status;
     }
 
+    public function archive(WardrobeItem $item): void
+    {
+        $item->setItemStatus(WardrobeItem::ITEM_ARCHIVED);
+        $this->entityManager->flush();
+    }
+
+    public function restore(WardrobeItem $item): void
+    {
+        $item->setItemStatus(WardrobeItem::ITEM_ACTIVE);
+        $this->entityManager->flush();
+    }
+
     private function filled(?string $value): bool
     {
         return $value !== null && trim($value) !== '';

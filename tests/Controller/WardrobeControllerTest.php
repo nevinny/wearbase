@@ -303,6 +303,38 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertStringNotContainsString('Ремень кожаный', $crawler->filter('body')->text());
     }
 
+    public function testArchiveHidesItemAndRestoreReturnsIt(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)
+            ->setItemNo(351)
+            ->setCategory('Куртки')
+            ->setName('Архивируемая куртка');
+        $em->persist($item);
+        $em->flush();
+        $id = $item->getId();
+
+        $crawler = $client->request('GET', '/account/wardrobe/'.$id);
+        $client->submit($crawler->selectButton('В архив')->form());
+        $this->assertResponseRedirects('/account/wardrobe');
+
+        $crawler = $client->request('GET', '/account/wardrobe');
+        $this->assertStringNotContainsString('Архивируемая куртка', $crawler->filter('body')->text());
+
+        $crawler = $client->request('GET', '/account/wardrobe?view=archive');
+        $this->assertStringContainsString('Архивируемая куртка', $crawler->filter('body')->text());
+        $client->submit($crawler->selectButton('Вернуть в гардероб')->form());
+        $this->assertResponseRedirects('/account/wardrobe?view=archive');
+
+        $crawler = $client->request('GET', '/account/wardrobe');
+        $this->assertStringContainsString('Архивируемая куртка', $crawler->filter('body')->text());
+    }
+
     public function testShowDeletedItemReturns404(): void
     {
         $client = static::createClient();

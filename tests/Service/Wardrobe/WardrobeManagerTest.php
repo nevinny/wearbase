@@ -72,4 +72,21 @@ final class WardrobeManagerTest extends TestCase
 
         self::assertNull($item->getCategory());
     }
+
+    public function testArchiveAndRestoreAreRecoverable(): void
+    {
+        $repository = $this->createMock(WardrobeRepository::class);
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::exactly(2))->method('flush');
+        $manager = new WardrobeManager($repository, $entityManager);
+        $item = new WardrobeItem();
+
+        $manager->archive($item);
+        self::assertSame(WardrobeItem::ITEM_ARCHIVED, $item->getItemStatus());
+        self::assertFalse($item->isDeleted());
+
+        $manager->restore($item);
+        self::assertSame(WardrobeItem::ITEM_ACTIVE, $item->getItemStatus());
+        self::assertFalse($item->isDeleted());
+    }
 }
