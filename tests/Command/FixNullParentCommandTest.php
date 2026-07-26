@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Command;
 
+use App\Entity\Brand;
 use App\Entity\BrandStyle;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
@@ -85,5 +86,33 @@ class FixNullParentCommandTest extends KernelTestCase
         $this->assertNull($style->getParent());
 
         return $style;
+    }
+
+    /**
+     * Brand объявляет `parent` сам, трейт DefaultFields в нём НЕ подключён (только импортирован).
+     * Детект обязан идти по метаданным Doctrine — иначе самая большая таблица (3325 строк на
+     * проде) остаётся не исправленной, как и было в первой версии фикса.
+     */
+    public function testBrandIsCoveredDespiteNotUsingTrait(): void
+    {
+        $brand = (new Brand())->setTitle('Бренд ' . uniqid());
+        $brand->setSlug('brand-parent-' . uniqid());
+        $this->em->persist($brand);
+        $this->em->flush();
+
+        $this->assertSame(0, $brand->getParent(), 'prePersist должен покрывать и Brand');
+
+        $this->em->createQuery('UPDATE App\Entity\Brand b SET b.parent = NULL WHERE b.id = :id')
+            ->setParameter('id', $brand->getId())
+            ->execute();
+        $this->em->refresh($brand);
+        $this->assertNull($brand->getParent());
+
+        $this->tester->execute([]);
+
+        $this->tester->assertCommandIsSuccessful();
+        $this->assertStringContainsString('brand', $this->tester->getDisplay());
+        $this->em->refresh($brand);
+        $this->assertSame(0, $brand->getParent());
     }
 }
