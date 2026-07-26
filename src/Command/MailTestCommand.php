@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Entity\Brand;
+use App\Entity\BrandClaim;
+use App\Entity\BrandInvite;
+use App\Entity\BrandUser;
+use App\Entity\NewsletterSubscriber;
+use App\Entity\Order;
+use App\Entity\User;
 use App\Notification\EmailNotifier;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -24,8 +30,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * `TemplatedEmail` падали раньше на пустом теле (docs/production.md, раздел почты).
  * Здесь проверяется весь путь: рендер шаблона → From/Reply-To → транспорт → ответ API.
  *
- * Шаблоны, которым нужны реальные сущности (заказы, заявки, приглашения, дайджест),
- * сюда не входят — они проверяются своими сценариями.
+ * Шаблонам, которым нужны сущности (заказ, заявка, приглашение, дайджест), собираются
+ * ОТСОЕДИНЁННЫЕ объекты в памяти: в БД ничего не пишется, id проставляется рефлексией —
+ * иначе `url()` с параметром id не сгенерируется. Бренд берётся реальный (первый из каталога).
  */
 #[AsCommand(
     name: 'app:mail:test',
@@ -34,7 +41,12 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 class MailTestCommand extends Command
 {
     /** Шаблоны с простым контекстом — покрывают то, что ломалось. */
-    private const TEMPLATES = ['lead_welcome', 'brand_access_granted', 'new_lead', 'verify_email', 'reset_password', 'brand_claim_code'];
+    private const TEMPLATES = [
+        'lead_welcome', 'brand_access_granted', 'new_lead', 'verify_email', 'reset_password',
+        'brand_claim_code', 'brand_claim_admin', 'brand_claim_approved', 'brand_claim_rejected',
+        'brand_invite', 'order_confirmation', 'order_status_changed', 'new_order_brand',
+        'newsletter_digest',
+    ];
 
     public function __construct(
         private readonly EmailNotifier $notifier,
@@ -114,10 +126,92 @@ class MailTestCommand extends Command
                 'website' => 'example.com',
             ],
             'verify_email', 'reset_password' => ['token' => str_repeat('t', 32)],
-            'brand_claim_code' => ($brand = $this->em->getRepository(Brand::class)->findOneBy([], ['id' => 'ASC'])) !== null
-                ? ['brand' => $brand, 'code' => '123456']
+            'brand_claim_code' => ($brand = $this->anyBrand()) !== null ? ['brand' => $brand, 'code' => '123456'] : null,
+            'brand_claim_admin', 'brand_claim_approved', 'brand_claim_rejected' => ($claim = $this->fakeClaim()) !== null
+                ? ['claim' => $claim]
+                : null,
+            'brand_invite' => ($brand = $this->anyBrand()) !== null
+                ? [
+                    'brand' => $brand,
+                    'invitedBy' => $this->fakeUser(),
+                    'role' => BrandUser::ROLE_OWNER,
+                    'token' => str_repeat('i', 32),
+                ]
+                : null,
+            'order_confirmation', 'order_status_changed', 'new_order_brand' => ($order = $this->fakeOrder()) !== null
+                ? ['order' => $order]
+                : null,
+            'newsletter_digest' => ($brand = $this->anyBrand()) !== null
+                ? [
+                    'brands' => [$brand],
+                    'saleCount' => 12,
+                    // Токен отписки генерирует конструктор подписчика — сеттера нет и не нужен.
+                    'subscriber' => (new NewsletterSubscriber())->setEmail('test@example.com'),
+                ]
                 : null,
             default => null,
         };
+    }
+
+    private function anyBrand(): ?Brand
+    {
+        return $this->em->getRepository(Brand::class)->findOneBy(['status' => 'active'], ['id' => 'ASC']);
+    }
+
+    private function fakeUser(): User
+    {
+        return (new User())->setEmail('customer@example.com')->setFirstName('Иван')->setLastName('Петров');
+    }
+
+    private function fakeClaim(): ?BrandClaim
+    {
+        if (($brand = $this->anyBrand()) === null) {
+            return null;
+        }
+
+        $claim = (new BrandClaim())
+            ->setBrand($brand)
+            ->setUser($this->fakeUser())
+            ->setStatus(BrandClaim::STATUS_PENDING)
+            ->setComment('Я владелец, подтверждаю права на бренд.')
+            ->setAdminNote('Не хватает подтверждения с домена бренда.');
+
+        return $this->withId($claim, 1);
+    }
+
+    private function fakeOrder(): ?Order
+    {
+        if (($brand = $this->anyBrand()) === null) {
+            return null;
+        }
+
+        $order = (new Order())
+            ->setOrderNumber('TEST-000001')
+            ->setBrand($brand)
+            ->setCustomer($this->fakeUser())
+            ->setStatus(Order::STATUS_SHIPPED)
+            ->setTrackingNumber('RU123456789')
+            ->setSubtotal('4900.00')
+            ->setShippingCost('400.00')
+            ->setDiscountAmount('0.00')
+            ->setTotalAmount('5300.00');
+
+        return $this->withId($order, 1);
+    }
+
+    /**
+     * Проставить id отсоединённой сущности: шаблоны строят ссылки через url(..., {id: ...}),
+     * а без id генератор маршрутов падает. В БД при этом ничего не пишем.
+     *
+     * @template T of object
+     * @param T $entity
+     * @return T
+     */
+    private function withId(object $entity, int $id): object
+    {
+        $property = new \ReflectionProperty($entity::class, 'id');
+        $property->setValue($entity, $id);
+
+        return $entity;
     }
 }
