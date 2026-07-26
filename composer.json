@@ -14,7 +14,7 @@
         "dragonmantank/cron-expression": "^3.1",
         "easycorp/easyadmin-bundle": "^4.27",
         "google/auth": "^1.50",
-        "nevinny/admin-core": "^1.0.6",
+        "nevinny/admin-core": "^1.0.7",
         "phpdocumentor/reflection-docblock": "^5.6",
         "phpstan/phpdoc-parser": "^2.3",
         "pixelopen/cloudflare-turnstile-bundle": "*",
