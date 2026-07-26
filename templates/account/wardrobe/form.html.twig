@@ -126,6 +126,12 @@
         <div class="col-span-12 md:col-span-6"><label class="{{ tw_label }}">Уход</label>{{ form_widget(form.careText, {'attr': {'class': tw_input}}) }}</div>
         <div class="col-span-12 md:col-span-6"><label class="{{ tw_label }}">Сезон</label>{{ form_widget(form.season, {'attr': {'class': tw_input}}) }}</div>
         <div class="col-span-12 md:col-span-6"><label class="{{ tw_label }}">Страна производства</label>{{ form_widget(form.countryOfOrigin, {'attr': {'class': tw_input}}) }}</div>
+        <div class="col-span-12 md:col-span-6">
+            <label class="{{ tw_label }}">Стиль</label>
+            {{ form_widget(form.styles, {'attr': {'class': tw_input}}) }}
+            {{ f.err(form.styles) }}
+            <p class="mt-1 text-xs text-gray-400">Можно выбрать несколько: удерживайте Ctrl или ⌘</p>
+        </div>
         <div class="col-span-12"><label class="{{ tw_label }}">Статус вещи</label>{{ form_widget(form.itemStatus, {'attr': {'class': tw_input}}) }}</div>
     </div>
 </div>
