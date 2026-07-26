@@ -44,9 +44,14 @@
                 <p class="text-xs text-gray-500">Трафик идёт к вам, не к нам</p>
             </div>
         </div>
-        <a href="{{ path('landing_for_brands', {_locale: app.request.locale|default('ru')}) }}#register" class="inline-block bg-black text-white px-10 py-4 rounded-full font-bold text-lg hover:bg-gray-800 transition shadow-lg">
-            Зарегистрировать бренд
-        </a>
+        <div class="flex flex-col items-center gap-3">
+            <a href="{{ path('app_register', {brand: 1}) }}" class="inline-block bg-black text-white px-10 py-4 rounded-full font-bold text-lg hover:bg-gray-800 transition shadow-lg">
+                Зарегистрировать бренд
+            </a>
+            <a href="{{ path('landing_for_brands', {_locale: app.request.locale|default('ru')}) }}#register" class="text-sm text-gray-500 hover:text-gray-900 underline">
+                Или оставьте заявку — заведём карточку за вас
+            </a>
+        </div>
     </section>
 
     <section class="border-t border-gray-100 py-20">
@@ -92,7 +97,11 @@
     <section id="register" class="bg-gray-50 py-20">
         <div class="container mx-auto px-4 text-center">
             <h2 class="text-3xl font-black mb-4">Начать легко</h2>
-            <p class="text-gray-500 mb-10">Название бренда, ссылка и почта — мы проверим, есть ли у нас ваша карточка, и ответим в тот же рабочий день</p>
+            <p class="text-gray-500 mb-6">Быстрее всего — создать кабинет самому: пароль задаёте вы, карточка и товары сразу под вашим управлением.</p>
+            <a href="{{ path('app_register', {brand: 1}) }}" class="inline-block rounded-xl bg-gray-900 text-white font-semibold px-8 py-3.5 hover:bg-black transition mb-10">
+                Создать кабинет бренда
+            </a>
+            <p class="text-gray-500 mb-6 max-w-md mx-auto">Или оставьте заявку — проверим, есть ли у нас ваша карточка, и ответим в тот же рабочий день.</p>
             <form method="post" action="{{ path('landing_lead') }}" class="rounded-2xl bg-white shadow-sm p-6 space-y-4 max-w-md mx-auto text-left">
                 <div>
                     <label class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1" for="lead-brand-name">Название бренда</label>

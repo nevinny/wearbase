@@ -116,4 +116,43 @@ class LandingLeadControllerTest extends DatabaseDependentWebTestCase
         $this->assertSame('Дозаполненный Бренд', $leads[0]->getBrandName());
         $this->assertSame('example.com', $leads[0]->getWebsite());
     }
+
+    public function testHeroCtaLeadsToBrandRegistration(): void
+    {
+        $this->skipIfNoDatabase();
+        $client = static::createClient();
+
+        $client->request('GET', '/ru/for-brands');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('a[href*="/register?brand=1"]');
+    }
+
+    public function testLeadGetsWelcomeEmailWithRegistrationLink(): void
+    {
+        $this->skipIfNoDatabase();
+        $client = static::createClient();
+
+        $email = 'lead-welcome-' . uniqid() . '@example.com';
+        $this->fixtureEmails[] = $email;
+
+        $crawler = $client->request('GET', '/ru/for-brands');
+        $client->submit($crawler->filter('form[action*="/landing/lead"]')->form([
+            'brand_name' => 'Бренд Автоответа',
+            'email' => $email,
+        ]));
+
+        // Два письма: админу (new_lead) и самому лиду (lead_welcome).
+        $this->assertEmailCount(2);
+        $toLead = null;
+        foreach ($this->getMailerMessages() as $message) {
+            if ($message->getTo() !== [] && $message->getTo()[0]->getAddress() === $email) {
+                $toLead = $message;
+            }
+        }
+        $this->assertNotNull($toLead, 'Лид должен получить автоответ');
+        $body = $toLead->getHtmlBody();
+        $this->assertStringContainsString('/register?brand=1', $body);
+        $this->assertStringContainsString('Бренд Автоответа', $body);
+    }
 }
