@@ -22,6 +22,18 @@ Edit what's broken. Nothing else. No rewriting entire files to fix one function.
 ### Rule 4: Goal-Driven Execution
 Ask WHY before writing HOW. If the task is unclear, stop and ask. Don't build what you think they want. Build what they **ACTUALLY** asked for.
 
+### Rule 5: Branch Per Change
+Every change goes on its own branch — **never commit or push directly to `main`**. `main` is protected: it only accepts merges through a Pull Request. Workflow:
+
+```bash
+git checkout -b <type>/<short-desc>   # feat/… fix/… docs/… refactor/…
+# make changes + atomic commits
+git push -u origin <type>/<short-desc>
+gh pr create --fill                   # merge into main via PR
+```
+
+One logical change = one branch = one PR. Don't stack unrelated work on the same branch.
+
 ---
 
 ## Project Overview
