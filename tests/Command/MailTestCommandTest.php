@@ -36,7 +36,12 @@ class MailTestCommandTest extends KernelTestCase
         $this->assertSame('nevinny@example.com', $message->getTo()[0]->getAddress());
         $this->assertStringContainsString('[ТЕСТ] lead_welcome', (string) $message->getSubject());
         $this->assertNotSame('', (string) $message->getHtmlBody(), 'Тело должно быть отрендерено');
-        $this->assertStringContainsString('/register?brand=1', (string) $message->getHtmlBody());
+        // Ссылки обязаны быть абсолютными на прод-домен: письма из CLI/крона рендерятся вне
+        // веб-запроса, хост берётся из DEFAULT_URI. При DEFAULT_URI=http://localhost (дефолт .env)
+        // лид получал письмо со ссылками в никуда — регрессия найдена 26.07.2026 в живом ящике.
+        $body = (string) $message->getHtmlBody();
+        $this->assertStringContainsString('https://wearbase.ru/register?brand=1', $body);
+        $this->assertStringNotContainsString('localhost', $body);
     }
 
     public function testAllTemplatesRender(): void
