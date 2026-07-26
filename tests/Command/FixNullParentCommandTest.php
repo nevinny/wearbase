@@ -12,10 +12,12 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
- * parent = NULL → 0 (app:fix:null-parent) + предохранитель на prePersist.
+ * parent = NULL → 0 (app:fix:null-parent) + дефолты сущностей.
  *
- * Листинг админки (DefaultCrudController) фильтрует `entity.parent = 0`, поэтому строки
- * с NULL в админке не видны: на проде так пряталось 3325 брендов из 3669.
+ * До admin-core v1.0.7 листинг админки фильтровал `entity.parent = 0`, и строки с NULL были
+ * не видны: на проде так пряталось 3325 брендов из 3669. Бандл починен (условие корня теперь
+ * `parent = 0 OR parent IS NULL`), но дефолт 0 держим — по нему пишутся фильтры и сортировки,
+ * а команда остаётся ремонтным инструментом для строк, накопленных где-то ещё.
  */
 class FixNullParentCommandTest extends KernelTestCase
 {
@@ -38,14 +40,14 @@ class FixNullParentCommandTest extends KernelTestCase
         parent::tearDown();
     }
 
-    public function testNewEntityGetsZeroParentOnPersist(): void
+    public function testNewEntityGetsZeroParentByDefault(): void
     {
         $style = (new BrandStyle())->setTitle('Стиль ' . uniqid());
         $style->setSlug('style-' . uniqid());
         $this->em->persist($style);
         $this->em->flush();
 
-        $this->assertSame(0, $style->getParent(), 'prePersist должен подставлять parent = 0');
+        $this->assertSame(0, $style->getParent(), 'Дефолт трейта DefaultFields — 0');
     }
 
     public function testCommandFixesExistingNulls(): void
@@ -71,7 +73,7 @@ class FixNullParentCommandTest extends KernelTestCase
         $this->assertNull($style->getParent(), 'dry-run не должен ничего менять');
     }
 
-    /** Обходим prePersist-предохранитель, чтобы получить строку с NULL как в проде. */
+    /** Загоняем строку в NULL напрямую, чтобы воспроизвести накопленное на проде состояние. */
     private function styleWithNullParent(): BrandStyle
     {
         $style = (new BrandStyle())->setTitle('Стиль ' . uniqid());
@@ -89,9 +91,9 @@ class FixNullParentCommandTest extends KernelTestCase
     }
 
     /**
-     * Brand объявляет `parent` сам, трейт DefaultFields в нём НЕ подключён (только импортирован).
-     * Детект обязан идти по метаданным Doctrine — иначе самая большая таблица (3325 строк на
-     * проде) остаётся не исправленной, как и было в первой версии фикса.
+     * Brand объявляет `parent` сам, трейт DefaultFields в нём НЕ подключён. Детект обязан идти
+     * по метаданным Doctrine — иначе самая большая таблица (3325 строк на проде) остаётся не
+     * исправленной, как и было в первой версии фикса.
      */
     public function testBrandIsCoveredDespiteNotUsingTrait(): void
     {
@@ -100,7 +102,7 @@ class FixNullParentCommandTest extends KernelTestCase
         $this->em->persist($brand);
         $this->em->flush();
 
-        $this->assertSame(0, $brand->getParent(), 'prePersist должен покрывать и Brand');
+        $this->assertSame(0, $brand->getParent(), 'Brand объявляет parent сам — дефолт тоже 0');
 
         $this->em->createQuery('UPDATE App\Entity\Brand b SET b.parent = NULL WHERE b.id = :id')
             ->setParameter('id', $brand->getId())

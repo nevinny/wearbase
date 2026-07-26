@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e02d4130076056233076e562f5b8be7d",
+    "content-hash": "bf82acd3aef18f3bd3d502707e8f0b95",
     "packages": [
         {
             "name": "composer/semver",
@@ -2132,16 +2132,16 @@
         },
         {
             "name": "nevinny/admin-core",
-            "version": "v1.0.6",
+            "version": "v1.0.7",
             "source": {
                 "type": "git",
                 "url": "https://github.com/nevinny/admin-core.git",
-                "reference": "55ae1b0e73035fcb2c63df1d61d0e89b21bfc511"
+                "reference": "3349fd97c347b4a2e2db2f01c9f6ec623eeb9bf4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nevinny/admin-core/zipball/55ae1b0e73035fcb2c63df1d61d0e89b21bfc511",
-                "reference": "55ae1b0e73035fcb2c63df1d61d0e89b21bfc511",
+                "url": "https://api.github.com/repos/nevinny/admin-core/zipball/3349fd97c347b4a2e2db2f01c9f6ec623eeb9bf4",
+                "reference": "3349fd97c347b4a2e2db2f01c9f6ec623eeb9bf4",
                 "shasum": ""
             },
             "require": {
@@ -2182,10 +2182,10 @@
                 "symfony"
             ],
             "support": {
-                "source": "https://github.com/nevinny/admin-core/tree/v1.0.6",
+                "source": "https://github.com/nevinny/admin-core/tree/v1.0.7",
                 "issues": "https://github.com/nevinny/admin-core/issues"
             },
-            "time": "2025-11-15T16:59:14+00:00"
+            "time": "2026-07-26T21:53:35+00:00"
         },
         {
             "name": "phpdocumentor/reflection-common",
