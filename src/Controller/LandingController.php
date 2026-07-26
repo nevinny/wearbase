@@ -192,11 +192,23 @@ class LandingController extends AbstractController
         $em->persist($lead);
         $em->flush();
 
+        // ⚠️ Ключ `email` в контексте TemplatedEmail зарезервирован (Symfony бросает исключение, а
+        // EmailNotifier soft-fail'ит его в лог) — из-за этого письмо админу про лид не уходило вообще.
+        // Название переменной менять нельзя обратно: только leadEmail.
         $notifier->send(
             $notifier->getAdminEmail(),
             'Новый лид с лендинга — ' . $email,
             'new_lead',
-            ['email' => $email, 'source' => $source, 'brandName' => $brandName, 'website' => $website]
+            ['leadEmail' => $email, 'source' => $source, 'brandName' => $brandName, 'website' => $website]
+        );
+
+        // Автоответ самому лиду: без него человек оставлял почту и не получал НИЧЕГО — путь в ЛК
+        // (`/register?brand=1`, пароль задаёт сам) существовал, но нигде ему не показывался.
+        $notifier->send(
+            $email,
+            'Ваш кабинет бренда на WEARBASE — как войти',
+            'lead_welcome',
+            ['brandName' => $brandName]
         );
 
         $this->addFlash('success', 'Спасибо! Мы свяжемся с вами в ближайшее время.');

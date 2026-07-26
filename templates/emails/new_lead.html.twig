@@ -3,7 +3,7 @@
 {% block email_content %}
 <h2 style="margin-top:0;font-size:18px;">Новый лид с лендинга</h2>
 <p style="color:#555;line-height:1.6;">
-    <strong>Email:</strong> {{ email }}<br>
+    <strong>Email:</strong> {{ leadEmail }}<br>
     <strong>Источник:</strong> {{ source }}<br>
     <strong>Бренд:</strong> {{ brandName|default('') ?: '—' }}<br>
     <strong>Сайт/соцсеть:</strong> {{ website|default('') ?: '—' }}
