@@ -1,0 +1,49 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Доступ в кабинет бренда — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">Кабинет бренда готов</h2>
+<p style="color:#555;line-height:1.6;">Здравствуйте!</p>
+<p style="color:#555;line-height:1.6;">
+    Вы оставляли заявку на wearbase.ru — мы завели кабинет за вас, регистрацию проходить не нужно.
+    Вот доступ:
+</p>
+<table role="presentation" style="width:100%;border-collapse:collapse;margin:16px 0;">
+    <tr>
+        <td style="padding:8px 12px;background:#f7f7f7;color:#555;font-size:14px;width:150px;">Логин</td>
+        <td style="padding:8px 12px;background:#f7f7f7;color:#111;font-size:14px;"><strong>{{ login }}</strong></td>
+    </tr>
+    <tr>
+        <td style="padding:8px 12px;color:#555;font-size:14px;">Временный пароль</td>
+        <td style="padding:8px 12px;color:#111;font-size:14px;"><strong>{{ tempPassword }}</strong></td>
+    </tr>
+</table>
+<p style="text-align:center;">
+    <a href="{{ url('app_login') }}" class="btn">Войти в кабинет</a>
+</p>
+<p style="color:#555;line-height:1.6;">
+    <strong>Сразу смените пароль:</strong> он временный и передавался письмом. Сделать это можно на
+    странице <a href="{{ url('app_forgot_password_request') }}" style="color:#111;">восстановления пароля</a> —
+    придёт ссылка на установку своего.
+</p>
+<p style="color:#555;line-height:1.6;">
+    Карточка бренда пока называется «{{ brandTitle }}» и <strong>в каталоге не опубликована</strong> —
+    названия вашего бренда мы не знали. Переименуйте её в разделе «Настройки» кабинета, добавьте
+    описание, товары, контакты и ссылки на свой сайт. Комиссии с продаж нет: покупатель уходит к вам,
+    оплата идёт на реквизиты вашего юр.лица — деньги через себя мы не проводим.
+</p>
+<p style="color:#555;line-height:1.6;">
+    Чтобы помочь с публикацией, ответьте на два вопроса прямо письмом:
+</p>
+<ol style="color:#555;line-height:1.6;">
+    <li>Как называется бренд и где на него посмотреть — сайт или соцсеть?</li>
+    <li>Вы владелец бренда или представляете его?</li>
+</ol>
+<p style="color:#555;line-height:1.6;">
+    Если карточка вашего бренда у нас <strong>уже есть</strong> (в каталоге больше трёх тысяч), не
+    заводите вторую — пришлите название, мы привяжем существующую к вашему кабинету.
+</p>
+<p style="color:#888;font-size:13px;">
+    Вопросы удобнее в мессенджере — бот <a href="https://t.me/wearbase_bot" style="color:#111;">t.me/wearbase_bot</a>,
+    читаем лично. Если заявку оставляли не вы — просто ответьте на это письмо, и мы удалим кабинет.
+</p>
+{% endblock %}
