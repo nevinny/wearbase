@@ -51,20 +51,24 @@ class WardrobeController extends AbstractController
         $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
 
         $isArchiveView = $request->query->get('view') === 'archive';
-        $items = $isArchiveView
-            ? $repo->findArchivedForUser($currentMember)
-            : $repo->findActiveForUser($currentMember);
-        $stats = $isArchiveView ? [] : $repo->getStats($currentMember);
+        $filters = $this->wardrobeFilters($request);
+        $hasFilters = count(array_filter($filters, static fn (string $value): bool => $value !== '')) > 0;
+        $items = $repo->searchForUser($currentMember, $filters, $isArchiveView);
+        $stats = (!$isArchiveView && !$hasFilters) ? $repo->getStats($currentMember) : [];
+        $filteredSum = array_sum(array_map(static fn (WardrobeItem $item): float => (float) ($item->getPrice() ?? 0), $items));
 
         return $this->render('account/wardrobe/index.html.twig', [
             'items'         => $items,
             'stats'         => $stats,
-            'totalCount'    => (int) array_sum(array_column($stats, 'cnt')),
-            'totalSum'      => array_sum(array_map('floatval', array_column($stats, 'total'))),
+            'totalCount'    => $hasFilters || $isArchiveView ? count($items) : (int) array_sum(array_column($stats, 'cnt')),
+            'totalSum'      => $hasFilters || $isArchiveView ? $filteredSum : array_sum(array_map('floatval', array_column($stats, 'total'))),
             'members'       => $this->familyService->membersFor($user),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
             'isArchiveView' => $isArchiveView,
+            'filters' => $filters,
+            'hasFilters' => $hasFilters,
+            'filterOptions' => $repo->getFilterOptions($currentMember, $isArchiveView),
         ]);
     }
 
@@ -622,6 +626,21 @@ class WardrobeController extends AbstractController
     private function memberParam(Request $request): ?int
     {
         return $request->query->has('member') ? $request->query->getInt('member') : null;
+    }
+
+    /** @return array{q: string, category: string, brand: string, color: string, size: string, season: string, completion: string} */
+    private function wardrobeFilters(Request $request): array
+    {
+        $filters = [];
+        foreach (['q', 'category', 'brand', 'color', 'size', 'season', 'completion'] as $name) {
+            $filters[$name] = mb_substr(trim((string) $request->query->get($name, '')), 0, 100);
+        }
+
+        if (!array_key_exists($filters['completion'], WardrobeItem::COMPLETION_LABELS)) {
+            $filters['completion'] = '';
+        }
+
+        return $filters;
     }
 
     /**

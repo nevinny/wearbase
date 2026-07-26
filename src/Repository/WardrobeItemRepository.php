@@ -7,6 +7,7 @@ namespace App\Repository;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -49,6 +50,45 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->orderBy('w.itemNo', 'DESC')
             ->getQuery()
             ->getResult();
+    }
+
+    /**
+     * @param array{q?: string, category?: string, brand?: string, color?: string, size?: string, season?: string, completion?: string} $filters
+     * @return WardrobeItem[]
+     */
+    public function searchForUser(User $user, array $filters, bool $archived = false): array
+    {
+        $qb = $this->createQueryBuilder('w')
+            ->andWhere('w.user = :user')
+            ->andWhere('w.deletedAt IS NULL')
+            ->andWhere($archived ? 'w.itemStatus = :archived' : 'w.itemStatus != :archived')
+            ->setParameter('user', $user)
+            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED);
+
+        if (!$archived) {
+            $qb->andWhere('w.wearStatus != :givenAway')
+                ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY);
+        }
+
+        $this->applyFilters($qb, $filters);
+
+        return $qb->orderBy('w.itemNo', 'DESC')->getQuery()->getResult();
+    }
+
+    /**
+     * Значения выпадающих списков принадлежат только выбранному члену семьи.
+     *
+     * @return array{categories: string[], brands: string[], colors: string[], sizes: string[], seasons: string[]}
+     */
+    public function getFilterOptions(User $user, bool $archived = false): array
+    {
+        return [
+            'categories' => $this->distinctFieldValues($user, 'category', $archived),
+            'brands' => $this->distinctFieldValues($user, 'customBrandName', $archived),
+            'colors' => $this->distinctFieldValues($user, 'colorName', $archived),
+            'sizes' => $this->distinctFieldValues($user, 'size', $archived),
+            'seasons' => $this->distinctFieldValues($user, 'season', $archived),
+        ];
     }
 
     /**
@@ -169,5 +209,77 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->getSingleColumnResult();
 
         return array_map('strval', $rows);
+    }
+
+    /** @param array<string, string> $filters */
+    private function applyFilters(QueryBuilder $qb, array $filters): void
+    {
+        $fields = [
+            'category' => 'category',
+            'brand' => 'customBrandName',
+            'color' => 'colorName',
+            'size' => 'size',
+            'season' => 'season',
+            'completion' => 'completionStatus',
+        ];
+        foreach ($fields as $filter => $field) {
+            if (($filters[$filter] ?? '') !== '') {
+                $qb->andWhere(sprintf('w.%s = :filter_%s', $field, $filter))
+                    ->setParameter('filter_'.$filter, $filters[$filter]);
+            }
+        }
+
+        $query = trim($filters['q'] ?? '');
+        if ($query === '') {
+            return;
+        }
+
+        $or = $qb->expr()->orX();
+        $variants = array_values(array_unique([
+            $query,
+            mb_strtolower($query),
+            mb_strtoupper($query),
+            mb_convert_case($query, MB_CASE_TITLE),
+        ]));
+        foreach ($variants as $index => $variant) {
+            $parameter = 'query_'.$index;
+            foreach (['name', 'customBrandName', 'category', 'colorName', 'size'] as $field) {
+                $or->add(sprintf('w.%s LIKE :%s', $field, $parameter));
+            }
+            $qb->setParameter($parameter, '%'.$variant.'%');
+        }
+        $number = ltrim($query, "# \t\n\r\0\x0B");
+        if ($number !== '' && ctype_digit($number)) {
+            $or->add('w.itemNo = :itemNo');
+            $qb->setParameter('itemNo', (int) $number);
+        }
+        // Несколько вариантов регистра нужны тестовому SQLite; MySQL unicode_ci
+        // сопоставляет их регистронезависимо.
+        $qb->andWhere($or);
+    }
+
+    /** @return string[] */
+    private function distinctFieldValues(User $user, string $field, bool $archived): array
+    {
+        if (!in_array($field, ['category', 'customBrandName', 'colorName', 'size', 'season'], true)) {
+            throw new \InvalidArgumentException('Unsupported wardrobe filter field.');
+        }
+
+        $qb = $this->createQueryBuilder('w')
+            ->select('DISTINCT w.'.$field)
+            ->andWhere('w.user = :user')
+            ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.'.$field.' IS NOT NULL')
+            ->andWhere('w.'.$field." != ''")
+            ->andWhere($archived ? 'w.itemStatus = :archived' : 'w.itemStatus != :archived')
+            ->setParameter('user', $user)
+            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
+            ->orderBy('w.'.$field, 'ASC');
+        if (!$archived) {
+            $qb->andWhere('w.wearStatus != :givenAway')
+                ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY);
+        }
+
+        return array_map('strval', $qb->getQuery()->getSingleColumnResult());
     }
 }

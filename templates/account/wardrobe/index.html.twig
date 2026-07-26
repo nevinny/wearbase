@@ -6,6 +6,9 @@
 {% set hasFamily = members is defined and currentMember is defined %}
 {% set ownWardrobe = isOwnWardrobe is defined ? isOwnWardrobe : true %}
 {% set memberParam = hasFamily ? {member: currentMember.id} : {} %}
+{% set activeQuery = memberParam|merge(filters) %}
+{% if isArchiveView %}{% set activeQuery = activeQuery|merge({view: 'archive'}) %}{% endif %}
+{% set seasonLabels = {'all': 'Всесезон', 'spring': 'Весна', 'summer': 'Лето', 'autumn': 'Осень', 'winter': 'Зима'} %}
 
 <div class="mb-5 flex items-center justify-between">
     <h1 class="text-lg font-bold">
@@ -20,9 +23,9 @@
 </div>
 
 <div class="mb-6 flex gap-2">
-    <a href="{{ path('account_wardrobe_index', memberParam) }}"
+    <a href="{{ path('account_wardrobe_index', memberParam|merge(filters)) }}"
        class="rounded-full px-4 py-2 text-xs font-semibold {{ not isArchiveView ? 'bg-gray-900 text-white' : 'bg-white text-gray-600' }}">Вещи</a>
-    <a href="{{ path('account_wardrobe_index', memberParam|merge({view: 'archive'})) }}"
+    <a href="{{ path('account_wardrobe_index', memberParam|merge(filters)|merge({view: 'archive'})) }}"
        class="rounded-full px-4 py-2 text-xs font-semibold {{ isArchiveView ? 'bg-gray-900 text-white' : 'bg-white text-gray-600' }}">Архив</a>
 </div>
 
@@ -59,12 +62,80 @@
     </div>
 {% endif %}
 
+{# ── Поиск и фильтры ── #}
+<form method="get" action="{{ path('account_wardrobe_index') }}" class="mb-6 rounded-2xl bg-white p-4 shadow-sm">
+    {% if hasFamily %}<input type="hidden" name="member" value="{{ currentMember.id }}">{% endif %}
+    {% if isArchiveView %}<input type="hidden" name="view" value="archive">{% endif %}
+    <div class="grid gap-3 md:grid-cols-12">
+        <div class="md:col-span-4">
+            <label for="wardrobe-filter-q" class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Поиск</label>
+            <input id="wardrobe-filter-q" type="search" name="q" value="{{ filters.q }}"
+                   placeholder="Название, бренд или № вещи"
+                   class="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+        </div>
+        <div class="md:col-span-2">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Категория</label>
+            <select name="category" class="w-full rounded-lg border border-gray-200 px-2 py-2.5 text-sm">
+                <option value="">Все</option>
+                {% for value in filterOptions.categories %}<option value="{{ value }}" {{ filters.category == value ? 'selected' }}>{{ value }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-2">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Бренд</label>
+            <select name="brand" class="w-full rounded-lg border border-gray-200 px-2 py-2.5 text-sm">
+                <option value="">Все</option>
+                {% for value in filterOptions.brands %}<option value="{{ value }}" {{ filters.brand == value ? 'selected' }}>{{ value }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-2">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Цвет</label>
+            <select name="color" class="w-full rounded-lg border border-gray-200 px-2 py-2.5 text-sm">
+                <option value="">Все</option>
+                {% for value in filterOptions.colors %}<option value="{{ value }}" {{ filters.color == value ? 'selected' }}>{{ value }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-2">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Размер</label>
+            <select name="size" class="w-full rounded-lg border border-gray-200 px-2 py-2.5 text-sm">
+                <option value="">Все</option>
+                {% for value in filterOptions.sizes %}<option value="{{ value }}" {{ filters.size == value ? 'selected' }}>{{ value }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-3">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Сезон</label>
+            <select name="season" class="w-full rounded-lg border border-gray-200 px-2 py-2.5 text-sm">
+                <option value="">Все сезоны</option>
+                {% for value in filterOptions.seasons %}<option value="{{ value }}" {{ filters.season == value ? 'selected' }}>{{ seasonLabels[value] ?? value }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="md:col-span-3">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Заполнение</label>
+            <select name="completion" class="w-full rounded-lg border border-gray-200 px-2 py-2.5 text-sm">
+                <option value="">Любое</option>
+                {% for value, label in constant('App\\Entity\\WardrobeItem::COMPLETION_LABELS') %}
+                    <option value="{{ value }}" {{ filters.completion == value ? 'selected' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex items-end gap-2 md:col-span-6">
+            <button type="submit" class="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Найти</button>
+            {% if hasFilters %}
+                <a href="{{ path('account_wardrobe_index', memberParam|merge(isArchiveView ? {view: 'archive'} : {})) }}"
+                   class="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">Сбросить</a>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
 {% if items|length == 0 %}
     <div class="rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
         <div class="mb-4 text-5xl opacity-30">👕</div>
-        <p class="mb-1 font-semibold text-gray-700">{{ isArchiveView ? 'В архиве пока пусто' : 'В гардеробе пока пусто' }}</p>
-        <p class="mb-4 text-sm">{{ isArchiveView ? 'Здесь появятся вещи, которые вы решите убрать из основного гардероба' : 'Добавьте первую вещь — и начните вести историю своих покупок' }}</p>
-        {% if not isArchiveView %}
+        <p class="mb-1 font-semibold text-gray-700">{{ hasFilters ? 'Ничего не найдено' : (isArchiveView ? 'В архиве пока пусто' : 'В гардеробе пока пусто') }}</p>
+        <p class="mb-4 text-sm">{{ hasFilters ? 'Попробуйте изменить или сбросить фильтры' : (isArchiveView ? 'Здесь появятся вещи, которые вы решите убрать из основного гардероба' : 'Добавьте первую вещь — и начните вести историю своих покупок') }}</p>
+        {% if hasFilters %}
+        <a href="{{ path('account_wardrobe_index', memberParam|merge(isArchiveView ? {view: 'archive'} : {})) }}"
+           class="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">Сбросить фильтры</a>
+        {% elseif not isArchiveView %}
         <a href="{{ path('account_wardrobe_new', memberParam) }}"
            class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Добавить вещь</a>
         {% endif %}
@@ -75,7 +146,7 @@
     {% if not isArchiveView %}
     <div class="mb-6 grid gap-4 sm:grid-cols-2">
         <div class="rounded-2xl bg-white p-5 shadow-sm">
-            <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Всего вещей</div>
+            <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">{{ hasFilters ? 'Найдено вещей' : 'Всего вещей' }}</div>
             <div class="mt-1 text-2xl font-bold">{{ totalCount }}</div>
         </div>
         <div class="rounded-2xl bg-white p-5 shadow-sm">
@@ -103,7 +174,7 @@
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {% for item in items %}
         <div class="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md">
-        <a href="{{ path('account_wardrobe_show', {id: item.id}|merge(memberParam)) }}" class="block">
+        <a href="{{ path('account_wardrobe_show', {id: item.id}|merge(activeQuery)) }}" class="block">
             <div class="relative aspect-square bg-gray-100">
                 {% if item.photo %}
                     <img src="{{ vich_uploader_asset(item, 'photoFile') }}"

@@ -335,6 +335,55 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertStringContainsString('Архивируемая куртка', $crawler->filter('body')->text());
     }
 
+    public function testSearchAndFiltersStayInsideSelectedUsersWardrobe(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $start = $em->getRepository(WardrobeItem::class)->count([]) + 5000;
+
+        $matching = (new WardrobeItem())
+            ->setUser($user)->setItemNo($start)
+            ->setName('Льняная рубашка')->setCategory('Рубашки')
+            ->setCustomBrandName('Local Brand')->setColorName('Белый')
+            ->setSize('M')->setSeason('summer')
+            ->setCompletionStatus(WardrobeItem::COMPLETION_BASIC);
+        $other = (new WardrobeItem())
+            ->setUser($user)->setItemNo($start + 1)
+            ->setName('Зимние ботинки')->setCategory('Ботинки')
+            ->setCustomBrandName('Other Brand')->setColorName('Чёрный')
+            ->setSize('39')->setSeason('winter');
+        $foreign = (new WardrobeItem())
+            ->setUser(UserFactory::brandOwner(static::getContainer()))->setItemNo($start)
+            ->setName('Льняная чужая вещь')->setCategory('Рубашки')
+            ->setCustomBrandName('Local Brand')->setSize('M')->setSeason('summer')
+            ->setCompletionStatus(WardrobeItem::COMPLETION_BASIC);
+        $em->persist($matching);
+        $em->persist($other);
+        $em->persist($foreign);
+        $em->flush();
+
+        $crawler = $client->request('GET', '/account/wardrobe', [
+            'q' => 'льняная',
+            'category' => 'Рубашки',
+            'brand' => 'Local Brand',
+            'size' => 'M',
+            'season' => 'summer',
+            'completion' => 'basic',
+        ]);
+
+        $this->assertResponseIsSuccessful();
+        $body = $crawler->filter('body')->text();
+        $this->assertStringContainsString('Льняная рубашка', $body);
+        $this->assertStringNotContainsString('Зимние ботинки', $body);
+        $this->assertStringNotContainsString('Льняная чужая вещь', $body);
+        $this->assertSelectorTextContains('body', 'Найдено вещей');
+
+        $crawler = $client->request('GET', '/account/wardrobe?q=%23'.$start);
+        $this->assertStringContainsString('Льняная рубашка', $crawler->filter('body')->text());
+    }
+
     public function testShowDeletedItemReturns404(): void
     {
         $client = static::createClient();
