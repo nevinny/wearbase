@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Nevinny\AdminCoreBundle\Entity\Trait\DefaultFields;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -14,7 +14,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Заменяет `parent = NULL` на `parent = 0` у сущностей на трейте {@see DefaultFields}.
+ * Заменяет `parent = NULL` на `parent = 0` у сущностей, где `parent` — скалярное int-поле.
  *
  * Зачем: листинг админки (`DefaultCrudController::createIndexQueryBuilder`) фильтрует
  * `entity.parent = 0`, а NULL под равенство не попадает — записи есть в БД, но в админке
@@ -22,6 +22,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * Идемпотентна: повторный запуск ничего не меняет. Новые записи держит
  * {@see \App\EventListener\DefaultParentSubscriber}.
+ *
+ * ⚠️ Детект — по метаданным Doctrine, а НЕ по трейту `DefaultFields`: `Brand` объявляет `parent`
+ * самостоятельно (трейт только импортирован, но не подключён), и проверка по трейту пропускала
+ * как раз самую большую таблицу.
  */
 #[AsCommand(
     name: 'app:fix:null-parent',
@@ -50,7 +54,7 @@ class FixNullParentCommand extends Command
         foreach ($this->em->getMetadataFactory()->getAllMetadata() as $metadata) {
             $class = $metadata->getName();
 
-            if (!$this->usesDefaultFields($class) || $metadata->hasAssociation('parent')) {
+            if (!$this->hasScalarParent($metadata)) {
                 continue;
             }
 
@@ -88,14 +92,11 @@ class FixNullParentCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function usesDefaultFields(string $class): bool
+    /** Скалярное int-поле `parent`; сущности со СВЯЗЬЮ parent (Main, ProductCategory) — не наш случай. */
+    public static function hasScalarParent(ClassMetadata $metadata): bool
     {
-        for ($c = $class; $c !== false; $c = get_parent_class($c)) {
-            if (in_array(DefaultFields::class, class_uses($c) ?: [], true)) {
-                return true;
-            }
-        }
-
-        return false;
+        return !$metadata->hasAssociation('parent')
+            && $metadata->hasField('parent')
+            && $metadata->getTypeOfField('parent') === 'integer';
     }
 }
