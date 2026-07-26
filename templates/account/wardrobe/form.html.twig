@@ -100,15 +100,10 @@
 <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
     <h2 class="mb-4 text-sm font-bold">История</h2>
     <div class="grid grid-cols-12 gap-4">
-        <div class="col-span-12 md:col-span-8">
+        <div class="col-span-12">
             <label class="{{ tw_label }}">Причина покупки</label>
             {{ form_widget(form.purchaseReason, {'attr': {'class': tw_input, 'rows': 2, 'placeholder': 'Почему купили эту вещь?'}}) }}
             {{ f.err(form.purchaseReason) }}
-        </div>
-        <div class="col-span-12 md:col-span-4">
-            <label class="{{ tw_label }}">Любовь с первого взгляда</label>
-            {{ form_widget(form.loveAtFirstSight, {'attr': {'class': tw_input}}) }}
-            {{ f.err(form.loveAtFirstSight) }}
         </div>
         {% if fullMode %}
         <div class="col-span-12">

@@ -153,17 +153,6 @@
                            class="font-semibold underline decoration-gray-300 underline-offset-2 hover:decoration-gray-900">Ссылка на товар ↗</a></dd>
                 </div>
                 {% endif %}
-                {% if item.loveAtFirstSight %}
-                <div class="flex justify-between gap-4">
-                    <dt class="text-gray-500">Любовь с первого взгляда</dt>
-                    <dd class="font-semibold">
-                        {%- if item.loveAtFirstSight == 'yes' -%}❤️ Да
-                        {%- elseif item.loveAtFirstSight == 'no' -%}Нет
-                        {%- elseif item.loveAtFirstSight == 'unknown' -%}Пока не знаю
-                        {%- endif -%}
-                    </dd>
-                </div>
-                {% endif %}
                 <div class="flex justify-between gap-4">
                     <dt class="text-gray-500">Добавлено</dt>
                     <dd class="text-gray-500">{{ item.createdAt|date('d.m.Y') }}</dd>
