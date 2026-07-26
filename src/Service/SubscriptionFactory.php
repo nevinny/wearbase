@@ -21,7 +21,11 @@ class SubscriptionFactory
 
     public function createFreeTrial(Brand $brand): Subscription
     {
-        $existing = $this->subscriptionRepo->findActiveByBrand($brand);
+        // Бренд может быть ещё не сброшен в БД (регистрация бренда персистит Brand и сразу
+        // просит триал в одной транзакции). Doctrine не умеет биндить сущность без id в DQL и
+        // бросает ORMInvalidArgumentException → регистрация падала в 500. Без id подписок
+        // существовать не может, поэтому поиск дубля просто пропускаем.
+        $existing = $brand->getId() !== null ? $this->subscriptionRepo->findActiveByBrand($brand) : null;
         if ($existing !== null) {
             return $existing;
         }
