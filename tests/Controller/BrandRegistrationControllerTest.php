@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Entity\BrandUser;
 use App\Entity\Subscription;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use App\Entity\User;
 
 /**
@@ -54,6 +55,11 @@ class BrandRegistrationControllerTest extends DatabaseDependentWebTestCase
         $this->assertNotNull($link, 'Владелец должен быть привязан к бренду');
         $this->assertSame(BrandUser::ROLE_OWNER, $link->getRole());
         $this->assertSame('Регистрационный Бренд', $link->getBrand()->getTitle());
+
+        // Премодерация: карточка не должна попадать в каталог/sitemap по факту регистрации —
+        // иначе бренд с одним названием минует ниша-гейт и origin-гейт.
+        $this->assertSame(Statuses::New, $link->getBrand()->getStatus(), 'Новый бренд публикуется только после модерации');
+        $this->assertFalse($link->getBrand()->isPublished());
 
         $subscription = $em->getRepository(Subscription::class)->findOneBy(['brand' => $link->getBrand()]);
         $this->assertNotNull($subscription, 'Должна создаваться free-trial подписка');
