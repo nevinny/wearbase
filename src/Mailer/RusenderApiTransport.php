@@ -22,6 +22,12 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
  * DSN: rusender+api://API_KEY@default[?key_id=4487]
  *  - key_id задан → POST /api/v1/external-mails/send/{key_id} (новый формат, Bearer)
  *  - без key_id   → POST /api/v1/external-mails/send (старый формат, X-Api-Key)
+ *
+ * ⚠️ Рабочая комбинация (проверено curl'ом с прода 2026-07-26, HTTP 201):
+ * host `api.beta.rusender.ru` + `X-Api-Key` + путь без key_id. Тот же ключ на
+ * `api.rusender.ru` (и с Bearer, и с X-Api-Key, и с /send/{key_id}) отдаёт
+ * 401 «Provided API token is invalid» — поэтому beta и есть дефолтный хост.
+ * Аутрич (BrandOutreachMailer) ходит туда же.
  */
 final class RusenderApiTransport extends AbstractApiTransport
 {
@@ -103,6 +109,6 @@ final class RusenderApiTransport extends AbstractApiTransport
 
     private function getEndpoint(): string
     {
-        return ($this->host ?: 'api.rusender.ru') . ($this->port ? ':' . $this->port : '');
+        return ($this->host ?: 'api.beta.rusender.ru') . ($this->port ? ':' . $this->port : '');
     }
 }

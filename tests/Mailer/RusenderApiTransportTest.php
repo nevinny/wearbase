@@ -71,4 +71,34 @@ class RusenderApiTransportTest extends KernelTestCase
         $this->assertStringContainsString('Тестовый Бренд', $payload['mail']['html']);
         $this->assertSame('owner@example.com', $payload['mail']['to']['email']);
     }
+
+    /**
+     * Дефолтный хост — beta-домен с X-Api-Key: единственная комбинация, которую RuSender
+     * принимает нашим ключом (api.rusender.ru отдаёт 401, проверено с прода 2026-07-26).
+     */
+    public function testDefaultHostIsBetaWithApiKeyHeader(): void
+    {
+        self::bootKernel();
+
+        $seen = [];
+        $client = new MockHttpClient(function (string $method, string $url, array $options) use (&$seen) {
+            $seen = ['url' => $url, 'headers' => $options['headers'] ?? []];
+
+            return new MockResponse('{"uuid":"test"}', ['http_code' => 201]);
+        });
+
+        $factory = new RusenderTransportFactory(new EventDispatcher(), $client);
+        $transport = $factory->create(Dsn::fromString('rusender+api://test-key@default'));
+
+        $transport->send(
+            (new \Symfony\Component\Mime\Email())
+                ->from(new Address('hello@mail.wearbase.ru', 'WEARBASE'))
+                ->to(new Address('owner@example.com'))
+                ->subject('probe')
+                ->html('<p>probe</p>')
+        );
+
+        $this->assertSame('https://api.beta.rusender.ru/api/v1/external-mails/send', $seen['url']);
+        $this->assertContains('X-Api-Key: test-key', $seen['headers']);
+    }
 }
