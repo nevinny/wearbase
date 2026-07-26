@@ -4,6 +4,7 @@
 {% block account_content %}
 {# Гварды на переходный момент: контроллер может ещё не передавать family-переменные #}
 {% set memberParam = currentMember is defined ? {member: currentMember.id} : {} %}
+{% set backQuery = app.request.query.all %}
 {% set mayManage = canManage is defined and canManage %}
 {% set wearLabels = constant('App\\Entity\\WardrobeItem::WEAR_LABELS') %}
 {% set wearChip = {
@@ -19,7 +20,7 @@
 
 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
     <div class="flex items-center gap-3">
-        <a href="{{ path('account_wardrobe_index', memberParam) }}"
+        <a href="{{ path('account_wardrobe_index', backQuery) }}"
            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
         <h1 class="text-lg font-bold">
             <span class="text-gray-400">{{ item.displayNumber }}</span>
