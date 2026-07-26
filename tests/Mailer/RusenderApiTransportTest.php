@@ -19,7 +19,9 @@ use Twig\Environment;
 /**
  * Транспорт Rusender + рендер тела письма.
  *
- * Регрессия 12.06–26.07.2026: транспорт вызывал `parent::__construct()` без dispatcher'а,
+ * Регрессия 19.07–26.07.2026 (неделя, пока этот транспорт был активным DSN вместо отвалившегося
+ * SMTP; до 19.07 письма шли через smtp.rusender.ru и рендерились штатно):
+ * транспорт вызывал `parent::__construct()` без dispatcher'а,
  * поэтому `MessageEvent` не диспатчился, twig-рендерер (`BodyRenderer`) не срабатывал и любое
  * `TemplatedEmail` доходило до API без html → «A message must have a text or an HTML part».
  * Молча (soft-fail в EmailNotifier) умирали ВСЕ транзакционные письма: подтверждение email,
