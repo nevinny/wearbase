@@ -75,10 +75,11 @@ class WardrobeController extends AbstractController
         $item = new WardrobeItem();
         $form = $this->createForm(WardrobeItemFormType::class, $item, ['full' => false]);
         $form->handleRequest($request);
+        $remotePhotoUrl = $form->get('remotePhotoUrl')->getData();
 
         if ($form->isSubmitted() && $form->isValid()) {
             if ($item->getPhotoFile() === null) {
-                $this->remotePhotoFetcher->attachWildberriesPhoto($item, $form->get('remotePhotoUrl')->getData());
+                $this->remotePhotoFetcher->attachWildberriesPhoto($item, $remotePhotoUrl);
             }
             $item->setUser($currentMember);
             $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($currentMember));
@@ -93,14 +94,23 @@ class WardrobeController extends AbstractController
                 $em->flush();
             } catch (UniqueConstraintViolationException) {
                 // Гонка за item_no: один retry со свежим номером (EM после исключения закрыт)
+                if ($item->getPhoto() === null) {
+                    $this->remotePhotoFetcher->discardPendingPhoto($item);
+                } else {
+                    $item->setPhotoFile(null);
+                }
                 $doctrine->resetManager();
                 $em = $doctrine->getManager();
                 /** @var User $currentMember */
                 $currentMember = $em->find(User::class, $currentMember->getId());
+                $this->wardrobeManager->forgetDefault($currentMember);
                 $item->setUser($currentMember);
                 $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($currentMember));
                 $item->setOriginalOwner($currentMember);
                 $item->setItemNo($repo->nextItemNo($currentMember));
+                if ($item->getPhoto() === null) {
+                    $this->remotePhotoFetcher->attachWildberriesPhoto($item, $remotePhotoUrl);
+                }
                 $this->wardrobeManager->refreshCompletionStatus($item);
                 $em->persist($item);
                 $em->flush();
@@ -116,10 +126,6 @@ class WardrobeController extends AbstractController
         return $this->render('account/wardrobe/form.html.twig', [
             'form'          => $form,
             'item'          => $item,
-            'categories'    => array_unique(array_merge(
-                $repo->distinctCategories($currentMember),
-                WardrobeItem::SUGGESTED_CATEGORIES,
-            )),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
             'fullMode'      => false,
@@ -308,10 +314,6 @@ class WardrobeController extends AbstractController
         return $this->render('account/wardrobe/form.html.twig', [
             'form'          => $form,
             'item'          => $item,
-            'categories'    => array_unique(array_merge(
-                $repo->distinctCategories($currentMember),
-                WardrobeItem::SUGGESTED_CATEGORIES,
-            )),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
             'fullMode'      => true,

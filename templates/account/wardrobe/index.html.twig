@@ -122,7 +122,7 @@
                     {% if item.size %}
                         <span class="rounded bg-gray-100 px-1.5 py-0.5 font-semibold">{{ item.size }}</span>
                     {% endif %}
-                    <span class="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">{{ item.completionStatus }}</span>
+                    <span class="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">{{ item.completionStatusLabel }}</span>
                 </div>
                 {% if item.price is not null %}
                     <div class="mt-2 text-sm font-bold">{{ item.price|number_format(0, ',', ' ') }} ₽</div>

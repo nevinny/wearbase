@@ -15,7 +15,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
  * Импорт вещей гардероба пользователя из JSON-файла (напр. выгрузка из Telegram-бота
@@ -33,7 +32,6 @@ class ImportWardrobeCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly WardrobeManager $wardrobeManager,
-        private readonly UserPasswordHasherInterface $passwordHasher,
     ) {
         parent::__construct();
     }
@@ -43,7 +41,6 @@ class ImportWardrobeCommand extends Command
         $this
             ->addArgument('file', InputArgument::REQUIRED, 'Путь к JSON-файлу с массивом вещей')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Email пользователя-владельца гардероба')
-            ->addOption('create-user', null, InputOption::VALUE_NONE, 'Создать обычного пользователя, если email ещё не зарегистрирован')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Только показать, что было бы создано/пропущено')
         ;
     }
@@ -62,24 +59,8 @@ class ImportWardrobeCommand extends Command
 
         $user = $this->em->getRepository(User::class)->findOneBy(['email' => $email]);
         if (!$user) {
-            if (!$input->getOption('create-user') || $dryRun) {
-                $io->error("Пользователь не найден: {$email}. Для создания используйте --create-user без --dry-run");
-                return Command::FAILURE;
-            }
-
-            $temporaryPassword = bin2hex(random_bytes(10));
-            $user = (new User())
-                ->setEmail((string) $email)
-                ->setRoles(['ROLE_CUSTOMER']);
-            $user->setPassword($this->passwordHasher->hashPassword($user, $temporaryPassword));
-            $this->em->persist($user);
-            $this->em->flush();
-
-            $io->warning([
-                "Создан новый пользователь: {$email}",
-                "Временный пароль: {$temporaryPassword}",
-                'Смените пароль после первого входа.',
-            ]);
+            $io->error("Пользователь не найден: {$email}");
+            return Command::FAILURE;
         }
 
         if (!is_file($file)) {
@@ -110,6 +91,7 @@ class ImportWardrobeCommand extends Command
         $tableRows = [];
         $created = 0;
         $skipped = 0;
+        $defaultWardrobe = $dryRun ? null : $this->wardrobeManager->getOrCreateDefault($user);
 
         foreach ($rows as $i => $row) {
             if (!is_array($row)) {
@@ -172,7 +154,7 @@ class ImportWardrobeCommand extends Command
 
             $item = (new WardrobeItem())
                 ->setUser($user)
-                ->setWardrobe($this->wardrobeManager->getOrCreateDefault($user))
+                ->setWardrobe($defaultWardrobe)
                 ->setItemNo($itemNo)
                 ->setCategory($category)
                 ->setName($name)

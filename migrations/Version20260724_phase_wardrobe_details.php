@@ -6,6 +6,7 @@ namespace DoctrineMigrations;
 
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
+use Doctrine\Migrations\Exception\IrreversibleMigration;
 
 final class Version20260724_phase_wardrobe_details extends AbstractMigration
 {
@@ -91,12 +92,9 @@ final class Version20260724_phase_wardrobe_details extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        $this->addSql("DELETE FROM wardrobe_category WHERE parent_id IS NOT NULL");
-        $this->addSql('ALTER TABLE wardrobe_item MODIFY category VARCHAR(100) NOT NULL');
-        $this->addSql('ALTER TABLE wardrobe_item MODIFY name VARCHAR(255) NOT NULL');
-        foreach (['custom_brand_name', 'color_name', 'material_text', 'country_of_origin', 'season', 'care_text', 'completion_status', 'item_status'] as $column) {
-            $this->addSql(sprintf('ALTER TABLE wardrobe_item DROP COLUMN %s', $column));
-        }
+        throw new IrreversibleMigration(
+            'Quick cards permit NULL name/category and category children may contain user data.',
+        );
     }
 
     private function columnExists(string $table, string $column): bool

@@ -26,7 +26,7 @@
     <div class="mb-4 flex items-center justify-between gap-3">
         <h2 class="text-sm font-bold">{{ fullMode ? 'Полная карточка' : 'Быстрое добавление' }}</h2>
         {% if item.id %}
-            <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">{{ item.completionStatus }}</span>
+            <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">{{ item.completionStatusLabel }}</span>
         {% endif %}
     </div>
     <div class="grid grid-cols-12 gap-4">

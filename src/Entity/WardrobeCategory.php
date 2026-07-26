@@ -11,6 +11,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: WardrobeCategoryRepository::class)]
 #[ORM\Table(name: 'wardrobe_category')]
+#[ORM\UniqueConstraint(name: 'uniq_wardrobe_category_code', columns: ['code'])]
+#[ORM\Index(name: 'idx_wardrobe_category_parent', columns: ['parent_id'])]
 #[ORM\HasLifecycleCallbacks]
 class WardrobeCategory
 {
@@ -19,7 +21,7 @@ class WardrobeCategory
     #[ORM\Column]
     private ?int $id = null;
 
-    #[ORM\Column(length: 50, unique: true)]
+    #[ORM\Column(length: 50)]
     private string $code;
 
     #[ORM\Column(length: 100)]
@@ -34,10 +36,10 @@ class WardrobeCategory
     #[ORM\OneToMany(targetEntity: self::class, mappedBy: 'parent')]
     private Collection $children;
 
-    #[ORM\Column]
+    #[ORM\Column(options: ['default' => 0])]
     private int $sortOrder = 0;
 
-    #[ORM\Column]
+    #[ORM\Column(options: ['default' => true])]
     private bool $isActive = true;
 
     #[ORM\Column]

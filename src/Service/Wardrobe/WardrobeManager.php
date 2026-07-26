@@ -12,6 +12,9 @@ use Doctrine\ORM\EntityManagerInterface;
 
 class WardrobeManager
 {
+    /** @var array<string, Wardrobe> */
+    private array $defaultWardrobes = [];
+
     public function __construct(
         private readonly WardrobeRepository $wardrobes,
         private readonly EntityManagerInterface $entityManager,
@@ -19,15 +22,25 @@ class WardrobeManager
 
     public function getOrCreateDefault(User $owner): Wardrobe
     {
+        $cacheKey = $this->ownerKey($owner);
+        if (isset($this->defaultWardrobes[$cacheKey])) {
+            return $this->defaultWardrobes[$cacheKey];
+        }
+
         $wardrobe = $this->wardrobes->findDefaultForOwner($owner);
         if ($wardrobe !== null) {
-            return $wardrobe;
+            return $this->defaultWardrobes[$cacheKey] = $wardrobe;
         }
 
         $wardrobe = (new Wardrobe())->setOwner($owner);
         $this->entityManager->persist($wardrobe);
 
-        return $wardrobe;
+        return $this->defaultWardrobes[$cacheKey] = $wardrobe;
+    }
+
+    public function forgetDefault(User $owner): void
+    {
+        unset($this->defaultWardrobes[$this->ownerKey($owner)]);
     }
 
     public function refreshCompletionStatus(WardrobeItem $item): string
@@ -66,5 +79,10 @@ class WardrobeManager
     private function filled(?string $value): bool
     {
         return $value !== null && trim($value) !== '';
+    }
+
+    private function ownerKey(User $owner): string
+    {
+        return $owner->getId() !== null ? 'id:' . $owner->getId() : 'object:' . spl_object_id($owner);
     }
 }

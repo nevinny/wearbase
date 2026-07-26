@@ -30,13 +30,13 @@ class Wardrobe
     #[ORM\Column(length: 120)]
     private string $name = 'Мой гардероб';
 
-    #[ORM\Column(length: 20)]
+    #[ORM\Column(length: 20, options: ['default' => self::TYPE_PERSONAL])]
     private string $type = self::TYPE_PERSONAL;
 
-    #[ORM\Column]
+    #[ORM\Column(options: ['default' => true])]
     private bool $isDefault = true;
 
-    #[ORM\Column(length: 20)]
+    #[ORM\Column(length: 20, options: ['default' => self::STATUS_ACTIVE])]
     private string $status = self::STATUS_ACTIVE;
 
     /**

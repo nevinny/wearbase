@@ -39,13 +39,35 @@ final class WardrobeRemotePhotoFetcher
                 return false;
             }
 
-            $content = $response->getContent();
-            if ($content === '' || strlen($content) > self::MAX_BYTES) {
+            $tmpPath = tempnam(sys_get_temp_dir(), 'wearbase-wb-');
+            if ($tmpPath === false) {
                 return false;
             }
 
-            $tmpPath = tempnam(sys_get_temp_dir(), 'wearbase-wb-');
-            if ($tmpPath === false || file_put_contents($tmpPath, $content) === false) {
+            $handle = fopen($tmpPath, 'wb');
+            if ($handle === false) {
+                return false;
+            }
+            $downloaded = 0;
+            try {
+                foreach ($this->httpClient->stream($response) as $chunk) {
+                    if ($chunk->isTimeout()) {
+                        throw new \RuntimeException('Wildberries image download timed out');
+                    }
+                    $content = $chunk->getContent();
+                    $downloaded += strlen($content);
+                    if ($downloaded > self::MAX_BYTES) {
+                        $response->cancel();
+                        return false;
+                    }
+                    if ($content !== '' && fwrite($handle, $content) === false) {
+                        return false;
+                    }
+                }
+            } finally {
+                fclose($handle);
+            }
+            if ($downloaded === 0) {
                 return false;
             }
 
@@ -78,6 +100,20 @@ final class WardrobeRemotePhotoFetcher
                 @unlink($tmpPath);
             }
         }
+    }
+
+    public function discardPendingPhoto(WardrobeItem $item): void
+    {
+        $file = $item->getPhotoFile();
+        if ($file === null) {
+            return;
+        }
+
+        $path = $file->getPathname();
+        if (str_starts_with(basename($path), 'wearbase-wb-') && is_file($path)) {
+            @unlink($path);
+        }
+        $item->setPhotoFile(null);
     }
 
     private function isAllowedUrl(string $url): bool

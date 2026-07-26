@@ -20,6 +20,11 @@ class WardrobeItem
     public const COMPLETION_DRAFT = 'draft';
     public const COMPLETION_BASIC = 'basic';
     public const COMPLETION_COMPLETE = 'complete';
+    public const COMPLETION_LABELS = [
+        self::COMPLETION_DRAFT => 'Черновик',
+        self::COMPLETION_BASIC => 'Основное заполнено',
+        self::COMPLETION_COMPLETE => 'Заполнено полностью',
+    ];
 
     public const ITEM_ACTIVE = 'active';
     public const ITEM_REPAIR = 'repair';
@@ -227,9 +232,7 @@ class WardrobeItem
     public function setCategoryRef(?WardrobeCategory $categoryRef): static
     {
         $this->categoryRef = $categoryRef;
-        if ($categoryRef !== null) {
-            $this->category = $categoryRef->getName();
-        }
+        $this->category = $categoryRef?->getName();
         return $this;
     }
 
@@ -290,6 +293,11 @@ class WardrobeItem
     }
 
     public function getCompletionStatus(): string { return $this->completionStatus; }
+
+    public function getCompletionStatusLabel(): string
+    {
+        return self::COMPLETION_LABELS[$this->completionStatus] ?? $this->completionStatus;
+    }
 
     public function setCompletionStatus(string $completionStatus): static
     {

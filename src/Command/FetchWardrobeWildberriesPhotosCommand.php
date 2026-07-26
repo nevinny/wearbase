@@ -36,6 +36,8 @@ final class FetchWardrobeWildberriesPhotosCommand extends Command
     {
         $this
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Email владельца гардероба')
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Максимум вещей за запуск', 50)
+            ->addOption('pause-ms', null, InputOption::VALUE_REQUIRED, 'Пауза между карточками WB, мс', 250)
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Только показать количество подходящих вещей');
     }
 
@@ -47,6 +49,8 @@ final class FetchWardrobeWildberriesPhotosCommand extends Command
             $io->error('Опция --user=EMAIL обязательна');
             return Command::FAILURE;
         }
+        $limit = max(1, min(500, (int) $input->getOption('limit')));
+        $pauseMs = max(0, min(10_000, (int) $input->getOption('pause-ms')));
 
         $user = $this->entityManager->getRepository(User::class)->findOneBy(['email' => $email]);
         if (!$user instanceof User) {
@@ -64,6 +68,7 @@ final class FetchWardrobeWildberriesPhotosCommand extends Command
             ->setParameter('user', $user)
             ->setParameter('wildberries', '%wildberries.ru/%')
             ->orderBy('item.itemNo', 'ASC')
+            ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
 
@@ -74,7 +79,7 @@ final class FetchWardrobeWildberriesPhotosCommand extends Command
 
         $saved = 0;
         $failed = 0;
-        foreach ($items as $item) {
+        foreach ($items as $index => $item) {
             $data = $this->wildberries->fetch((string) $item->getProductUrl());
             if (
                 $data === null
@@ -83,6 +88,7 @@ final class FetchWardrobeWildberriesPhotosCommand extends Command
             ) {
                 $failed++;
                 $io->writeln(sprintf('<comment>Пропуск %s: фото WB недоступно</comment>', $item->getDisplayNumber()));
+                $this->pause($index, count($items), $pauseMs);
                 continue;
             }
 
@@ -90,10 +96,18 @@ final class FetchWardrobeWildberriesPhotosCommand extends Command
             $this->entityManager->flush();
             $saved++;
             $io->writeln(sprintf('Сохранено фото %s — %s', $item->getDisplayNumber(), $item->getName()));
+            $this->pause($index, count($items), $pauseMs);
         }
 
         $io->success(sprintf('Фото сохранено: %d, не удалось: %d', $saved, $failed));
 
         return Command::SUCCESS;
+    }
+
+    private function pause(int $index, int $total, int $pauseMs): void
+    {
+        if ($pauseMs > 0 && $index < $total - 1) {
+            usleep($pauseMs * 1000);
+        }
     }
 }

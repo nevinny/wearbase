@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Service\Wardrobe;
 
 use App\Entity\WardrobeItem;
+use App\Entity\User;
 use App\Repository\WardrobeRepository;
 use App\Service\Wardrobe\WardrobeManager;
 use Doctrine\ORM\EntityManagerInterface;
@@ -12,6 +13,22 @@ use PHPUnit\Framework\TestCase;
 
 final class WardrobeManagerTest extends TestCase
 {
+    public function testDefaultWardrobeIsMemoizedBeforeFlush(): void
+    {
+        $owner = (new User())->setEmail('memo@test.local');
+        $repository = $this->createMock(WardrobeRepository::class);
+        $repository->expects(self::once())->method('findDefaultForOwner')->with($owner)->willReturn(null);
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist');
+        $manager = new WardrobeManager($repository, $entityManager);
+
+        $first = $manager->getOrCreateDefault($owner);
+        $second = $manager->getOrCreateDefault($owner);
+
+        self::assertSame($first, $second);
+        self::assertSame($owner, $first->getOwner());
+    }
+
     public function testCompletionMovesFromDraftToBasicAndComplete(): void
     {
         $manager = new WardrobeManager(
@@ -41,5 +58,18 @@ final class WardrobeManagerTest extends TestCase
 
         self::assertSame(WardrobeItem::COMPLETION_COMPLETE, $manager->refreshCompletionStatus($item));
         self::assertSame(WardrobeItem::COMPLETION_COMPLETE, $item->getCompletionStatus());
+        self::assertSame('Заполнено полностью', $item->getCompletionStatusLabel());
+    }
+
+    public function testClearingCategoryReferenceAlsoClearsLegacyCategory(): void
+    {
+        $category = (new \App\Entity\WardrobeCategory())->setCode('tops')->setName('Верх');
+        $item = (new WardrobeItem())->setCategoryRef($category);
+
+        self::assertSame('Верх', $item->getCategory());
+
+        $item->setCategoryRef(null);
+
+        self::assertNull($item->getCategory());
     }
 }
