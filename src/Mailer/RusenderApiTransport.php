@@ -35,7 +35,9 @@ final class RusenderApiTransport extends AbstractApiTransport
      * ⚠️ Dispatcher обязателен к передаче наверх: именно на `MessageEvent` висит
      * twig-рендерер тела (`BodyRenderer`). Без него любое `TemplatedEmail` доходит до
      * транспорта БЕЗ html/text и падает с «A message must have a text or an HTML part»
-     * — то есть молча умирают все письма из EmailNotifier (регрессия 12.06–26.07.2026).
+     * — то есть молча умирают все письма из EmailNotifier. Проявилось 19.07–26.07.2026, когда
+     * этот транспорт стал активным DSN вместо отвалившегося SMTP (до 19.07 письма шли через
+     * smtp://smtp.rusender.ru и рендерились штатно — родная фабрика dispatcher передаёт).
      */
     public function __construct(
         private readonly string $apiKey,
