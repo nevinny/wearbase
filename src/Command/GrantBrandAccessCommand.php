@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Entity\Brand;
 use App\Entity\BrandUser;
 use App\Entity\User;
+use App\Notification\EmailNotifier;
 use App\Service\SubscriptionFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -41,6 +42,7 @@ class GrantBrandAccessCommand extends Command
         private readonly UserPasswordHasherInterface $hasher,
         private readonly SluggerInterface $slugger,
         private readonly SubscriptionFactory $subscriptionFactory,
+        private readonly EmailNotifier $emailNotifier,
     ) {
         parent::__construct();
     }
@@ -50,7 +52,8 @@ class GrantBrandAccessCommand extends Command
         $this
             ->addOption('email', null, InputOption::VALUE_REQUIRED, 'Email владельца (логин)')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Название бренда (по умолчанию — из email)')
-            ->addOption('password', null, InputOption::VALUE_REQUIRED, 'Временный пароль (по умолчанию генерируется)');
+            ->addOption('password', null, InputOption::VALUE_REQUIRED, 'Временный пароль (по умолчанию генерируется)')
+            ->addOption('send', null, InputOption::VALUE_NONE, 'Отправить владельцу пригласительное письмо с доступом');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -128,7 +131,23 @@ class GrantBrandAccessCommand extends Command
             ['Кабинет' => 'https://wearbase.ru/brand/dashboard'],
             ['Бренд' => sprintf('«%s» (id %d, статус %s)', (string) $brand->getTitle(), (int) $brand->getId(), (string) $brand->getStatus()?->value)],
         );
-        $io->warning('Пароль передать владельцу и попросить сменить: /forgot-password → письмо со ссылкой на новый пароль.');
+        if ($input->getOption('send')) {
+            // Письмо уходит через EmailNotifier → MAILER_DSN (на проде rusender+api).
+            // Ключ `email` в контексте запрещён (см. память/sales_offer §11.2-bis) — только login.
+            $this->emailNotifier->send(
+                $email,
+                'Доступ в кабинет бренда на WEARBASE',
+                'brand_access_granted',
+                [
+                    'login' => $email,
+                    'tempPassword' => $password,
+                    'brandTitle' => (string) $brand->getTitle(),
+                ],
+            );
+            $io->success('Пригласительное письмо отправлено на ' . $email);
+        } else {
+            $io->warning('Пароль передать владельцу и попросить сменить: /forgot-password → письмо со ссылкой на новый пароль. Отправить письмо автоматически: --send');
+        }
 
         return Command::SUCCESS;
     }

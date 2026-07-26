@@ -11,6 +11,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Bundle\FrameworkBundle\Test\MailerAssertionsTrait;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
@@ -21,6 +22,8 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  */
 class GrantBrandAccessCommandTest extends KernelTestCase
 {
+    use MailerAssertionsTrait;
+
     private EntityManagerInterface $em;
     private CommandTester $tester;
 
@@ -103,5 +106,37 @@ class GrantBrandAccessCommandTest extends KernelTestCase
 
         $this->assertSame(2, $this->tester->getStatusCode(), 'Некорректный email → INVALID');
         $this->assertSame(0, count($this->em->getRepository(Brand::class)->findBy(['title' => 'Новый бренд not-an-email'])));
+    }
+
+    public function testSendFlagMailsCredentials(): void
+    {
+        $email = 'invite-' . uniqid() . '@example.com';
+
+        $this->tester->execute([
+            '--email' => $email,
+            '--password' => 'TempPass123',
+            '--title' => 'Приглашённый Бренд',
+            '--send' => true,
+        ]);
+
+        $this->tester->assertCommandIsSuccessful();
+        $this->assertStringContainsString('письмо отправлено', $this->tester->getDisplay());
+
+        $this->assertEmailCount(1);
+        $message = $this->getMailerMessage();
+        $this->assertSame($email, $message->getTo()[0]->getAddress());
+        $body = $message->getHtmlBody();
+        $this->assertStringContainsString('TempPass123', $body, 'В письме должен быть временный пароль');
+        $this->assertStringContainsString($email, $body, 'В письме должен быть логин');
+        $this->assertStringContainsString('Приглашённый Бренд', $body);
+        $this->assertStringContainsString('/login', $body);
+    }
+
+    public function testWithoutSendFlagNoMailGoesOut(): void
+    {
+        $this->tester->execute(['--email' => 'silent-' . uniqid() . '@example.com']);
+
+        $this->tester->assertCommandIsSuccessful();
+        $this->assertEmailCount(0, 'Без --send письмо уходить не должно');
     }
 }
