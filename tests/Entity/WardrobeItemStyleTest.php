@@ -15,6 +15,6 @@ final class WardrobeItemStyleTest extends TestCase
 
         self::assertCount(20, WardrobeItem::STYLE_LABELS);
         self::assertSame(['smart_casual', 'minimalism'], $item->getStyles());
-        self::assertSame(['🌶 Smart casual', '🌶 Минимализм'], $item->getStyleLabels());
+        self::assertSame(['Smart casual', 'Минимализм'], $item->getStyleLabels());
     }
 }
