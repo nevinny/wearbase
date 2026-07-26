@@ -122,8 +122,9 @@ jobs:
       - name: Smoke test
         run: |
           fail=0
+          # -L: следуем редиректам и проверяем ФИНАЛЬНЫЙ код (напр. /ru/brands/ 301→200).
           for u in /ru/ /ru/brands/ /sitemap.xml; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "https://wearbase.ru${u}")
+            code=$(curl -sL -o /dev/null -w '%{http_code}' "https://wearbase.ru${u}")
             echo "${u} -> ${code}"
             [ "${code}" = "200" ] || fail=1
           done
