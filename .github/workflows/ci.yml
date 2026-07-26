@@ -44,6 +44,12 @@ jobs:
           # в анонимный rate-limit GitHub API при резолве пакета.
           COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
 
+      - name: Install importmap assets
+        # composer ставился с --no-scripts (не триггерит авто-importmap:install), а
+        # assets/vendor/ в .gitignore → без этого шага EasyAdmin-страницы падают в
+        # тестах на отсутствии @hotwired/stimulus.
+        run: php bin/console importmap:install
+
       - name: PHPUnit
         # APP_ENV=test форсится в phpunit.dist.xml; тест-БД — одноразовый SQLite,
         # схема провижинится из сущностей в tests/bootstrap.php.
