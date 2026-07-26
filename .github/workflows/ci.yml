@@ -1,0 +1,106 @@
+name: CI
+
+# Тесты — на каждый PR и на push в main. Деплой — только на push в main и только
+# после зелёных тестов (needs: tests). Прод достижим через SSH; координаты и ключ
+# лежат в GitHub Secrets (репозиторий публичный — в YAML ничего секретного нет).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: ctype, iconv, mbstring, intl, pdo_sqlite, sqlite3, xml, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --no-scripts
+        env:
+          # nevinny/admin-core — публичный VCS-репозиторий; токен только чтобы не упереться
+          # в анонимный rate-limit GitHub API при резолве пакета.
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+
+      - name: PHPUnit
+        # APP_ENV=test форсится в phpunit.dist.xml; тест-БД — одноразовый SQLite,
+        # схема провижинится из сущностей в tests/bootstrap.php.
+        run: php -d memory_limit=512M bin/phpunit
+
+  deploy:
+    name: Deploy to prod (regru)
+    needs: tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Rsync to prod
+        # Полный rsync из корня, БЕЗ --delete (как канонический /deploy): прод-only файлы
+        # (var, .env.local, загруженные картинки, config/secrets) не трогаем. Список
+        # исключений синхронен docs/production.md.
+        env:
+          H: ${{ secrets.DEPLOY_HOST }}
+          U: ${{ secrets.DEPLOY_USER }}
+          P: ${{ secrets.DEPLOY_PORT }}
+          D: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          rsync -az \
+            --exclude .git --exclude .github --exclude var --exclude .env.local \
+            --exclude config/secrets --exclude node_modules --exclude _seo --exclude _sql \
+            --exclude .opencode --exclude .superpowers --exclude .DS_Store \
+            --exclude playwright-report --exclude test-results \
+            -e "ssh -i ~/.ssh/deploy_key -p ${P} -o UserKnownHostsFile=~/.ssh/known_hosts" \
+            ./ "${U}@${H}:${D}/"
+
+      - name: Migrate + clear cache
+        # cache:clear на проде ТОЛЬКО с -d memory_limit=512M (дефолт 128M падает).
+        env:
+          H: ${{ secrets.DEPLOY_HOST }}
+          U: ${{ secrets.DEPLOY_USER }}
+          P: ${{ secrets.DEPLOY_PORT }}
+          D: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${U}@${H}" "cd ${D} && php -d memory_limit=512M bin/console doctrine:migrations:migrate --no-interaction && php -d memory_limit=512M bin/console cache:clear --no-debug"
+
+      - name: Smoke test
+        run: |
+          fail=0
+          for u in /ru/ /ru/brands/ /sitemap.xml; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://wearbase.ru${u}")
+            echo "${u} -> ${code}"
+            [ "${code}" = "200" ] || fail=1
+          done
+          exit $fail
