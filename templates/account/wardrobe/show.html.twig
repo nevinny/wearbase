@@ -138,8 +138,8 @@
                 <div class="flex justify-between gap-4">
                     <dt class="text-gray-500">Стиль</dt>
                     <dd class="flex flex-wrap justify-end gap-1">
-                        {% for style in item.styleLabels %}
-                            <span class="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold">{{ style }}</span>
+                        {% for style in item.styles %}
+                            <span class="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold">{{ style.title }}</span>
                         {% endfor %}
                     </dd>
                 </div>

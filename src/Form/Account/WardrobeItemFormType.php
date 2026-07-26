@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Form\Account;
 
+use App\Entity\BrandStyle;
 use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeItem;
 use Symfony\Bridge\Doctrine\Form\Type\EntityType;
@@ -94,11 +95,16 @@ class WardrobeItemFormType extends AbstractType
                 'placeholder' => '—',
                 'choices' => ['Всесезон' => 'all', 'Весна' => 'spring', 'Лето' => 'summer', 'Осень' => 'autumn', 'Зима' => 'winter'],
             ])
-            ->add('styles', ChoiceType::class, [
+            ->add('styles', EntityType::class, [
+                'class' => BrandStyle::class,
                 'label' => 'Стиль',
                 'required' => false,
-                'choices' => array_flip(WardrobeItem::STYLE_LABELS),
+                'choice_label' => 'title',
                 'multiple' => true,
+                'query_builder' => static fn ($repository) => $repository->createQueryBuilder('style')
+                    ->orderBy('style.ord', 'ASC')
+                    ->addOrderBy('style.title', 'ASC'),
+                'by_reference' => false,
                 'attr' => ['size' => 8],
             ])
             ->add('countryOfOrigin', TextType::class, ['label' => 'Страна производства', 'required' => false])
