@@ -91,6 +91,13 @@ class WardrobeItemFormType extends AbstractType
                 'placeholder' => '—',
                 'choices' => ['Всесезон' => 'all', 'Весна' => 'spring', 'Лето' => 'summer', 'Осень' => 'autumn', 'Зима' => 'winter'],
             ])
+            ->add('styles', ChoiceType::class, [
+                'label' => 'Стиль',
+                'required' => false,
+                'choices' => array_flip(WardrobeItem::STYLE_LABELS),
+                'multiple' => true,
+                'attr' => ['size' => 8],
+            ])
             ->add('countryOfOrigin', TextType::class, ['label' => 'Страна производства', 'required' => false])
             ->add('careText', TextareaType::class, ['label' => 'Уход', 'required' => false, 'attr' => ['rows' => 2]])
             ->add('notes', TextareaType::class, ['label' => 'Заметки', 'required' => false, 'attr' => ['rows' => 3]])

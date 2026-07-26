@@ -84,6 +84,29 @@ class WardrobeItem
         'Ремни для сумок',
     ];
 
+    public const STYLE_LABELS = [
+        'marine' => '🌶 Морской стиль',
+        'equestrian' => '🌶 Жокейский стиль',
+        'dandy' => '🌶 Денди',
+        'safari' => '🌶 Сафари',
+        'military' => '🌶 Милитари',
+        'sport_chic' => '🌶 Спорт-шик',
+        'preppy' => '🌶 Преппи',
+        'grunge' => '🌶 Гранж',
+        'feminine' => '🌶 Женственный стиль',
+        'romantic' => '🌶 Романтика',
+        'dramatic' => '🌶 Драма',
+        'classic' => '🌶 Классика',
+        'business_casual' => '🌶 Business casual',
+        'smart_casual' => '🌶 Smart casual',
+        'vintage' => '🌶 Винтаж',
+        'retro' => '🌶 Ретро',
+        'ethnic' => '🌶 Этника',
+        'boho' => '🌶 Бохо',
+        'minimalism' => '🌶 Минимализм',
+        'conceptualism' => '🌶 Концептуализм',
+    ];
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -125,6 +148,10 @@ class WardrobeItem
 
     #[ORM\Column(length: 50, nullable: true)]
     private ?string $season = null;
+
+    /** @var string[] */
+    #[ORM\Column(name: 'main_style', type: Types::JSON, nullable: true)]
+    private ?array $styles = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $careText = null;
@@ -298,6 +325,28 @@ class WardrobeItem
     public function setSeason(?string $season): static
     {
         $this->season = $season;
+        return $this;
+    }
+
+    /** @return string[] */
+    public function getStyles(): array { return $this->styles ?? []; }
+
+    /** @return string[] */
+    public function getStyleLabels(): array
+    {
+        return array_map(
+            static fn (string $style): string => self::STYLE_LABELS[$style] ?? $style,
+            $this->getStyles(),
+        );
+    }
+
+    /** @param string[] $styles */
+    public function setStyles(array $styles): static
+    {
+        $this->styles = array_values(array_unique(array_filter(
+            $styles,
+            static fn (mixed $style): bool => is_string($style) && array_key_exists($style, self::STYLE_LABELS),
+        )));
         return $this;
     }
 
