@@ -58,16 +58,6 @@ class WardrobeItemFormType extends AbstractType
                 'label' => 'Задача покупки',
                 'required' => false,
                 'attr' => ['rows' => 2],
-            ])
-            ->add('loveAtFirstSight', ChoiceType::class, [
-                'label' => 'Любовь с первого взгляда',
-                'required' => false,
-                'placeholder' => '—',
-                'choices' => [
-                    'Да' => WardrobeItem::LOVE_YES,
-                    'Нет' => WardrobeItem::LOVE_NO,
-                    'Пока не знаю' => WardrobeItem::LOVE_UNKNOWN,
-                ],
             ]);
 
         if (!$options['full']) {
