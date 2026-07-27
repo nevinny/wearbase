@@ -41,6 +41,7 @@
 | `app:social:ingest-clicks` | `30 7 * * *` (ежедневно) | 🍎 Mac | closed-loop: UTM-клики из nginx-логов прода (ssh+zgrep) → `social_post_metric.link_taps` |
 | `app:outreach:warm-refresh` | `30 8 * * 1` (пн) | 🍎 Mac | SALES-LOOP: тёплые лиды (клики из GSC) → драфты письма-оффера 5000₽ + сводка в TG (человек-гейт, отправка вручную) |
 | `app:seo:gap-report` | `0 8 * * 1` (пн) | 🍎 Mac | автопилот position-gap листа (`--notify`): yandex/gsc `position>10` + спрос → группы интента + сводка в TG |
+| `app:review:pr` | `*/10 * * * *` | 🍎 Mac | авторевью открытых PR локальной моделью: комментарий в PR + пинг в TG (только Mac — там `gh` и ollama) |
 
 ### 🍎 Mac-крон: одна точка входа + расписание в БД
 
@@ -186,6 +187,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:brand:fix-slugs` | **Разовый фикс**: транслитерация кириллических слагов (инцидент 06-2026). ⚠️ один алгоритм на dev И проде. | 1️⃣ | 🖥+☁️ |
 | `app:migrate-images-to-subdirs` | **Разовая миграция**: плоское хранилище → `ab/cd/` (Vich SubdirNamer). | 1️⃣ | 🖥/☁️ |
 | `app:seed:test-products` | Тестовые товары для проверки карточки/заказа. | 👆 dev/тест | 🖥 |
+| `app:review:pr` | Авторевью открытых PR локальной моделью (`gemma4:26b`): дифф через `gh` → находки 🔴/🟠/🟡 комментарием в PR + пинг в TG. Повтор только на новый head-SHA (маркер `local-review:<sha>` в комментарии), `flock var/review_pr.lock` бережёт GPU от переподписки с RAG-демоном. Опции: `--pr=N`, `--dry-run`, `--force`, `--limit`. ⚠️ GitHub Action не подходит — облачный раннер не достаёт до ollama в LAN. | ⏰ `*/10 * * * *` | 🍎 Mac |
 
 ---
 
