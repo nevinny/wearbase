@@ -44,7 +44,7 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 | `MAILER_DSN` | `null://null` — письма НЕ уходят | `smtp://hello@mail.wearbase.ru@smtp.rusender.ru:465` | Rusender. ⚠️ см. «Известные проблемы» |
 | `TURNSTILE_KEY/SECRET` | в `.env.local` тестовые Cloudflare (3x/1x, always-pass) | боевые (0x4AAA…) | в `.env` — те же тестовые дефолты |
 | `TELEGRAM_BOT_TOKEN` | `.env.local` | прод `.env.local` | |
-| `ADMIN_TELEGRAM_CHAT_ID` | `.env` | `.env` | админ-дайджесты |
+| `ADMIN_TELEGRAM_CHAT_ID` | `.env.local` | прод `.env.local` | с 2026-07-27 — группа «Wearbase_admin» `-5444713140` (раньше личка `140045444`). Туда идут ВСЕ уведомления бота: дайджесты, health-алерты, лиды, кнопки публикаций, релей визитёров. ⚠️ если группу поднимут до супергруппы, id сменится на `-100…` — обновить в обоих `.env.local` |
 | `GSC_CREDENTIALS_PATH` | `config/secrets/gsc-sa.json` | пусто (GSC гоняем с Mac) | `app:gsc:sync`, `app:report:daily` |
 | `YOOKASSA_*` | пусто/тест | прод `.env.local` | |
 | `OPENROUTER_API_KEY` | `.env.local` | прод `.env.local` (перенесён 2026-07-11) | AI-подсказки гардероба |
