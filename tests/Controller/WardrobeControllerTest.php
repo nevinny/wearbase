@@ -14,6 +14,7 @@ use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -73,10 +74,12 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
 
         $crawler = $client->request('GET', '/account/wardrobe/new');
         $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('select[name="wardrobe_item_form[loveAtFirstSight]"]');
 
         $form = $crawler->selectButton('Сохранить')->form([
             'wardrobe_item_form[size]'       => 'M',
             'wardrobe_item_form[productUrl]' => 'https://example.com/test-item',
+            'wardrobe_item_form[loveAtFirstSight]' => WardrobeItem::LOVE_YES,
         ]);
         $client->submit($form);
 
@@ -90,6 +93,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertSame(1, $item->getItemNo());
         $this->assertSame(WardrobeItem::SOURCE_WEB, $item->getSource());
         $this->assertSame(WardrobeItem::COMPLETION_DRAFT, $item->getCompletionStatus());
+        $this->assertSame(WardrobeItem::LOVE_YES, $item->getLoveAtFirstSight());
         $this->assertNotNull($item->getWardrobe());
         $this->assertSame($user->getId(), $item->getWardrobe()->getOwner()?->getId());
         $this->assertTrue($item->getWardrobe()->isDefault());
@@ -184,6 +188,38 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $saved = $em->find(WardrobeItem::class, $item->getId());
         self::assertSame('Топ', $saved?->getCategory());
         self::assertSame(WardrobeItem::ITEM_REPAIR, $saved?->getItemStatus());
+    }
+
+    public function testFullEditFormSavesLoveAtFirstSight(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)
+            ->setItemNo($em->getRepository(WardrobeItem::class)->nextItemNo($user))
+            ->setName('Куртка');
+        $em->persist($item);
+        $em->flush();
+
+        $crawler = $client->request('GET', '/account/wardrobe/' . $item->getId() . '/edit');
+        $this->assertSelectorExists('select[name="wardrobe_item_form[loveAtFirstSight]"]');
+
+        $form = $crawler->selectButton('Сохранить')->form([
+            'wardrobe_item_form[loveAtFirstSight]' => WardrobeItem::LOVE_YES,
+        ]);
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/wardrobe/' . $item->getId());
+        $em->clear();
+        $saved = $em->find(WardrobeItem::class, $item->getId());
+        self::assertSame(WardrobeItem::LOVE_YES, $saved?->getLoveAtFirstSight());
+
+        $client->request('GET', '/account/wardrobe/' . $item->getId());
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('body', 'Любовь с первого взгляда');
     }
 
     public function testIndexShowsStats(): void
@@ -775,6 +811,75 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertSame(WardrobeItem::ITEM_SOLD, $reloaded->getItemStatus());
     }
 
+    #[DataProvider('archivableStatusProvider')]
+    public function testRepairAndTransferredItemsCanBeArchivedFromShowPage(string $itemStatus): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)->setItemNo($em->getRepository(WardrobeItem::class)->nextItemNo($user))
+            ->setCategory('Куртки')->setName('Куртка ' . $itemStatus)
+            ->setItemStatus($itemStatus);
+        $em->persist($item);
+        $em->flush();
+        $id = $item->getId();
+
+        $crawler = $client->request('GET', '/account/wardrobe/' . $id);
+        $this->assertCount(1, $crawler->selectButton('В архив'));
+
+        $client->submit($crawler->selectButton('В архив')->form());
+        $this->assertResponseRedirects('/account/wardrobe');
+
+        $em->clear();
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $this->assertSame(WardrobeItem::ITEM_ARCHIVED, $reloaded->getItemStatus());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function archivableStatusProvider(): array
+    {
+        return [
+            'repair' => [WardrobeItem::ITEM_REPAIR],
+            'transferred' => [WardrobeItem::ITEM_TRANSFERRED],
+        ];
+    }
+
+    /**
+     * item_status=active + wear_status=given_away раньше не попадал ни в активный
+     * список, ни в архив (см. review) — теперь достижим через явный ?wear=given_away
+     * (ссылка из статистики «Статус носки»).
+     */
+    public function testGivenAwayActiveItemIsReachableThroughWearFilter(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)->setItemNo($em->getRepository(WardrobeItem::class)->nextItemNo($user))
+            ->setCategory('Куртки')->setName('Куртка отданная')
+            ->setItemStatus(WardrobeItem::ITEM_ACTIVE)
+            ->setWearStatus(WardrobeItem::WEAR_GIVEN_AWAY);
+        $em->persist($item);
+        $em->flush();
+
+        // Не видна ни в обычном списке...
+        $crawler = $client->request('GET', '/account/wardrobe');
+        $this->assertStringNotContainsString('Куртка отданная', $crawler->filter('body')->text());
+
+        // ...ни в архиве (itemStatus всё ещё active, а не archived/sold/donated/lost).
+        $crawler = $client->request('GET', '/account/wardrobe?view=archive');
+        $this->assertStringNotContainsString('Куртка отданная', $crawler->filter('body')->text());
+
+        // Но достижима через явный фильтр по статусу носки.
+        $crawler = $client->request('GET', '/account/wardrobe?wear=' . WardrobeItem::WEAR_GIVEN_AWAY);
+        $this->assertStringContainsString('Куртка отданная', $crawler->filter('body')->text());
+    }
+
     /**
      * N+1 в списке (yellow): searchForUser должен тянуть photos одним fetch-join'ом,
      * а не лениво на каждую карточку.
@@ -875,6 +980,65 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertStringContainsString('Льняная рубашка', $crawler->filter('body')->text());
     }
 
+    public function testStatusAndWearFiltersNarrowResults(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $start = $em->getRepository(WardrobeItem::class)->count([]) + 8000;
+
+        $inRepair = (new WardrobeItem())
+            ->setUser($user)->setItemNo($start)
+            ->setName('Куртка в ремонте')->setCategory('Куртки')
+            ->setItemStatus(WardrobeItem::ITEM_REPAIR);
+        $onWear = (new WardrobeItem())
+            ->setUser($user)->setItemNo($start + 1)
+            ->setName('Активная толстовка')->setCategory('Худи')
+            ->setWearStatus(WardrobeItem::WEAR_RESERVE);
+        $em->persist($inRepair);
+        $em->persist($onWear);
+        $em->flush();
+
+        $crawler = $client->request('GET', '/account/wardrobe', ['status' => WardrobeItem::ITEM_REPAIR]);
+        $body = $crawler->filter('body')->text();
+        $this->assertStringContainsString('Куртка в ремонте', $body);
+        $this->assertStringNotContainsString('Активная толстовка', $body);
+
+        $crawler = $client->request('GET', '/account/wardrobe', ['wear' => WardrobeItem::WEAR_RESERVE]);
+        $body = $crawler->filter('body')->text();
+        $this->assertStringContainsString('Активная толстовка', $body);
+        $this->assertStringNotContainsString('Куртка в ремонте', $body);
+    }
+
+    public function testArchiveViewResetsIncompatibleStatusAndWearFilters(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $start = $em->getRepository(WardrobeItem::class)->count([]) + 8100;
+
+        $archivedItem = (new WardrobeItem())
+            ->setUser($user)->setItemNo($start)
+            ->setName('Архивная куртка')->setCategory('Куртки')
+            ->setItemStatus(WardrobeItem::ITEM_ARCHIVED);
+        $em->persist($archivedItem);
+        $em->flush();
+
+        // status=repair не имеет смысла в архиве (в архиве только archived) —
+        // контроллер должен сбросить его, а не отдать пустой список.
+        $crawler = $client->request('GET', '/account/wardrobe', [
+            'view' => 'archive',
+            'status' => WardrobeItem::ITEM_REPAIR,
+            'wear' => WardrobeItem::WEAR_RESERVE,
+        ]);
+        $this->assertResponseIsSuccessful();
+        // Если бы status=repair не сбросился, он пересёкся бы с archiveStatuses
+        // (только status=archived проходит в архивном виде) и вещь пропала бы.
+        $this->assertStringContainsString('Архивная куртка', $crawler->filter('body')->text());
+    }
+
     public function testStatisticsShowOnlyCurrentUsersAggregates(): void
     {
         $client = static::createClient();
@@ -909,6 +1073,31 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertStringContainsString('Свой статистический бренд', $body);
         $this->assertStringNotContainsString('Секретная чужая категория', $body);
         $this->assertStringNotContainsString('Чужой статистический бренд', $body);
+    }
+
+    public function testStatisticsShowsFamilyComparisonForMultipleMembers(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-wardrobe-stats-parent@test.local');
+        $client->loginUser($parent);
+
+        /** @var FamilyService $familyService */
+        $familyService = static::getContainer()->get(FamilyService::class);
+        $child = $familyService->createChild($parent, 'Витя');
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $item = (new WardrobeItem())
+            ->setUser($child)->setItemNo($em->getRepository(WardrobeItem::class)->nextItemNo($child))
+            ->setCategory('Худи')->setName('Худи Вити');
+        $em->persist($item);
+        $em->flush();
+
+        $crawler = $client->request('GET', '/account/wardrobe/statistics');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertStringContainsString('Семейный гардероб', $crawler->filter('body')->text());
+        $this->assertStringContainsString('Витя', $crawler->filter('body')->text());
     }
 
     public function testShowDeletedItemReturns404(): void

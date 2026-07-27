@@ -25,15 +25,20 @@
     <div class="flex gap-2">
         <a href="{{ path('account_wardrobe_edit', {id: item.id}|merge(memberParam)) }}"
            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Редактировать</a>
-        {# «В архив» — только из active; «Вернуть» — только из archived; терминальные
-           статусы (sold/donated/lost) не показывают ни ту, ни другую кнопку — статус
-           виден чипом ниже, менять его обратно можно только осознанно через форму. #}
+        {# «В архив» — из active/repair/transferred (гварда WardrobeManager::archive);
+           «Вернуть» — только из archived; терминальные статусы (sold/donated/lost) не
+           показывают ни ту, ни другую кнопку — статус виден чипом ниже, менять его
+           обратно можно только осознанно через форму. #}
         {% if item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ARCHIVED') %}
             <form method="post" action="{{ path('account_wardrobe_restore', {id: item.id}|merge(memberParam)) }}">
                 <input type="hidden" name="_token" value="{{ csrf_token('restore_wardrobe_item_' ~ item.id) }}">
                 <button type="submit" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Вернуть в гардероб</button>
             </form>
-        {% elseif item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE') %}
+        {% elseif item.itemStatus in [
+            constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE'),
+            constant('App\\Entity\\WardrobeItem::ITEM_REPAIR'),
+            constant('App\\Entity\\WardrobeItem::ITEM_TRANSFERRED'),
+        ] %}
             <form method="post" action="{{ path('account_wardrobe_archive', {id: item.id}|merge(memberParam)) }}"
                   onsubmit="return confirm('Переместить вещь в архив?')">
                 <input type="hidden" name="_token" value="{{ csrf_token('archive_wardrobe_item_' ~ item.id) }}">
@@ -161,6 +166,17 @@
                     <dt class="text-gray-500">Товар</dt>
                     <dd><a href="{{ item.productUrl }}" target="_blank" rel="noopener"
                            class="font-semibold underline decoration-gray-300 underline-offset-2 hover:decoration-gray-900">Ссылка на товар ↗</a></dd>
+                </div>
+                {% endif %}
+                {% if item.loveAtFirstSight %}
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-500">Любовь с первого взгляда</dt>
+                    <dd class="font-semibold">
+                        {%- if item.loveAtFirstSight == 'yes' -%}❤️ Да
+                        {%- elseif item.loveAtFirstSight == 'no' -%}Нет
+                        {%- elseif item.loveAtFirstSight == 'unknown' -%}Пока не знаю
+                        {%- endif -%}
+                    </dd>
                 </div>
                 {% endif %}
                 <div class="flex justify-between gap-4">

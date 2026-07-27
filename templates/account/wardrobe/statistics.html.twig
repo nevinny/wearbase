@@ -68,7 +68,7 @@
     {% set maxCount = rows|length > 0 ? rows[0].count : 1 %}
     <div class="space-y-3">
         {% for row in rows %}
-            {% set target = row.key == 'Не указано' ? null : path('account_wardrobe_index', memberParam|merge({(filter): row.key})) %}
+            {% set target = row.key is null ? null : path('account_wardrobe_index', memberParam|merge({(filter): row.key})) %}
             <div>
                 <div class="mb-1 flex justify-between gap-3 text-xs">
                     {% if target %}<a href="{{ target }}" class="truncate font-semibold hover:underline">{{ labels[row.key] ?? row.label }}</a>{% else %}<span class="truncate font-semibold">{{ row.label }}</span>{% endif %}
@@ -97,11 +97,7 @@
         <h2 class="mb-4 text-sm font-bold">Статус носки</h2>
         <div class="space-y-2">
             {% for row in statistics.wearStatuses %}
-                {% if row.key != constant('App\\Entity\\WardrobeItem::WEAR_GIVEN_AWAY') %}
-                    <a href="{{ path('account_wardrobe_index', memberParam|merge({wear: row.key})) }}" class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></a>
-                {% else %}
-                    <div class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></div>
-                {% endif %}
+                <a href="{{ path('account_wardrobe_index', memberParam|merge({wear: row.key})) }}" class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></a>
             {% endfor %}
         </div>
     </div>

@@ -62,6 +62,16 @@ class WardrobeItemFormType extends AbstractType
                 'label' => 'Задача покупки',
                 'required' => false,
                 'attr' => ['rows' => 2],
+            ])
+            ->add('loveAtFirstSight', ChoiceType::class, [
+                'label' => 'Любовь с первого взгляда',
+                'required' => false,
+                'placeholder' => '—',
+                'choices' => [
+                    'Да' => WardrobeItem::LOVE_YES,
+                    'Нет' => WardrobeItem::LOVE_NO,
+                    'Пока не знаю' => WardrobeItem::LOVE_UNKNOWN,
+                ],
             ]);
 
         if (!$options['full']) {
@@ -101,11 +111,11 @@ class WardrobeItemFormType extends AbstractType
                 'required' => false,
                 'choice_label' => 'title',
                 'multiple' => true,
+                'expanded' => true,
                 'query_builder' => static fn ($repository) => $repository->createQueryBuilder('style')
                     ->orderBy('style.ord', 'ASC')
                     ->addOrderBy('style.title', 'ASC'),
                 'by_reference' => false,
-                'attr' => ['size' => 8],
             ])
             ->add('countryOfOrigin', TextType::class, ['label' => 'Страна производства', 'required' => false])
             ->add('careText', TextareaType::class, ['label' => 'Уход', 'required' => false, 'attr' => ['rows' => 2]])

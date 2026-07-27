@@ -77,12 +77,24 @@ class WardrobeManager
     }
 
     /**
-     * «В архив» — только из active. Вещь с терминальным статусом (sold/donated/lost)
-     * туда уже не переводим: это перезаписало бы факт продажи/дарения молча.
+     * Статусы, из которых можно уйти «В архив» — те же, что репозиторий считает
+     * «активным списком» (WardrobeItemRepository::ARCHIVE_STATUSES исключает
+     * именно их). Терминальные (sold/donated/lost) туда уже не переводим: это
+     * перезаписало бы факт продажи/дарения молча.
+     */
+    private const ARCHIVABLE_STATUSES = [
+        WardrobeItem::ITEM_ACTIVE,
+        WardrobeItem::ITEM_REPAIR,
+        WardrobeItem::ITEM_TRANSFERRED,
+    ];
+
+    /**
+     * «В архив» — из active/repair/transferred, чтобы вещи не застревали в
+     * основном списке навсегда без пути наружу.
      */
     public function archive(WardrobeItem $item): bool
     {
-        if ($item->getItemStatus() !== WardrobeItem::ITEM_ACTIVE) {
+        if (!in_array($item->getItemStatus(), self::ARCHIVABLE_STATUSES, true)) {
             return false;
         }
         $item->setItemStatus(WardrobeItem::ITEM_ARCHIVED);

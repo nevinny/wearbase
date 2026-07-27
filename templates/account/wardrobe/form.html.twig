@@ -100,10 +100,15 @@
 <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
     <h2 class="mb-4 text-sm font-bold">История</h2>
     <div class="grid grid-cols-12 gap-4">
-        <div class="col-span-12">
+        <div class="col-span-12 md:col-span-8">
             <label class="{{ tw_label }}">Причина покупки</label>
             {{ form_widget(form.purchaseReason, {'attr': {'class': tw_input, 'rows': 2, 'placeholder': 'Почему купили эту вещь?'}}) }}
             {{ f.err(form.purchaseReason) }}
+        </div>
+        <div class="col-span-12 md:col-span-4">
+            <label class="{{ tw_label }}">Любовь с первого взгляда</label>
+            {{ form_widget(form.loveAtFirstSight, {'attr': {'class': tw_input}}) }}
+            {{ f.err(form.loveAtFirstSight) }}
         </div>
         {% if fullMode %}
         <div class="col-span-12">
@@ -128,9 +133,15 @@
         <div class="col-span-12 md:col-span-6"><label class="{{ tw_label }}">Страна производства</label>{{ form_widget(form.countryOfOrigin, {'attr': {'class': tw_input}}) }}</div>
         <div class="col-span-12 md:col-span-6">
             <label class="{{ tw_label }}">Стиль</label>
-            {{ form_widget(form.styles, {'attr': {'class': tw_input}}) }}
+            <div class="flex flex-wrap gap-x-4 gap-y-1">
+                {% for child in form.styles %}
+                <div class="flex items-center gap-2">
+                    {{ form_widget(child, {'attr': {'class': 'h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                    {{ form_label(child, null, {'label_attr': {'class': 'text-sm'}}) }}
+                </div>
+                {% endfor %}
+            </div>
             {{ f.err(form.styles) }}
-            <p class="mt-1 text-xs text-gray-400">Можно выбрать несколько: удерживайте Ctrl или ⌘</p>
         </div>
         <div class="col-span-12"><label class="{{ tw_label }}">Статус вещи</label>{{ form_widget(form.itemStatus, {'attr': {'class': tw_input}}) }}</div>
     </div>

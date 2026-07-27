@@ -6,7 +6,7 @@
 {% set hasFamily = members is defined and currentMember is defined %}
 {% set ownWardrobe = isOwnWardrobe is defined ? isOwnWardrobe : true %}
 {% set memberParam = hasFamily ? {member: currentMember.id} : {} %}
-{% set activeQuery = memberParam|merge(filters) %}
+{% set activeQuery = memberParam|merge(activeFilters) %}
 {% if isArchiveView %}{% set activeQuery = activeQuery|merge({view: 'archive'}) %}{% endif %}
 {% set seasonLabels = {'all': 'Всесезон', 'spring': 'Весна', 'summer': 'Лето', 'autumn': 'Осень', 'winter': 'Зима'} %}
 
@@ -23,9 +23,9 @@
 </div>
 
 <div class="mb-6 flex gap-2">
-    <a href="{{ path('account_wardrobe_index', memberParam|merge(filters)) }}"
+    <a href="{{ path('account_wardrobe_index', memberParam|merge(activeFilters)) }}"
        class="rounded-full px-4 py-2 text-xs font-semibold {{ not isArchiveView ? 'bg-gray-900 text-white' : 'bg-white text-gray-600' }}">Вещи</a>
-    <a href="{{ path('account_wardrobe_index', memberParam|merge(filters)|merge({view: 'archive'})) }}"
+    <a href="{{ path('account_wardrobe_index', memberParam|merge(activeFilters)|merge({view: 'archive'})) }}"
        class="rounded-full px-4 py-2 text-xs font-semibold {{ isArchiveView ? 'bg-gray-900 text-white' : 'bg-white text-gray-600' }}">Архив</a>
     <a href="{{ path('account_wardrobe_statistics', memberParam) }}"
        class="rounded-full bg-white px-4 py-2 text-xs font-semibold text-gray-600">Статистика</a>
@@ -208,6 +208,9 @@
                          class="h-full w-full object-cover" alt="{{ item.name }}">
                 {% else %}
                     <div class="flex h-full w-full items-center justify-center text-5xl opacity-20">👕</div>
+                {% endif %}
+                {% if item.loveAtFirstSight == 'yes' %}
+                    <span class="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-sm shadow-sm" title="Любовь с первого взгляда">❤️</span>
                 {% endif %}
                 {% if item.wearStatus is defined and item.wearStatus != 'active' %}
                     <span class="absolute left-2 top-2 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm {{ wearChip[item.wearStatus] ?? 'bg-gray-100 text-gray-500' }}">

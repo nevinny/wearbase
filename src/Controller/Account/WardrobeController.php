@@ -61,7 +61,8 @@ class WardrobeController extends AbstractController
         } elseif ($filters['status'] === WardrobeItem::ITEM_ARCHIVED) {
             $filters['status'] = '';
         }
-        $hasFilters = count(array_filter($filters, static fn (string $value): bool => $value !== '')) > 0;
+        $activeFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
+        $hasFilters = count($activeFilters) > 0;
         $items = $repo->searchForUser($currentMember, $filters, $isArchiveView);
         $stats = (!$isArchiveView && !$hasFilters) ? $repo->getStats($currentMember) : [];
         $filteredSum = array_sum(array_map(static fn (WardrobeItem $item): float => (float) ($item->getPrice() ?? 0), $items));
@@ -76,6 +77,8 @@ class WardrobeController extends AbstractController
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
             'isArchiveView' => $isArchiveView,
             'filters' => $filters,
+            // Только непустые значения — иначе ссылки/пагинация тащат q=&category=&...
+            'activeFilters' => $activeFilters,
             'hasFilters' => $hasFilters,
             'filterOptions' => $repo->getFilterOptions($currentMember, $isArchiveView),
         ]);
