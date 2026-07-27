@@ -218,7 +218,9 @@
                 {% endif %}
             </div>
         </a>
-        {% if isArchiveView %}
+        {# Терминальные статусы (sold/donated/lost) видны в архиве с ярлыком, но без
+           кнопки «Вернуть» — их статус зафиксирован как факт, а не состояние видимости. #}
+        {% if isArchiveView and item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ARCHIVED') %}
             <form method="post" action="{{ path('account_wardrobe_restore', {id: item.id}|merge(memberParam)) }}" class="border-t border-gray-100 p-3">
                 <input type="hidden" name="_token" value="{{ csrf_token('restore_wardrobe_item_' ~ item.id) }}">
                 <button type="submit" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">Вернуть в гардероб</button>

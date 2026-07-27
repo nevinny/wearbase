@@ -109,11 +109,15 @@ class WardrobeController extends AbstractController
         EntityManagerInterface $em,
     ): Response {
         [$user, $currentMember, $item, $photo] = $this->resolvePhotoAction($id, $photoId, $request, $repo, $em);
-        if ($this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
-            $this->photoManager->setCover($item, $photo);
-            $this->addFlash('success', 'Обложка обновлена');
-        } else {
+        if (!$this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
             $this->addFlash('error', 'Недействительный токен');
+        } else {
+            try {
+                $this->photoManager->setCover($item, $photo);
+                $this->addFlash('success', 'Обложка обновлена');
+            } catch (\InvalidArgumentException $exception) {
+                $this->addFlash('error', $exception->getMessage());
+            }
         }
         return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
     }
@@ -127,12 +131,16 @@ class WardrobeController extends AbstractController
         EntityManagerInterface $em,
     ): Response {
         [$user, $currentMember, $item, $photo] = $this->resolvePhotoAction($id, $photoId, $request, $repo, $em);
-        if ($this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
-            $this->photoManager->softDelete($item, $photo);
-            $this->wardrobeManager->refreshCompletionStatus($item);
-            $this->addFlash('success', 'Фотография убрана');
-        } else {
+        if (!$this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
             $this->addFlash('error', 'Недействительный токен');
+        } else {
+            try {
+                $this->photoManager->softDelete($item, $photo);
+                $this->wardrobeManager->refreshCompletionStatus($item);
+                $this->addFlash('success', 'Фотография убрана');
+            } catch (\InvalidArgumentException $exception) {
+                $this->addFlash('error', $exception->getMessage());
+            }
         }
         return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
     }
@@ -148,8 +156,11 @@ class WardrobeController extends AbstractController
             throw $this->createNotFoundException();
         }
         if ($this->isCsrfTokenValid('archive_wardrobe_item_'.$id, $request->request->get('_token'))) {
-            $this->wardrobeManager->archive($item);
-            $this->addFlash('success', 'Вещь перемещена в архив');
+            if ($this->wardrobeManager->archive($item)) {
+                $this->addFlash('success', 'Вещь перемещена в архив');
+            } else {
+                $this->addFlash('error', 'Эту вещь нельзя переместить в архив');
+            }
         }
         return $this->redirectToRoute('account_wardrobe_index', $this->memberQuery($user, $currentMember));
     }
@@ -165,8 +176,11 @@ class WardrobeController extends AbstractController
             throw $this->createNotFoundException();
         }
         if ($this->isCsrfTokenValid('restore_wardrobe_item_'.$id, $request->request->get('_token'))) {
-            $this->wardrobeManager->restore($item);
-            $this->addFlash('success', 'Вещь восстановлена');
+            if ($this->wardrobeManager->restore($item)) {
+                $this->addFlash('success', 'Вещь восстановлена');
+            } else {
+                $this->addFlash('error', 'Эту вещь нельзя вернуть в гардероб');
+            }
         }
         return $this->redirectToRoute('account_wardrobe_index', ['view' => 'archive'] + $this->memberQuery($user, $currentMember));
     }
@@ -409,11 +423,18 @@ class WardrobeController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            $previousPhoto = $item->getPhoto();
             if ($item->getPhotoFile() === null && $item->getPhoto() === null) {
                 $this->remotePhotoFetcher->attachWildberriesPhoto($item, $form->get('remotePhotoUrl')->getData());
             }
+            $replacingPhotoFile = $item->getPhotoFile() !== null;
             $this->wardrobeManager->refreshCompletionStatus($item);
             $em->flush();
+            if ($replacingPhotoFile) {
+                // Vich уже сохранил новый файл и переписал item.photo — согласуем галерею
+                // (старое фото не теряем физически, но перестаёт быть обложкой).
+                $this->photoManager->reconcileAfterLegacyReplace($item, $previousPhoto);
+            }
             $this->addFlash('success', 'Изменения сохранены');
             return $this->redirectToRoute(
                 'account_wardrobe_show',

@@ -76,16 +76,34 @@ class WardrobeManager
         return $status;
     }
 
-    public function archive(WardrobeItem $item): void
+    /**
+     * «В архив» — только из active. Вещь с терминальным статусом (sold/donated/lost)
+     * туда уже не переводим: это перезаписало бы факт продажи/дарения молча.
+     */
+    public function archive(WardrobeItem $item): bool
     {
+        if ($item->getItemStatus() !== WardrobeItem::ITEM_ACTIVE) {
+            return false;
+        }
         $item->setItemStatus(WardrobeItem::ITEM_ARCHIVED);
         $this->entityManager->flush();
+
+        return true;
     }
 
-    public function restore(WardrobeItem $item): void
+    /**
+     * «Вернуть» — только из archived. Терминальные статусы (sold/donated/lost) не
+     * восстанавливаем этой кнопкой — их меняют осознанно через форму редактирования.
+     */
+    public function restore(WardrobeItem $item): bool
     {
+        if ($item->getItemStatus() !== WardrobeItem::ITEM_ARCHIVED) {
+            return false;
+        }
         $item->setItemStatus(WardrobeItem::ITEM_ACTIVE);
         $this->entityManager->flush();
+
+        return true;
     }
 
     private function filled(?string $value): bool

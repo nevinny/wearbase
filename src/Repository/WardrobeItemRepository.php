@@ -39,25 +39,11 @@ class WardrobeItemRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('w')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
-            ->andWhere('w.itemStatus != :archived')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
-            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
-            ->orderBy('w.itemNo', 'DESC')
-            ->getQuery()
-            ->getResult();
-    }
-
-    /** @return WardrobeItem[] */
-    public function findArchivedForUser(User $user): array
-    {
-        return $this->createQueryBuilder('w')
-            ->andWhere('w.user = :user')
-            ->andWhere('w.deletedAt IS NULL')
-            ->andWhere('w.itemStatus = :archived')
-            ->setParameter('user', $user)
-            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
             ->orderBy('w.itemNo', 'DESC')
             ->getQuery()
             ->getResult();
@@ -69,7 +55,13 @@ class WardrobeItemRepository extends ServiceEntityRepository
      */
     public function searchForUser(User $user, array $filters, bool $archived = false): array
     {
+        // leftJoin+addSelect тянет photos одним запросом (карточка списка читает
+        // item.coverPhoto на каждую вещь — без fetch join это N+1); distinct() —
+        // чтобы root-строки не размножались по join'у на количество фото.
         $qb = $this->createQueryBuilder('w')
+            ->leftJoin('w.photos', 'p')
+            ->addSelect('p')
+            ->distinct()
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
             ->andWhere($archived ? 'w.itemStatus IN (:archiveStatuses)' : 'w.itemStatus NOT IN (:archiveStatuses)')
@@ -83,7 +75,15 @@ class WardrobeItemRepository extends ServiceEntityRepository
 
         $this->applyFilters($qb, $filters);
 
-        return $qb->orderBy('w.itemNo', 'DESC')->getQuery()->getResult();
+        // Явный orderBy на root отключает автоприменение #[ORM\OrderBy] у w.photos —
+        // дублируем его вручную, чтобы getCoverPhoto()/getActivePhotos() видели тот же
+        // порядок, что и при обычной ленивой загрузке (show-страница).
+        return $qb->orderBy('w.itemNo', 'DESC')
+            ->addOrderBy('p.isCover', 'DESC')
+            ->addOrderBy('p.sortOrder', 'ASC')
+            ->addOrderBy('p.id', 'ASC')
+            ->getQuery()
+            ->getResult();
     }
 
     /**
@@ -211,10 +211,10 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select('DISTINCT w.category')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
-            ->andWhere('w.itemStatus != :archived')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
-            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->getQuery()
             ->getSingleColumnResult();

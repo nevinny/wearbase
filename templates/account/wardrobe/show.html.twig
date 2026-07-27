@@ -25,12 +25,15 @@
     <div class="flex gap-2">
         <a href="{{ path('account_wardrobe_edit', {id: item.id}|merge(memberParam)) }}"
            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Редактировать</a>
+        {# «В архив» — только из active; «Вернуть» — только из archived; терминальные
+           статусы (sold/donated/lost) не показывают ни ту, ни другую кнопку — статус
+           виден чипом ниже, менять его обратно можно только осознанно через форму. #}
         {% if item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ARCHIVED') %}
             <form method="post" action="{{ path('account_wardrobe_restore', {id: item.id}|merge(memberParam)) }}">
                 <input type="hidden" name="_token" value="{{ csrf_token('restore_wardrobe_item_' ~ item.id) }}">
                 <button type="submit" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Вернуть в гардероб</button>
             </form>
-        {% else %}
+        {% elseif item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE') %}
             <form method="post" action="{{ path('account_wardrobe_archive', {id: item.id}|merge(memberParam)) }}"
                   onsubmit="return confirm('Переместить вещь в архив?')">
                 <input type="hidden" name="_token" value="{{ csrf_token('archive_wardrobe_item_' ~ item.id) }}">
@@ -48,6 +51,9 @@
 <div class="mb-4 flex flex-wrap gap-2">
     <span class="rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white">{{ item.category ?: 'Без категории' }}</span>
     <span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{{ item.completionStatusLabel }}</span>
+    {% if item.itemStatus != constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE') %}
+        <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm">{{ item.itemStatusLabel }}</span>
+    {% endif %}
     {% if item.size %}
         <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm">Размер {{ item.size }}</span>
     {% endif %}
@@ -88,7 +94,8 @@
                             <button class="w-full px-1 py-1 text-[10px] font-semibold text-gray-600">На обложку</button>
                         </form>
                     {% endif %}
-                    <form method="post" action="{{ path('account_wardrobe_photo_delete', {id: item.id, photoId: photo.id}|merge(memberParam)) }}">
+                    <form method="post" action="{{ path('account_wardrobe_photo_delete', {id: item.id, photoId: photo.id}|merge(memberParam)) }}"
+                          onsubmit="return confirm('Убрать фотографию?')">
                         <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_photo_' ~ photo.id) }}">
                         <button class="px-1 py-1 text-[10px] text-red-500" aria-label="Убрать фото">×</button>
                     </form>

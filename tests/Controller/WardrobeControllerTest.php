@@ -9,6 +9,7 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeTransfer;
+use App\Repository\WardrobeItemRepository;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
@@ -525,6 +526,285 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         /** @var WardrobeItemPhoto $stillActive */
         $stillActive = $em->find(WardrobeItemPhoto::class, $photo1Id);
         $this->assertNull($stillActive->getDeletedAt());
+    }
+
+    /**
+     * Регресс на 🔴: раньше замена photoFile через «Редактировать» физически удаляла
+     * старый файл (Vich delete_on_update) и не заводила для него строку галереи —
+     * галерея и обложка расходились с уже удалённым файлом.
+     */
+    public function testEditingPhotoFileDoesNotDeleteOldFileAndReconcilesGallery(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())->setUser($user)->setItemNo(510)->setCategory('Худи')->setName('Худи с заменой фото');
+        $em->persist($item);
+        $em->flush();
+        $id = $item->getId();
+
+        // Загружаем первое фото через галерею — как реальный пользователь: реальный
+        // физический файл + строка галереи + синхронизация legacy item.photo.
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $uploadToken = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photos_' . $id);
+        $firstPhoto = new UploadedFile($this->makeTempImage(), 'first.png', 'image/png', null, true);
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos',
+            ['_token' => $uploadToken, 'photo_type' => 'product'],
+            ['photos' => [$firstPhoto]],
+        );
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $em->clear();
+        /** @var WardrobeItem $afterUpload */
+        $afterUpload = $em->find(WardrobeItem::class, $id);
+        $oldFilePath = $afterUpload->getPhoto();
+        $this->assertNotNull($oldFilePath);
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        $oldAbsPath = $storage->resolvePath($afterUpload->getCoverPhoto(), 'file');
+        $this->assertFileExists($oldAbsPath);
+
+        // Заменяем фото через форму «Редактировать» (legacy photoFile, в обход галереи).
+        $crawler = $client->request('GET', '/account/wardrobe/' . $id . '/edit');
+        $secondPhotoPath = $this->makeTempImage();
+        $form = $crawler->selectButton('Сохранить')->form();
+        $form['wardrobe_item_form[photoFile][file]']->upload($secondPhotoPath);
+        $client->submit($form);
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        // Старый файл физически не удалён (проектное правило: никакого DELETE по действию пользователя).
+        $this->assertFileExists($oldAbsPath);
+
+        $em->clear();
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $this->assertNotSame($oldFilePath, $reloaded->getPhoto());
+
+        $active = $reloaded->getActivePhotos();
+        $this->assertCount(2, $active);
+        $oldRow = null;
+        $newRow = null;
+        foreach ($active as $photo) {
+            if ($photo->getFilePath() === $oldFilePath) {
+                $oldRow = $photo;
+            } elseif ($photo->getFilePath() === $reloaded->getPhoto()) {
+                $newRow = $photo;
+            }
+        }
+        $this->assertNotNull($oldRow, 'Старое фото осталось строкой галереи');
+        $this->assertFalse($oldRow->isCover());
+        $this->assertNotNull($newRow, 'Новое фото стало строкой галереи');
+        $this->assertTrue($newRow->isCover());
+        $this->assertSame($newRow->getId(), $reloaded->getCoverPhoto()?->getId());
+
+        @unlink($oldAbsPath);
+        $newAbsPath = $storage->resolvePath($newRow, 'file');
+        if ($newAbsPath !== null) {
+            @unlink($newAbsPath);
+        }
+    }
+
+    /**
+     * Регресс на 🟠: вещь, созданная обычной формой (legacy photo, без строк галереи) —
+     * загрузка второго фото в галерею (напр. «Чек») не должна перебивать основное фото
+     * обложкой.
+     */
+    public function testUploadingSecondPhotoDoesNotOverrideLegacyPrimaryPhoto(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)->setItemNo(511)->setCategory('Обувь')->setName('Кроссовки')
+            ->setPhoto('legacy-primary.png');
+        $em->persist($item);
+        $em->flush();
+        $id = $item->getId();
+        $this->assertCount(0, $item->getActivePhotos());
+
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photos_' . $id);
+        $receipt = new UploadedFile($this->makeTempImage(), 'receipt.png', 'image/png', null, true);
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos',
+            ['_token' => $token, 'photo_type' => 'receipt'],
+            ['photos' => [$receipt]],
+        );
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $em->clear();
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $this->assertCount(2, $reloaded->getActivePhotos());
+        $cover = $reloaded->getCoverPhoto();
+        $this->assertNotNull($cover);
+        $this->assertSame('legacy-primary.png', $cover->getFilePath());
+        $this->assertSame('legacy-primary.png', $reloaded->getPhoto());
+
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        foreach ($reloaded->getActivePhotos() as $photo) {
+            if ($photo->getFilePath() !== 'legacy-primary.png') {
+                $path = $storage->resolvePath($photo, 'file');
+                if ($path !== null) {
+                    @unlink($path);
+                }
+            }
+        }
+    }
+
+    public function testSetCoverOnAlreadyDeletedPhotoDoesNotCause500(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1, $photo2] = $this->createItemWithTwoPhotos($em, $user, 512);
+        $id = $item->getId();
+        $photo1Id = $photo1->getId();
+
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $deleteToken = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photo_' . $photo1Id);
+        $client->request('POST', '/account/wardrobe/' . $id . '/photos/' . $photo1Id . '/delete', ['_token' => $deleteToken]);
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        // Повторный сабмит (двойной клик / вторая вкладка) по уже удалённому фото —
+        // раньше InvalidArgumentException долетала до 500.
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $secondToken = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photo_' . $photo1Id);
+        $client->request('POST', '/account/wardrobe/' . $id . '/photos/' . $photo1Id . '/cover', ['_token' => $secondToken]);
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $client->request('POST', '/account/wardrobe/' . $id . '/photos/' . $photo1Id . '/delete', ['_token' => $secondToken]);
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $em->clear();
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $this->assertCount(1, $reloaded->getActivePhotos());
+        $this->assertSame($photo2->getId(), $reloaded->getCoverPhoto()?->getId());
+    }
+
+    /**
+     * IDOR: чужая вещь/фото недоступны ни на одном из трёх photo-эндпоинтов; ответ —
+     * 404 (не 403 и не 500), существование чужой сущности не палится.
+     */
+    public function testPhotoEndpointsReturn404ForForeignItem(): void
+    {
+        $client = static::createClient();
+        $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $otherUser = UserFactory::brandOwner(static::getContainer());
+        [$foreignItem, $foreignPhoto1, $foreignPhoto2] = $this->createItemWithTwoPhotos($em, $otherUser, 513);
+        $foreignId = $foreignItem->getId();
+        $foreignPhotoId = $foreignPhoto1->getId();
+
+        $photo = new UploadedFile($this->makeTempImage(), 'photo.png', 'image/png', null, true);
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $foreignId . '/photos',
+            ['_token' => 'irrelevant', 'photo_type' => 'product'],
+            ['photos' => [$photo]],
+        );
+        $this->assertResponseStatusCodeSame(404);
+
+        $client->request('POST', '/account/wardrobe/' . $foreignId . '/photos/' . $foreignPhotoId . '/cover', ['_token' => 'irrelevant']);
+        $this->assertResponseStatusCodeSame(404);
+
+        $client->request('POST', '/account/wardrobe/' . $foreignId . '/photos/' . $foreignPhotoId . '/delete', ['_token' => 'irrelevant']);
+        $this->assertResponseStatusCodeSame(404);
+
+        $em->clear();
+        /** @var WardrobeItemPhoto $stillActive */
+        $stillActive = $em->find(WardrobeItemPhoto::class, $foreignPhotoId);
+        $this->assertNull($stillActive->getDeletedAt());
+        // Ничего не изменилось: обложка осталась исходной (photo1, как в createItemWithTwoPhotos).
+        $this->assertSame($foreignPhoto1->getId(), $em->find(WardrobeItem::class, $foreignId)->getCoverPhoto()?->getId());
+    }
+
+    /**
+     * Регресс на жёлтую находку: у проданной/подаренной/потерянной вещи «В архив» и
+     * «Вернуть» не должны молча перезаписывать терминальный статус.
+     */
+    public function testArchiveAndRestoreDoNotOverwriteTerminalStatus(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)->setItemNo(514)->setCategory('Платья')->setName('Проданное платье')
+            ->setItemStatus(WardrobeItem::ITEM_SOLD);
+        $em->persist($item);
+        $em->flush();
+        $id = $item->getId();
+
+        $crawler = $client->request('GET', '/account/wardrobe/' . $id);
+        // Ни «В архив», ни «Вернуть» для проданной вещи не показываются.
+        $this->assertCount(0, $crawler->selectButton('В архив'));
+        $this->assertCount(0, $crawler->selectButton('Вернуть в гардероб'));
+        $this->assertStringContainsString('Продана', $crawler->filter('body')->text());
+
+        // Прямой POST в обход UI (форсированный CSRF) — сервис тоже должен отказать.
+        $archiveToken = $this->forceCsrfToken($client->getRequest(), 'archive_wardrobe_item_' . $id);
+        $client->request('POST', '/account/wardrobe/' . $id . '/archive', ['_token' => $archiveToken]);
+        $this->assertResponseRedirects('/account/wardrobe');
+
+        $em->clear();
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $this->assertSame(WardrobeItem::ITEM_SOLD, $reloaded->getItemStatus());
+
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $restoreToken = $this->forceCsrfToken($client->getRequest(), 'restore_wardrobe_item_' . $id);
+        $client->request('POST', '/account/wardrobe/' . $id . '/restore', ['_token' => $restoreToken]);
+        $this->assertResponseRedirects('/account/wardrobe?view=archive');
+
+        $em->clear();
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $this->assertSame(WardrobeItem::ITEM_SOLD, $reloaded->getItemStatus());
+    }
+
+    /**
+     * N+1 в списке (yellow): searchForUser должен тянуть photos одним fetch-join'ом,
+     * а не лениво на каждую карточку.
+     */
+    public function testSearchForUserEagerLoadsPhotosCollection(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item] = $this->createItemWithTwoPhotos($em, $user, 515);
+        $itemId = $item->getId();
+        $em->clear();
+
+        /** @var WardrobeItemRepository $repo */
+        $repo = static::getContainer()->get(WardrobeItemRepository::class);
+        $items = $repo->searchForUser($user, ['q' => '', 'category' => '', 'brand' => '', 'color' => '', 'size' => '', 'season' => '', 'completion' => '']);
+
+        $found = null;
+        foreach ($items as $candidate) {
+            if ($candidate->getId() === $itemId) {
+                $found = $candidate;
+                break;
+            }
+        }
+        $this->assertNotNull($found);
+        $photos = $found->getPhotos();
+        $this->assertInstanceOf(\Doctrine\ORM\PersistentCollection::class, $photos);
+        $this->assertTrue($photos->isInitialized(), 'photos должны быть eager-загружены fetch-join, а не лениво');
     }
 
     /**

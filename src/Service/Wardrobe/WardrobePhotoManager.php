@@ -38,8 +38,10 @@ final class WardrobePhotoManager
             $photoType = WardrobeItemPhoto::TYPE_PRODUCT;
         }
 
+        $this->backfillLegacyCoverRow($item);
+
         $nextSort = count($item->getActivePhotos());
-        $hasCover = $item->getCoverPhoto() !== null || $item->getPhoto() !== null;
+        $hasCover = $item->getCoverPhoto() !== null;
         $created = [];
         foreach ($files as $file) {
             if (!$file instanceof UploadedFile || !$file->isValid()) {
@@ -75,7 +77,7 @@ final class WardrobePhotoManager
     public function setCover(WardrobeItem $item, WardrobeItemPhoto $selected): void
     {
         if ($selected->getItem() !== $item || $selected->isDeleted()) {
-            throw new \InvalidArgumentException('Фотография не принадлежит этой вещи.');
+            throw new \InvalidArgumentException('Фотография не принадлежит этой вещи или уже удалена.');
         }
         foreach ($item->getActivePhotos() as $photo) {
             $photo->setIsCover($photo === $selected);
@@ -87,7 +89,7 @@ final class WardrobePhotoManager
     public function softDelete(WardrobeItem $item, WardrobeItemPhoto $selected): void
     {
         if ($selected->getItem() !== $item || $selected->isDeleted()) {
-            throw new \InvalidArgumentException('Фотография не принадлежит этой вещи.');
+            throw new \InvalidArgumentException('Фотография не принадлежит этой вещи или уже удалена.');
         }
         $wasCover = $selected->isCover();
         $selected->setIsCover(false);
@@ -99,5 +101,95 @@ final class WardrobePhotoManager
             $item->setPhoto($next?->getFilePath());
         }
         $this->entityManager->flush();
+    }
+
+    /**
+     * Легаси-вещи (созданы обычной формой /new или /edit до появления галереи) хранят
+     * фото только в item.photo, без строки в галерее — «На обложку» для него в принципе
+     * недоступна (нет строки — нет кнопки), а getCoverPhoto() фолбэком на [0] отдаёт
+     * первое загруженное в галерею фото любого типа. Перед первой загрузкой в галерею
+     * заводим для legacy-фото ровно такую же строку, какую создаёт бэкафилл-миграция
+     * Version20260726_wardrobe_gallery_archive, — тогда оно становится обычной строкой
+     * галереи с isCover=true, и обложку можно вернуть кнопкой.
+     */
+    private function backfillLegacyCoverRow(WardrobeItem $item): void
+    {
+        if ($item->getActivePhotos() !== [] || $item->getPhoto() === null) {
+            return;
+        }
+
+        $legacy = (new WardrobeItemPhoto())
+            ->setFilePath($item->getPhoto())
+            ->setPhotoType(WardrobeItemPhoto::TYPE_COVER)
+            ->setSortOrder(0)
+            ->setSource($this->legacySource($item))
+            ->setIsCover(true);
+        $item->addPhoto($legacy);
+        $this->entityManager->persist($legacy);
+    }
+
+    /**
+     * Замена основного фото через форму «Редактировать» (VichImageType на photoFile,
+     * в обход галереи): вызвать сразу после $form->handleRequest()+flush(), когда Vich
+     * уже сохранил новый файл и item.photo указывает на него. Старый файл физически не
+     * трогаем (см. vich_uploader.yaml delete_on_update: false) — он остаётся строкой
+     * галереи (заводим её, если её не было), просто перестаёт быть обложкой; новый файл
+     * становится обложкой — это и есть смысл действия пользователя «заменить фото».
+     */
+    public function reconcileAfterLegacyReplace(WardrobeItem $item, ?string $previousPhoto): void
+    {
+        $newPhoto = $item->getPhoto();
+        if ($newPhoto === null || $newPhoto === $previousPhoto) {
+            return;
+        }
+
+        $previousRow = null;
+        foreach ($item->getActivePhotos() as $photo) {
+            if ($photo->getFilePath() === $previousPhoto) {
+                $previousRow = $photo;
+                break;
+            }
+        }
+
+        if ($previousRow === null && $previousPhoto !== null) {
+            $previousRow = (new WardrobeItemPhoto())
+                ->setFilePath($previousPhoto)
+                ->setPhotoType(WardrobeItemPhoto::TYPE_COVER)
+                ->setSortOrder(count($item->getActivePhotos()))
+                ->setSource($this->legacySource($item));
+            $item->addPhoto($previousRow);
+            $this->entityManager->persist($previousRow);
+        }
+
+        foreach ($item->getActivePhotos() as $photo) {
+            $photo->setIsCover(false);
+        }
+
+        $newRow = (new WardrobeItemPhoto())
+            ->setFilePath($newPhoto)
+            ->setPhotoType(WardrobeItemPhoto::TYPE_COVER)
+            ->setSortOrder(count($item->getActivePhotos()))
+            ->setSource(WardrobeItemPhoto::SOURCE_UPLOAD)
+            ->setIsCover(true);
+        $item->addPhoto($newRow);
+        $this->entityManager->persist($newRow);
+        $this->entityManager->flush();
+    }
+
+    /**
+     * Тот же эвристический признак происхождения, что и в бэкафилл-миграции
+     * Version20260726_wardrobe_gallery_archive: своя загрузка / WB-автозагрузка / импорт
+     * различить нечем, кроме source вещи и наличия product_url.
+     */
+    private function legacySource(WardrobeItem $item): string
+    {
+        if ($item->getSource() === WardrobeItem::SOURCE_IMPORT) {
+            return WardrobeItemPhoto::SOURCE_IMPORT;
+        }
+        if ($item->getSource() === WardrobeItem::SOURCE_WEB && ($item->getProductUrl() ?? '') !== '') {
+            return WardrobeItemPhoto::SOURCE_MARKETPLACE;
+        }
+
+        return WardrobeItemPhoto::SOURCE_UPLOAD;
     }
 }
