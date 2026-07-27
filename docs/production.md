@@ -37,6 +37,12 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
   curl -s -o /dev/null -w "$u %{http_code}\n" https://wearbase.ru$u; done
 ```
 
+Автодеплой через GitHub Actions (`.github/workflows/ci.yml`, джоба `Deploy to prod (regru)`)
+после каждого прогона шлёт в группу `Wearbase_admin` уведомление: что задеплоено (коммит,
+автор, применённые миграции, изменённые файлы, результат smoke) или, при провале, на каком
+именно шаге (`rsync`/`prune`/`migrate`/`smoke`). Секреты для отправки — `TELEGRAM_BOT_TOKEN`,
+`ADMIN_TELEGRAM_CHAT_ID` (те же, что в `.env.local`, но заведены отдельно в GitHub Secrets).
+
 ## Карта env (что где лежит; значения — только на сервере/в .env.local)
 
 | Переменная | Локально (Mac) | Прод | Примечание |
