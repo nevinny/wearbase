@@ -13,11 +13,6 @@
     'given_away': 'bg-gray-100 text-gray-500',
 } %}
 
-{# Обратная совместимость для старых клиентов: физического DELETE нет, endpoint делает soft-delete. #}
-<form method="post" action="{{ path('account_wardrobe_delete', {id: item.id}|merge(memberParam)) }}" class="hidden">
-    <input type="hidden" name="_token" value="{{ csrf_token('delete_wardrobe_item') }}">
-</form>
-
 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
     <div class="flex items-center gap-3">
         <a href="{{ path('account_wardrobe_index', backQuery) }}"
@@ -42,6 +37,11 @@
                 <button type="submit" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">В архив</button>
             </form>
         {% endif %}
+        <form method="post" action="{{ path('account_wardrobe_delete', {id: item.id}|merge(memberParam)) }}"
+              onsubmit="return confirm('Удалить вещь без возможности восстановления из интерфейса?')">
+            <input type="hidden" name="_token" value="{{ csrf_token('delete_wardrobe_item') }}">
+            <button type="submit" class="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition">Удалить</button>
+        </form>
     </div>
 </div>
 

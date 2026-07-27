@@ -266,7 +266,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
 
         $crawler = $client->request('GET', '/account/wardrobe/' . $tokenItem->getId());
 
-        return $crawler->filter('input[name="_token"]')->attr('value');
+        return $crawler->filter('form[action*="/delete"]:not([action*="/photos/"]) input[name="_token"]')->attr('value');
     }
 
     public function testDeleteSoftDeletesItem(): void
@@ -287,7 +287,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $id = $item->getId();
 
         $crawler   = $client->request('GET', '/account/wardrobe/' . $id);
-        $csrfToken = $crawler->filter('input[name="_token"]')->attr('value');
+        $csrfToken = $crawler->filter('form[action*="/delete"]:not([action*="/photos/"]) input[name="_token"]')->attr('value');
 
         $client->request('POST', '/account/wardrobe/' . $id . '/delete', ['_token' => $csrfToken]);
         $this->assertResponseRedirects('/account/wardrobe');
