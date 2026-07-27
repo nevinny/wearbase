@@ -57,6 +57,8 @@ class ReviewPrCommand extends Command
         private readonly AdminNotifier $notifier,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
+        #[Autowire('%env(default::LOCAL_LLM_MODEL)%')]
+        private readonly string $localModel = '',
     ) {
         parent::__construct();
     }
@@ -268,7 +270,7 @@ class ReviewPrCommand extends Command
 
     private function llmModelLabel(): string
     {
-        return $_ENV['LOCAL_LLM_MODEL'] ?? getenv('LOCAL_LLM_MODEL') ?: 'local';
+        return $this->localModel !== '' ? $this->localModel : 'local';
     }
 
     /** Считаем СТРОКИ-блокеры, а не вхождения эмодзи: модель порой копирует легенду приоритетов. */
@@ -282,7 +284,9 @@ class ReviewPrCommand extends Command
     /** @param list<string> $args */
     private function gh(array $args): ?string
     {
-        $bin     = is_executable(self::GH_BIN) ? self::GH_BIN : 'gh';
+        // Полный путь по умолчанию: в кроне PATH пуст (CLAUDE.md, раздел «Окружение Mac»).
+        // GH_BIN в .env.local перекрывает — на другой машине путь другой.
+        $bin     = (string) ($_ENV['GH_BIN'] ?? '') ?: (is_executable(self::GH_BIN) ? self::GH_BIN : 'gh');
         $process = new Process([$bin, ...$args], $this->projectDir, timeout: 120);
         $process->run();
 
