@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeTransfer;
 use App\Service\FamilyService;
@@ -14,6 +15,7 @@ use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
@@ -24,10 +26,24 @@ use Vich\UploaderBundle\Storage\StorageInterface;
  */
 class WardrobeControllerTest extends AuthenticatedWebTestCase
 {
+    /** @var string[] absolute paths of files created by photo tests, cleaned up in tearDown */
+    private array $tmpFiles = [];
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->skipIfNoDatabase();
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ($this->tmpFiles as $path) {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+        $this->tmpFiles = [];
+        parent::tearDown();
     }
 
     public function testGuestIsRedirectedToLogin(): void
@@ -333,6 +349,201 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
 
         $crawler = $client->request('GET', '/account/wardrobe');
         $this->assertStringContainsString('Архивируемая куртка', $crawler->filter('body')->text());
+    }
+
+    // ── Галерея фото: upload / cover / delete ─────────────────────────────
+
+    public function testUploadPhotoAddsToGalleryAndSyncsLegacyPhoto(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())->setUser($user)->setItemNo(501)->setCategory('Худи')->setName('Худи для фото');
+        $em->persist($item);
+        $em->flush();
+        $id = $item->getId();
+
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photos_' . $id);
+        $photo = new UploadedFile($this->makeTempImage(), 'photo.png', 'image/png', null, true);
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos',
+            ['_token' => $token, 'photo_type' => 'product'],
+            ['photos' => [$photo]],
+        );
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $em->clear();
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $activePhotos = $reloaded->getActivePhotos();
+        $this->assertCount(1, $activePhotos);
+        $cover = $reloaded->getCoverPhoto();
+        $this->assertNotNull($cover);
+        $this->assertTrue($cover->isCover());
+        // Legacy-поле photo синхронизировано с обложкой галереи
+        $this->assertSame($cover->getFilePath(), $reloaded->getPhoto());
+
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        $path = $storage->resolvePath($cover, 'file');
+        $this->assertNotNull($path);
+        $this->assertFileExists($path);
+        @unlink($path);
+    }
+
+    public function testUploadPhotoWithInvalidCsrfDoesNotMutateItem(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())->setUser($user)->setItemNo(502)->setCategory('Худи')->setName('Худи без фото');
+        $em->persist($item);
+        $em->flush();
+        $id = $item->getId();
+
+        $photo = new UploadedFile($this->makeTempImage(), 'photo.png', 'image/png', null, true);
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos',
+            ['_token' => 'not-a-real-token', 'photo_type' => 'product'],
+            ['photos' => [$photo]],
+        );
+        // Невалидный CSRF — flash + redirect, а не 403; главное, что состояние не меняется
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $em->clear();
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $this->assertCount(0, $reloaded->getActivePhotos());
+        $this->assertNull($reloaded->getPhoto());
+    }
+
+    public function testSetCoverPhotoSwitchesActiveCoverAndLegacyPhoto(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1, $photo2] = $this->createItemWithTwoPhotos($em, $user, 503);
+        $id = $item->getId();
+
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photo_' . $photo2->getId());
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos/' . $photo2->getId() . '/cover',
+            ['_token' => $token],
+        );
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $em->clear();
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $cover = $reloaded->getCoverPhoto();
+        $this->assertSame($photo2->getId(), $cover->getId());
+        $this->assertSame($cover->getFilePath(), $reloaded->getPhoto());
+    }
+
+    public function testDeletePhotoSoftDeletesRowAndReassignsCover(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1, $photo2] = $this->createItemWithTwoPhotos($em, $user, 504);
+        $id = $item->getId();
+        $photo1Id = $photo1->getId();
+
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photo_' . $photo1Id);
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos/' . $photo1Id . '/delete',
+            ['_token' => $token],
+        );
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $em->clear();
+        /** @var WardrobeItemPhoto $deletedPhoto */
+        $deletedPhoto = $em->find(WardrobeItemPhoto::class, $photo1Id);
+        // Soft-delete: строка остаётся, но помечена deleted_at
+        $this->assertNotNull($deletedPhoto);
+        $this->assertNotNull($deletedPhoto->getDeletedAt());
+
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $activePhotos = $reloaded->getActivePhotos();
+        $this->assertCount(1, $activePhotos);
+        $this->assertSame($photo2->getId(), $activePhotos[0]->getId());
+        // Обложка перешла на оставшееся фото, legacy-поле photo синхронизировано
+        $this->assertTrue($activePhotos[0]->isCover());
+        $this->assertSame($activePhotos[0]->getFilePath(), $reloaded->getPhoto());
+    }
+
+    public function testPhotoActionsWithInvalidCsrfDoNotMutateState(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1, $photo2] = $this->createItemWithTwoPhotos($em, $user, 505);
+        $id = $item->getId();
+        $photo1Id = $photo1->getId();
+        $photo2Id = $photo2->getId();
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos/' . $photo2Id . '/cover',
+            ['_token' => 'not-a-real-token'],
+        );
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos/' . $photo1Id . '/delete',
+            ['_token' => 'not-a-real-token'],
+        );
+        $this->assertResponseRedirects('/account/wardrobe/' . $id);
+
+        $em->clear();
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $id);
+        $this->assertCount(2, $reloaded->getActivePhotos());
+        $this->assertSame($photo1Id, $reloaded->getCoverPhoto()?->getId());
+        /** @var WardrobeItemPhoto $stillActive */
+        $stillActive = $em->find(WardrobeItemPhoto::class, $photo1Id);
+        $this->assertNull($stillActive->getDeletedAt());
+    }
+
+    /**
+     * @return array{0: WardrobeItem, 1: WardrobeItemPhoto, 2: WardrobeItemPhoto}
+     */
+    private function createItemWithTwoPhotos(EntityManagerInterface $em, User $user, int $itemNo): array
+    {
+        $item = (new WardrobeItem())->setUser($user)->setItemNo($itemNo)->setCategory('Худи')->setName('Худи с галереей');
+        $photo1 = (new WardrobeItemPhoto())->setFilePath('gallery-photo-1.png')->setIsCover(true)->setSortOrder(0);
+        $photo2 = (new WardrobeItemPhoto())->setFilePath('gallery-photo-2.png')->setIsCover(false)->setSortOrder(1);
+        $item->addPhoto($photo1);
+        $item->addPhoto($photo2);
+        $item->setPhoto($photo1->getFilePath());
+        $em->persist($item);
+        $em->persist($photo1);
+        $em->persist($photo2);
+        $em->flush();
+
+        return [$item, $photo1, $photo2];
     }
 
     public function testSearchAndFiltersStayInsideSelectedUsersWardrobe(): void
@@ -781,5 +992,16 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $lastRequest->getSession()->save();
 
         return $token;
+    }
+
+    private function makeTempImage(): string
+    {
+        $path = sys_get_temp_dir() . '/wardrobe_test_' . uniqid() . '.png';
+        $im = imagecreatetruecolor(4, 4);
+        imagepng($im, $path);
+        imagedestroy($im);
+        $this->tmpFiles[] = $path;
+
+        return $path;
     }
 }

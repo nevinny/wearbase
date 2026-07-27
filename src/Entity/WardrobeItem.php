@@ -440,9 +440,12 @@ class WardrobeItem
     /** @return WardrobeItemPhoto[] */
     public function getActivePhotos(): array
     {
-        return $this->photos
+        // array_values() важен: ArrayCollection::filter() сохраняет исходные ключи,
+        // иначе [0] ?? null (здесь и в WardrobePhotoManager) молча вернёт null, если
+        // удалено именно первое добавленное фото.
+        return array_values($this->photos
             ->filter(static fn (WardrobeItemPhoto $photo): bool => !$photo->isDeleted())
-            ->toArray();
+            ->toArray());
     }
 
     public function getCoverPhoto(): ?WardrobeItemPhoto
