@@ -123,8 +123,9 @@
             <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Состояние</label>
             <select name="status" class="w-full rounded-lg border border-gray-200 px-2 py-2.5 text-sm">
                 <option value="">Любое</option>
+                {% set archiveStatuses = constant('App\\Entity\\WardrobeItem::ARCHIVE_STATUSES') %}
                 {% for value, label in constant('App\\Entity\\WardrobeItem::ITEM_LABELS') %}
-                    {% if (isArchiveView and value == 'archived') or (not isArchiveView and value != 'archived') %}
+                    {% if (isArchiveView and value in archiveStatuses) or (not isArchiveView and value not in archiveStatuses) %}
                         <option value="{{ value }}" {{ filters.status == value ? 'selected' }}>{{ label }}</option>
                     {% endif %}
                 {% endfor %}

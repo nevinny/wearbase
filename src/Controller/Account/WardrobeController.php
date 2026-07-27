@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller\Account;
 
 use App\Entity\AiUsageLog;
+use App\Entity\BrandStyle;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
@@ -22,6 +23,7 @@ use App\Service\Wardrobe\WardrobeStatisticsService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -53,12 +55,15 @@ class WardrobeController extends AbstractController
 
         $isArchiveView = $request->query->get('view') === 'archive';
         $filters = $this->wardrobeFilters($request);
+        // Sold/donated/lost/archived существуют только в архивном срезе (см.
+        // WardrobeItem::ARCHIVE_STATUSES) — вне архива такой status сбрасываем,
+        // иначе плитка статистики «Продана» вела бы в пустой список.
         if ($isArchiveView) {
             $filters['wear'] = '';
-            if ($filters['status'] !== WardrobeItem::ITEM_ARCHIVED) {
+            if (!in_array($filters['status'], WardrobeItem::ARCHIVE_STATUSES, true)) {
                 $filters['status'] = '';
             }
-        } elseif ($filters['status'] === WardrobeItem::ITEM_ARCHIVED) {
+        } elseif (in_array($filters['status'], WardrobeItem::ARCHIVE_STATUSES, true)) {
             $filters['status'] = '';
         }
         $activeFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
@@ -91,21 +96,23 @@ class WardrobeController extends AbstractController
         $user = $this->getUser();
         $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
         $members = $this->familyService->membersFor($user);
+        $currentStatistics = $statistics->forUser($currentMember);
+
+        // Та же авторизация, что и у resolveMember() (canManage): не-parent видит
+        // сравнение только по себе — сумма гардероба и % заполнения остальных не палим.
         $familyComparison = [];
-        $currentStatistics = null;
         foreach ($members as $member) {
-            $memberStatistics = $statistics->forUser($member);
-            $familyComparison[] = [
-                'member' => $member,
-                'summary' => $memberStatistics['summary'],
-            ];
-            if ($member->getId() === $currentMember->getId()) {
-                $currentStatistics = $memberStatistics;
+            if (!$this->familyService->canManage($user, $member)) {
+                continue;
             }
+            $summary = $member->getId() === $currentMember->getId()
+                ? $currentStatistics['summary']
+                : $statistics->summaryForUser($member);
+            $familyComparison[] = ['member' => $member, 'summary' => $summary];
         }
 
         return $this->render('account/wardrobe/statistics.html.twig', [
-            'statistics' => $currentStatistics ?? $statistics->forUser($currentMember),
+            'statistics' => $currentStatistics,
             'members' => $members,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
@@ -460,10 +467,22 @@ class WardrobeController extends AbstractController
             throw $this->createNotFoundException();
         }
 
+        // Форма предлагает к выбору только активные стили (см. WardrobeItemFormType) —
+        // уже привязанный, но с тех пор удалённый в админке стиль не попадает в её
+        // choice-list, и стандартный add/remove-diff Symfony молча его отвяжет на
+        // submit. Запоминаем такие связи до handleRequest и восстанавливаем после.
+        $preservedInactiveStyles = array_values(array_filter(
+            $item->getStyles()->toArray(),
+            static fn (BrandStyle $style): bool => $style->getStatus() !== Statuses::Active,
+        ));
+
         $form = $this->createForm(WardrobeItemFormType::class, $item);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            foreach ($preservedInactiveStyles as $style) {
+                $item->addStyle($style);
+            }
             $previousPhoto = $item->getPhoto();
             if ($item->getPhotoFile() === null && $item->getPhoto() === null) {
                 $this->remotePhotoFetcher->attachWildberriesPhoto($item, $form->get('remotePhotoUrl')->getData());

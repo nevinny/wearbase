@@ -105,8 +105,9 @@
         <h2 class="mb-4 text-sm font-bold">Состояние вещей</h2>
         <div class="space-y-2">
             {% for row in statistics.itemStatuses %}
-                {% if row.key == constant('App\\Entity\\WardrobeItem::ITEM_ARCHIVED') %}
-                    <a href="{{ path('account_wardrobe_index', memberParam|merge({view: 'archive'})) }}" class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></a>
+                {% if row.key in constant('App\\Entity\\WardrobeItem::ARCHIVE_STATUSES') %}
+                    {# archived/sold/donated/lost существуют только в архивном срезе #}
+                    <a href="{{ path('account_wardrobe_index', memberParam|merge({view: 'archive', status: row.key})) }}" class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></a>
                 {% else %}
                     <a href="{{ path('account_wardrobe_index', memberParam|merge({status: row.key})) }}" class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></a>
                 {% endif %}

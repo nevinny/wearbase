@@ -7,6 +7,7 @@ namespace App\Form\Account;
 use App\Entity\BrandStyle;
 use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeItem;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
@@ -112,7 +113,11 @@ class WardrobeItemFormType extends AbstractType
                 'choice_label' => 'title',
                 'multiple' => true,
                 'expanded' => true,
+                // Удалённые в админке стили (Statuses::Deleted) не предлагаем к выбору,
+                // но уже проставленный у вещи стиль отношение не рвёт (см. WardrobeItemStyleTest).
                 'query_builder' => static fn ($repository) => $repository->createQueryBuilder('style')
+                    ->andWhere('style.status = :active')
+                    ->setParameter('active', Statuses::Active)
                     ->orderBy('style.ord', 'ASC')
                     ->addOrderBy('style.title', 'ASC'),
                 'by_reference' => false,

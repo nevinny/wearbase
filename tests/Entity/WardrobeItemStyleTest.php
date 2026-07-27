@@ -20,7 +20,10 @@ final class WardrobeItemStyleTest extends TestCase
             ->addStyle($minimalism);
 
         self::assertCount(2, $item->getStyles());
-        self::assertSame(['Smart casual', 'Минимализм'], $item->getStyleLabels());
+        self::assertSame(['Smart casual', 'Минимализм'], array_map(
+            static fn (BrandStyle $style): ?string => $style->getTitle(),
+            $item->getStyles()->toArray(),
+        ));
 
         $item->removeStyle($smartCasual);
         self::assertSame([$minimalism], array_values($item->getStyles()->toArray()));

@@ -45,6 +45,19 @@ class WardrobeItem
         self::ITEM_LOST => 'Потеряна',
     ];
 
+    /**
+     * Статусы, при которых вещь считается «неактивной» и попадает в архив
+     * (сама вещь физически не удаляется — это отдельный от soft-delete срез).
+     * Единственный источник истины: используется и репозиторием (выборки),
+     * и контроллером/шаблонами (какие статусы доступны только в архивном виде).
+     */
+    public const ARCHIVE_STATUSES = [
+        self::ITEM_ARCHIVED,
+        self::ITEM_SOLD,
+        self::ITEM_DONATED,
+        self::ITEM_LOST,
+    ];
+
     public const LOVE_YES = 'yes';
     public const LOVE_NO = 'no';
     public const LOVE_UNKNOWN = 'unknown';
@@ -309,15 +322,6 @@ class WardrobeItem
 
     /** @return Collection<int, BrandStyle> */
     public function getStyles(): Collection { return $this->styles; }
-
-    /** @return string[] */
-    public function getStyleLabels(): array
-    {
-        return array_values(array_filter(array_map(
-            static fn (BrandStyle $style): ?string => $style->getTitle(),
-            $this->styles->toArray(),
-        )));
-    }
 
     public function addStyle(BrandStyle $style): static
     {

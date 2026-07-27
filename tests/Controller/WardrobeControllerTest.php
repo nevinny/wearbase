@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use App\Entity\BrandStyle;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
@@ -14,6 +15,7 @@ use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use Doctrine\ORM\EntityManagerInterface;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
@@ -220,6 +222,58 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $client->request('GET', '/account/wardrobe/' . $item->getId());
         $this->assertResponseIsSuccessful();
         $this->assertSelectorTextContains('body', 'Любовь с первого взгляда');
+    }
+
+    /**
+     * Стиль, удалённый в админке (BrandStyle.status = Deleted), не должен
+     * предлагаться к выбору, но уже проставленная связь у вещи не должна
+     * пропасть после сохранения формы, и карточка/edit не должны падать.
+     */
+    public function testDeletedStyleStaysAttachedButIsNotOfferedAsChoice(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $activeStyle = (new BrandStyle())->setTitle('Кэжуал ' . uniqid())->setSlug('casual-' . uniqid());
+        $deletedStyle = (new BrandStyle())->setTitle('Удалённый стиль ' . uniqid())->setSlug('deleted-' . uniqid())
+            ->setStatus(Statuses::Deleted);
+        $em->persist($activeStyle);
+        $em->persist($deletedStyle);
+
+        $item = (new WardrobeItem())
+            ->setUser($user)
+            ->setItemNo($em->getRepository(WardrobeItem::class)->nextItemNo($user))
+            ->setName('Худи со стилями')
+            ->addStyle($activeStyle)
+            ->addStyle($deletedStyle);
+        $em->persist($item);
+        $em->flush();
+        $itemId = $item->getId();
+
+        $crawler = $client->request('GET', '/account/wardrobe/' . $itemId . '/edit');
+        $this->assertResponseIsSuccessful();
+        // Удалённый стиль не в choice-list — чекбокса для него нет.
+        $this->assertCount(0, $crawler->filter('input[value="' . $deletedStyle->getId() . '"]'));
+        $this->assertCount(1, $crawler->filter('input[value="' . $activeStyle->getId() . '"]'));
+
+        $client->submit($crawler->selectButton('Сохранить')->form());
+        $this->assertResponseRedirects('/account/wardrobe/' . $itemId);
+
+        $em->clear();
+        /** @var WardrobeItem $reloaded */
+        $reloaded = $em->find(WardrobeItem::class, $itemId);
+        $styleIds = array_map(static fn (BrandStyle $s): ?int => $s->getId(), $reloaded->getStyles()->toArray());
+        self::assertContains($activeStyle->getId(), $styleIds);
+        self::assertContains($deletedStyle->getId(), $styleIds, 'Удалённый стиль не должен отвязываться при сохранении формы');
+        self::assertCount(2, $styleIds);
+
+        // Карточка вещи не падает и показывает оба стиля (включая удалённый).
+        $crawler = $client->request('GET', '/account/wardrobe/' . $itemId);
+        $this->assertResponseIsSuccessful();
+        $this->assertStringContainsString($activeStyle->getTitle(), $crawler->filter('body')->text());
+        $this->assertStringContainsString($deletedStyle->getTitle(), $crawler->filter('body')->text());
     }
 
     public function testIndexShowsStats(): void
@@ -1039,6 +1093,45 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertStringContainsString('Архивная куртка', $crawler->filter('body')->text());
     }
 
+    /**
+     * Плитки статистики «Продана»/«Подарена»/«Потеряна» ссылаются на
+     * view=archive&status=X — без view=archive они вели бы в пустой список,
+     * т.к. вне архива такой status сбрасывается контроллером.
+     */
+    #[DataProvider('archiveOnlyStatusProvider')]
+    public function testSoldDonatedLostStatisticsTileLeadsToNonEmptyList(string $itemStatus): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $item = (new WardrobeItem())
+            ->setUser($user)->setItemNo($em->getRepository(WardrobeItem::class)->nextItemNo($user))
+            ->setCategory('Платья')->setName('Вещь со статусом ' . $itemStatus)
+            ->setItemStatus($itemStatus);
+        $em->persist($item);
+        $em->flush();
+
+        // Без view=archive такой status сбрасывается — список пуст.
+        $crawler = $client->request('GET', '/account/wardrobe', ['status' => $itemStatus]);
+        $this->assertStringNotContainsString('Вещь со статусом ' . $itemStatus, $crawler->filter('body')->text());
+
+        // Со view=archive (как в ссылке из статистики) вещь видна.
+        $crawler = $client->request('GET', '/account/wardrobe', ['view' => 'archive', 'status' => $itemStatus]);
+        $this->assertStringContainsString('Вещь со статусом ' . $itemStatus, $crawler->filter('body')->text());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function archiveOnlyStatusProvider(): array
+    {
+        return [
+            'sold' => [WardrobeItem::ITEM_SOLD],
+            'donated' => [WardrobeItem::ITEM_DONATED],
+            'lost' => [WardrobeItem::ITEM_LOST],
+        ];
+    }
+
     public function testStatisticsShowOnlyCurrentUsersAggregates(): void
     {
         $client = static::createClient();
@@ -1098,6 +1191,38 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseIsSuccessful();
         $this->assertStringContainsString('Семейный гардероб', $crawler->filter('body')->text());
         $this->assertStringContainsString('Витя', $crawler->filter('body')->text());
+    }
+
+    /**
+     * Не-parent член семьи не должен видеть сравнение по остальным (та же
+     * авторизация, что и у FamilyService::resolveMember — canManage).
+     */
+    public function testFamilyComparisonHidesOtherMembersFromNonParentChild(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-wardrobe-stats-child-parent@test.local');
+        $client->loginUser($parent);
+
+        /** @var FamilyService $familyService */
+        $familyService = static::getContainer()->get(FamilyService::class);
+        $child = $familyService->createChild($parent, 'Ксюша');
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $parentItem = (new WardrobeItem())
+            ->setUser($parent)->setItemNo($em->getRepository(WardrobeItem::class)->nextItemNo($parent))
+            ->setCategory('Секретная родительская категория')->setName('Родительская куртка')->setPrice('50000.00');
+        $em->persist($parentItem);
+        $em->flush();
+
+        $client->loginUser($child);
+        $crawler = $client->request('GET', '/account/wardrobe/statistics');
+
+        $this->assertResponseIsSuccessful();
+        $body = $crawler->filter('body')->text();
+        $this->assertStringNotContainsString('Семейный гардероб', $body);
+        $this->assertStringNotContainsString('Секретная родительская категория', $body);
+        $this->assertStringNotContainsString('50 000', $body);
     }
 
     public function testShowDeletedItemReturns404(): void

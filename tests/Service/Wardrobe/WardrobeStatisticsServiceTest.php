@@ -80,4 +80,32 @@ final class WardrobeStatisticsServiceTest extends TestCase
         self::assertSame('Не указано', $statistics['categories'][0]['label']);
         self::assertSame(3, $statistics['categories'][0]['count']);
     }
+
+    /**
+     * summaryForUser — единственный SQL-агрегат (без распределений), которым
+     * контроллер обходится для карточек сравнения семьи вместо полного forUser().
+     */
+    public function testSummaryForUserOnlyCallsStatisticsSummaryAggregate(): void
+    {
+        $user = (new User())->setEmail('summary-only@test.local');
+
+        $repository = $this->createMock(WardrobeItemRepository::class);
+        $repository->expects(self::once())->method('getStatisticsSummary')->with($user)->willReturn([
+            'active' => 4, 'archived' => 2, 'totalValue' => 1000.0, 'pricedCount' => 4, 'loved' => 2, 'complete' => 1,
+        ]);
+        $repository->expects(self::never())->method('getCategoryCounts');
+        $repository->expects(self::never())->method('getSeasonCounts');
+        $repository->expects(self::never())->method('getBrandCounts');
+        $repository->expects(self::never())->method('getColorCounts');
+        $repository->expects(self::never())->method('getCompletionCounts');
+        $repository->expects(self::never())->method('getWearStatusCounts');
+        $repository->expects(self::never())->method('getItemStatusCounts');
+
+        $summary = (new WardrobeStatisticsService($repository))->summaryForUser($user);
+
+        self::assertSame(4, $summary['active']);
+        self::assertSame(250.0, $summary['averagePrice']);
+        self::assertSame(50, $summary['lovedPercent']);
+        self::assertSame(25, $summary['completePercent']);
+    }
 }

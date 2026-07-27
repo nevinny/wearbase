@@ -34,19 +34,8 @@ final class WardrobeStatisticsService
      */
     public function forUser(User $user): array
     {
-        $summary = $this->items->getStatisticsSummary($user);
-        $activeCount = $summary['active'];
-
         return [
-            'summary' => [
-                'active' => $activeCount,
-                'archived' => $summary['archived'],
-                'totalValue' => $summary['totalValue'],
-                'averagePrice' => $summary['pricedCount'] > 0 ? $summary['totalValue'] / $summary['pricedCount'] : 0.0,
-                'loved' => $summary['loved'],
-                'lovedPercent' => $this->percent($summary['loved'], $activeCount),
-                'completePercent' => $this->percent($summary['complete'], $activeCount),
-            ],
+            'summary' => $this->buildSummary($this->items->getStatisticsSummary($user)),
             'categories' => $this->groups($this->items->getCategoryCounts($user), [], true),
             'seasons' => $this->groups($this->items->getSeasonCounts($user), self::SEASON_LABELS),
             'brands' => $this->groups($this->items->getBrandCounts($user)),
@@ -54,6 +43,36 @@ final class WardrobeStatisticsService
             'completion' => $this->groups($this->items->getCompletionCounts($user), WardrobeItem::COMPLETION_LABELS),
             'wearStatuses' => $this->groups($this->items->getWearStatusCounts($user), WardrobeItem::WEAR_LABELS),
             'itemStatuses' => $this->groups($this->items->getItemStatusCounts($user), WardrobeItem::ITEM_LABELS),
+        ];
+    }
+
+    /**
+     * Только summary (1 SQL-агрегат) — для карточек сравнения в семейной статистике,
+     * которым не нужны распределения по категориям/сезонам/etc.
+     *
+     * @return array{active: int, archived: int, totalValue: float, averagePrice: float, loved: int, lovedPercent: int, completePercent: int}
+     */
+    public function summaryForUser(User $user): array
+    {
+        return $this->buildSummary($this->items->getStatisticsSummary($user));
+    }
+
+    /**
+     * @param array{active: int, archived: int, totalValue: float, pricedCount: int, loved: int, complete: int} $summary
+     * @return array{active: int, archived: int, totalValue: float, averagePrice: float, loved: int, lovedPercent: int, completePercent: int}
+     */
+    private function buildSummary(array $summary): array
+    {
+        $activeCount = $summary['active'];
+
+        return [
+            'active' => $activeCount,
+            'archived' => $summary['archived'],
+            'totalValue' => $summary['totalValue'],
+            'averagePrice' => $summary['pricedCount'] > 0 ? $summary['totalValue'] / $summary['pricedCount'] : 0.0,
+            'loved' => $summary['loved'],
+            'lovedPercent' => $this->percent($summary['loved'], $activeCount),
+            'completePercent' => $this->percent($summary['complete'], $activeCount),
         ];
     }
 
