@@ -53,7 +53,12 @@ SHORT_SHA=${COMMIT_SHA:0:7}
 TITLE_RAW=$(printf '%s\n' "$COMMIT_MESSAGE" | head -n1)
 TITLE=$(escape_html "$TITLE_RAW")
 AUTHOR=$(escape_html "$COMMIT_AUTHOR")
-COMPARE_URL="https://github.com/${REPO}/compare/${BEFORE_SHA}...${COMMIT_SHA}"
+# Ссылка на диф имеет смысл только когда известен предыдущий sha: при force-push и
+# первом пуше в ветку github.event.before — нули, compare по ним отдаёт 404.
+LINKS="<a href=\"${RUN_URL}\">лог</a>"
+if [[ -n "$BEFORE_SHA" && ! "$BEFORE_SHA" =~ ^0+$ ]]; then
+  LINKS="${LINKS} · <a href=\"https://github.com/${REPO}/compare/${BEFORE_SHA}...${COMMIT_SHA}\">диф</a>"
+fi
 
 find_failed_step() {
   local names=(rsync prune migrate smoke)
@@ -74,7 +79,7 @@ if [[ "$JOB_STATUS" != "success" ]]; then
   MSG="🔴 Деплой упал · шаг: ${STEP}
 <b>${TITLE}</b>
 ${AUTHOR} · <code>${SHORT_SHA}</code>
-<a href=\"${RUN_URL}\">лог</a>"
+${LINKS}"
 else
   # Миграции: прод на doctrine/migrations 3.9.4 (НЕ 2.x — "++ migrating" там нет).
   # Реальный формат вывода `migrations:migrate --no-interaction`:
@@ -150,7 +155,7 @@ ${AUTHOR} · <code>${SHORT_SHA}</code>
 Миграции: ${MIGRATIONS}
 ${FILES_LINE}
 ${SMOKE_LINE}
-<a href=\"${RUN_URL}\">лог</a> · <a href=\"${COMPARE_URL}\">диф</a>"
+${LINKS}"
 fi
 
 printf '%s\n' "$MSG"
