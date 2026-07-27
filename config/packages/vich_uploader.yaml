@@ -70,6 +70,10 @@ vich_uploader:
                 options:
                     chars_per_dir: 2
                     dirs: 2
+            # Никакого физического DELETE по действию пользователя (проектное правило):
+            # без этого Vich сам стирает старый файл при замене photoFile и при remove().
+            delete_on_update: false
+            delete_on_remove: false
 
         wardrobe_draft_photo:
             uri_prefix: /images/wardrobe_drafts

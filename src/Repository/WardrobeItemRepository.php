@@ -7,6 +7,7 @@ namespace App\Repository;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -14,6 +15,17 @@ use Doctrine\Persistence\ManagerRegistry;
  */
 class WardrobeItemRepository extends ServiceEntityRepository
 {
+    /**
+     * Статусы, при которых вещь считается «неактивной» и попадает в архив
+     * (сама вещь физически не удаляется — это отдельный от soft-delete срез).
+     */
+    private const ARCHIVE_STATUSES = [
+        WardrobeItem::ITEM_ARCHIVED,
+        WardrobeItem::ITEM_SOLD,
+        WardrobeItem::ITEM_DONATED,
+        WardrobeItem::ITEM_LOST,
+    ];
+
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, WardrobeItem::class);
@@ -27,12 +39,67 @@ class WardrobeItemRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('w')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->orderBy('w.itemNo', 'DESC')
             ->getQuery()
             ->getResult();
+    }
+
+    /**
+     * @param array{q?: string, category?: string, brand?: string, color?: string, size?: string, season?: string, completion?: string} $filters
+     * @return WardrobeItem[]
+     */
+    public function searchForUser(User $user, array $filters, bool $archived = false): array
+    {
+        // leftJoin+addSelect тянет photos одним запросом (карточка списка читает
+        // item.coverPhoto на каждую вещь — без fetch join это N+1); distinct() —
+        // чтобы root-строки не размножались по join'у на количество фото.
+        $qb = $this->createQueryBuilder('w')
+            ->leftJoin('w.photos', 'p')
+            ->addSelect('p')
+            ->distinct()
+            ->andWhere('w.user = :user')
+            ->andWhere('w.deletedAt IS NULL')
+            ->andWhere($archived ? 'w.itemStatus IN (:archiveStatuses)' : 'w.itemStatus NOT IN (:archiveStatuses)')
+            ->setParameter('user', $user)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES);
+
+        if (!$archived) {
+            $qb->andWhere('w.wearStatus != :givenAway')
+                ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY);
+        }
+
+        $this->applyFilters($qb, $filters);
+
+        // Явный orderBy на root отключает автоприменение #[ORM\OrderBy] у w.photos —
+        // дублируем его вручную, чтобы getCoverPhoto()/getActivePhotos() видели тот же
+        // порядок, что и при обычной ленивой загрузке (show-страница).
+        return $qb->orderBy('w.itemNo', 'DESC')
+            ->addOrderBy('p.isCover', 'DESC')
+            ->addOrderBy('p.sortOrder', 'ASC')
+            ->addOrderBy('p.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Значения выпадающих списков принадлежат только выбранному члену семьи.
+     *
+     * @return array{categories: string[], brands: string[], colors: string[], sizes: string[], seasons: string[]}
+     */
+    public function getFilterOptions(User $user, bool $archived = false): array
+    {
+        return [
+            'categories' => $this->distinctFieldValues($user, 'category', $archived),
+            'brands' => $this->distinctFieldValues($user, 'customBrandName', $archived),
+            'colors' => $this->distinctFieldValues($user, 'colorName', $archived),
+            'sizes' => $this->distinctFieldValues($user, 'size', $archived),
+            'seasons' => $this->distinctFieldValues($user, 'season', $archived),
+        ];
     }
 
     /**
@@ -62,8 +129,10 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select('COUNT(w.id)')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->getQuery()
             ->getSingleScalarResult();
@@ -107,8 +176,10 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select("COALESCE(NULLIF(w.category, ''), 'Без категории') AS category", 'COUNT(w.id) AS cnt', 'COALESCE(SUM(w.price), 0) AS total')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->groupBy('category')
             ->orderBy('cnt', 'DESC')
@@ -140,12 +211,86 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select('DISTINCT w.category')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->getQuery()
             ->getSingleColumnResult();
 
         return array_map('strval', $rows);
+    }
+
+    /** @param array<string, string> $filters */
+    private function applyFilters(QueryBuilder $qb, array $filters): void
+    {
+        $fields = [
+            'category' => 'category',
+            'brand' => 'customBrandName',
+            'color' => 'colorName',
+            'size' => 'size',
+            'season' => 'season',
+            'completion' => 'completionStatus',
+        ];
+        foreach ($fields as $filter => $field) {
+            if (($filters[$filter] ?? '') !== '') {
+                $qb->andWhere(sprintf('w.%s = :filter_%s', $field, $filter))
+                    ->setParameter('filter_'.$filter, $filters[$filter]);
+            }
+        }
+
+        $query = trim($filters['q'] ?? '');
+        if ($query === '') {
+            return;
+        }
+
+        $or = $qb->expr()->orX();
+        $variants = array_values(array_unique([
+            $query,
+            mb_strtolower($query),
+            mb_strtoupper($query),
+            mb_convert_case($query, MB_CASE_TITLE),
+        ]));
+        foreach ($variants as $index => $variant) {
+            $parameter = 'query_'.$index;
+            foreach (['name', 'customBrandName', 'category', 'colorName', 'size'] as $field) {
+                $or->add(sprintf('w.%s LIKE :%s', $field, $parameter));
+            }
+            $qb->setParameter($parameter, '%'.$variant.'%');
+        }
+        $number = ltrim($query, "# \t\n\r\0\x0B");
+        if ($number !== '' && ctype_digit($number)) {
+            $or->add('w.itemNo = :itemNo');
+            $qb->setParameter('itemNo', (int) $number);
+        }
+        // Несколько вариантов регистра нужны тестовому SQLite; MySQL unicode_ci
+        // сопоставляет их регистронезависимо.
+        $qb->andWhere($or);
+    }
+
+    /** @return string[] */
+    private function distinctFieldValues(User $user, string $field, bool $archived): array
+    {
+        if (!in_array($field, ['category', 'customBrandName', 'colorName', 'size', 'season'], true)) {
+            throw new \InvalidArgumentException('Unsupported wardrobe filter field.');
+        }
+
+        $qb = $this->createQueryBuilder('w')
+            ->select('DISTINCT w.'.$field)
+            ->andWhere('w.user = :user')
+            ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.'.$field.' IS NOT NULL')
+            ->andWhere('w.'.$field." != ''")
+            ->andWhere($archived ? 'w.itemStatus IN (:archiveStatuses)' : 'w.itemStatus NOT IN (:archiveStatuses)')
+            ->setParameter('user', $user)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
+            ->orderBy('w.'.$field, 'ASC');
+        if (!$archived) {
+            $qb->andWhere('w.wearStatus != :givenAway')
+                ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY);
+        }
+
+        return array_map('strval', $qb->getQuery()->getSingleColumnResult());
     }
 }

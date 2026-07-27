@@ -30,7 +30,10 @@ class WardrobeItemFormType extends AbstractType
             ->add('photoFile', VichImageType::class, [
                 'label' => 'Фото',
                 'required' => false,
-                'allow_delete' => true,
+                // Чекбокс «удалить» дёргает Vich UploadHandler::remove() физически, в обход
+                // vich_uploader.yaml delete_on_*; уборка основного фото — только через
+                // галерею (WardrobePhotoManager::softDelete), там soft-delete.
+                'allow_delete' => false,
                 'download_uri' => false,
             ])
             ->add('productUrl', UrlType::class, [

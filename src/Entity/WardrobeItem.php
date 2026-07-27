@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\WardrobeItemRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\HttpFoundation\File\File;
@@ -33,6 +35,15 @@ class WardrobeItem
     public const ITEM_DONATED = 'donated';
     public const ITEM_TRANSFERRED = 'transferred';
     public const ITEM_LOST = 'lost';
+    public const ITEM_STATUS_LABELS = [
+        self::ITEM_ACTIVE      => 'Активна',
+        self::ITEM_REPAIR      => 'В ремонте',
+        self::ITEM_ARCHIVED    => 'В архиве',
+        self::ITEM_SOLD        => 'Продана',
+        self::ITEM_DONATED     => 'Подарена',
+        self::ITEM_TRANSFERRED => 'Передана',
+        self::ITEM_LOST        => 'Потеряна',
+    ];
 
     public const LOVE_YES = 'yes';
     public const LOVE_NO = 'no';
@@ -161,6 +172,11 @@ class WardrobeItem
     #[Vich\UploadableField(mapping: 'wardrobe_item_photo', fileNameProperty: 'photo')]
     private ?File $photoFile = null;
 
+    /** @var Collection<int, WardrobeItemPhoto> */
+    #[ORM\OneToMany(mappedBy: 'item', targetEntity: WardrobeItemPhoto::class, cascade: ['persist'])]
+    #[ORM\OrderBy(['isCover' => 'DESC', 'sortOrder' => 'ASC', 'id' => 'ASC'])]
+    private Collection $photos;
+
     // Канал добавления: SOURCE_WEB / SOURCE_TELEGRAM / SOURCE_IMPORT
     #[ORM\Column(length: 20, options: ['default' => self::SOURCE_WEB])]
     private string $source = self::SOURCE_WEB;
@@ -186,6 +202,7 @@ class WardrobeItem
     public function __construct()
     {
         $this->createdAt = new \DateTimeImmutable();
+        $this->photos = new ArrayCollection();
     }
 
     public function getId(): ?int { return $this->id; }
@@ -307,6 +324,11 @@ class WardrobeItem
 
     public function getItemStatus(): string { return $this->itemStatus; }
 
+    public function getItemStatusLabel(): string
+    {
+        return self::ITEM_STATUS_LABELS[$this->itemStatus] ?? $this->itemStatus;
+    }
+
     public function setItemStatus(string $itemStatus): static
     {
         $this->itemStatus = $itemStatus;
@@ -411,6 +433,40 @@ class WardrobeItem
     }
 
     public function getPhotoFile(): ?File { return $this->photoFile; }
+
+    /** @return Collection<int, WardrobeItemPhoto> */
+    public function getPhotos(): Collection { return $this->photos; }
+
+    /** @return WardrobeItemPhoto[] */
+    public function getActivePhotos(): array
+    {
+        // array_values() важен: ArrayCollection::filter() сохраняет исходные ключи,
+        // иначе [0] ?? null (здесь и в WardrobePhotoManager) молча вернёт null, если
+        // удалено именно первое добавленное фото.
+        return array_values($this->photos
+            ->filter(static fn (WardrobeItemPhoto $photo): bool => !$photo->isDeleted())
+            ->toArray());
+    }
+
+    public function getCoverPhoto(): ?WardrobeItemPhoto
+    {
+        $activePhotos = $this->getActivePhotos();
+        foreach ($activePhotos as $photo) {
+            if ($photo->isCover()) {
+                return $photo;
+            }
+        }
+        return $activePhotos[0] ?? null;
+    }
+
+    public function addPhoto(WardrobeItemPhoto $photo): static
+    {
+        if (!$this->photos->contains($photo)) {
+            $this->photos->add($photo);
+            $photo->setItem($this);
+        }
+        return $this;
+    }
 
     public function getSource(): string { return $this->source; }
 
