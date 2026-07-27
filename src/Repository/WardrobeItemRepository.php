@@ -15,6 +15,17 @@ use Doctrine\Persistence\ManagerRegistry;
  */
 class WardrobeItemRepository extends ServiceEntityRepository
 {
+    /**
+     * Статусы, при которых вещь считается «неактивной» и попадает в архив
+     * (сама вещь физически не удаляется — это отдельный от soft-delete срез).
+     */
+    private const ARCHIVE_STATUSES = [
+        WardrobeItem::ITEM_ARCHIVED,
+        WardrobeItem::ITEM_SOLD,
+        WardrobeItem::ITEM_DONATED,
+        WardrobeItem::ITEM_LOST,
+    ];
+
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, WardrobeItem::class);
@@ -61,9 +72,9 @@ class WardrobeItemRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('w')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
-            ->andWhere($archived ? 'w.itemStatus = :archived' : 'w.itemStatus != :archived')
+            ->andWhere($archived ? 'w.itemStatus IN (:archiveStatuses)' : 'w.itemStatus NOT IN (:archiveStatuses)')
             ->setParameter('user', $user)
-            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED);
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES);
 
         if (!$archived) {
             $qb->andWhere('w.wearStatus != :givenAway')
@@ -118,10 +129,10 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select('COUNT(w.id)')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
-            ->andWhere('w.itemStatus != :archived')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
-            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->getQuery()
             ->getSingleScalarResult();
@@ -165,10 +176,10 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->select("COALESCE(NULLIF(w.category, ''), 'Без категории') AS category", 'COUNT(w.id) AS cnt', 'COALESCE(SUM(w.price), 0) AS total')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
-            ->andWhere('w.itemStatus != :archived')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
-            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
             ->groupBy('category')
             ->orderBy('cnt', 'DESC')
@@ -271,9 +282,9 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->andWhere('w.deletedAt IS NULL')
             ->andWhere('w.'.$field.' IS NOT NULL')
             ->andWhere('w.'.$field." != ''")
-            ->andWhere($archived ? 'w.itemStatus = :archived' : 'w.itemStatus != :archived')
+            ->andWhere($archived ? 'w.itemStatus IN (:archiveStatuses)' : 'w.itemStatus NOT IN (:archiveStatuses)')
             ->setParameter('user', $user)
-            ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
+            ->setParameter('archiveStatuses', self::ARCHIVE_STATUSES)
             ->orderBy('w.'.$field, 'ASC');
         if (!$archived) {
             $qb->andWhere('w.wearStatus != :givenAway')

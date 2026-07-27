@@ -38,7 +38,7 @@ class WardrobeItemPhoto
     #[ORM\Column(length: 255)]
     private ?string $filePath = null;
 
-    #[Vich\UploadableField(mapping: 'wardrobe_gallery_photo', fileNameProperty: 'filePath')]
+    #[Vich\UploadableField(mapping: 'wardrobe_item_photo', fileNameProperty: 'filePath')]
     private ?File $file = null;
 
     #[ORM\Column(length: 20, options: ['default' => self::TYPE_PRODUCT])]
