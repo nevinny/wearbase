@@ -25,15 +25,20 @@
     <div class="flex gap-2">
         <a href="{{ path('account_wardrobe_edit', {id: item.id}|merge(memberParam)) }}"
            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Редактировать</a>
-        {# «В архив» — только из active; «Вернуть» — только из archived; терминальные
-           статусы (sold/donated/lost) не показывают ни ту, ни другую кнопку — статус
-           виден чипом ниже, менять его обратно можно только осознанно через форму. #}
+        {# «В архив» — из active/repair/transferred (гварда WardrobeManager::archive);
+           «Вернуть» — только из archived; терминальные статусы (sold/donated/lost) не
+           показывают ни ту, ни другую кнопку — статус виден чипом ниже, менять его
+           обратно можно только осознанно через форму. #}
         {% if item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ARCHIVED') %}
             <form method="post" action="{{ path('account_wardrobe_restore', {id: item.id}|merge(memberParam)) }}">
                 <input type="hidden" name="_token" value="{{ csrf_token('restore_wardrobe_item_' ~ item.id) }}">
                 <button type="submit" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Вернуть в гардероб</button>
             </form>
-        {% elseif item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE') %}
+        {% elseif item.itemStatus in [
+            constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE'),
+            constant('App\\Entity\\WardrobeItem::ITEM_REPAIR'),
+            constant('App\\Entity\\WardrobeItem::ITEM_TRANSFERRED'),
+        ] %}
             <form method="post" action="{{ path('account_wardrobe_archive', {id: item.id}|merge(memberParam)) }}"
                   onsubmit="return confirm('Переместить вещь в архив?')">
                 <input type="hidden" name="_token" value="{{ csrf_token('archive_wardrobe_item_' ~ item.id) }}">
@@ -134,6 +139,16 @@
         <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
             <h2 class="mb-4 text-sm font-bold">Факты</h2>
             <dl class="grid gap-3 text-sm">
+                {% if item.styles|length > 0 %}
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-500">Стиль</dt>
+                    <dd class="flex flex-wrap justify-end gap-1">
+                        {% for style in item.styles %}
+                            <span class="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold">{{ style.title }}</span>
+                        {% endfor %}
+                    </dd>
+                </div>
+                {% endif %}
                 {% if item.price is not null %}
                 <div class="flex justify-between gap-4">
                     <dt class="text-gray-500">Цена</dt>

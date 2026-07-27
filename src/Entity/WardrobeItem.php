@@ -35,14 +35,27 @@ class WardrobeItem
     public const ITEM_DONATED = 'donated';
     public const ITEM_TRANSFERRED = 'transferred';
     public const ITEM_LOST = 'lost';
-    public const ITEM_STATUS_LABELS = [
-        self::ITEM_ACTIVE      => 'Активна',
-        self::ITEM_REPAIR      => 'В ремонте',
-        self::ITEM_ARCHIVED    => 'В архиве',
-        self::ITEM_SOLD        => 'Продана',
-        self::ITEM_DONATED     => 'Подарена',
+    public const ITEM_LABELS = [
+        self::ITEM_ACTIVE => 'Активна',
+        self::ITEM_REPAIR => 'В ремонте',
+        self::ITEM_ARCHIVED => 'В архиве',
+        self::ITEM_SOLD => 'Продана',
+        self::ITEM_DONATED => 'Подарена',
         self::ITEM_TRANSFERRED => 'Передана',
-        self::ITEM_LOST        => 'Потеряна',
+        self::ITEM_LOST => 'Потеряна',
+    ];
+
+    /**
+     * Статусы, при которых вещь считается «неактивной» и попадает в архив
+     * (сама вещь физически не удаляется — это отдельный от soft-delete срез).
+     * Единственный источник истины: используется и репозиторием (выборки),
+     * и контроллером/шаблонами (какие статусы доступны только в архивном виде).
+     */
+    public const ARCHIVE_STATUSES = [
+        self::ITEM_ARCHIVED,
+        self::ITEM_SOLD,
+        self::ITEM_DONATED,
+        self::ITEM_LOST,
     ];
 
     public const LOVE_YES = 'yes';
@@ -126,6 +139,11 @@ class WardrobeItem
     #[ORM\Column(length: 50, nullable: true)]
     private ?string $season = null;
 
+    /** @var Collection<int, BrandStyle> */
+    #[ORM\ManyToMany(targetEntity: BrandStyle::class)]
+    #[ORM\JoinTable(name: 'wardrobe_item_style')]
+    private Collection $styles;
+
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $careText = null;
 
@@ -203,6 +221,7 @@ class WardrobeItem
     {
         $this->createdAt = new \DateTimeImmutable();
         $this->photos = new ArrayCollection();
+        $this->styles = new ArrayCollection();
     }
 
     public function getId(): ?int { return $this->id; }
@@ -301,6 +320,23 @@ class WardrobeItem
         return $this;
     }
 
+    /** @return Collection<int, BrandStyle> */
+    public function getStyles(): Collection { return $this->styles; }
+
+    public function addStyle(BrandStyle $style): static
+    {
+        if (!$this->styles->contains($style)) {
+            $this->styles->add($style);
+        }
+        return $this;
+    }
+
+    public function removeStyle(BrandStyle $style): static
+    {
+        $this->styles->removeElement($style);
+        return $this;
+    }
+
     public function getCareText(): ?string { return $this->careText; }
 
     public function setCareText(?string $careText): static
@@ -326,7 +362,7 @@ class WardrobeItem
 
     public function getItemStatusLabel(): string
     {
-        return self::ITEM_STATUS_LABELS[$this->itemStatus] ?? $this->itemStatus;
+        return self::ITEM_LABELS[$this->itemStatus] ?? $this->itemStatus;
     }
 
     public function setItemStatus(string $itemStatus): static

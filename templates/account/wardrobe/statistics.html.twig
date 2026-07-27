@@ -1,0 +1,133 @@
+{% extends 'account/layout.html.twig' %}
+{% block title %}Статистика гардероба — WEARBASE{% endblock %}
+
+{% block account_content %}
+{% set memberParam = {member: currentMember.id} %}
+{% set summary = statistics.summary %}
+
+<div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div>
+        <h1 class="text-lg font-bold">Статистика гардероба</h1>
+        {% if not isOwnWardrobe %}<p class="mt-1 text-sm text-gray-500">{{ currentMember.fullName }}</p>{% endif %}
+    </div>
+    <a href="{{ path('account_wardrobe_index', memberParam) }}"
+       class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">← К вещам</a>
+</div>
+
+{% if members|length > 1 %}
+<div class="mb-6 flex flex-wrap gap-2">
+    {% for member in members %}
+        <a href="{{ path('account_wardrobe_statistics', {member: member.id}) }}"
+           class="rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-sm {{ currentMember.id == member.id ? 'bg-gray-900 text-white' : 'bg-white text-gray-600' }}">
+            {{ member.firstName ?: member.fullName }}
+        </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <a href="{{ path('account_wardrobe_index', memberParam) }}" class="rounded-2xl bg-white p-5 shadow-sm hover:shadow-md">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Активных вещей</div>
+        <div class="mt-1 text-2xl font-bold">{{ summary.active }}</div>
+    </a>
+    <a href="{{ path('account_wardrobe_index', memberParam|merge({view: 'archive'})) }}" class="rounded-2xl bg-white p-5 shadow-sm hover:shadow-md">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">В архиве</div>
+        <div class="mt-1 text-2xl font-bold">{{ summary.archived }}</div>
+    </a>
+    <div class="rounded-2xl bg-white p-5 shadow-sm">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Стоимость гардероба</div>
+        <div class="mt-1 text-2xl font-bold">{{ summary.totalValue|number_format(0, ',', ' ') }} ₽</div>
+        <div class="mt-1 text-xs text-gray-400">Средняя цена {{ summary.averagePrice|number_format(0, ',', ' ') }} ₽</div>
+    </div>
+    <div class="rounded-2xl bg-white p-5 shadow-sm">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Любимые вещи</div>
+        <div class="mt-1 text-2xl font-bold">{{ summary.loved }} <span class="text-sm text-gray-400">({{ summary.lovedPercent }}%)</span></div>
+        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100"><div class="h-full rounded-full bg-rose-400" style="width: {{ summary.lovedPercent }}%"></div></div>
+    </div>
+</div>
+
+<div class="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+    <div class="mb-2 flex items-center justify-between">
+        <h2 class="text-sm font-bold">Заполненность карточек</h2>
+        <span class="text-sm font-bold">{{ summary.completePercent }}%</span>
+    </div>
+    <div class="h-2 overflow-hidden rounded-full bg-gray-100"><div class="h-full rounded-full bg-emerald-500" style="width: {{ summary.completePercent }}%"></div></div>
+    <div class="mt-4 grid gap-2 sm:grid-cols-3">
+        {% for row in statistics.completion %}
+            <a href="{{ path('account_wardrobe_index', memberParam|merge({completion: row.key})) }}"
+               class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100">
+                <span>{{ row.label }}</span><strong>{{ row.count }}</strong>
+            </a>
+        {% endfor %}
+    </div>
+</div>
+
+{% macro distribution(title, rows, filter, memberParam, labels, showTotal) %}
+<div class="rounded-2xl bg-white p-5 shadow-sm">
+    <h2 class="mb-4 text-sm font-bold">{{ title }}</h2>
+    {% set maxCount = rows|length > 0 ? rows[0].count : 1 %}
+    <div class="space-y-3">
+        {% for row in rows %}
+            {% set target = row.key is null ? null : path('account_wardrobe_index', memberParam|merge({(filter): row.key})) %}
+            <div>
+                <div class="mb-1 flex justify-between gap-3 text-xs">
+                    {% if target %}<a href="{{ target }}" class="truncate font-semibold hover:underline">{{ labels[row.key] ?? row.label }}</a>{% else %}<span class="truncate font-semibold">{{ row.label }}</span>{% endif %}
+                    <span class="shrink-0 text-gray-400">{{ row.count }}{% if showTotal %} · {{ row.total|number_format(0, ',', ' ') }} ₽{% endif %}</span>
+                </div>
+                <div class="h-1.5 overflow-hidden rounded-full bg-gray-100"><div class="h-full rounded-full bg-gray-800" style="width: {{ (row.count / maxCount * 100)|round }}%"></div></div>
+            </div>
+        {% else %}
+            <p class="text-sm text-gray-400">Пока нет данных</p>
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}
+
+{% import _self as charts %}
+{% set seasonLabels = {'all': 'Всесезон', 'spring': 'Весна', 'summer': 'Лето', 'autumn': 'Осень', 'winter': 'Зима'} %}
+<div class="mb-6 grid gap-4 lg:grid-cols-2">
+    {{ charts.distribution('Категории', statistics.categories, 'category', memberParam, {}, true) }}
+    {{ charts.distribution('Сезоны', statistics.seasons, 'season', memberParam, seasonLabels, false) }}
+    {{ charts.distribution('Бренды', statistics.brands, 'brand', memberParam, {}, false) }}
+    {{ charts.distribution('Цвета', statistics.colors, 'color', memberParam, {}, false) }}
+</div>
+
+<div class="mb-6 grid gap-4 lg:grid-cols-2">
+    <div class="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 class="mb-4 text-sm font-bold">Статус носки</h2>
+        <div class="space-y-2">
+            {% for row in statistics.wearStatuses %}
+                <a href="{{ path('account_wardrobe_index', memberParam|merge({wear: row.key})) }}" class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></a>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="rounded-2xl bg-white p-5 shadow-sm">
+        <h2 class="mb-4 text-sm font-bold">Состояние вещей</h2>
+        <div class="space-y-2">
+            {% for row in statistics.itemStatuses %}
+                {% if row.key in constant('App\\Entity\\WardrobeItem::ARCHIVE_STATUSES') %}
+                    {# archived/sold/donated/lost существуют только в архивном срезе #}
+                    <a href="{{ path('account_wardrobe_index', memberParam|merge({view: 'archive', status: row.key})) }}" class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></a>
+                {% else %}
+                    <a href="{{ path('account_wardrobe_index', memberParam|merge({status: row.key})) }}" class="flex justify-between rounded-xl bg-gray-50 px-3 py-2 text-sm hover:bg-gray-100"><span>{{ row.label }}</span><strong>{{ row.count }}</strong></a>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% if familyComparison|length > 1 %}
+<div class="rounded-2xl bg-white p-5 shadow-sm">
+    <h2 class="mb-4 text-sm font-bold">Семейный гардероб</h2>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {% for row in familyComparison %}
+            <a href="{{ path('account_wardrobe_statistics', {member: row.member.id}) }}" class="rounded-xl border border-gray-100 p-4 hover:bg-gray-50">
+                <div class="font-semibold">{{ row.member.fullName }}</div>
+                <div class="mt-2 text-sm text-gray-500">{{ row.summary.active }} вещей · {{ row.summary.totalValue|number_format(0, ',', ' ') }} ₽</div>
+                <div class="mt-1 text-xs text-gray-400">Заполнено полностью: {{ row.summary.completePercent }}%</div>
+            </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

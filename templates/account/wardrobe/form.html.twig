@@ -131,6 +131,18 @@
         <div class="col-span-12 md:col-span-6"><label class="{{ tw_label }}">Уход</label>{{ form_widget(form.careText, {'attr': {'class': tw_input}}) }}</div>
         <div class="col-span-12 md:col-span-6"><label class="{{ tw_label }}">Сезон</label>{{ form_widget(form.season, {'attr': {'class': tw_input}}) }}</div>
         <div class="col-span-12 md:col-span-6"><label class="{{ tw_label }}">Страна производства</label>{{ form_widget(form.countryOfOrigin, {'attr': {'class': tw_input}}) }}</div>
+        <div class="col-span-12 md:col-span-6">
+            <label class="{{ tw_label }}">Стиль</label>
+            <div class="flex flex-wrap gap-x-4 gap-y-1">
+                {% for child in form.styles %}
+                <div class="flex items-center gap-2">
+                    {{ form_widget(child, {'attr': {'class': 'h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                    {{ form_label(child, null, {'label_attr': {'class': 'text-sm'}}) }}
+                </div>
+                {% endfor %}
+            </div>
+            {{ f.err(form.styles) }}
+        </div>
         <div class="col-span-12"><label class="{{ tw_label }}">Статус вещи</label>{{ form_widget(form.itemStatus, {'attr': {'class': tw_input}}) }}</div>
     </div>
 </div>

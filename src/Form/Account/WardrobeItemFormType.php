@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Form\Account;
 
+use App\Entity\BrandStyle;
 use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeItem;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
@@ -104,20 +106,28 @@ class WardrobeItemFormType extends AbstractType
                 'placeholder' => '—',
                 'choices' => ['Всесезон' => 'all', 'Весна' => 'spring', 'Лето' => 'summer', 'Осень' => 'autumn', 'Зима' => 'winter'],
             ])
+            ->add('styles', EntityType::class, [
+                'class' => BrandStyle::class,
+                'label' => 'Стиль',
+                'required' => false,
+                'choice_label' => 'title',
+                'multiple' => true,
+                'expanded' => true,
+                // Удалённые в админке стили (Statuses::Deleted) не предлагаем к выбору,
+                // но уже проставленный у вещи стиль отношение не рвёт (см. WardrobeItemStyleTest).
+                'query_builder' => static fn ($repository) => $repository->createQueryBuilder('style')
+                    ->andWhere('style.status = :active')
+                    ->setParameter('active', Statuses::Active)
+                    ->orderBy('style.ord', 'ASC')
+                    ->addOrderBy('style.title', 'ASC'),
+                'by_reference' => false,
+            ])
             ->add('countryOfOrigin', TextType::class, ['label' => 'Страна производства', 'required' => false])
             ->add('careText', TextareaType::class, ['label' => 'Уход', 'required' => false, 'attr' => ['rows' => 2]])
             ->add('notes', TextareaType::class, ['label' => 'Заметки', 'required' => false, 'attr' => ['rows' => 3]])
             ->add('itemStatus', ChoiceType::class, [
                 'label' => 'Статус вещи',
-                'choices' => [
-                    'Активна' => WardrobeItem::ITEM_ACTIVE,
-                    'В ремонте' => WardrobeItem::ITEM_REPAIR,
-                    'В архиве' => WardrobeItem::ITEM_ARCHIVED,
-                    'Продана' => WardrobeItem::ITEM_SOLD,
-                    'Подарена' => WardrobeItem::ITEM_DONATED,
-                    'Передана' => WardrobeItem::ITEM_TRANSFERRED,
-                    'Потеряна' => WardrobeItem::ITEM_LOST,
-                ],
+                'choices' => array_flip(WardrobeItem::ITEM_LABELS),
             ])
             ->add('pros', TextareaType::class, ['label' => 'Плюсы', 'required' => false, 'attr' => ['rows' => 2]])
             ->add('cons', TextareaType::class, ['label' => 'Минусы', 'required' => false, 'attr' => ['rows' => 2]])
