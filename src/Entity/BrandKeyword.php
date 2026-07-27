@@ -31,6 +31,9 @@ class BrandKeyword
 
     public const REGION_RUSSIA = 225;
 
+    public const NICHE_IN  = 'in';
+    public const NICHE_OFF = 'off';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -55,6 +58,17 @@ class BrandKeyword
 
     #[ORM\Column(length: 16, options: ['default' => self::SOURCE_WORDSTAT])]
     private string $source = self::SOURCE_WORDSTAT;
+
+    /**
+     * Вердикт классификатора ниши по ЭТОЙ ФРАЗЕ (app:brand:keyword-niche-check):
+     * NULL — не проверена (fail-open, трактуется как проходит); 'in' — про моду/
+     * красоту; 'off' — не про нишу (яндекс, техника, аптека и т.п.).
+     */
+    #[ORM\Column(length: 12, nullable: true)]
+    private ?string $nicheStatus = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $nicheCheckedAt = null;
 
     public function getId(): ?int
     {
@@ -125,5 +139,33 @@ class BrandKeyword
     {
         $this->source = $source;
         return $this;
+    }
+
+    public function getNicheStatus(): ?string
+    {
+        return $this->nicheStatus;
+    }
+
+    public function setNicheStatus(?string $nicheStatus): self
+    {
+        $this->nicheStatus = $nicheStatus;
+        return $this;
+    }
+
+    public function getNicheCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->nicheCheckedAt;
+    }
+
+    public function setNicheCheckedAt(?\DateTimeInterface $nicheCheckedAt): self
+    {
+        $this->nicheCheckedAt = $nicheCheckedAt;
+        return $this;
+    }
+
+    /** Подтверждённо не про нишу WEARBASE — режется в потребителях контента. */
+    public function isOffNiche(): bool
+    {
+        return $this->nicheStatus === self::NICHE_OFF;
     }
 }

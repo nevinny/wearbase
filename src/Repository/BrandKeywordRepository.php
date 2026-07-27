@@ -29,13 +29,17 @@ class BrandKeywordRepository extends ServiceEntityRepository
 
     /**
      * Ключевики бренда: сначала origin, внутри — по убыванию частоты.
+     * Режет фразы с явным niche_status='off' (не про моду/красоту — «яндекс
+     * погода» и т.п.); NULL (не проверена) проходит fail-open.
      * @return BrandKeyword[]
      */
     public function findByBrandRanked(Brand $brand, int $limit = 8): array
     {
         return $this->createQueryBuilder('k')
             ->where('k.brand = :brand')
+            ->andWhere('(k.nicheStatus IS NULL OR k.nicheStatus != :off)')
             ->setParameter('brand', $brand)
+            ->setParameter('off', BrandKeyword::NICHE_OFF)
             ->orderBy('k.type', 'ASC')        // origin < related
             ->addOrderBy('k.monthlyShows', 'DESC')
             ->setMaxResults($limit)
@@ -43,16 +47,37 @@ class BrandKeywordRepository extends ServiceEntityRepository
             ->getResult();
     }
 
-    /** Топ-фраза бренда по частотности (для рубрики demand — ответ на реальный спрос). */
+    /**
+     * Топ-фраза бренда по частотности (для рубрики demand — ответ на реальный
+     * спрос). Тот же фильтр off-ниши, что и findByBrandRanked().
+     */
     public function findTopByBrand(Brand $brand): ?BrandKeyword
     {
         return $this->createQueryBuilder('k')
             ->where('k.brand = :brand')
+            ->andWhere('(k.nicheStatus IS NULL OR k.nicheStatus != :off)')
             ->setParameter('brand', $brand)
+            ->setParameter('off', BrandKeyword::NICHE_OFF)
             ->orderBy('k.monthlyShows', 'DESC')
             ->setMaxResults(1)
             ->getQuery()
             ->getOneOrNullResult();
+    }
+
+    /**
+     * Все ключевики бренда для агент-payload (BrandPayloadAssembler) — без
+     * off-ниши, чтобы прод не получал мусорные фразы.
+     * @return BrandKeyword[]
+     */
+    public function findExportableByBrand(Brand $brand): array
+    {
+        return $this->createQueryBuilder('k')
+            ->where('k.brand = :brand')
+            ->andWhere('(k.nicheStatus IS NULL OR k.nicheStatus != :off)')
+            ->setParameter('brand', $brand)
+            ->setParameter('off', BrandKeyword::NICHE_OFF)
+            ->getQuery()
+            ->getResult();
     }
 
     public function deleteForBrand(Brand $brand): void
