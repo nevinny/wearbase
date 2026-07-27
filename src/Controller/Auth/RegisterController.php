@@ -9,9 +9,11 @@ use App\Entity\BrandUser;
 use App\Entity\User;
 use App\Form\Auth\BrandRegistrationFormType;
 use App\Form\Auth\RegistrationFormType;
+use App\Notification\AdminNotifier;
 use App\Notification\EmailNotifier;
 use App\Service\SubscriptionFactory;
 use Doctrine\ORM\EntityManagerInterface;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Request;
@@ -35,6 +37,7 @@ class RegisterController extends AbstractController
         FormLoginAuthenticator $authenticator,
         EmailNotifier $emailNotifier,
         SubscriptionFactory $subscriptionFactory,
+        AdminNotifier $adminNotifier,
     ): Response {
         if ($this->getUser()) {
             return $this->redirectToRoute(
@@ -65,6 +68,11 @@ class RegisterController extends AbstractController
                 $brand = new Brand();
                 $brand->setTitle($brandTitle);
                 $brand->setSlug($this->generateUniqueSlug($slugger, $em, $brandTitle));
+                // Премодерация: карточка НЕ публикуется по факту регистрации. Дефолт трейта Status —
+                // Active, то есть раньше бренд с одним лишь названием мгновенно попадал в каталог и
+                // sitemap, минуя ниша-гейт и origin-гейт (docs/foreign_brands_policy.md). Владелец
+                // сразу работает в ЛК, а публикацию открывает админ (publish_pending → app:publish-tick).
+                $brand->setStatus(Statuses::New);
                 $em->persist($brand);
 
                 $brandUser = new BrandUser();
@@ -75,6 +83,13 @@ class RegisterController extends AbstractController
                 $em->persist($brandUser);
 
                 $subscriptionFactory->createFreeTrial($brand);
+
+                // Карточка ждёт модерации — владелец об этом видит баннер в ЛК, а мы узнаём в TG.
+                $adminNotifier->send(sprintf(
+                    "\xF0\x9F\x86\x95 <b>Самостоятельная регистрация бренда</b>\nБренд: %s\nВладелец: %s\nСтатус: на модерации (не опубликован)",
+                    htmlspecialchars($brandTitle, ENT_QUOTES, 'UTF-8'),
+                    htmlspecialchars((string) $user->getEmail(), ENT_QUOTES, 'UTF-8'),
+                ));
             } else {
                 // Regular customer registration
                 $user->setRoles(['ROLE_CUSTOMER']);

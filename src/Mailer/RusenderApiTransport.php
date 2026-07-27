@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Mailer;
 
+use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Mailer\Envelope;
 use Symfony\Component\Mailer\Exception\HttpTransportException;
 use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mailer\Transport\AbstractApiTransport;
 use Symfony\Component\Mime\Email;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
@@ -19,14 +22,31 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
  * DSN: rusender+api://API_KEY@default[?key_id=4487]
  *  - key_id задан → POST /api/v1/external-mails/send/{key_id} (новый формат, Bearer)
  *  - без key_id   → POST /api/v1/external-mails/send (старый формат, X-Api-Key)
+ *
+ * ⚠️ Рабочая комбинация (проверено curl'ом с прода 2026-07-26, HTTP 201):
+ * host `api.beta.rusender.ru` + `X-Api-Key` + путь без key_id. Тот же ключ на
+ * `api.rusender.ru` (и с Bearer, и с X-Api-Key, и с /send/{key_id}) отдаёт
+ * 401 «Provided API token is invalid» — поэтому beta и есть дефолтный хост.
+ * Аутрич (BrandOutreachMailer) ходит туда же.
  */
 final class RusenderApiTransport extends AbstractApiTransport
 {
+    /**
+     * ⚠️ Dispatcher обязателен к передаче наверх: именно на `MessageEvent` висит
+     * twig-рендерер тела (`BodyRenderer`). Без него любое `TemplatedEmail` доходит до
+     * транспорта БЕЗ html/text и падает с «A message must have a text or an HTML part»
+     * — то есть молча умирают все письма из EmailNotifier. Проявилось 19.07–26.07.2026, когда
+     * этот транспорт стал активным DSN вместо отвалившегося SMTP (до 19.07 письма шли через
+     * smtp://smtp.rusender.ru и рендерились штатно — родная фабрика dispatcher передаёт).
+     */
     public function __construct(
         private readonly string $apiKey,
         private readonly ?string $keyId = null,
+        ?HttpClientInterface $client = null,
+        ?EventDispatcherInterface $dispatcher = null,
+        ?LoggerInterface $logger = null,
     ) {
-        parent::__construct();
+        parent::__construct($client, $dispatcher, $logger);
     }
 
     public function __toString(): string
@@ -91,6 +111,6 @@ final class RusenderApiTransport extends AbstractApiTransport
 
     private function getEndpoint(): string
     {
-        return ($this->host ?: 'api.rusender.ru') . ($this->port ? ':' . $this->port : '');
+        return ($this->host ?: 'api.beta.rusender.ru') . ($this->port ? ':' . $this->port : '');
     }
 }

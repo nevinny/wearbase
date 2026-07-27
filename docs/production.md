@@ -44,7 +44,7 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 | `MAILER_DSN` | `null://null` — письма НЕ уходят | `smtp://hello@mail.wearbase.ru@smtp.rusender.ru:465` | Rusender. ⚠️ см. «Известные проблемы» |
 | `TURNSTILE_KEY/SECRET` | в `.env.local` тестовые Cloudflare (3x/1x, always-pass) | боевые (0x4AAA…) | в `.env` — те же тестовые дефолты |
 | `TELEGRAM_BOT_TOKEN` | `.env.local` | прод `.env.local` | |
-| `ADMIN_TELEGRAM_CHAT_ID` | `.env` | `.env` | админ-дайджесты |
+| `ADMIN_TELEGRAM_CHAT_ID` | `.env.local` | прод `.env.local` | с 2026-07-27 — группа «Wearbase_admin» `-5444713140` (раньше личка `140045444`). Туда идут ВСЕ уведомления бота: дайджесты, health-алерты, лиды, кнопки публикаций, релей визитёров. ⚠️ если группу поднимут до супергруппы, id сменится на `-100…` — обновить в обоих `.env.local` |
 | `GSC_CREDENTIALS_PATH` | `config/secrets/gsc-sa.json` | пусто (GSC гоняем с Mac) | `app:gsc:sync`, `app:report:daily` |
 | `YOOKASSA_*` | пусто/тест | прод `.env.local` | |
 | `OPENROUTER_API_KEY` | `.env.local` | прод `.env.local` (перенесён 2026-07-11) | AI-подсказки гардероба |
@@ -63,7 +63,15 @@ for u in /ru/ /ru/blog /ru/cities /cart /sitemap.xml; do \
 - **⚠️ Лимит тарифа: 100 писем/период** (на 2026-06-12 осталось 86, действует до 05.07.2026). Заказ = 2+ письма (бренд + покупатель), плюс verify-email и newsletter double opt-in. При реальном трафике квота кончится за дни — поднять тариф или ограничить email-канал критичными событиями.
 - Ошибки отправки видны в `var/log/prod.log` (`Email notification failed`, с 2026-06-12).
 - **Бесплатный обход SMTP: кастомный транспорт `rusender+api://`** (`src/Mailer/RusenderApiTransport.php`, фабрика зарегистрирована в services.yaml). Отправляет через HTTP API тем же API-ключом из вкладки «Ключ» (активен на бесплатном тарифе, SMTP-активация не нужна). DSN: `MAILER_DSN=rusender+api://<API_KEY>@default?key_id=4487`. Один получатель = один запрос к API; ошибки API кидаются как HttpTransportException и ловятся логированием EmailNotifier.
-- **⚠️ 2026-07-19: оба канала мертвы одновременно.** SMTP-транспорт на проде падал `450 SMTP connection unavailable` (см. выше) → переключили на `rusender+api://` (ключ из `.env.local`, бэкап `.env.local.bak-mailerdsn-20260719`), но сам ключ тоже оказался протухшим/отозванным — `mailer:test` отдаёт `401 Provided API token is invalid`. Значит email от WEARBASE сейчас в принципе не уходит ни одним из двух путей. Фикс требует ручного захода в кабинет Rusender (вкладка «Ключ») за новым токеном — вне доступа агента. До этого критичные админ-уведомления (напр. заявки на забор бренда, `BrandClaimController`) дублированы в TG через `AdminNotifier` — независимый канал, не зависящий от Rusender.
+- **⚠️ 2026-07-19: диагноз «оба канала мертвы, ключ отозван» — БЫЛ НЕВЕРЕН.** SMTP действительно падал `450 SMTP connection unavailable`, но `401 Provided API token is invalid` у API-транспорта давал не протухший ключ, а неверный хост/путь. Ключ живой (бэкап DSN — `.env.local.bak-mailerdsn-20260719`).
+- **✅ 2026-07-26: почта починена и проверена (RuSender 201).** Работающая комбинация, проверенная curl'ом с прода:
+  - хост **`api.beta.rusender.ru`**, заголовок **`X-Api-Key`**, путь **без** `key_id` → 201. Тот же ключ на `api.rusender.ru` → 401 (и с `Bearer`, и с `X-Api-Key`, и с `/send/{key_id}`). Дефолтный хост транспорта = beta; прод-DSN приведён к `rusender+api://<KEY>@default` (бэкап `.env.local.bak-20260726`).
+  - **From только с подтверждённого домена `mail.wearbase.ru`** (`hello@wearbase.ru` → 404 «User Domain not found»). Задаётся `MAILER_FROM`, дефолт в коде; `ADMIN_EMAIL` — получатель админских писем и `Reply-To`.
+  - **транспорту обязателен dispatcher** из фабрики: на `MessageEvent` висит twig `BodyRenderer`, без него `TemplatedEmail` уходит без html и падает «A message must have a text or an HTML part». Из-за этого **с 19.07 по 26.07** (неделя — с момента, когда API-транспорт стал активным DSN вместо отвалившегося SMTP) не отправлялось ни одно письмо `EmailNotifier`: верификация email, коды заявок, сброс пароля, подтверждения заказов. Регрессия закрыта тестом `tests/Mailer/RusenderApiTransportTest`.
+  - 📌 **До 19.07 почта работала** — `smtp://hello%…@smtp.rusender.ru:465` (бэкапы `.env.local.bak-blogpub`, `.env.local.bak-mailerdsn-20260719`): штатный SMTP-транспорт получает dispatcher от родной фабрики, тело рендерилось. Дата 12.06 — появление КОДА транспорта, а не его включение; не путать.
+  - Почему 19.07 диагностировали как «ключ отозван»: `mailer:test` шлёт обычный `Email` с готовым текстом, ему рендер не нужен → запрос доходил до API и получал 401 (неверный хост). А реальные `TemplatedEmail` падали ещё раньше, на пустом теле. Два разных симптома одной недели.
+- ⚠️ Проверять отправку **по логу** (`Response: "201 …external-mails/send"`), а не повторным запуском команды: ключ идемпотентности мы не передаём, каждый прогон = новое письмо адресату. `EmailNotifier::send()` возвращает `bool` — в командах проверять результат.
+- Админ-уведомления по-прежнему дублируются в TG через `AdminNotifier` — независимый от RuSender канал.
 
 ## Входящая почта hello@mail.wearbase.ru (форвардер на Gmail)
 

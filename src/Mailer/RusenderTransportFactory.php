@@ -17,9 +17,14 @@ final class RusenderTransportFactory extends AbstractTransportFactory
             throw new UnsupportedSchemeException($dsn, 'rusender', $this->getSupportedSchemes());
         }
 
+        // client/dispatcher/logger — из AbstractTransportFactory; dispatcher критичен:
+        // без него не рендерится тело TemplatedEmail (см. комментарий в транспорте).
         $transport = new RusenderApiTransport(
             $this->getUser($dsn),
             $dsn->getOption('key_id'),
+            $this->client,
+            $this->dispatcher,
+            $this->logger,
         );
 
         if ('default' !== $dsn->getHost()) {

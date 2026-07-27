@@ -104,7 +104,11 @@ services:
             $qdrantApiKey: '%env(QDRANT_API_KEY)%'
             $collection: 'topic_chunks'
 
-    App\Command\IngestKnowledgeChannelsCommand:
+    App\Service\Knowledge\KnowledgeChannelRegistry:
+        arguments:
+            $yamlPath: '%kernel.project_dir%/config/knowledge/channels.yaml'
+
+    App\Service\Knowledge\KnowledgeIngestor:
         arguments:
             $vectors: '@app.vector_store.topic'
 

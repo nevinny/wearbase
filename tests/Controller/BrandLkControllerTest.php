@@ -69,6 +69,27 @@ class BrandLkControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorTextContains('body', 'Дашборд');
     }
 
+    /**
+     * Премодерация: пока карточка не опубликована, владелец видит явный баннер — иначе он ждёт
+     * трафика с карточки, которой нет в каталоге (регистрация создаёт бренд в статусе new).
+     */
+    public function testDashboardWarnsWhenBrandIsNotPublished(): void
+    {
+        $this->skipIfNoDatabase();
+
+        $client = static::createClient();
+        [, $brand] = $this->loginAsBrandOwnerWithBrand($client);
+
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $brand->setStatus(\Nevinny\AdminCoreBundle\Enum\Statuses::New);
+        $em->flush();
+
+        $client->request('GET', '/brand/dashboard');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('body', 'Карточка на проверке');
+    }
+
     public function testBrandProfileLoads(): void
     {
         $this->skipIfNoDatabase();

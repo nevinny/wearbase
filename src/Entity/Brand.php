@@ -8,7 +8,6 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Nevinny\AdminCoreBundle\Entity\Trait\Created;
-use Nevinny\AdminCoreBundle\Entity\Trait\DefaultFields;
 use Nevinny\AdminCoreBundle\Entity\Trait\Owner;
 use Nevinny\AdminCoreBundle\Entity\Trait\Status;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -64,8 +63,10 @@ class Brand
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $title = null;
 
+    // Корневой уровень — 0, как в трейте DefaultFields (Brand его не подключает и объявляет
+    // поле сам). NULL прятал бы карточку из листингов админки до admin-core v1.0.7.
     #[ORM\Column(nullable: true)]
-    private ?int $parent = null;
+    private ?int $parent = 0;
 
     #[ORM\Column(options: ['default' => '0'])]
     private ?int $ord = 0;

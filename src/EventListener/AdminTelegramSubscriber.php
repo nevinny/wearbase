@@ -71,7 +71,9 @@ class AdminTelegramSubscriber
 
             $entity instanceof LandingLead => "📨 <b>Лид с лендинга</b>\n"
                 . $this->e($entity->getEmail())
-                . ($entity->getSource() ? ' (' . $this->e((string) $entity->getSource()) . ')' : ''),
+                . ($entity->getSource() ? ' (' . $this->e((string) $entity->getSource()) . ')' : '')
+                . ($entity->getBrandName() ? "\nБренд: " . $this->e((string) $entity->getBrandName()) : '')
+                . ($entity->getWebsite() ? "\nСайт: " . $this->e((string) $entity->getWebsite()) : ''),
 
             $entity instanceof Order => "🛒 <b>Новый заказ</b> " . $this->e((string) $entity->getOrderNumber())
                 . "\nСумма: " . $this->e($entity->getTotalAmount()) . ' ₽',
