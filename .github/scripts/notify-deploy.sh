@@ -76,13 +76,39 @@ if [[ "$JOB_STATUS" != "success" ]]; then
 ${AUTHOR} · <code>${SHORT_SHA}</code>
 <a href=\"${RUN_URL}\">лог</a>"
 else
-  # Миграции: Doctrine пишет "++ migrating DoctrineMigrations\\VersionXXXX" на каждую
-  # применённую миграцию; если пусто и нечего разбирать — считаем, что миграций не было.
+  # Миграции: прод на doctrine/migrations 3.9.4 (НЕ 2.x — "++ migrating" там нет).
+  # Реальный формат вывода `migrations:migrate --no-interaction`:
+  #   [notice] Migrating up to DoctrineMigrations\VersionXXXX      — целевая (последняя) версия,
+  #                                                                   одна строка, без переносов
+  #   [notice] finished in ...ms, used ..., N migrations executed, ... — счётчик применённых
+  #   [OK] Successfully migrated to version:                       — SymfonyStyle-блок; при узком
+  #        DoctrineMigrations\VersionXXXX                             терминале версия уходит на
+  #                                                                    следующую строку с отступом
+  #   [OK] Already at the latest version ("...")                   — если применять было нечего
+  # Имён ВСЕХ применённых версий в выводе нет, только целевая. Между строк может затесаться
+  # JSON-шум deprecation-логгера — грепаем по строгим якорям, шум под них не подходит.
   MIGRATIONS="нет"
   if [[ -n "$MIGRATE_LOG_FILE" && -f "$MIGRATE_LOG_FILE" ]]; then
-    VERSIONS=$(grep -E '^\+\+ migrating ' "$MIGRATE_LOG_FILE" | sed -E 's/.*(Version[0-9A-Za-z_]+).*/\1/')
-    if [[ -n "$VERSIONS" ]]; then
-      MIGRATIONS=$(escape_html "$(printf '%s\n' "$VERSIONS" | paste -sd ',' - | sed 's/,/, /g')")
+    if ! grep -qE '^\[notice\] Already at the .* version|No migrations to execute\.' "$MIGRATE_LOG_FILE"; then
+      COUNT=$(grep -oE '[0-9]+ migrations executed' "$MIGRATE_LOG_FILE" | head -n1 | grep -oE '^[0-9]+')
+      TARGET=$(grep -E '^\[notice\] Migrating( \(dry-run\))? (up|down) to ' "$MIGRATE_LOG_FILE" \
+        | head -n1 | grep -oE 'Version[0-9A-Za-z_]+')
+      if [[ -z "$TARGET" ]]; then
+        TARGET=$(grep -A2 'Successfully migrated to version' "$MIGRATE_LOG_FILE" \
+          | grep -oE 'Version[0-9A-Za-z_]+' | head -n1)
+      fi
+      if [[ -n "$COUNT" ]]; then
+        if [[ "$COUNT" == "1" || -z "$TARGET" ]]; then
+          MIGRATIONS="${COUNT} применено"
+        else
+          MIGRATIONS="${COUNT} применено (до $(escape_html "$TARGET"))"
+        fi
+      elif [[ -n "$TARGET" ]]; then
+        # счётчик не распарсился, но факт миграции виден — не молчим об этом
+        MIGRATIONS="применено (до $(escape_html "$TARGET"))"
+      elif grep -qE '^\[notice\] Migrating( \(dry-run\))? (up|down) to ' "$MIGRATE_LOG_FILE"; then
+        MIGRATIONS="применено (детали см. в логе)"
+      fi
     fi
   fi
 
