@@ -91,6 +91,7 @@ jobs:
           chmod 644 ~/.ssh/known_hosts
 
       - name: Rsync to prod
+        id: rsync
         # Полный rsync из корня, БЕЗ --delete (как канонический /deploy): прод-only файлы
         # (var, .env.local, загруженные картинки, config/secrets) не трогаем. Список
         # исключений синхронен docs/production.md.
@@ -109,6 +110,7 @@ jobs:
             ./ "${U}@${H}:${D}/"
 
       - name: Prune deleted code files
+        id: prune
         # Основной rsync идёт без --delete, поэтому удалённые в репозитории файлы жили на
         # проде вечно: 26.07.2026 там нашлись бутстраповый templates/base.html.twig,
         # showv2/showv3 и снесённый в этом же релизе слушатель — мёртвый код, который
@@ -128,23 +130,57 @@ jobs:
           done
 
       - name: Migrate + clear cache
+        id: migrate
         # cache:clear на проде ТОЛЬКО с -d memory_limit=512M (дефолт 128M падает).
+        # Вывод ssh пишем в migrate.log (шаг Notify Telegram достаёт оттуда список
+        # применённых версий); set -o pipefail — иначе `tee` съедает код возврата ssh
+        # и упавшая миграция не роняет деплой.
         env:
           H: ${{ secrets.DEPLOY_HOST }}
           U: ${{ secrets.DEPLOY_USER }}
           P: ${{ secrets.DEPLOY_PORT }}
           D: ${{ secrets.DEPLOY_PATH }}
         run: |
+          set -o pipefail
           ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${U}@${H}" "cd ${D} && php -d memory_limit=512M bin/console doctrine:migrations:migrate --no-interaction && php -d memory_limit=512M bin/console cache:clear --no-debug"
+            "${U}@${H}" "cd ${D} && php -d memory_limit=512M bin/console doctrine:migrations:migrate --no-interaction && php -d memory_limit=512M bin/console cache:clear --no-debug" \
+            2>&1 | tee migrate.log
 
       - name: Smoke test
+        id: smoke
         run: |
+          set -o pipefail
           fail=0
+          : > smoke.log
           # -L: следуем редиректам и проверяем ФИНАЛЬНЫЙ код (напр. /ru/brands/ 301→200).
           for u in /ru/ /ru/brands/ /sitemap.xml; do
             code=$(curl -sL -o /dev/null -w '%{http_code}' "https://wearbase.ru${u}")
-            echo "${u} -> ${code}"
+            echo "${u} -> ${code}" | tee -a smoke.log
             [ "${code}" = "200" ] || fail=1
           done
           exit $fail
+
+      - name: Notify Telegram
+        # always(): шлём уведомление и при успехе, и при провале любого предыдущего
+        # шага деплоя (rsync/prune/migrate/smoke). continue-on-error — сбой отправки
+        # уведомления не должен превращать успешный деплой в красный.
+        if: always()
+        continue-on-error: true
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.ADMIN_TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+          OUTCOME_RSYNC: ${{ steps.rsync.outcome }}
+          OUTCOME_PRUNE: ${{ steps.prune.outcome }}
+          OUTCOME_MIGRATE: ${{ steps.migrate.outcome }}
+          OUTCOME_SMOKE: ${{ steps.smoke.outcome }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_AUTHOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          BEFORE_SHA: ${{ github.event.before }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MIGRATE_LOG_FILE: migrate.log
+          SMOKE_LOG_FILE: smoke.log
+        run: bash .github/scripts/notify-deploy.sh
