@@ -80,6 +80,7 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUM: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           OUTCOME: ${{ steps.review.outcome }}
         run: |
           case "$OUTCOME" in
@@ -88,8 +89,8 @@ jobs:
             *)        ICON="⚠️"; STATE="ревью упало ($OUTCOME)" ;;
           esac
           esc() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
-          TEXT=$(printf '%s <b>PR #%s</b> — %s\n%s\n%s' \
-            "$ICON" "$PR_NUM" "$STATE" "$(esc "$PR_TITLE")" "$PR_URL")
+          TEXT=$(printf '%s <b>PR #%s</b> — %s\n%s\nАвтор: %s\n%s' \
+            "$ICON" "$PR_NUM" "$STATE" "$(esc "$PR_TITLE")" "$(esc "$PR_AUTHOR")" "$PR_URL")
           curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TG_CHAT}" \
             --data-urlencode "parse_mode=HTML" \
