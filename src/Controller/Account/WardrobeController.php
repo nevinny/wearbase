@@ -14,6 +14,8 @@ use App\Repository\WardrobeTransferRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeManager;
+use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -31,7 +33,11 @@ use Vich\UploaderBundle\Storage\StorageInterface;
 #[Route('/account/wardrobe', name: 'account_wardrobe_')]
 class WardrobeController extends AbstractController
 {
-    public function __construct(private readonly FamilyService $familyService) {}
+    public function __construct(
+        private readonly FamilyService $familyService,
+        private readonly WardrobeManager $wardrobeManager,
+        private readonly WardrobeRemotePhotoFetcher $remotePhotoFetcher,
+    ) {}
 
     #[Route('', name: 'index', methods: ['GET'])]
     public function index(Request $request, WardrobeItemRepository $repo): Response
@@ -67,14 +73,20 @@ class WardrobeController extends AbstractController
         $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
 
         $item = new WardrobeItem();
-        $form = $this->createForm(WardrobeItemFormType::class, $item);
+        $form = $this->createForm(WardrobeItemFormType::class, $item, ['full' => false]);
         $form->handleRequest($request);
+        $remotePhotoUrl = $form->get('remotePhotoUrl')->getData();
 
         if ($form->isSubmitted() && $form->isValid()) {
+            if ($item->getPhotoFile() === null) {
+                $this->remotePhotoFetcher->attachWildberriesPhoto($item, $remotePhotoUrl);
+            }
             $item->setUser($currentMember);
+            $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($currentMember));
             $item->setOriginalOwner($currentMember);
             $item->setItemNo($repo->nextItemNo($currentMember));
             $item->setSource(WardrobeItem::SOURCE_WEB);
+            $this->wardrobeManager->refreshCompletionStatus($item);
 
             $em = $doctrine->getManager();
             try {
@@ -82,30 +94,41 @@ class WardrobeController extends AbstractController
                 $em->flush();
             } catch (UniqueConstraintViolationException) {
                 // Гонка за item_no: один retry со свежим номером (EM после исключения закрыт)
+                if ($item->getPhoto() === null) {
+                    $this->remotePhotoFetcher->discardPendingPhoto($item);
+                } else {
+                    $item->setPhotoFile(null);
+                }
                 $doctrine->resetManager();
                 $em = $doctrine->getManager();
                 /** @var User $currentMember */
                 $currentMember = $em->find(User::class, $currentMember->getId());
+                $this->wardrobeManager->forgetDefault($currentMember);
                 $item->setUser($currentMember);
+                $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($currentMember));
                 $item->setOriginalOwner($currentMember);
                 $item->setItemNo($repo->nextItemNo($currentMember));
+                if ($item->getPhoto() === null) {
+                    $this->remotePhotoFetcher->attachWildberriesPhoto($item, $remotePhotoUrl);
+                }
+                $this->wardrobeManager->refreshCompletionStatus($item);
                 $em->persist($item);
                 $em->flush();
             }
 
             $this->addFlash('success', 'Вещь добавлена');
+            if ($request->request->has('save_and_add')) {
+                return $this->redirectToRoute('account_wardrobe_new', $this->memberQuery($user, $currentMember));
+            }
             return $this->redirectToRoute('account_wardrobe_index', $this->memberQuery($user, $currentMember));
         }
 
         return $this->render('account/wardrobe/form.html.twig', [
             'form'          => $form,
             'item'          => $item,
-            'categories'    => array_unique(array_merge(
-                $repo->distinctCategories($currentMember),
-                WardrobeItem::SUGGESTED_CATEGORIES,
-            )),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'fullMode'      => false,
         ]);
     }
 
@@ -276,6 +299,10 @@ class WardrobeController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            if ($item->getPhotoFile() === null && $item->getPhoto() === null) {
+                $this->remotePhotoFetcher->attachWildberriesPhoto($item, $form->get('remotePhotoUrl')->getData());
+            }
+            $this->wardrobeManager->refreshCompletionStatus($item);
             $em->flush();
             $this->addFlash('success', 'Изменения сохранены');
             return $this->redirectToRoute(
@@ -287,12 +314,9 @@ class WardrobeController extends AbstractController
         return $this->render('account/wardrobe/form.html.twig', [
             'form'          => $form,
             'item'          => $item,
-            'categories'    => array_unique(array_merge(
-                $repo->distinctCategories($currentMember),
-                WardrobeItem::SUGGESTED_CATEGORIES,
-            )),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'fullMode'      => true,
         ]);
     }
 

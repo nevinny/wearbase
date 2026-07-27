@@ -18,7 +18,7 @@
            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
         <h1 class="text-lg font-bold">
             <span class="text-gray-400">{{ item.displayNumber }}</span>
-            {{ item.name }}
+            {{ item.name ?: 'Черновик вещи' }}
         </h1>
     </div>
     <div class="flex gap-2">
@@ -33,7 +33,8 @@
 </div>
 
 <div class="mb-4 flex flex-wrap gap-2">
-    <span class="rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white">{{ item.category }}</span>
+    <span class="rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white">{{ item.category ?: 'Без категории' }}</span>
+    <span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{{ item.completionStatusLabel }}</span>
     {% if item.size %}
         <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm">Размер {{ item.size }}</span>
     {% endif %}

@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Entity\User;
+use App\Entity\Wardrobe;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
+use Doctrine\ORM\Event\PrePersistEventArgs;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Events;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Vich\UploaderBundle\Storage\StorageInterface;
@@ -179,6 +182,97 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $this->assertSame('M', $item->getSize());
 
         $this->assertNull($em->getRepository(WardrobeItemDraft::class)->find($draftId));
+    }
+
+    /**
+     * Регресс: гонка за item_no во время accept — конкурентная вставка происходит
+     * реально внутри flush() (событие prePersist), строго между вычислением
+     * nextItemNo() и INSERT основной вещи, что и вызывает настоящий
+     * UniqueConstraintViolationException. До фикса retry в promoteDraft() не
+     * пере-резолвил Wardrobe после resetManager() → второй flush падал с
+     * ORMInvalidArgumentException (detached/new entity) и отдавал 500.
+     */
+    public function testAcceptRetriesAfterItemNoCollisionAndKeepsExactlyOneDefaultWardrobe(): void
+    {
+        $client = static::createClient();
+        // По умолчанию KernelBrowser ребутит kernel на каждый следующий request(),
+        // из-за чего наш prePersist-листенер на EM (ниже) отвалится ко второму
+        // запросу вместе со всем контейнером. Отключаем ребут — иначе гонку честно
+        // не воспроизвести, а не потому что мы что-то мокаем.
+        $client->disableReboot();
+        $user   = $this->loginAsCustomer($client);
+        $userId = $user->getId();
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $draft = $this->makeDraft($em, $user, 'batch-collision-' . uniqid(), WardrobeItemDraft::STATUS_RECOGNIZED, [
+            'category' => 'Футболки',
+            'name'     => 'Гоночная футболка',
+        ]);
+        $draftId = $draft->getId();
+
+        $listener = new class ($userId) {
+            public bool $fired = false;
+
+            public function __construct(private readonly int $userId) {}
+
+            // Конкурентная вещь с тем же item_no, вставленная напрямую в БД ровно
+            // в момент flush() основной вещи — честная симуляция гонки, а не мок.
+            public function prePersist(PrePersistEventArgs $args): void
+            {
+                $entity = $args->getObject();
+                if ($this->fired || !$entity instanceof WardrobeItem) {
+                    return;
+                }
+                $this->fired = true;
+                $args->getObjectManager()->getConnection()->executeStatement(
+                    'INSERT INTO wardrobe_item (user_id, item_no, completion_status, item_status, source, wear_status, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [
+                        $this->userId,
+                        $entity->getItemNo(),
+                        WardrobeItem::COMPLETION_DRAFT,
+                        WardrobeItem::ITEM_ACTIVE,
+                        WardrobeItem::SOURCE_IMPORT,
+                        WardrobeItem::WEAR_ACTIVE,
+                        (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+                    ],
+                );
+            }
+        };
+        $em->getEventManager()->addEventListener(Events::prePersist, $listener);
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/ingest/draft/' . $draftId . '/accept',
+            [],
+            [],
+            ['HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json'],
+            json_encode(['name' => 'Гоночная футболка', 'category' => 'Футболки']),
+        );
+
+        self::assertTrue($listener->fired, 'Листенер не сработал — тест не воспроизвёл гонку за item_no');
+        $this->assertResponseIsSuccessful();
+
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertTrue($data['ok']);
+        $this->assertNotNull($data['itemId']);
+
+        /** @var EntityManagerInterface $freshEm */
+        $freshEm = static::getContainer()->get('doctrine.orm.entity_manager');
+        /** @var WardrobeItem $item */
+        $item = $freshEm->getRepository(WardrobeItem::class)->find($data['itemId']);
+        $this->assertNotNull($item);
+        $this->assertNotNull($item->getWardrobe(), 'После ретрая вещь должна быть привязана к default-гардеробу пользователя');
+
+        $this->assertSame(
+            1,
+            $freshEm->getRepository(Wardrobe::class)->count(['owner' => $userId, 'isDefault' => true]),
+        );
     }
 
     public function testRejectDeletesDraftWithoutCreatingItem(): void

@@ -61,6 +61,7 @@
 | [testing.md](testing.md) | Тест-харнес PHPUnit: SQLite var/test.db, автосхема из сущностей, Authenticated*WebTestCase, как писать функциональные тесты |
 | [brand-claim-verification.md](brand-claim-verification.md) | Методы подтверждения владения брендом |
 | [virtual-tryon.md](virtual-tryon.md) | Виртуальная примерочная (VTON) — PoC и запуск в прод |
+| [wardrobe_mvp.md](wardrobe_mvp.md) | Цифровой гардероб: совместимый MVP поверх семейных и AI-функций |
 | [antifraud_plan.md](antifraud_plan.md) | Антифрод и верификация брендов — план на будущее |
 | [superpowers/specs/2026-05-24-product-page-redesign.md](superpowers/specs/2026-05-24-product-page-redesign.md) | Спека редизайна карточки товара (по WB) |
 | [superpowers/plans/2026-05-24-product-page-redesign.md](superpowers/plans/2026-05-24-product-page-redesign.md) | План реализации редизайна карточки товара |

@@ -6,10 +6,14 @@ namespace App\Tests\Controller;
 
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeTransfer;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
@@ -54,8 +58,8 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseIsSuccessful();
 
         $form = $crawler->selectButton('Сохранить')->form([
-            'wardrobe_item_form[category]' => 'Футболки',
-            'wardrobe_item_form[name]'     => 'Тестовая футболка',
+            'wardrobe_item_form[size]'       => 'M',
+            'wardrobe_item_form[productUrl]' => 'https://example.com/test-item',
         ]);
         $client->submit($form);
 
@@ -63,11 +67,106 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
 
         /** @var EntityManagerInterface $em */
         $em   = static::getContainer()->get('doctrine.orm.entity_manager');
-        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['user' => $user, 'name' => 'Тестовая футболка']);
+        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['user' => $user, 'productUrl' => 'https://example.com/test-item']);
 
         $this->assertNotNull($item);
         $this->assertSame(1, $item->getItemNo());
         $this->assertSame(WardrobeItem::SOURCE_WEB, $item->getSource());
+        $this->assertSame(WardrobeItem::COMPLETION_DRAFT, $item->getCompletionStatus());
+        $this->assertNotNull($item->getWardrobe());
+        $this->assertSame($user->getId(), $item->getWardrobe()->getOwner()?->getId());
+        $this->assertTrue($item->getWardrobe()->isDefault());
+    }
+
+    public function testSaveAndAddNextReturnsToQuickForm(): void
+    {
+        $client = static::createClient();
+        $this->loginAsCustomer($client);
+
+        $crawler = $client->request('GET', '/account/wardrobe/new');
+        $form = $crawler->selectButton('Сохранить и добавить следующую')->form([
+            'wardrobe_item_form[size]' => 'S',
+            'wardrobe_item_form[productUrl]' => 'https://example.com/next-item',
+        ]);
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/wardrobe/new');
+    }
+
+    public function testQuickFormPersistsWildberriesPreviewAsPhoto(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $user = $this->loginAsCustomer($client);
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true);
+        $requests = 0;
+        static::getContainer()->set(
+            WardrobeRemotePhotoFetcher::class,
+            new WardrobeRemotePhotoFetcher(new MockHttpClient(
+                static function () use (&$requests, $png): MockResponse {
+                    $requests++;
+                    return new MockResponse($png ?: '', ['http_code' => 200]);
+                },
+            )),
+        );
+        $productUrl = 'https://www.wildberries.ru/catalog/' . random_int(100000, 999999) . '/detail.aspx';
+
+        $crawler = $client->request('GET', '/account/wardrobe/new');
+        $form = $crawler->selectButton('Сохранить')->form([
+            'wardrobe_item_form[size]' => 'M',
+            'wardrobe_item_form[productUrl]' => $productUrl,
+            'wardrobe_item_form[remotePhotoUrl]' => 'https://basket-01.wbbasket.ru/vol1/part1/123/images/big/1.webp',
+        ]);
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/wardrobe');
+        self::assertSame(1, $requests);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $item = $em->getRepository(WardrobeItem::class)->findOneBy([
+            'user' => $user,
+            'productUrl' => $productUrl,
+        ]);
+        self::assertNotNull($item?->getPhoto());
+
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        $path = $storage->resolvePath($item, 'photoFile');
+        self::assertNotNull($path);
+        self::assertFileExists($path);
+        @unlink($path);
+    }
+
+    public function testFullEditFormSavesCategoryAndItemStatus(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $category = (new WardrobeCategory())->setCode('review-test-top-' . uniqid())->setName('Топ')->setSortOrder(1);
+        $item = (new WardrobeItem())
+            ->setUser($user)
+            ->setItemNo($em->getRepository(WardrobeItem::class)->nextItemNo($user))
+            ->setCategory('Старое значение')
+            ->setName('Черновик');
+        $em->persist($category);
+        $em->persist($item);
+        $em->flush();
+
+        $crawler = $client->request('GET', '/account/wardrobe/' . $item->getId() . '/edit');
+        $form = $crawler->selectButton('Сохранить')->form([
+            'wardrobe_item_form[name]' => 'Голубой топ',
+            'wardrobe_item_form[categoryRef]' => (string) $category->getId(),
+            'wardrobe_item_form[itemStatus]' => WardrobeItem::ITEM_REPAIR,
+        ]);
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/wardrobe/' . $item->getId());
+        $em->clear();
+        $saved = $em->find(WardrobeItem::class, $item->getId());
+        self::assertSame('Топ', $saved?->getCategory());
+        self::assertSame(WardrobeItem::ITEM_REPAIR, $saved?->getItemStatus());
     }
 
     public function testIndexShowsStats(): void
@@ -246,8 +345,8 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseIsSuccessful();
 
         $form = $crawler->selectButton('Сохранить')->form([
-            'wardrobe_item_form[category]' => 'Платья',
-            'wardrobe_item_form[name]'     => 'Платье для Оли',
+            'wardrobe_item_form[size]'       => '128',
+            'wardrobe_item_form[productUrl]' => 'https://example.com/child-dress',
         ]);
         $client->submit($form);
 
@@ -255,7 +354,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
 
         /** @var EntityManagerInterface $em */
         $em   = static::getContainer()->get('doctrine.orm.entity_manager');
-        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['name' => 'Платье для Оли']);
+        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['productUrl' => 'https://example.com/child-dress']);
 
         $this->assertNotNull($item);
         $this->assertSame($child->getId(), $item->getUser()->getId());

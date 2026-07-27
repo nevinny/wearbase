@@ -29,7 +29,6 @@
                     <a class="{{ route starts with 'account_notification' and route != 'account_notification_settings' ? nav_active : nav_item }}"
                        href="{{ path('account_notification_index') }}">
                         Уведомления
-                        <span class="ml-2 rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white" id="notification-count">{{ unreadCount|default(0) }}</span>
                     </a>
                     <a class="{{ route == 'account_notification_settings' ? nav_active : nav_item }}"
                        href="{{ path('account_notification_settings') }}">Настройки уведомлений</a>

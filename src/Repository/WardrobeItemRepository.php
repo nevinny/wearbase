@@ -104,13 +104,13 @@ class WardrobeItemRepository extends ServiceEntityRepository
     public function getStats(User $user): array
     {
         return $this->createQueryBuilder('w')
-            ->select('w.category AS category', 'COUNT(w.id) AS cnt', 'COALESCE(SUM(w.price), 0) AS total')
+            ->select("COALESCE(NULLIF(w.category, ''), 'Без категории') AS category", 'COUNT(w.id) AS cnt', 'COALESCE(SUM(w.price), 0) AS total')
             ->andWhere('w.user = :user')
             ->andWhere('w.deletedAt IS NULL')
             ->andWhere('w.wearStatus != :givenAway')
             ->setParameter('user', $user)
             ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
-            ->groupBy('w.category')
+            ->groupBy('category')
             ->orderBy('cnt', 'DESC')
             ->getQuery()
             ->getArrayResult();

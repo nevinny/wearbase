@@ -11,6 +11,7 @@ use App\Notification\TelegramNotifier;
 use App\Repository\TelegramDialogStateRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeManager;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\Persistence\ManagerRegistry;
 use Psr\Log\LoggerInterface;
@@ -44,6 +45,7 @@ class WardrobeDialogService
         private readonly TelegramFileFetcher $fileFetcher,
         private readonly TelegramNotifier $telegram,
         private readonly WardrobeAiService $ai,
+        private readonly WardrobeManager $wardrobeManager,
         private readonly LoggerInterface $telegramLogger,
     ) {}
 
@@ -359,6 +361,7 @@ class WardrobeDialogService
 
         $em = $this->doctrine->getManager();
         $item->setUser($user);
+        $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($user));
         $item->setItemNo($this->itemRepo->nextItemNo($user));
         try {
             $em->persist($item);
@@ -369,7 +372,9 @@ class WardrobeDialogService
             $em = $this->doctrine->getManager();
             /** @var User $user */
             $user = $em->find(User::class, $user->getId());
+            $this->wardrobeManager->forgetDefault($user);
             $item->setUser($user);
+            $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($user));
             $item->setItemNo($this->itemRepo->nextItemNo($user));
             // Vich мог успеть переместить tmp-файл при первой попытке — не переаплоадим исчезнувший
             if ($item->getPhotoFile() !== null && !file_exists($item->getPhotoFile()->getPathname())) {

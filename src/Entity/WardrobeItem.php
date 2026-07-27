@@ -17,6 +17,23 @@ use Vich\UploaderBundle\Mapping\Annotation as Vich;
 #[Vich\Uploadable]
 class WardrobeItem
 {
+    public const COMPLETION_DRAFT = 'draft';
+    public const COMPLETION_BASIC = 'basic';
+    public const COMPLETION_COMPLETE = 'complete';
+    public const COMPLETION_LABELS = [
+        self::COMPLETION_DRAFT => 'Черновик',
+        self::COMPLETION_BASIC => 'Основное заполнено',
+        self::COMPLETION_COMPLETE => 'Заполнено полностью',
+    ];
+
+    public const ITEM_ACTIVE = 'active';
+    public const ITEM_REPAIR = 'repair';
+    public const ITEM_ARCHIVED = 'archived';
+    public const ITEM_SOLD = 'sold';
+    public const ITEM_DONATED = 'donated';
+    public const ITEM_TRANSFERRED = 'transferred';
+    public const ITEM_LOST = 'lost';
+
     public const LOVE_YES = 'yes';
     public const LOVE_NO = 'no';
     public const LOVE_UNKNOWN = 'unknown';
@@ -65,15 +82,47 @@ class WardrobeItem
     #[ORM\JoinColumn(nullable: false)]
     private ?User $user = null;
 
+    #[ORM\ManyToOne(inversedBy: 'items')]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?Wardrobe $wardrobe = null;
+
     // Сквозной номер вещи внутри гардероба пользователя (уникален per-user, включая удалённые)
     #[ORM\Column]
     private int $itemNo = 0;
 
-    #[ORM\Column(length: 100)]
+    #[ORM\Column(length: 100, nullable: true)]
     private ?string $category = null;
 
-    #[ORM\Column(length: 255)]
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?WardrobeCategory $categoryRef = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
     private ?string $name = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $customBrandName = null;
+
+    #[ORM\Column(length: 100, nullable: true)]
+    private ?string $colorName = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $materialText = null;
+
+    #[ORM\Column(length: 100, nullable: true)]
+    private ?string $countryOfOrigin = null;
+
+    #[ORM\Column(length: 50, nullable: true)]
+    private ?string $season = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $careText = null;
+
+    #[ORM\Column(length: 12, options: ['default' => self::COMPLETION_DRAFT])]
+    private string $completionStatus = self::COMPLETION_DRAFT;
+
+    #[ORM\Column(length: 12, options: ['default' => self::ITEM_ACTIVE])]
+    private string $itemStatus = self::ITEM_ACTIVE;
 
     #[ORM\Column(length: 50, nullable: true)]
     private ?string $size = null;
@@ -149,6 +198,14 @@ class WardrobeItem
         return $this;
     }
 
+    public function getWardrobe(): ?Wardrobe { return $this->wardrobe; }
+
+    public function setWardrobe(?Wardrobe $wardrobe): static
+    {
+        $this->wardrobe = $wardrobe;
+        return $this;
+    }
+
     public function getItemNo(): int { return $this->itemNo; }
 
     public function setItemNo(int $itemNo): static
@@ -164,17 +221,95 @@ class WardrobeItem
 
     public function getCategory(): ?string { return $this->category; }
 
-    public function setCategory(string $category): static
+    public function setCategory(?string $category): static
     {
         $this->category = $category;
         return $this;
     }
 
+    public function getCategoryRef(): ?WardrobeCategory { return $this->categoryRef; }
+
+    public function setCategoryRef(?WardrobeCategory $categoryRef): static
+    {
+        $this->categoryRef = $categoryRef;
+        $this->category = $categoryRef?->getName();
+        return $this;
+    }
+
     public function getName(): ?string { return $this->name; }
 
-    public function setName(string $name): static
+    public function setName(?string $name): static
     {
         $this->name = $name;
+        return $this;
+    }
+
+    public function getCustomBrandName(): ?string { return $this->customBrandName; }
+
+    public function setCustomBrandName(?string $customBrandName): static
+    {
+        $this->customBrandName = $customBrandName;
+        return $this;
+    }
+
+    public function getColorName(): ?string { return $this->colorName; }
+
+    public function setColorName(?string $colorName): static
+    {
+        $this->colorName = $colorName;
+        return $this;
+    }
+
+    public function getMaterialText(): ?string { return $this->materialText; }
+
+    public function setMaterialText(?string $materialText): static
+    {
+        $this->materialText = $materialText;
+        return $this;
+    }
+
+    public function getCountryOfOrigin(): ?string { return $this->countryOfOrigin; }
+
+    public function setCountryOfOrigin(?string $countryOfOrigin): static
+    {
+        $this->countryOfOrigin = $countryOfOrigin;
+        return $this;
+    }
+
+    public function getSeason(): ?string { return $this->season; }
+
+    public function setSeason(?string $season): static
+    {
+        $this->season = $season;
+        return $this;
+    }
+
+    public function getCareText(): ?string { return $this->careText; }
+
+    public function setCareText(?string $careText): static
+    {
+        $this->careText = $careText;
+        return $this;
+    }
+
+    public function getCompletionStatus(): string { return $this->completionStatus; }
+
+    public function getCompletionStatusLabel(): string
+    {
+        return self::COMPLETION_LABELS[$this->completionStatus] ?? $this->completionStatus;
+    }
+
+    public function setCompletionStatus(string $completionStatus): static
+    {
+        $this->completionStatus = $completionStatus;
+        return $this;
+    }
+
+    public function getItemStatus(): string { return $this->itemStatus; }
+
+    public function setItemStatus(string $itemStatus): static
+    {
+        $this->itemStatus = $itemStatus;
         return $this;
     }
 
