@@ -87,6 +87,7 @@ final class Version20260724_phase_wardrobe_details extends AbstractMigration
                 THEN 'basic'
                 ELSE 'draft'
             END
+            WHERE completion_status = 'draft'
             SQL);
     }
 

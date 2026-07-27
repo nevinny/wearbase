@@ -282,7 +282,9 @@ class WardrobeIngestController extends AbstractController
             $em = $doctrine->getManager();
             /** @var User $user */
             $user = $em->find(User::class, $user->getId());
+            $this->wardrobeManager->forgetDefault($user);
             $item->setUser($user);
+            $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($user));
             $item->setOriginalOwner($user);
             $item->setItemNo($itemRepo->nextItemNo($user));
             if ($item->getPhotoFile() !== null && !file_exists($item->getPhotoFile()->getPathname())) {
