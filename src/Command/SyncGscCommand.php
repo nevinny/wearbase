@@ -33,6 +33,16 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * FAIL-OPEN: без кредов — лог и exit 0. GSC никогда не тормозит дрип-публикацию.
  *
+ * ПОЧЕМУ ТРИ ОТДЕЛЬНЫХ PULL'А, А НЕ ОДИН ['query','page','date'] (замер 2026-07-28):
+ *  - квоту экономить не от чего: Search Analytics даёт 1200 QPM НА САЙТ, мы делаем 3 запроса
+ *    в СУТКИ; усечения тоже нет — максимум 1653 строки против rowLimit=25000;
+ *  - и главное: сведение одного среза query×page в page-агрегат теряет 50.7% показов
+ *    (52 страницы из 126 исчезают целиком, ещё 34 недобирают) — GSC при группировке
+ *    по query отбрасывает часть данных и анонимизирует редкие запросы;
+ *  - обратное сведение query×page → query почти точное (0% потерь показов), но показы
+ *    раздуваются ровно на каннибализированных запросах (property- vs page-агрегация),
+ *    т.е. врало бы именно там, где gap-report ищет проблему. Смысла нет: запрос бесплатен.
+ *
  *   0 6 * * * cd /path && php bin/console app:gsc:sync --report --no-debug >> var/log/gsc.log 2>&1
  */
 #[AsCommand(
@@ -97,35 +107,56 @@ class SyncGscCommand extends Command
         return Command::SUCCESS;
     }
 
+    /** Окно синка — лаг GSC ~2-3 дня: [сегодня-2-N, сегодня-2]. @return array{0:\DateTime,1:\DateTime} */
+    private function window(): array
+    {
+        return [new \DateTime(sprintf('-%d days', 2 + self::ANALYTICS_DAYS)), new \DateTime('-2 days')];
+    }
+
+    /**
+     * Общий upsert-цикл трёх срезов. SQL остаётся у каждой таблицы (у них разные схемы и
+     * разные уникальные ключи — это семантика, а не дубль); дублировался только цикл со
+     * счётчиком и отбраковкой пустых строк. $params отдаёт null для мусорной строки.
+     *
+     * @param array<int,array<string,int|float|string>>                             $rows
+     * @param callable(array<string,int|float|string>): (array<string,mixed>|null)  $params
+     */
+    private function upsert(string $sql, array $rows, callable $params): int
+    {
+        $upserted = 0;
+        foreach ($rows as $row) {
+            $bound = $params($row);
+            if ($bound === null) {
+                continue;
+            }
+            $this->db->executeStatement($sql, $bound);
+            $upserted++;
+        }
+
+        return $upserted;
+    }
+
     private function syncAnalytics(SymfonyStyle $io): void
     {
-        // Лаг GSC ~2-3 дня: окно [сегодня-2-N, сегодня-2]
-        $to   = (new \DateTime('-2 days'));
-        $from = (new \DateTime(sprintf('-%d days', 2 + self::ANALYTICS_DAYS)));
+        [$from, $to] = $this->window();
 
         $rows = $this->gsc->searchAnalyticsByPage($from, $to);
         $io->text(sprintf('Search Analytics: %d строк (%s … %s)', count($rows), $from->format('Y-m-d'), $to->format('Y-m-d')));
 
-        $upserted = 0;
-        foreach ($rows as $row) {
-            if ($row['page'] === '' || $row['date'] === '') {
-                continue;
-            }
-            $this->db->executeStatement(
-                'INSERT INTO gsc_page_stats (page_url, brand_id, day, impressions, clicks, position, query)
-                 VALUES (:url, :brand_id, :day, :imp, :clicks, :pos, NULL)
-                 ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, position = :pos, brand_id = :brand_id',
-                [
-                    'url'      => mb_substr($row['page'], 0, 512),
-                    'brand_id' => $this->resolveBrandId($row['page']),
-                    'day'      => $row['date'],
-                    'imp'      => $row['impressions'],
-                    'clicks'   => $row['clicks'],
-                    'pos'      => $row['position'],
-                ],
-            );
-            $upserted++;
-        }
+        $upserted = $this->upsert(
+            'INSERT INTO gsc_page_stats (page_url, brand_id, day, impressions, clicks, position, query)
+             VALUES (:url, :brand_id, :day, :imp, :clicks, :pos, NULL)
+             ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, position = :pos, brand_id = :brand_id',
+            $rows,
+            fn (array $row): ?array => $row['page'] === '' || $row['date'] === '' ? null : [
+                'url'      => mb_substr((string) $row['page'], 0, 512),
+                'brand_id' => $this->resolveBrandId((string) $row['page']),
+                'day'      => $row['date'],
+                'imp'      => $row['impressions'],
+                'clicks'   => $row['clicks'],
+                'pos'      => $row['position'],
+            ],
+        );
         $io->text("Upsert в gsc_page_stats: {$upserted}");
     }
 
@@ -138,32 +169,25 @@ class SyncGscCommand extends Command
      */
     private function syncQueryAnalytics(SymfonyStyle $io): void
     {
-        $to   = (new \DateTime('-2 days'));
-        $from = (new \DateTime(sprintf('-%d days', 2 + self::ANALYTICS_DAYS)));
+        [$from, $to] = $this->window();
 
         $rows = $this->gsc->searchAnalyticsByQuery($from, $to);
         $io->text(sprintf('Search Analytics (query): %d строк (%s … %s)', count($rows), $from->format('Y-m-d'), $to->format('Y-m-d')));
 
-        $upserted = 0;
-        foreach ($rows as $row) {
-            if ($row['query'] === '' || $row['date'] === '') {
-                continue;
-            }
-            $this->db->executeStatement(
-                'INSERT INTO gsc_query_stats (query, day, impressions, clicks, ctr, position)
-                 VALUES (:query, :day, :imp, :clicks, :ctr, :pos)
-                 ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, ctr = :ctr, position = :pos',
-                [
-                    'query'   => mb_substr($row['query'], 0, 255),
-                    'day'     => $row['date'],
-                    'imp'     => $row['impressions'],
-                    'clicks'  => $row['clicks'],
-                    'ctr'     => $row['ctr'],
-                    'pos'     => $row['position'],
-                ],
-            );
-            $upserted++;
-        }
+        $upserted = $this->upsert(
+            'INSERT INTO gsc_query_stats (query, day, impressions, clicks, ctr, position)
+             VALUES (:query, :day, :imp, :clicks, :ctr, :pos)
+             ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, ctr = :ctr, position = :pos',
+            $rows,
+            fn (array $row): ?array => $row['query'] === '' || $row['date'] === '' ? null : [
+                'query'  => mb_substr((string) $row['query'], 0, 255),
+                'day'    => $row['date'],
+                'imp'    => $row['impressions'],
+                'clicks' => $row['clicks'],
+                'ctr'    => $row['ctr'],
+                'pos'    => $row['position'],
+            ],
+        );
         $io->text("Upsert в gsc_query_stats: {$upserted}");
     }
 
@@ -175,33 +199,26 @@ class SyncGscCommand extends Command
      */
     private function syncQueryPageAnalytics(SymfonyStyle $io): void
     {
-        $to   = (new \DateTime('-2 days'));
-        $from = (new \DateTime(sprintf('-%d days', 2 + self::ANALYTICS_DAYS)));
+        [$from, $to] = $this->window();
 
         $rows = $this->gsc->searchAnalyticsByQueryPage($from, $to);
         $io->text(sprintf('Search Analytics (query×page): %d строк (%s … %s)', count($rows), $from->format('Y-m-d'), $to->format('Y-m-d')));
 
         $today    = (new \DateTime())->format('Y-m-d');
-        $upserted = 0;
-        foreach ($rows as $row) {
-            if ($row['query'] === '' || $row['page'] === '') {
-                continue;
-            }
-            $this->db->executeStatement(
-                'INSERT INTO gsc_query_page (query, page_url, impressions, clicks, position, captured_on)
-                 VALUES (:query, :page, :imp, :clicks, :pos, :day)
-                 ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, position = :pos, captured_on = :day',
-                [
-                    'query'  => mb_substr($row['query'], 0, 255),
-                    'page'   => mb_substr($row['page'], 0, 512),
-                    'imp'    => $row['impressions'],
-                    'clicks' => $row['clicks'],
-                    'pos'    => $row['position'],
-                    'day'    => $today,
-                ],
-            );
-            $upserted++;
-        }
+        $upserted = $this->upsert(
+            'INSERT INTO gsc_query_page (query, page_url, impressions, clicks, position, captured_on)
+             VALUES (:query, :page, :imp, :clicks, :pos, :day)
+             ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, position = :pos, captured_on = :day',
+            $rows,
+            fn (array $row): ?array => $row['query'] === '' || $row['page'] === '' ? null : [
+                'query'  => mb_substr((string) $row['query'], 0, 255),
+                'page'   => mb_substr((string) $row['page'], 0, 512),
+                'imp'    => $row['impressions'],
+                'clicks' => $row['clicks'],
+                'pos'    => $row['position'],
+                'day'    => $today,
+            ],
+        );
         $io->text("Upsert в gsc_query_page: {$upserted}");
     }
 
