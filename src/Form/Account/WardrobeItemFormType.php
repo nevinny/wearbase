@@ -95,10 +95,6 @@ class WardrobeItemFormType extends AbstractType
                 ],
             ]);
 
-        if (!$options['full']) {
-            return;
-        }
-
         $builder
             ->add('name', TextType::class, [
                 'label' => 'Название',
@@ -156,10 +152,10 @@ class WardrobeItemFormType extends AbstractType
 
     public function configureOptions(OptionsResolver $resolver): void
     {
+        // Опция `full` (быстрое добавление против полной карточки) убрана вместе с самим
+        // режимом: и «Добавить вещь», и редактирование открывают полную форму.
         $resolver->setDefaults([
             'data_class' => WardrobeItem::class,
-            'full' => true,
         ]);
-        $resolver->setAllowedTypes('full', 'bool');
     }
 }

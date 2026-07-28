@@ -289,10 +289,17 @@ class WardrobeController extends AbstractController
                 $em->flush();
             }
 
+            // Вещь на этот момент уже сохранена, поэтому падение загрузчика нельзя пускать
+            // в 500: пользователь увидел бы ошибку и решил, что не сохранилось ничего.
+            // Ловим так же, как штатный эндпоинт photos_upload.
             if ($galleryPhotos !== []) {
-                $this->photoManager->upload($item, $galleryPhotos, WardrobeItemPhoto::TYPE_PRODUCT);
-                $this->wardrobeManager->refreshCompletionStatus($item);
-                $em->flush();
+                try {
+                    $this->photoManager->upload($item, $galleryPhotos, WardrobeItemPhoto::TYPE_PRODUCT);
+                    $this->wardrobeManager->refreshCompletionStatus($item);
+                    $em->flush();
+                } catch (\InvalidArgumentException $exception) {
+                    $this->addFlash('error', 'Вещь сохранена, но фотографии не загрузились: ' . $exception->getMessage());
+                }
             }
 
             $this->addFlash('success', 'Вещь добавлена');
@@ -307,7 +314,6 @@ class WardrobeController extends AbstractController
             'item'          => $item,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
-            'fullMode'      => true,
         ]);
     }
 
@@ -502,11 +508,17 @@ class WardrobeController extends AbstractController
                 // (старое фото не теряем физически, но перестаёт быть обложкой).
                 $this->photoManager->reconcileAfterLegacyReplace($item, $previousPhoto);
             }
+            // Правки уже во flush выше — ошибка загрузчика не должна их «отменять» в глазах
+            // пользователя (см. тот же приём в new() и photos_upload).
             $galleryPhotos = $form->get('galleryPhotos')->getData() ?? [];
             if ($galleryPhotos !== []) {
-                $this->photoManager->upload($item, $galleryPhotos, WardrobeItemPhoto::TYPE_PRODUCT);
-                $this->wardrobeManager->refreshCompletionStatus($item);
-                $em->flush();
+                try {
+                    $this->photoManager->upload($item, $galleryPhotos, WardrobeItemPhoto::TYPE_PRODUCT);
+                    $this->wardrobeManager->refreshCompletionStatus($item);
+                    $em->flush();
+                } catch (\InvalidArgumentException $exception) {
+                    $this->addFlash('error', 'Изменения сохранены, но фотографии не загрузились: ' . $exception->getMessage());
+                }
             }
             $this->addFlash('success', 'Изменения сохранены');
             return $this->redirectToRoute(
@@ -520,7 +532,6 @@ class WardrobeController extends AbstractController
             'item'          => $item,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
-            'fullMode'      => true,
         ]);
     }
 

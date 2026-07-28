@@ -166,6 +166,81 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         }
     }
 
+    /**
+     * Галерея при РЕДАКТИРОВАНИИ — путь сложнее создания: у вещи уже есть обложка,
+     * отрабатывает backfillLegacyCoverRow и продолжается нумерация sortOrder. Именно
+     * здесь легко сломать обложку следующей правкой и не заметить.
+     */
+    public function testEditFormAddsGalleryPhotosKeepingExistingCover(): void
+    {
+        $client = static::createClient();
+        $user   = $this->loginAsCustomer($client);
+        $em     = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        // Вещь с уже загруженной обложкой (legacy-фото), как после быстрого добавления.
+        $crawler = $client->request('GET', '/account/wardrobe/new');
+        $form    = $crawler->selectButton('Сохранить')->form(['wardrobe_item_form[name]' => 'Вещь с обложкой']);
+        $client->request('POST', '/account/wardrobe/new', $form->getPhpValues(), [
+            'wardrobe_item_form' => ['photoFile' => ['file' => new UploadedFile($this->makeTempImage(), 'cover.png', 'image/png', null, true)]],
+        ]);
+        $this->assertResponseRedirects();
+
+        $item = $em->getRepository(WardrobeItem::class)->findOneBy(['user' => $user, 'name' => 'Вещь с обложкой']);
+        self::assertNotNull($item);
+        $coverBefore = $item->getPhoto();
+        self::assertNotNull($coverBefore, 'обложка должна была загрузиться');
+
+        $crawler = $client->request('GET', '/account/wardrobe/' . $item->getId() . '/edit');
+        $this->assertResponseIsSuccessful();
+        $form = $crawler->selectButton('Сохранить')->form(['wardrobe_item_form[name]' => 'Вещь с обложкой']);
+        $client->request('POST', '/account/wardrobe/' . $item->getId() . '/edit', $form->getPhpValues(), [
+            'wardrobe_item_form' => ['galleryPhotos' => [
+                new UploadedFile($this->makeTempImage(), 'second.png', 'image/png', null, true),
+                new UploadedFile($this->makeTempImage(), 'third.png', 'image/png', null, true),
+            ]],
+        ]);
+        $this->assertResponseRedirects();
+
+        $em->clear();
+        $fresh = $em->getRepository(WardrobeItem::class)->find($item->getId());
+        self::assertCount(3, $fresh->getActivePhotos(), 'обложка + две новые фотографии');
+        self::assertSame($coverBefore, $fresh->getPhoto(), 'существующая обложка не должна подмениться новой');
+        self::assertSame(1, count(array_filter(
+            $fresh->getActivePhotos(),
+            static fn (WardrobeItemPhoto $photo): bool => $photo->isCover(),
+        )), 'обложка ровно одна');
+
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        foreach ($fresh->getActivePhotos() as $photo) {
+            $path = $storage->resolvePath($photo, 'file');
+            if ($path !== null) {
+                $this->tmpFiles[] = $path;
+            }
+        }
+    }
+
+    /** Лишние файлы отсекает форма (422), а не загрузчик 500-й: вещь при этом не создаётся. */
+    public function testTooManyGalleryPhotosAreRejectedByForm(): void
+    {
+        $client = static::createClient();
+        $this->loginAsCustomer($client);
+
+        $crawler = $client->request('GET', '/account/wardrobe/new');
+        $form    = $crawler->selectButton('Сохранить')->form(['wardrobe_item_form[name]' => 'Девять файлов']);
+        $files   = [];
+        for ($i = 0; $i < 9; $i++) {
+            $files[] = new UploadedFile($this->makeTempImage(), "f{$i}.png", 'image/png', null, true);
+        }
+        $client->request('POST', '/account/wardrobe/new', $form->getPhpValues(), ['wardrobe_item_form' => ['galleryPhotos' => $files]]);
+
+        self::assertSame(422, $client->getResponse()->getStatusCode());
+        self::assertStringContainsString('не больше 8', (string) $client->getResponse()->getContent());
+
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertNull($em->getRepository(WardrobeItem::class)->findOneBy(['name' => 'Девять файлов']));
+    }
+
     public function testQuickFormPersistsWildberriesPreviewAsPhoto(): void
     {
         $client = static::createClient();
