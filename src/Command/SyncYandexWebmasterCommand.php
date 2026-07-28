@@ -18,7 +18,15 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * Синк Яндекс.Вебмастера (cron 1 раз в день) — RU-аналог app:gsc:sync:
  *  1. search-urls/in-search/samples → yandex_index_status: бренды, что СЕЙЧАС в поиске
  *     Яндекса (url → brand по slug). Coverage Яндекса не заморожен (в отличие от GSC).
- *  2. search-queries/popular → yandex_query_stats: TOP запросов (показы/клики/позиция) по RU.
+ *  2. search-queries/popular → yandex_query_stats: запросы (показы/клики/ПОЗИЦИЯ) по RU,
+ *     с пагинацией: раньше брали жёстко 500 при 2000+ в выдаче, т.е. видели четверть.
+ *  2a. query-analytics/list (POST) → yandex_query_page: запрос → НАШ URL. Единственный
+ *     способ узнать по Яндексу, какую страницу править: в popular URL нет вообще, а
+ *     позиции нет в query-analytics — источники связываются по тексту запроса.
+ *  2b. summary + diagnostics + links/internal/broken → yandex_site_health (ИКС, страниц
+ *     в поиске, исключено, активные проблемы) + битые внутренние ссылки в seo_tech_finding
+ *     под правилом yandex_broken_link. Диагностика — это в том числе НАРУШЕНИЯ (МПК):
+ *     на severity FATAL/CRITICAL/ERROR уходит алерт в TG.
  *  3. --report: сводка + алерт в TG.
  *
  * FAIL-OPEN: без токена — лог и exit 0 (мониторинг не настроен ≠ ошибка пайплайна).
@@ -31,7 +39,10 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 )]
 class SyncYandexWebmasterCommand extends Command
 {
-    private const URLS_CAP = 5000;   // потолок примеров страниц в поиске за прогон
+    private const URLS_CAP         = 5000; // потолок примеров страниц в поиске за прогон
+    private const QUERIES_CAP      = 2500; // запросов за прогон (в выдаче их 2000+, API отдаёт по 500)
+    private const QUERY_PAGES_CAP  = 2500; // строк запрос×URL из query-analytics за прогон
+    private const BROKEN_LINKS_CAP = 500;  // битых внутренних ссылок за прогон
 
     public function __construct(
         private readonly YandexWebmasterClient $ya,
@@ -54,6 +65,8 @@ class SyncYandexWebmasterCommand extends Command
         $this
             ->addOption('urls-only',    null, InputOption::VALUE_NONE, 'Только страницы в поиске')
             ->addOption('queries-only', null, InputOption::VALUE_NONE, 'Только популярные запросы')
+            ->addOption('queries-cap',  null, InputOption::VALUE_REQUIRED, 'Потолок запросов за прогон', (string) self::QUERIES_CAP)
+            ->addOption('no-health',    null, InputOption::VALUE_NONE, 'Пропустить summary/диагностику/битые ссылки')
             ->addOption('report',       null, InputOption::VALUE_NONE, 'Сводка/алерт в TG')
         ;
     }
@@ -74,7 +87,12 @@ class SyncYandexWebmasterCommand extends Command
                 $this->syncInSearch($io);
             }
             if (!$input->getOption('urls-only')) {
-                $this->syncQueries($io);
+                $cap = max(1, (int) $input->getOption('queries-cap'));
+                $this->syncQueries($io, $cap);
+                $this->syncQueryPages($io, min($cap, self::QUERY_PAGES_CAP));
+            }
+            if (!$input->getOption('no-health')) {
+                $this->syncHealth($io);
             }
             $this->syncHistory($io);
             $this->pushDripHealth($io);
@@ -113,10 +131,10 @@ class SyncYandexWebmasterCommand extends Command
     }
 
     /** TOP популярных запросов → yandex_query_stats. */
-    private function syncQueries(SymfonyStyle $io): void
+    private function syncQueries(SymfonyStyle $io, int $cap): void
     {
-        $queries = $this->ya->popularQueries(500);
-        $io->text(sprintf('search-queries/popular: %d запросов', count($queries)));
+        $queries = $this->ya->popularQueries($cap);
+        $io->text(sprintf('search-queries/popular: %d запросов (cap %d)', count($queries), $cap));
 
         $upserted = 0;
         foreach ($queries as $q) {
@@ -139,6 +157,176 @@ class SyncYandexWebmasterCommand extends Command
             $upserted++;
         }
         $io->text("Upsert в yandex_query_stats: {$upserted}");
+    }
+
+    /**
+     * Запрос → URL (POST query-analytics/list) → yandex_query_page. Позиции в этом
+     * эндпоинте нет, зато есть единственный доступный у Яндекса разрез «какой наш URL
+     * показывается по запросу» — без него дожим позиций по Яндексу не знает, что править
+     * (app:seo:gap-report --band=striking). Симметрично gsc_query_page.
+     */
+    private function syncQueryPages(SymfonyStyle $io, int $cap): void
+    {
+        $rows = $this->ya->queryAnalytics($cap);
+        $io->text(sprintf('query-analytics (запрос×URL): %d строк (cap %d)', count($rows), $cap));
+
+        $today    = (new \DateTime())->format('Y-m-d');
+        $upserted = 0;
+        foreach ($rows as $r) {
+            $this->db->executeStatement(
+                'INSERT INTO yandex_query_page (query, page_url, impressions, clicks, demand, captured_on)
+                 VALUES (:q, :url, :imp, :clicks, :demand, :day)
+                 ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, demand = :demand, captured_on = :day',
+                [
+                    'q'      => mb_substr($r['query'], 0, 255),
+                    'url'    => mb_substr($r['url'], 0, 512),
+                    'imp'    => $r['impressions'],
+                    'clicks' => $r['clicks'],
+                    'demand' => $r['demand'],
+                    'day'    => $today,
+                ],
+            );
+            $upserted++;
+        }
+        $io->text("Upsert в yandex_query_page: {$upserted}");
+    }
+
+    /**
+     * Здоровье хоста: ИКС + индекс + активные проблемы диагностики (там же живут
+     * НАРУШЕНИЯ, в т.ч. малополезный контент) + битые внутренние ссылки по данным
+     * Яндекса. Снимок в yandex_site_health — иначе «1129 страниц в поиске» без истории
+     * ничего не значит. Битые ссылки складываем в общий seo_tech_finding под ОТДЕЛЬНЫМ
+     * правилом yandex_broken_link: своё правило internal_link_broken app:seo:tech-audit
+     * закрывает по итогам своего обхода, и чужие строки он трогать не должен.
+     */
+    private function syncHealth(SymfonyStyle $io): void
+    {
+        $summary     = $this->ya->siteSummary();
+        $diagnostics = $this->ya->diagnostics();
+        $broken      = $this->ya->brokenInternalLinks(self::BROKEN_LINKS_CAP);
+
+        $io->text(sprintf(
+            'summary: ИКС %d · в поиске %d · исключено %d · проблем %s',
+            $summary['sqi'],
+            $summary['searchable'],
+            $summary['excluded'],
+            json_encode($summary['problems'], JSON_UNESCAPED_UNICODE) ?: '{}',
+        ));
+        if ($diagnostics !== []) {
+            $io->text('Активные проблемы диагностики: ' . implode(', ', array_map(
+                static fn (array $p) => sprintf('%s (%s)', $p['code'], $p['severity']),
+                $diagnostics,
+            )));
+        }
+        $io->text(sprintf('links/internal/broken: %d', count($broken)));
+
+        $this->db->executeStatement(
+            'INSERT INTO yandex_site_health (captured_on, sqi, searchable_pages, excluded_pages, problems_json, broken_internal_links)
+             VALUES (:day, :sqi, :searchable, :excluded, :problems, :broken)
+             ON DUPLICATE KEY UPDATE sqi = :sqi, searchable_pages = :searchable, excluded_pages = :excluded,
+                                     problems_json = :problems, broken_internal_links = :broken',
+            [
+                'day'        => (new \DateTime())->format('Y-m-d'),
+                'sqi'        => $summary['sqi'],
+                'searchable' => $summary['searchable'],
+                'excluded'   => $summary['excluded'],
+                'problems'   => mb_substr((string) json_encode([
+                    'severity' => $summary['problems'],
+                    'active'   => array_map(static fn (array $p) => $p['code'], $diagnostics),
+                ], JSON_UNESCAPED_UNICODE), 0, 1024),
+                'broken'     => count($broken),
+            ],
+        );
+
+        $this->recordBrokenLinks($io, $broken);
+
+        // Нарушения и критичные проблемы — единственное, из-за чего стоит будить человека.
+        $this->alertCriticalDiagnostics($diagnostics);
+    }
+
+    /**
+     * Битые ссылки Вебмастера — ТОЛЬКО после подтверждения HTTP-кодом.
+     *
+     * Замер 2026-07-28: Яндекс отдал 74 «битых» пары, а из 7 уникальных целей ни одна не
+     * битая по HTTP — /catalog, /cart, /login, /register, /ru/brands отдают 200,
+     * /account/orders и /brand-claim/528 → 302 на логин. То есть в этот раздел Вебмастера
+     * попадает и «недоступное роботу», а не только ошибки. Писать такое в findings —
+     * ровно тот ложный шум, от которого чистился app:seo:tech-audit, поэтому цели
+     * дедуплицируются и проверяются (их единицы, не 74), а в отчёте видны оба числа.
+     *
+     * @param array<int,array{from:string,to:string,found:?string}> $broken
+     */
+    private function recordBrokenLinks(SymfonyStyle $io, array $broken): void
+    {
+        $byTarget = [];
+        foreach ($broken as $link) {
+            if ($link['to'] !== '') {
+                $byTarget[$link['to']] ??= $link;
+            }
+        }
+
+        $today     = (new \DateTime())->format('Y-m-d');
+        $confirmed = 0;
+        foreach ($byTarget as $target => $link) {
+            $status = $this->probe($target);
+            if ($status < 400) {
+                continue; // 200/3xx — не битая; Вебмастер имел в виду «недоступна роботу»
+            }
+
+            $path = (string) (parse_url($target, PHP_URL_PATH) ?: $target);
+            $this->db->executeStatement(
+                'INSERT INTO seo_tech_finding (url, rule, detail, first_seen_on, last_seen_on, fixed_on)
+                 VALUES (:url, :rule, :detail, :day, :day, NULL)
+                 ON DUPLICATE KEY UPDATE detail = VALUES(detail), last_seen_on = VALUES(last_seen_on),
+                                         first_seen_on = IF(fixed_on IS NULL, first_seen_on, VALUES(first_seen_on)),
+                                         fixed_on = NULL',
+                [
+                    'url'    => mb_substr($path, 0, 512),
+                    'rule'   => 'yandex_broken_link',
+                    'detail' => mb_substr(sprintf('HTTP %d; ссылка со %s (Вебмастер, %s)', $status, $link['from'], $link['found'] ?? '—'), 0, 255),
+                    'day'    => $today,
+                ],
+            );
+            $confirmed++;
+        }
+
+        $io->text(sprintf(
+            'Битые ссылки: Вебмастер сообщил %d пар (%d уникальных целей), подтверждено HTTP: %d',
+            count($broken),
+            count($byTarget),
+            $confirmed,
+        ));
+    }
+
+    private function probe(string $url): int
+    {
+        try {
+            return $this->httpClient->request('GET', $url, [
+                'timeout'     => 15,
+                'max_redirects' => 0, // редирект — не битая ссылка, но и не 200: важен сам код
+                'headers'     => ['User-Agent' => 'WearbaseLinkProbe/1.0 (+https://wearbase.ru)'],
+            ])->getStatusCode();
+        } catch (\Throwable) {
+            return 0; // сеть подвела — не объявляем ссылку битой
+        }
+    }
+
+    /** @param array<int,array{code:string,severity:string,state:string}> $diagnostics */
+    private function alertCriticalDiagnostics(array $diagnostics): void
+    {
+        $critical = array_values(array_filter(
+            $diagnostics,
+            static fn (array $p) => in_array($p['severity'], ['FATAL', 'CRITICAL', 'ERROR'], true),
+        ));
+        if ($critical !== [] && $this->notifier->isEnabled()) {
+            $this->notifier->send(sprintf(
+                "<b>⚠️ Яндекс.Вебмастер: проблемы хоста</b>\n%s",
+                implode("\n", array_map(
+                    static fn (array $p) => sprintf('• %s — %s', htmlspecialchars($p['code']), $p['severity']),
+                    $critical,
+                )),
+            ));
+        }
     }
 
     /** Дневной ряд (страницы в поиске + показы/клики) → yandex_history. Окно 400 дн (upsert). */

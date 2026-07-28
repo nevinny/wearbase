@@ -270,6 +270,10 @@ services:
         arguments:
             $siteBaseUrl: '%app.site_base_url%'
 
+    App\Command\SeoTechAuditCommand:
+        arguments:
+            $siteBaseUrl: '%app.site_base_url%'
+
     App\Command\MigrateImagesToSubdirsCommand:
         arguments:
             $projectDir: '%kernel.project_dir%'
