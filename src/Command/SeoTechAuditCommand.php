@@ -659,8 +659,16 @@ class SeoTechAuditCommand extends Command
     {
         $today = (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d');
 
+        // Закрывать можно ТОЛЬКО свои правила: в этой же таблице живут находки других
+        // источников (app:yandex:sync пишет yandex_broken_link по данным Вебмастера), и
+        // они не участвуют в этом обходе — иначе аудит «исправлял» бы их каждую субботу.
         $open = [];
-        foreach ($this->db->fetchAllAssociative('SELECT url, rule FROM seo_tech_finding WHERE fixed_on IS NULL') as $r) {
+        $rows = $this->db->fetchAllAssociative(
+            'SELECT url, rule FROM seo_tech_finding WHERE fixed_on IS NULL AND rule IN (?)',
+            [array_keys(self::RULES)],
+            [\Doctrine\DBAL\ArrayParameterType::STRING],
+        );
+        foreach ($rows as $r) {
             $open[$r['url'] . '|' . $r['rule']] = true;
         }
 

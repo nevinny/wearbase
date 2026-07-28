@@ -241,9 +241,19 @@ class SeoGapReportCommand extends Command
             return []; // таблица не создана / крон синка ещё не отработал
         }
 
-        // Вебмастер отдаёт запросы без URL — страницу-владельца по Яндексу мы не знаем.
+        // search-queries/popular отдаёт запросы без URL, поэтому страница-владелец берётся
+        // из yandex_query_page (POST query-analytics, пишет app:yandex:sync) — там позиции
+        // нет, а URL есть; связка по тексту запроса.
+        $pages = $this->resolveYandexPages(array_map(static fn (array $r) => (string) $r['query'], $data));
+
         return array_map(
-            static fn (array $r) => ['query' => (string) $r['query'], 'shows' => (int) $r['shows'], 'position' => round((float) $r['position'], 1), 'source' => 'yandex', 'page' => null],
+            static fn (array $r) => [
+                'query'    => (string) $r['query'],
+                'shows'    => (int) $r['shows'],
+                'position' => round((float) $r['position'], 1),
+                'source'   => 'yandex',
+                'page'     => $pages[(string) $r['query']] ?? null,
+            ],
             $data,
         );
     }
@@ -276,6 +286,40 @@ class SeoGapReportCommand extends Command
             ],
             $data,
         );
+    }
+
+    /**
+     * То же для Яндекса — из yandex_query_page (пишет app:yandex:sync). Отдаёт путь без
+     * домена (так его возвращает Вебмастер), в отличие от GSC с абсолютным URL.
+     *
+     * @param list<string> $queries
+     * @return array<string,string> запрос → путь
+     */
+    private function resolveYandexPages(array $queries): array
+    {
+        if ($queries === []) {
+            return [];
+        }
+
+        try {
+            $rows = $this->db->fetchAllAssociative(
+                'SELECT query, page_url, impressions AS shows
+                 FROM yandex_query_page
+                 WHERE query IN (?)
+                 ORDER BY shows DESC',
+                [$queries],
+                [\Doctrine\DBAL\ArrayParameterType::STRING],
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $pages = [];
+        foreach ($rows as $r) {
+            $pages[(string) $r['query']] ??= (string) $r['page_url'];
+        }
+
+        return $pages;
     }
 
     /**
