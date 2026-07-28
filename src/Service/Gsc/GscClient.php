@@ -101,6 +101,41 @@ class GscClient
     }
 
     /**
+     * Search Analytics: срез запрос×страница ЗА ОКНО ЦЕЛИКОМ (без dimension `date`).
+     * Дата опущена намеренно: единственный потребитель — «какой наш URL ранжируется по
+     * этому запросу» (дожим позиций 4–10 в app:seo:gap-report и поиск двух URL на один
+     * запрос). С date размер ответа растёт в разы и упирается в rowLimit, а суточная
+     * динамика для этой задачи не нужна — она уже есть в gsc_page_stats/gsc_query_stats.
+     *
+     * @return array<int,array{query:string,page:string,impressions:int,clicks:int,position:float}>
+     */
+    public function searchAnalyticsByQueryPage(\DateTimeInterface $from, \DateTimeInterface $to, int $rowLimit = 25000): array
+    {
+        $data = $this->post(
+            'https://searchconsole.googleapis.com/webmasters/v3/sites/' . rawurlencode((string) $this->siteUrl) . '/searchAnalytics/query',
+            [
+                'startDate'  => $from->format('Y-m-d'),
+                'endDate'    => $to->format('Y-m-d'),
+                'dimensions' => ['query', 'page'],
+                'rowLimit'   => $rowLimit,
+            ],
+        );
+
+        $out = [];
+        foreach (($data['rows'] ?? []) as $row) {
+            $out[] = [
+                'query'       => (string) ($row['keys'][0] ?? ''),
+                'page'        => (string) ($row['keys'][1] ?? ''),
+                'impressions' => (int) ($row['impressions'] ?? 0),
+                'clicks'      => (int) ($row['clicks'] ?? 0),
+                'position'    => round((float) ($row['position'] ?? 0), 1),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * URL Inspection (лимит Google 2000/день — квоту бережёт вызывающий).
      *
      * @return array{verdict:string,coverageState:?string,indexed:bool}

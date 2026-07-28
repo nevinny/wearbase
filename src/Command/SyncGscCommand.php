@@ -80,6 +80,7 @@ class SyncGscCommand extends Command
             if (!$input->getOption('inspect-only')) {
                 $this->syncAnalytics($io);
                 $this->syncQueryAnalytics($io);
+                $this->syncQueryPageAnalytics($io);
                 $this->markServedFromAnalytics($io);
             }
             if (!$input->getOption('analytics-only')) {
@@ -164,6 +165,44 @@ class SyncGscCommand extends Command
             $upserted++;
         }
         $io->text("Upsert в gsc_query_stats: {$upserted}");
+    }
+
+    /**
+     * Третий pull — dimensions=['query','page'] за окно целиком → gsc_query_page.
+     * Отвечает на вопрос «какой наш URL ранжируется по этому запросу»: без него полоса
+     * дожима (app:seo:gap-report --band=striking) знает запрос, но не знает, что править.
+     * Побочно: 2+ строки с показами на один запрос = кандидат на каннибализацию.
+     */
+    private function syncQueryPageAnalytics(SymfonyStyle $io): void
+    {
+        $to   = (new \DateTime('-2 days'));
+        $from = (new \DateTime(sprintf('-%d days', 2 + self::ANALYTICS_DAYS)));
+
+        $rows = $this->gsc->searchAnalyticsByQueryPage($from, $to);
+        $io->text(sprintf('Search Analytics (query×page): %d строк (%s … %s)', count($rows), $from->format('Y-m-d'), $to->format('Y-m-d')));
+
+        $today    = (new \DateTime())->format('Y-m-d');
+        $upserted = 0;
+        foreach ($rows as $row) {
+            if ($row['query'] === '' || $row['page'] === '') {
+                continue;
+            }
+            $this->db->executeStatement(
+                'INSERT INTO gsc_query_page (query, page_url, impressions, clicks, position, captured_on)
+                 VALUES (:query, :page, :imp, :clicks, :pos, :day)
+                 ON DUPLICATE KEY UPDATE impressions = :imp, clicks = :clicks, position = :pos, captured_on = :day',
+                [
+                    'query'  => mb_substr($row['query'], 0, 255),
+                    'page'   => mb_substr($row['page'], 0, 512),
+                    'imp'    => $row['impressions'],
+                    'clicks' => $row['clicks'],
+                    'pos'    => $row['position'],
+                    'day'    => $today,
+                ],
+            );
+            $upserted++;
+        }
+        $io->text("Upsert в gsc_query_page: {$upserted}");
     }
 
     /**
