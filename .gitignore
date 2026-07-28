@@ -76,6 +76,8 @@
 /var/
 /public_html/images/brands
 /public_html/images/logos
+/public_html/images/wardrobe
+/public_html/images/wardrobe_drafts
 ###< symfony/framework-bundle ###
 
 # Секреты (Google OAuth/GSC service-account и пр.) — только локально
