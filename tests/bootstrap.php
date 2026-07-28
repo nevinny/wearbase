@@ -59,6 +59,18 @@ if (($_SERVER['APP_ENV'] ?? null) === 'test') {
             )
         SQL);
 
+        // Карта идемпотентности переноса гардероба (Version20260728_wardrobe_import_map).
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS wardrobe_import_map (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_fingerprint CHAR(64) NOT NULL,
+                source_user_id INTEGER NOT NULL,
+                source_item_id INTEGER NOT NULL,
+                wardrobe_item_id INTEGER NOT NULL,
+                imported_at DATETIME NOT NULL
+            )
+        SQL);
+
         // ── Минимальный сид справочников ──────────────────────────────────────
         if ($em->getRepository(Currency::class)->count([]) === 0) {
             $rub = (new Currency())
