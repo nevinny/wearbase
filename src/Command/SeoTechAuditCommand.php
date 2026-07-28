@@ -685,21 +685,35 @@ class SeoTechAuditCommand extends Command
                 $new[] = ['url' => $f['url'], 'rule' => $f['rule']];
             }
 
-            $this->db->executeStatement(
-                'INSERT INTO seo_tech_finding (url, rule, detail, first_seen_on, last_seen_on, fixed_on)
-                 VALUES (:url, :rule, :detail, :day, :day, NULL)
-                 ON DUPLICATE KEY UPDATE
-                    detail = VALUES(detail),
-                    last_seen_on = VALUES(last_seen_on),
-                    first_seen_on = IF(fixed_on IS NULL, first_seen_on, VALUES(first_seen_on)),
-                    fixed_on = NULL',
-                [
-                    'url'    => mb_substr($f['url'], 0, 512),
-                    'rule'   => $f['rule'],
-                    'detail' => mb_substr($f['detail'], 0, 255),
-                    'day'    => $today,
-                ],
+            $url    = mb_substr($f['url'], 0, 512);
+            $detail = mb_substr($f['detail'], 0, 255);
+
+            // SELECT-then-write вместо ON DUPLICATE KEY UPDATE: тот был MySQL-only, из-за
+            // чего весь путь записи не покрывался тестами (тест-БД — SQLite). Гонок здесь
+            // нет: аудит гоняет один крон.
+            $existing = $this->db->fetchAssociative(
+                'SELECT id, fixed_on FROM seo_tech_finding WHERE url = ? AND rule = ?',
+                [$url, $f['rule']],
             );
+
+            if ($existing === false) {
+                $this->db->insert('seo_tech_finding', [
+                    'url' => $url, 'rule' => $f['rule'], 'detail' => $detail,
+                    'first_seen_on' => $today, 'last_seen_on' => $today, 'fixed_on' => null,
+                ]);
+                continue;
+            }
+
+            // Нарушение, всплывшее после исправления, — это «появилось» заново,
+            // поэтому first_seen_on сдвигаем; у открытого дату первой встречи храним.
+            $sql = $existing['fixed_on'] === null
+                ? 'UPDATE seo_tech_finding SET detail = ?, last_seen_on = ? WHERE id = ?'
+                : 'UPDATE seo_tech_finding SET detail = ?, last_seen_on = ?, first_seen_on = ?, fixed_on = NULL WHERE id = ?';
+            $params = $existing['fixed_on'] === null
+                ? [$detail, $today, $existing['id']]
+                : [$detail, $today, $today, $existing['id']];
+
+            $this->db->executeStatement($sql, $params);
         }
 
         $fixed = [];

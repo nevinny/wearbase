@@ -14,9 +14,8 @@ use Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
  * Тех-аудит (app:seo:tech-audit) на синтетическом сайте через MockHttpClient — сеть не
- * нужна. Прогон только с --stdout-only: seo_tech_finding — сырая (не-entity) таблица,
- * в SQLite-схему тестов она не провижинится, а проверять здесь надо логику обхода и
- * правил, а не upsert.
+ * нужна. Проверки правил гоняем с --stdout-only, а запись findings и дельту —
+ * без него: seo_tech_finding мирроится в SQLite-схему тестов (tests/bootstrap.php).
  */
 class SeoTechAuditCommandTest extends KernelTestCase
 {
@@ -131,6 +130,81 @@ class SeoTechAuditCommandTest extends KernelTestCase
         self::assertStringContainsString('Страница-сирота', $out);
         self::assertStringContainsString('/ru/blog/orphan', $out);
         self::assertStringNotContainsString('/ru/blog/linked —', $out);
+    }
+
+    /**
+     * Путь записи findings и дельта «появилось / исправлено» — ради неё и заведена
+     * seo_tech_finding: без дельты еженедельный отчёт присылал бы один и тот же список.
+     * Исправленное закрывается через fixed_on (soft-delete), а не удаляется.
+     */
+    public function testFindingsArePersistedAndDeltaTracksFixes(): void
+    {
+        $db = self::getContainer()->get(Connection::class);
+        $db->executeStatement('DELETE FROM seo_tech_finding');
+
+        // Прогон 1: на странице два H1 → нарушение открыто.
+        $broken = '<html><head><title>Сломанная</title>'
+            . '<meta name="description" content="Достаточно длинное описание, чтобы правило про короткий description молчало на этой странице.">'
+            . '<link rel="canonical" href="https://example.test/ru/fix-me"></head>'
+            . '<body><h1>Раз</h1><h1>Два</h1></body></html>';
+
+        $this->tester([
+            '/'            => self::page('Главная', '<h1>Главная</h1><a href="/ru/fix-me">чинить</a>'),
+            '/ru/fix-me'   => $broken,
+            '/sitemap.xml' => '<urlset><url><loc>https://example.test/</loc></url></urlset>',
+        ])->execute(['--delay-ms' => '0', '--link-check-cap' => '0']);
+
+        $row = $db->fetchAssociative("SELECT * FROM seo_tech_finding WHERE rule = 'h1_multiple'");
+        self::assertNotFalse($row, 'нарушение должно записаться');
+        self::assertSame('/ru/fix-me', $row['url']);
+        self::assertNull($row['fixed_on']);
+
+        // Прогон 2: тот же обход, H1 починили → строка закрывается, а не исчезает.
+        $tester = $this->tester([
+            '/'            => self::page('Главная', '<h1>Главная</h1><a href="/ru/fix-me">чинить</a>'),
+            '/ru/fix-me'   => self::page('Починенная', '<h1>Один</h1>'),
+            '/sitemap.xml' => '<urlset><url><loc>https://example.test/</loc></url></urlset>',
+        ]);
+        $tester->execute(['--delay-ms' => '0', '--link-check-cap' => '0']);
+
+        self::assertStringContainsString('исправлено: 1', $tester->getDisplay());
+        $row = $db->fetchAssociative("SELECT * FROM seo_tech_finding WHERE rule = 'h1_multiple'");
+        self::assertNotFalse($row, 'история не удаляется — только помечается исправленной');
+        self::assertNotNull($row['fixed_on']);
+
+        // Прогон 3: сломали снова → та же строка снова открыта и считается новой.
+        $tester = $this->tester([
+            '/'            => self::page('Главная', '<h1>Главная</h1><a href="/ru/fix-me">чинить</a>'),
+            '/ru/fix-me'   => $broken,
+            '/sitemap.xml' => '<urlset><url><loc>https://example.test/</loc></url></urlset>',
+        ]);
+        $tester->execute(['--delay-ms' => '0', '--link-check-cap' => '0']);
+
+        self::assertStringContainsString('появилось: 1', $tester->getDisplay());
+        $row = $db->fetchAssociative("SELECT * FROM seo_tech_finding WHERE rule = 'h1_multiple'");
+        self::assertNull($row['fixed_on']);
+        self::assertSame(1, (int) $db->fetchOne("SELECT COUNT(*) FROM seo_tech_finding WHERE rule = 'h1_multiple'"), 'дубля быть не должно');
+    }
+
+    /** Чужие правила аудит не закрывает: в таблице живут находки app:yandex:sync. */
+    public function testForeignRuleIsNotClosedByAudit(): void
+    {
+        $db = self::getContainer()->get(Connection::class);
+        $db->executeStatement('DELETE FROM seo_tech_finding');
+        $db->insert('seo_tech_finding', [
+            'url' => '/ru/from-yandex', 'rule' => 'yandex_broken_link', 'detail' => 'Вебмастер',
+            'first_seen_on' => '2026-07-01', 'last_seen_on' => '2026-07-01', 'fixed_on' => null,
+        ]);
+
+        $this->tester([
+            '/'            => self::page('Главная', '<h1>Главная</h1>'),
+            '/sitemap.xml' => '<urlset><url><loc>https://example.test/</loc></url></urlset>',
+        ])->execute(['--delay-ms' => '0', '--link-check-cap' => '0']);
+
+        self::assertNull(
+            $db->fetchOne("SELECT fixed_on FROM seo_tech_finding WHERE rule = 'yandex_broken_link'"),
+            'находка другого источника не участвует в этом обходе и закрываться не должна',
+        );
     }
 
     public function testOrphanCheckIsSkippedWhenHubPhaseHitsItsCap(): void

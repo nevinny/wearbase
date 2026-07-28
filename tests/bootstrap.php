@@ -59,6 +59,19 @@ if (($_SERVER['APP_ENV'] ?? null) === 'test') {
             )
         SQL);
 
+        // Находки тех-аудита с дельтой (Version20260728_seo_tech_finding).
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS seo_tech_finding (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url VARCHAR(512) NOT NULL,
+                rule VARCHAR(40) NOT NULL,
+                detail VARCHAR(255) DEFAULT NULL,
+                first_seen_on DATE NOT NULL,
+                last_seen_on DATE NOT NULL,
+                fixed_on DATE DEFAULT NULL
+            )
+        SQL);
+
         // Карта идемпотентности переноса гардероба (Version20260728_wardrobe_import_map).
         $connection->executeStatement(<<<'SQL'
             CREATE TABLE IF NOT EXISTS wardrobe_import_map (
