@@ -92,6 +92,15 @@
     {% endif %}
     {{ form_widget(form.photoFile, {'attr': {'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-black'}}) }}
     {{ f.err(form.photoFile) }}
+    <div class="mt-4">
+        <label class="{{ tw_label }}">Дополнительные фотографии</label>
+        {{ form_widget(form.galleryPhotos, {'attr': {
+            'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-gray-700 hover:file:bg-gray-200',
+            'accept': 'image/jpeg,image/png,image/webp'
+        }}) }}
+        {{ f.err(form.galleryPhotos) }}
+        <p class="mt-1 text-xs text-gray-400">До 8 файлов JPG, PNG или WebP, каждый до 10 МБ.</p>
+    </div>
     <div id="wardrobe-ai-photo-status" class="mt-2 hidden text-xs"></div>
     <div id="wardrobe-ai-photo-diff" class="mt-2 hidden"></div>
 </div>
@@ -172,7 +181,7 @@
 
 <div class="mt-6 flex gap-2">
     <button type="submit" class="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить</button>
-    {% if not fullMode %}
+    {% if not item.id %}
         <button type="submit" name="save_and_add" value="1" class="rounded-xl border border-gray-900 px-5 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 transition">Сохранить и добавить следующую</button>
     {% endif %}
     <a href="{{ path('account_wardrobe_index') }}"

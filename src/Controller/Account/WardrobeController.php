@@ -245,12 +245,13 @@ class WardrobeController extends AbstractController
         $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
 
         $item = new WardrobeItem();
-        $form = $this->createForm(WardrobeItemFormType::class, $item, ['full' => false]);
+        $form = $this->createForm(WardrobeItemFormType::class, $item);
         $form->handleRequest($request);
         $remotePhotoUrl = $form->get('remotePhotoUrl')->getData();
+        $galleryPhotos = $form->get('galleryPhotos')->getData() ?? [];
 
         if ($form->isSubmitted() && $form->isValid()) {
-            if ($item->getPhotoFile() === null) {
+            if ($item->getPhotoFile() === null && $galleryPhotos === []) {
                 $this->remotePhotoFetcher->attachWildberriesPhoto($item, $remotePhotoUrl);
             }
             $item->setUser($currentMember);
@@ -288,6 +289,12 @@ class WardrobeController extends AbstractController
                 $em->flush();
             }
 
+            if ($galleryPhotos !== []) {
+                $this->photoManager->upload($item, $galleryPhotos, WardrobeItemPhoto::TYPE_PRODUCT);
+                $this->wardrobeManager->refreshCompletionStatus($item);
+                $em->flush();
+            }
+
             $this->addFlash('success', 'Вещь добавлена');
             if ($request->request->has('save_and_add')) {
                 return $this->redirectToRoute('account_wardrobe_new', $this->memberQuery($user, $currentMember));
@@ -300,7 +307,7 @@ class WardrobeController extends AbstractController
             'item'          => $item,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
-            'fullMode'      => false,
+            'fullMode'      => true,
         ]);
     }
 
@@ -494,6 +501,12 @@ class WardrobeController extends AbstractController
                 // Vich уже сохранил новый файл и переписал item.photo — согласуем галерею
                 // (старое фото не теряем физически, но перестаёт быть обложкой).
                 $this->photoManager->reconcileAfterLegacyReplace($item, $previousPhoto);
+            }
+            $galleryPhotos = $form->get('galleryPhotos')->getData() ?? [];
+            if ($galleryPhotos !== []) {
+                $this->photoManager->upload($item, $galleryPhotos, WardrobeItemPhoto::TYPE_PRODUCT);
+                $this->wardrobeManager->refreshCompletionStatus($item);
+                $em->flush();
             }
             $this->addFlash('success', 'Изменения сохранены');
             return $this->redirectToRoute(

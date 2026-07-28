@@ -76,6 +76,9 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
 
         $crawler = $client->request('GET', '/account/wardrobe/new');
         $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('body', 'Полная карточка');
+        $this->assertSelectorExists('#wardrobe_item_form_categoryRef');
+        $this->assertSelectorExists('#wardrobe_item_form_galleryPhotos');
         $this->assertSelectorExists('select[name="wardrobe_item_form[loveAtFirstSight]"]');
 
         $form = $crawler->selectButton('Сохранить')->form([
@@ -114,6 +117,53 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $client->submit($form);
 
         $this->assertResponseRedirects('/account/wardrobe/new');
+    }
+
+    public function testNewItemSavesMultipleGalleryPhotos(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        $firstPath = $this->makeTempImage();
+        $secondPath = $this->makeTempImage();
+
+        $crawler = $client->request('GET', '/account/wardrobe/new');
+        $form = $crawler->selectButton('Сохранить')->form([
+            'wardrobe_item_form[name]' => 'Вещь с галереей',
+            'wardrobe_item_form[size]' => 'M',
+        ]);
+        $client->request('POST', '/account/wardrobe/new', $form->getPhpValues(), [
+            'wardrobe_item_form' => [
+                'galleryPhotos' => [
+                    new UploadedFile($firstPath, 'front.png', 'image/png', null, true),
+                    new UploadedFile($secondPath, 'back.png', 'image/png', null, true),
+                ],
+            ],
+        ]);
+
+        $this->assertResponseRedirects('/account/wardrobe');
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $item = $em->getRepository(WardrobeItem::class)->findOneBy([
+            'user' => $user,
+            'name' => 'Вещь с галереей',
+        ]);
+        self::assertNotNull($item);
+        self::assertCount(2, $item->getActivePhotos());
+        self::assertNotNull($item->getPhoto());
+        self::assertSame(1, count(array_filter(
+            $item->getActivePhotos(),
+            static fn (WardrobeItemPhoto $photo): bool => $photo->isCover(),
+        )));
+
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        foreach ($item->getActivePhotos() as $photo) {
+            $path = $storage->resolvePath($photo, 'file');
+            if ($path !== null) {
+                $this->tmpFiles[] = $path;
+            }
+        }
     }
 
     public function testQuickFormPersistsWildberriesPreviewAsPhoto(): void

@@ -12,6 +12,7 @@ use Symfony\Bridge\Doctrine\Form\Type\EntityType;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\Extension\Core\Type\DateType;
+use Symfony\Component\Form\Extension\Core\Type\FileType;
 use Symfony\Component\Form\Extension\Core\Type\HiddenType;
 use Symfony\Component\Form\Extension\Core\Type\NumberType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
@@ -19,6 +20,9 @@ use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\Extension\Core\Type\UrlType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\Validator\Constraints\All;
+use Symfony\Component\Validator\Constraints\Count;
+use Symfony\Component\Validator\Constraints\File;
 use Symfony\Component\Validator\Constraints\GreaterThanOrEqual;
 use Symfony\Component\Validator\Constraints\Length;
 use Vich\UploaderBundle\Form\Type\VichImageType;
@@ -37,6 +41,22 @@ class WardrobeItemFormType extends AbstractType
                 // галерею (WardrobePhotoManager::softDelete), там soft-delete.
                 'allow_delete' => false,
                 'download_uri' => false,
+            ])
+            ->add('galleryPhotos', FileType::class, [
+                'label' => 'Дополнительные фотографии',
+                'mapped' => false,
+                'multiple' => true,
+                'required' => false,
+                'constraints' => [
+                    new Count(max: 8, maxMessage: 'Можно загрузить не больше 8 фотографий.'),
+                    new All([
+                        new File(
+                            maxSize: '10M',
+                            mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+                            mimeTypesMessage: 'Разрешены только JPG, PNG и WebP.',
+                        ),
+                    ]),
+                ],
             ])
             ->add('productUrl', UrlType::class, [
                 'label' => 'Ссылка на товар',
