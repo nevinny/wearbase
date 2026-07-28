@@ -300,3 +300,11 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
             $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'
+
+    # Вендорный CRUD админов (nevinny/admin-core) не имеет configureFields: EasyAdmin
+    # генерил поля из метаданных и выводил колонку `password` текстовым полем с bcrypt-хешем,
+    # а сохранение писало введённое без хеширования. Снимаем автоконфигурацию, чтобы
+    # EasyAdmin его не видел — маршруты /admin/user/* обслуживает App\Controller\Admin\UserCrudController.
+    Nevinny\AdminCoreBundle\Controller\Admin\UserCrudController:
+        autoconfigure: false
+        autowire: false
