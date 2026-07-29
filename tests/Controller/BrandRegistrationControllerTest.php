@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use App\Entity\BrandModeration;
 use App\Entity\BrandUser;
 use App\Entity\Subscription;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -64,5 +65,11 @@ class BrandRegistrationControllerTest extends DatabaseDependentWebTestCase
         $subscription = $em->getRepository(Subscription::class)->findOneBy(['brand' => $link->getBrand()]);
         $this->assertNotNull($subscription, 'Должна создаваться free-trial подписка');
         $this->assertSame(Subscription::STATUS_TRIAL, $subscription->getStatus());
+
+        // Премодерация (MVP авто-модерации самрег-брендов): заявка встаёт в очередь сразу.
+        $moderation = $em->getRepository(BrandModeration::class)->findOneBy(['brand' => $link->getBrand()]);
+        $this->assertNotNull($moderation, 'Регистрация бренда должна ставить заявку в очередь премодерации');
+        $this->assertSame(BrandModeration::STATUS_QUEUED, $moderation->getStatus());
+        $this->assertSame(BrandModeration::SOURCE_SELF_REGISTER, $moderation->getSource());
     }
 }
