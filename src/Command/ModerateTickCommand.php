@@ -13,6 +13,7 @@ use App\Service\Discovery\DiscoveredUrl;
 use App\Service\Moderation\ApplicationMatcher;
 use App\Service\NearDuplicateDetector;
 use App\Service\WebScraperService;
+use App\Service\YandexSearchClient;
 use App\Service\YandexSearchMeter;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -61,6 +62,7 @@ class ModerateTickCommand extends Command
         private readonly ApplicationMatcher $matcher,
         private readonly NearDuplicateDetector $dup,
         private readonly YandexSearchMeter $yandexMeter,
+        private readonly YandexSearchClient $yandex,
         private readonly AdminNotifier $notifier,
         private readonly BrandActionSigner $actionSigner,
         private readonly EntityManagerInterface $em,
@@ -174,7 +176,24 @@ class ModerateTickCommand extends Command
             }
         }
 
-        [$pages, $officialDomain, $siteFlags] = $this->collectPages($ownSite);
+        // Угаданный из слага домен ({slug}.ru/.com — самый слабый T1-сигнал discoverTiered)
+        // не факт о бренде, а наша догадка: если он не отвечает, это не site_unreachable.
+        $guessedSlugUrls = $slug !== '' ? ["https://{$slug}.ru", "https://{$slug}.com"] : [];
+        $isSlugGuess = $ownSite !== null && in_array(rtrim($ownSite->url, '/'), $guessedSlugUrls, true);
+
+        // Bug 2: discoverTiered() строит кандидатов из названия/слага — для патологических
+        // названий (мало значащих символов + пунктуация, кейс «Русский бренд АХ!») либо
+        // ничего не находит, либо угаданный домен не отвечает. Пробуем найти сайт по
+        // контактам ИЗ ЗАЯВКИ (см. discoverByContacts) прежде чем сдаваться.
+        if ($ownSite === null || !$ownSite->live) {
+            $byContact = $this->discoverByContacts($item);
+            if ($byContact !== null) {
+                $ownSite = $byContact;
+                $isSlugGuess = false; // найден поиском, не нашей догадкой
+            }
+        }
+
+        [$pages, $officialDomain, $siteFlags] = $this->collectPages($ownSite, $isSlugGuess);
 
         $match = $this->matcher->evaluate(
             ['title' => $title, 'email' => $item['email'] ?? null, 'phone' => $item['phone'] ?? null, 'address' => $item['address'] ?? null],
@@ -187,7 +206,7 @@ class ModerateTickCommand extends Command
         $redFlags = array_merge($siteFlags, $checklistFlags, $this->duplicateFlags($title, $ownSite));
 
         [$nicheStatus, $originStatus, $note] = $this->classifyOnMacIfMirrored($slug);
-        $verdict = $this->decideVerdict($match, $redFlags);
+        $verdict = $this->decideVerdict($match, $redFlags, $nicheStatus, $originStatus);
         $summary = $this->buildSummary($match, $missing, $redFlags, $note);
 
         $io->text(sprintf('  identity=%s control=%s verdict=%s', $match['identity_match'], $match['control_proof'], $verdict));
@@ -215,8 +234,12 @@ class ModerateTickCommand extends Command
         }
     }
 
-    /** @return array{0:array<int,array{url:string,html:string}>,1:?string,2:string[]} */
-    private function collectPages(?DiscoveredUrl $ownSite): array
+    /**
+     * @param bool $isSlugGuess true — $ownSite->url это {slug}.ru/.com, угаданный нами
+     *        (не факт о бренде): недоступность такого домена не флагуем (Bug 2)
+     * @return array{0:array<int,array{url:string,html:string}>,1:?string,2:string[]}
+     */
+    private function collectPages(?DiscoveredUrl $ownSite, bool $isSlugGuess = false): array
     {
         if ($ownSite === null) {
             return [[], null, []];
@@ -224,7 +247,7 @@ class ModerateTickCommand extends Command
 
         $main = $this->scraper->fetch($ownSite->url);
         if ($main === null || $main['html'] === '') {
-            return [[], null, ['site_unreachable:' . $ownSite->url]];
+            return [[], null, $isSlugGuess ? [] : ['site_unreachable:' . $ownSite->url]];
         }
 
         $pages = [['url' => $main['url'], 'html' => $main['html']]];
@@ -249,6 +272,61 @@ class ModerateTickCommand extends Command
         $host = parse_url($url, PHP_URL_HOST);
 
         return is_string($host) ? strtolower(preg_replace('/^www\./', '', $host)) : null;
+    }
+
+    /**
+     * Bug 2: discoverTiered() строит кандидатов из названия/слага — патологические названия
+     * (мало значащих символов, кейс «Русский бренд АХ!») не дают ничего живого. Ищем сайт по
+     * КОНТАКТАМ ИЗ ЗАЯВКИ (телефон в нескольких форматах + email) через тот же Yandex Search
+     * API, что и BrandSourceFinder (квота — через его собственный YandexSearchMeter внутри
+     * YandexSearchClient::search()). Кандидата подтверждаем ApplicationMatcher — телефон/email
+     * реально на странице, а не просто совпал в выдаче.
+     *
+     * @param array<string,mixed> $item элемент очереди (phone/email заявителя)
+     */
+    private function discoverByContacts(array $item): ?DiscoveredUrl
+    {
+        $phone = trim((string) ($item['phone'] ?? ''));
+        $email = trim((string) ($item['email'] ?? ''));
+
+        $queries = [];
+        if ($phone !== '') {
+            $ten = $this->matcher->normalizePhone($phone);
+            if ($ten !== '') {
+                $queries[] = '+7' . $ten;
+                $queries[] = '8' . $ten;
+                $queries[] = $ten;
+            }
+        }
+        if ($email !== '') {
+            $queries[] = $email;
+        }
+
+        foreach ($queries as $q) {
+            foreach ($this->yandex->search($q, 5) as $r) {
+                $url = trim((string) ($r['url'] ?? ''));
+                if ($url === '') {
+                    continue;
+                }
+                $page = $this->scraper->fetch($url);
+                if ($page === null || $page['html'] === '') {
+                    continue;
+                }
+                // Только против самих контактов заявки (title намеренно не передаём —
+                // здесь нужно доказать identity через phone/email, не через совпадение имени).
+                $confirm = $this->matcher->evaluate(
+                    ['phone' => $phone, 'email' => $email],
+                    [['url' => $page['url'], 'html' => $page['html']]],
+                    $this->hostOf($url),
+                    null,
+                );
+                if ($confirm['identity_match'] !== 'unconfirmed') {
+                    return new DiscoveredUrl($page['url'], BrandSourceUrl::TYPE_OWN_SITE, 1, 0.9, true);
+                }
+            }
+        }
+
+        return null;
     }
 
     /** @return array{0:string[],1:string[]} [missing, red_flags] */
@@ -348,13 +426,25 @@ class ModerateTickCommand extends Command
         return [$brand->getNicheStatus(), $brand->getOriginStatus(), 'ниша/происхождение определены по зеркалированной копии на Mac'];
     }
 
-    /** @param array{identity_match:string,control_proof:string,evidence:mixed} $match @param string[] $redFlags */
-    private function decideVerdict(array $match, array $redFlags): string
+    /**
+     * Маппинг вердикта — docs/brand_self_service.md §3 (таблица авто-решений).
+     * `reject` допустим ТОЛЬКО при niche_status='off' или origin_status foreign/unknown —
+     * это единственный автоматический ОТКАЗ настоящему бренду, поэтому гейт строгий.
+     * Отсутствие цифрового следа (identity_match='no_trace') — НЕ повод отклонять: молодой
+     * бренд без сайта — нормальное явление, а no_trace может значить лишь то, что мы плохо
+     * искали (Bug 2). В MVP отдельного статуса awaiting_facts нет — no_trace, как и любой
+     * неподтверждённый/слабый identity_match или красный флаг, уходит в `request_changes`
+     * (дубль/red_flags — по сути «решает человек», в MVP это тот же request_changes без
+     * авто-действия дальше).
+     *
+     * @param array{identity_match:string,control_proof:string,evidence:mixed} $match @param string[] $redFlags
+     */
+    private function decideVerdict(array $match, array $redFlags, ?string $nicheStatus, ?string $originStatus): string
     {
-        if (in_array($match['identity_match'], ['no_trace', 'unconfirmed'], true)) {
+        if ($nicheStatus === 'off' || in_array($originStatus, ['foreign', 'unknown'], true)) {
             return 'reject';
         }
-        if ($redFlags !== [] || $match['identity_match'] === 'weak') {
+        if ($redFlags !== [] || $match['identity_match'] !== 'confirmed') {
             return 'request_changes';
         }
 
@@ -364,6 +454,10 @@ class ModerateTickCommand extends Command
     /** @param string[] $missing @param string[] $redFlags */
     private function buildSummary(array $match, array $missing, array $redFlags, string $note): string
     {
+        if ($match['identity_match'] === 'no_trace') {
+            $note = trim('нужна ссылка на сайт/соцсеть — кандидата не нашли. ' . $note);
+        }
+
         return sprintf(
             'identity=%s control=%s | missing: %s | red_flags: %s | %s',
             $match['identity_match'],
