@@ -23,14 +23,26 @@ class BrandActionSigner
     ) {
     }
 
-    /** key = хеш(action:brandId + соль). 32 hex-символа — достаточно, URL-safe. */
-    public function sign(string $action, int $brandId): string
+    /**
+     * key = хеш(action:brandId[:exp] + соль). 32 hex-символа — достаточно, URL-safe.
+     * $exp (unix timestamp) — опциональный TTL: подмешивается в подпись, поэтому его
+     * нельзя подделать отдельно от key. Без $exp — бессрочная ссылка (как раньше,
+     * обратная совместимость с уже разосланными ссылками «🚫 Скрыть» в дрипе).
+     */
+    public function sign(string $action, int $brandId, ?int $exp = null): string
     {
-        return substr(hash_hmac('sha256', $action . ':' . $brandId, $this->secret), 0, 32);
+        $payload = $action . ':' . $brandId . ($exp !== null ? ':' . $exp : '');
+
+        return substr(hash_hmac('sha256', $payload, $this->secret), 0, 32);
     }
 
-    public function verify(string $action, int $brandId, string $key): bool
+    /** $exp — то же значение, что передавалось в sign(); истёкшая ссылка (time() > exp) невалидна. */
+    public function verify(string $action, int $brandId, string $key, ?int $exp = null): bool
     {
-        return $key !== '' && hash_equals($this->sign($action, $brandId), $key);
+        if ($exp !== null && time() > $exp) {
+            return false;
+        }
+
+        return $key !== '' && hash_equals($this->sign($action, $brandId, $exp), $key);
     }
 }
