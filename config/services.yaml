@@ -215,6 +215,12 @@ services:
             $apiToken:   '%env(default::AGENT_API_TOKEN)%'
             $apiSecret:  '%env(default::AGENT_API_SECRET)%'
 
+    App\Command\ModerateTickCommand:
+        arguments:
+            $prodApiUrl: '%env(default::PROD_API_URL)%'
+            $apiToken:   '%env(default::AGENT_API_TOKEN)%'
+            $apiSecret:  '%env(default::AGENT_API_SECRET)%'
+
     App\Service\WebScraperService:
         arguments:
             $trafilaturaBin: '%env(TRAFILATURA_BIN)%'

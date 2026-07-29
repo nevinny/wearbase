@@ -59,6 +59,8 @@
 | [international.md](international.md) | Международные рынки: 9 локалей, валюты, SEO непереведённых локалей (noindex) |
 | [payments.md](payments.md) | Платежи, провайдеры, юр-слой (оферты/юрлица/возврат предоплаты) |
 | [testing.md](testing.md) | Тест-харнес PHPUnit: SQLite var/test.db, автосхема из сущностей, Authenticated*WebTestCase, как писать функциональные тесты |
+| [brand_self_service.md](brand_self_service.md) | **Автономное самообслуживание каталога**: триггер = действие клиента (дебаунс через `settle_after`/`state_hash`), статус-машина с таймаутами и дефолтами, таблица авто-решений (разделение «публикуем карточку» ≠ «выдаём права владельца»), матрица владения полями через `BrandDatapoint`, уровни доверия quarantine→verified→trusted, каталог атак + гейты авто-публикации. От 2026-07-30 |
+| [brand_verification_options.md](brand_verification_options.md) | **Верификация владения брендом — разведка 2026**: как это делают Trustpilot/GBP/Яндекс Бизнес/2ГИС/WB/Ozon/Ankorstore/NJAL, цены телефонной верификации в РФ (SMS 2.2–11₽ vs голосовой код 0.25₽ vs Telegram Gateway 0.8₽ vs TG-бот 0₽), бесплатные пруфы (скрейп-email, DNS TXT, соцаккаунт, DaData/НПД), почему обязательный backlink = link-spam риск, принятая лестница L0/L1/L2. От 2026-07-30 |
 | [brand-claim-verification.md](brand-claim-verification.md) | Методы подтверждения владения брендом |
 | [virtual-tryon.md](virtual-tryon.md) | Виртуальная примерочная (VTON) — PoC и запуск в прод |
 | [wardrobe_mvp.md](wardrobe_mvp.md) | Цифровой гардероб: совместимый MVP поверх семейных и AI-функций |

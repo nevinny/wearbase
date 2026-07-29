@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller\Auth;
 
 use App\Entity\Brand;
+use App\Entity\BrandModeration;
 use App\Entity\BrandUser;
 use App\Entity\User;
 use App\Form\Auth\BrandRegistrationFormType;
@@ -83,6 +84,12 @@ class RegisterController extends AbstractController
                 $em->persist($brandUser);
 
                 $subscriptionFactory->createFreeTrial($brand);
+
+                // Ставим в очередь авто-премодерации (app:brand:moderate-tick разберёт на Mac).
+                $moderation = new BrandModeration();
+                $moderation->setBrand($brand);
+                $moderation->setSource(BrandModeration::SOURCE_SELF_REGISTER);
+                $em->persist($moderation);
 
                 // Карточка ждёт модерации — владелец об этом видит баннер в ЛК, а мы узнаём в TG.
                 $adminNotifier->send(sprintf(
