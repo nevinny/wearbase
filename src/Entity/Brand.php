@@ -12,6 +12,7 @@ use Nevinny\AdminCoreBundle\Entity\Trait\Owner;
 use Nevinny\AdminCoreBundle\Entity\Trait\Status;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+use Symfony\Component\Validator\Constraints as Assert;
 use Vich\UploaderBundle\Mapping\Annotation as Vich;
 use Symfony\Component\HttpFoundation\File\File;
 
@@ -36,6 +37,15 @@ class Brand
     private ?string $logo = null;
 
     #[Vich\UploadableField(mapping: 'brand_logo', fileNameProperty: 'logo')]
+    #[Assert\Image(
+        maxSize: '5M',
+        mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        mimeTypesMessage: 'Допустимы только форматы JPEG, PNG и WebP (SVG запрещён)',
+        maxWidth: 5000,
+        maxHeight: 5000,
+        maxWidthMessage: 'Изображение слишком широкое (максимум {{ max_width }}px)',
+        maxHeightMessage: 'Изображение слишком высокое (максимум {{ max_height }}px)',
+    )]
     private ?File $logoFile = null;
 
     /** Логотип закреплён оператором вручную → агент-пуш его не перезаписывает. */

@@ -44,6 +44,7 @@
                 <span class="{{ section_class }} border-t border-gray-100 pt-5">Логотип</span>
                 <div class="mb-6 text-sm">
                     {{ form_widget(form.logoFile) }}
+                    <div class="form-error mt-1 text-sm text-red-600">{{ form_errors(form.logoFile) }}</div>
                 </div>
 
                 {# Контакты #}

@@ -22,6 +22,8 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\String\Slugger\SluggerInterface;
+use Symfony\Component\Validator\Constraints\Image;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/brand/products', name: 'brand_product')]
 class BrandProductController extends BrandDashboardController
@@ -190,6 +192,7 @@ class BrandProductController extends BrandDashboardController
         Product $product,
         Request $request,
         EntityManagerInterface $em,
+        ValidatorInterface $validator,
     ): JsonResponse {
         if (!$this->isCsrfTokenValid('brand_product_images', (string) $request->headers->get('X-CSRF-Token'))) {
             return $this->json(['error' => 'Недействительный токен'], 403);
@@ -205,13 +208,29 @@ class BrandProductController extends BrandDashboardController
 
         $isFirst  = $product->getProductImages()->isEmpty();
         $uploaded = 0;
+        $errors   = [];
 
         foreach ($files as $file) {
             if (!$file) {
                 continue;
             }
+
+            $violations = $validator->validate($file, new Image([
+                'maxSize' => '5M',
+                'mimeTypes' => ['image/jpeg', 'image/png', 'image/webp'],
+                'mimeTypesMessage' => 'Допустимы только JPEG, PNG и WebP',
+            ]));
+            if ($violations->count() > 0) {
+                $errors[] = $violations->get(0)->getMessage();
+                continue;
+            }
+
             $image = new ProductImage();
             $image->setProduct($product);
+            // slug унаследован от общего DefaultFields (nevinny/admin-core), для превью
+            // товара он не используется нигде — но колонка NOT NULL (см. миграцию
+            // Version20260524_fix_product_image_schema, DEFAULT '' на проде).
+            $image->setSlug('');
             $image->setPreviewFile($file);
             $image->setIsMain($isFirst && $uploaded === 0);
             $em->persist($image);
@@ -220,7 +239,7 @@ class BrandProductController extends BrandDashboardController
 
         $em->flush();
 
-        return $this->json(['uploaded' => $uploaded]);
+        return $this->json(['uploaded' => $uploaded, 'errors' => $errors]);
     }
 
     #[Route('/{id}/images/{imageId}/delete', name: '_image_delete', methods: ['POST'])]
