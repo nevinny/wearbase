@@ -113,3 +113,4 @@ docs/*.scratch.md
 /_docs/*.tsv
 # Черновики тёплой рассылки — реальные email лидов + прод-токены, никогда не в git
 /_docs/warm-outreach-*.md
+/public_html/images/products
