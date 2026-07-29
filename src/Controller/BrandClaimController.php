@@ -389,8 +389,7 @@ class BrandClaimController extends AbstractController
 
     private function extractDomain(string $email): string
     {
-        $parts = explode('@', $email);
-        return strtolower(trim($parts[1] ?? ''));
+        return \App\Service\Support\EmailDomain::ofEmail($email);
     }
 
     private function maskEmail(?string $email): ?string
