@@ -37,6 +37,7 @@ class BrandLkControllerTest extends AuthenticatedWebTestCase
         yield 'brand orders'    => ['/brand/orders'];
         yield 'brand team'      => ['/brand/team'];
         yield 'brand media'     => ['/brand/media'];
+        yield 'brand links'     => ['/brand/links'];
     }
 
     // ── Access control: customer gets 403 ────────────────────────────────────
