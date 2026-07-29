@@ -10,6 +10,7 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\HttpFoundation\File\File;
+use Symfony\Component\Validator\Constraints as Assert;
 use Vich\UploaderBundle\Mapping\Annotation as Vich;
 
 #[ORM\Entity(repositoryClass: WardrobeItemRepository::class)]
@@ -188,6 +189,15 @@ class WardrobeItem
     private ?string $photo = null;
 
     #[Vich\UploadableField(mapping: 'wardrobe_item_photo', fileNameProperty: 'photo')]
+    #[Assert\Image(
+        maxSize: '10M',
+        mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        mimeTypesMessage: 'Разрешены только JPG, PNG и WebP.',
+        maxWidth: 5000,
+        maxHeight: 5000,
+        maxWidthMessage: 'Изображение слишком широкое (максимум {{ max_width }}px)',
+        maxHeightMessage: 'Изображение слишком высокое (максимум {{ max_height }}px)',
+    )]
     private ?File $photoFile = null;
 
     /** @var Collection<int, WardrobeItemPhoto> */

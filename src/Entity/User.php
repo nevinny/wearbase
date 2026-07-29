@@ -12,6 +12,7 @@ use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 use Symfony\Component\Security\Core\User\EquatableInterface;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Validator\Constraints as Assert;
 use Vich\UploaderBundle\Mapping\Annotation as Vich;
 use Symfony\Component\HttpFoundation\File\File;
 
@@ -55,6 +56,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     private ?string $avatar = null;
 
     #[Vich\UploadableField(mapping: 'user_avatar', fileNameProperty: 'avatar')]
+    #[Assert\Image(
+        maxSize: '5M',
+        mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        mimeTypesMessage: 'Допустимы только форматы JPEG, PNG и WebP (SVG запрещён)',
+        maxWidth: 5000,
+        maxHeight: 5000,
+        maxWidthMessage: 'Изображение слишком широкое (максимум {{ max_width }}px)',
+        maxHeightMessage: 'Изображение слишком высокое (максимум {{ max_height }}px)',
+    )]
     private ?File $avatarFile = null;
 
     // Telegram chat ID для уведомлений
