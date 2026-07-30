@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Tests\Command;
 
 use App\Command\ModerateTickCommand;
+use App\Entity\BrandSourceUrl;
 use App\Notification\AdminNotifier;
 use App\Service\BrandActionSigner;
 use App\Service\BrandSourceFinder;
+use App\Service\BraveSearchClient;
 use App\Service\Moderation\ApplicationMatcher;
 use App\Service\NearDuplicateDetector;
+use App\Service\SearxClient;
 use App\Service\WebScraperService;
 use App\Service\YandexSearchClient;
 use App\Service\YandexSearchMeter;
@@ -38,6 +41,8 @@ class ModerateTickCommandTest extends TestCase
     private function makeCommand(
         ?YandexSearchClient $yandex = null,
         ?WebScraperService $scraper = null,
+        ?SearxClient $searx = null,
+        ?BraveSearchClient $brave = null,
     ): ModerateTickCommand {
         return new ModerateTickCommand(
             $this->createMock(HttpClientInterface::class),
@@ -47,6 +52,10 @@ class ModerateTickCommandTest extends TestCase
             $this->createMock(NearDuplicateDetector::class),
             $this->createMock(YandexSearchMeter::class),
             $yandex ?? $this->createMock(YandexSearchClient::class),
+            // По умолчанию неконфигурированы (пустой URL/ключ) — isConfigured() false,
+            // searchAnyEngine молча их пропускает, сеть не дёргается.
+            $searx ?? new SearxClient($this->createMock(HttpClientInterface::class), ''),
+            $brave ?? new BraveSearchClient($this->createMock(HttpClientInterface::class), ''),
             $this->createMock(AdminNotifier::class),
             $this->createMock(BrandActionSigner::class),
             $this->createMock(EntityManagerInterface::class),
@@ -122,6 +131,7 @@ class ModerateTickCommandTest extends TestCase
     {
         $seenQueries = [];
         $yandex = $this->createMock(YandexSearchClient::class);
+        $yandex->method('isConfigured')->willReturn(true);
         $yandex->method('search')->willReturnCallback(function (string $q) use (&$seenQueries): array {
             $seenQueries[] = $q;
 
@@ -149,6 +159,7 @@ class ModerateTickCommandTest extends TestCase
 
         $calls  = 0;
         $yandex = $this->createMock(YandexSearchClient::class);
+        $yandex->method('isConfigured')->willReturn(true);
         $yandex->method('search')->willReturnCallback(function () use (&$calls): array {
             $calls++;
 
@@ -177,5 +188,87 @@ class ModerateTickCommandTest extends TestCase
         $command = $this->makeCommand($yandex);
 
         $this->assertNull($this->invoke($command, 'discoverByContacts', [[]]));
+    }
+
+    // ── Дешёвые кандидаты-домены (email + название) ──────────────────────────────
+
+    public function testGuessDomainCandidatesFromEmailInRightOrder(): void
+    {
+        $command = $this->makeCommand();
+
+        // «Русский бренд АХ!» — генерик-филлер («русский», «бренд») отфильтрован,
+        // «ах» короче 3 символов — из названия кандидатов нет, только из email.
+        $candidates = $this->invoke($command, 'guessDomainCandidates', ['Русский бренд АХ!', 'ah.silk@yandex.ru']);
+
+        $this->assertSame(
+            ['https://ahsilk.ru', 'https://ahsilk.com', 'https://ahsilk.store', 'https://ahsilk.shop'],
+            $candidates,
+        );
+    }
+
+    public function testProbeDomainCandidatesRejectsLiveButUnconfirmedCandidate(): void
+    {
+        // Ловушка ahsilk.com: домен отвечает 200, но это другая компания — ни телефон,
+        // ни email, ни название заявителя на странице не встречаются.
+        $html = '<html><head><title>AH Silk Co., Ltd — Chinese silk manufacturer</title></head><body>Contact us</body></html>';
+        $scraper = $this->createMock(WebScraperService::class);
+        $scraper->method('fetch')->willReturnCallback(
+            static fn (string $url): array => ['url' => $url, 'httpStatus' => 200, 'html' => $html],
+        );
+
+        $command = $this->makeCommand(null, $scraper);
+        $item    = ['email' => 'ah.silk@yandex.ru', 'phone' => '+7 968 614 6174'];
+
+        $result = $this->invoke($command, 'probeDomainCandidates', [$item, 'Русский бренд АХ!']);
+
+        $this->assertNull($result, 'кандидат живой, но не подтверждён матчером — должен быть отброшен');
+    }
+
+    public function testProbeDomainCandidatesConfirmsByPhoneAndBecomesLiveOwnSite(): void
+    {
+        $html = <<<'HTML'
+            <html><head><title>AH Silk</title></head>
+            <body><p>Тел: <a href="tel:+79686146174">+7 968 614-61-74</a></p></body></html>
+            HTML;
+        $scraper = $this->createMock(WebScraperService::class);
+        $scraper->method('fetch')->willReturnCallback(
+            static fn (string $url): array => ['url' => $url, 'httpStatus' => 200, 'html' => $html],
+        );
+
+        $command = $this->makeCommand(null, $scraper);
+        $item    = ['email' => 'ah.silk@yandex.ru', 'phone' => '+7 968 614 6174'];
+
+        $result = $this->invoke($command, 'probeDomainCandidates', [$item, 'Русский бренд АХ!']);
+
+        $this->assertNotNull($result);
+        $this->assertSame('https://ahsilk.ru', $result->url);
+        $this->assertSame(BrandSourceUrl::TYPE_OWN_SITE, $result->sourceType);
+        $this->assertTrue($result->live);
+
+        // Тот же матчер, что использует processItem() — телефон подтверждён, identity не ниже weak.
+        $match = (new ApplicationMatcher())->evaluate(
+            ['title' => 'Русский бренд АХ!', 'email' => $item['email'], 'phone' => $item['phone']],
+            [['url' => $result->url, 'html' => $html]],
+            'ahsilk.ru',
+            null,
+        );
+        $this->assertContains($match['identity_match'], ['weak', 'confirmed']);
+    }
+
+    // ── Многодвижковый поиск для discoverByContacts ──────────────────────────────
+
+    public function testSearchAnyEngineSurvivesDeadYandexKeyAndUnconfiguredEngines(): void
+    {
+        // Живой факт 2026-07-30: ключ Yandex Search API мёртв (401), SearXNG/Brave здесь
+        // не сконфигурированы — прогон не должен падать, просто вернуть [].
+        $yandex = $this->createMock(YandexSearchClient::class);
+        $yandex->method('isConfigured')->willReturn(true);
+        $yandex->method('search')->willThrowException(new \RuntimeException('401 Unknown api key'));
+
+        $command = $this->makeCommand($yandex);
+
+        $result = $this->invoke($command, 'searchAnyEngine', ['ah.silk@yandex.ru']);
+
+        $this->assertSame([], $result);
     }
 }

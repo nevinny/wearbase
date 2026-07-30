@@ -9,9 +9,12 @@ use App\Entity\BrandSourceUrl;
 use App\Notification\AdminNotifier;
 use App\Service\BrandActionSigner;
 use App\Service\BrandSourceFinder;
+use App\Service\BraveSearchClient;
 use App\Service\Discovery\DiscoveredUrl;
 use App\Service\Moderation\ApplicationMatcher;
 use App\Service\NearDuplicateDetector;
+use App\Service\SearxClient;
+use App\Service\SearxUnavailableException;
 use App\Service\WebScraperService;
 use App\Service\YandexSearchClient;
 use App\Service\YandexSearchMeter;
@@ -55,6 +58,31 @@ class ModerateTickCommand extends Command
 {
     private const MAX_ATTEMPTS = 3; // ≥ — не долбим анализ дальше, красный флаг человеку
 
+    // Зонд доменов-кандидатов (email заявителя + название бренда) — дешёвая альтернатива
+    // поиску: просто HTTP-запрос, без движков/квоты/GPU. Зоны в порядке правдоподобия для
+    // RU self-reg брендов; кап держит суммарное число запросов небольшим.
+    private const DOMAIN_ZONES = ['ru', 'com', 'store', 'shop'];
+    private const MAX_DOMAIN_CANDIDATES = 8;
+
+    // Генерик-филлер в самрег-названиях (реальные кейсы: «Русский бренд АХ!», «Новый бренд
+    // all4b2b» — см. docs/brand_self_service.md) — не несёт сигнала о домене, транслитерация
+    // «brend»/«novyy» дала бы мусорного кандидата.
+    private const TITLE_STOPWORDS = ['новый', 'бренд', 'русский', 'российский'];
+
+    private const TRANSLIT = [
+        'а' => 'a', 'б' => 'b', 'в' => 'v', 'г' => 'g', 'д' => 'd', 'е' => 'e', 'ё' => 'e',
+        'ж' => 'zh', 'з' => 'z', 'и' => 'i', 'й' => 'y', 'к' => 'k', 'л' => 'l', 'м' => 'm',
+        'н' => 'n', 'о' => 'o', 'п' => 'p', 'р' => 'r', 'с' => 's', 'т' => 't', 'у' => 'u',
+        'ф' => 'f', 'х' => 'h', 'ц' => 'ts', 'ч' => 'ch', 'ш' => 'sh', 'щ' => 'sch', 'ъ' => '',
+        'ы' => 'y', 'ь' => '', 'э' => 'e', 'ю' => 'yu', 'я' => 'ya',
+    ];
+
+    // Пауза перед контактным поиском — та же механика и тот же темп, что и
+    // BrandSourceFinder::QUERY_SLEEP_MS (не долбим SearXNG/Yandex второй раз тем же паттерном).
+    private const CONTACT_QUERY_SLEEP_MS  = 1800;
+    private const CONTACT_QUERY_JITTER_MS = 1200;
+    private const CONTACT_BRAVE_FALLBACK_MIN = 3;
+
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly BrandSourceFinder $sourceFinder,
@@ -63,6 +91,8 @@ class ModerateTickCommand extends Command
         private readonly NearDuplicateDetector $dup,
         private readonly YandexSearchMeter $yandexMeter,
         private readonly YandexSearchClient $yandex,
+        private readonly SearxClient $searx,
+        private readonly BraveSearchClient $brave,
         private readonly AdminNotifier $notifier,
         private readonly BrandActionSigner $actionSigner,
         private readonly EntityManagerInterface $em,
@@ -183,13 +213,22 @@ class ModerateTickCommand extends Command
 
         // Bug 2: discoverTiered() строит кандидатов из названия/слага — для патологических
         // названий (мало значащих символов + пунктуация, кейс «Русский бренд АХ!») либо
-        // ничего не находит, либо угаданный домен не отвечает. Пробуем найти сайт по
-        // контактам ИЗ ЗАЯВКИ (см. discoverByContacts) прежде чем сдаваться.
+        // ничего не находит, либо угаданный домен не отвечает. Порядок: сначала ссылки
+        // владельца (уже внутри discoverTiered выше) → дешёвый зонд доменов-кандидатов из
+        // email/названия (probeDomainCandidates, без поисковика и квоты) → и только если
+        // это тоже пусто — поисковые запросы по контактам (discoverByContacts, дороже).
+        // Первый подтверждённый ApplicationMatcher кандидат — результат, дальше не ищем.
         if ($ownSite === null || !$ownSite->live) {
-            $byContact = $this->discoverByContacts($item);
-            if ($byContact !== null) {
-                $ownSite = $byContact;
-                $isSlugGuess = false; // найден поиском, не нашей догадкой
+            $byDomain = $this->probeDomainCandidates($item, $title);
+            if ($byDomain !== null) {
+                $ownSite = $byDomain;
+                $isSlugGuess = false; // подтверждено матчером, не наша догадка
+            } else {
+                $byContact = $this->discoverByContacts($item);
+                if ($byContact !== null) {
+                    $ownSite = $byContact;
+                    $isSlugGuess = false; // найден поиском, не нашей догадкой
+                }
             }
         }
 
@@ -277,10 +316,11 @@ class ModerateTickCommand extends Command
     /**
      * Bug 2: discoverTiered() строит кандидатов из названия/слага — патологические названия
      * (мало значащих символов, кейс «Русский бренд АХ!») не дают ничего живого. Ищем сайт по
-     * КОНТАКТАМ ИЗ ЗАЯВКИ (телефон в нескольких форматах + email) через тот же Yandex Search
-     * API, что и BrandSourceFinder (квота — через его собственный YandexSearchMeter внутри
-     * YandexSearchClient::search()). Кандидата подтверждаем ApplicationMatcher — телефон/email
-     * реально на странице, а не просто совпал в выдаче.
+     * КОНТАКТАМ ИЗ ЗАЯВКИ (телефон в нескольких форматах + email) через ту же связку движков,
+     * что и BrandSourceFinder::searchPaced() (searchAnyEngine ниже) — НЕ только Yandex (ключ
+     * может быть мёртв/не сконфигурирован, живой прогон 2026-07-30 это подтвердил). Кандидата
+     * подтверждаем ApplicationMatcher — телефон/email реально на странице, а не просто совпал
+     * в выдаче.
      *
      * @param array<string,mixed> $item элемент очереди (phone/email заявителя)
      */
@@ -303,7 +343,7 @@ class ModerateTickCommand extends Command
         }
 
         foreach ($queries as $q) {
-            foreach ($this->yandex->search($q, 5) as $r) {
+            foreach ($this->searchAnyEngine($q) as $r) {
                 $url = trim((string) ($r['url'] ?? ''));
                 if ($url === '') {
                     continue;
@@ -327,6 +367,165 @@ class ModerateTickCommand extends Command
         }
 
         return null;
+    }
+
+    /**
+     * Та же механика чередования движков, что и BrandSourceFinder::searchPaced() (Yandex Search
+     * API первичный → SearXNG вспомогательный, не фатален → Brave добор при малой выдаче), с той
+     * же паузой перед запросом (CONTACT_QUERY_SLEEP_MS). BrandSourceFinder не трогаем — это свой,
+     * не расшаренный поисковый путь для контактных запросов. Любой недоступный/неконфигурированный
+     * или упавший движок (напр. протухший Yandex-ключ, 401) молча пропускается — не падает.
+     *
+     * @return array<int,array{url:string,title:string,content:string}>
+     */
+    private function searchAnyEngine(string $query): array
+    {
+        usleep((self::CONTACT_QUERY_SLEEP_MS + random_int(0, self::CONTACT_QUERY_JITTER_MS)) * 1000);
+
+        $results = [];
+        if ($this->yandex->isConfigured()) {
+            try {
+                $results = $this->yandex->search($query, 5);
+            } catch (\Throwable) {
+                // недоступен/протух ключ/квота — пробуем SearXNG ниже
+            }
+        }
+
+        try {
+            $seen = [];
+            foreach ($results as $r) {
+                $seen[rtrim($r['url'], '/')] = true;
+            }
+            foreach ($this->searx->search($query, 5) as $r) {
+                if (!isset($seen[rtrim($r['url'], '/')])) {
+                    $results[] = $r;
+                }
+            }
+        } catch (SearxUnavailableException) {
+            // SearXNG лёг — не падаем, отдаём то, что уже есть (или пусто)
+        }
+
+        if (count($results) < self::CONTACT_BRAVE_FALLBACK_MIN && $this->brave->isConfigured() && $this->brave->allowed()) {
+            $seen = [];
+            foreach ($results as $r) {
+                $seen[rtrim($r['url'], '/')] = true;
+            }
+            foreach ($this->brave->search($query, 5) as $r) {
+                if (!isset($seen[rtrim($r['url'], '/')])) {
+                    $results[] = $r;
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Дешёвый зонд доменов-кандидатов (guessDomainCandidates): просто HTTP-запрос через
+     * WebScraperService (те же редиректы/таймаут, что и весь конвейер) — без поисковика,
+     * без квоты, без GPU. Доступность домена — НЕ факт принадлежности бренду (ловушка
+     * ahsilk.com/ahsilk.ru — омоним, другая компания), поэтому живой кандидат обязан пройти
+     * ApplicationMatcher. Первый подтверждённый (identity_match !== 'unconfirmed') — результат;
+     * неподтверждённые молча отбрасываются — это наши догадки, а не факты о бренде, поэтому
+     * НЕ site_unreachable и НЕ red_flag (см. collectPages/$isSlugGuess выше).
+     *
+     * @param array<string,mixed> $item элемент очереди (email/phone/address заявителя)
+     */
+    private function probeDomainCandidates(array $item, string $title): ?DiscoveredUrl
+    {
+        $email   = trim((string) ($item['email'] ?? ''));
+        $phone   = trim((string) ($item['phone'] ?? ''));
+        $address = $item['address'] ?? null;
+
+        foreach ($this->guessDomainCandidates($title, $email) as $url) {
+            $page = $this->scraper->fetch($url);
+            if ($page === null || $page['html'] === '') {
+                continue;
+            }
+            $confirm = $this->matcher->evaluate(
+                ['title' => $title, 'email' => $email, 'phone' => $phone, 'address' => $address],
+                [['url' => $page['url'], 'html' => $page['html']]],
+                $this->hostOf($url),
+                null,
+            );
+            if ($confirm['identity_match'] !== 'unconfirmed') {
+                return new DiscoveredUrl($page['url'], BrandSourceUrl::TYPE_OWN_SITE, 1, 0.9, true);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Кандидаты-домены без похода в сеть: локальная часть email заявителя (без плюс-суффикса,
+     * точек, цифрового хвоста) + латинская транслитерация значащих слов названия бренда (генерик-
+     * филлер вроде «бренд»/«русский» отфильтрован — см. TITLE_STOPWORDS). Порядок зон —
+     * DOMAIN_ZONES. Дедуп баз, кап MAX_DOMAIN_CANDIDATES.
+     *
+     * @return string[] полные https:// URL
+     */
+    private function guessDomainCandidates(string $title, string $email): array
+    {
+        $bases = [];
+        if (($emailBase = $this->emailDomainCandidate($email)) !== null) {
+            $bases[] = $emailBase;
+        }
+        if (($titleBase = $this->titleDomainCandidate($title)) !== null && !in_array($titleBase, $bases, true)) {
+            $bases[] = $titleBase;
+        }
+
+        $urls = [];
+        foreach ($bases as $base) {
+            foreach (self::DOMAIN_ZONES as $zone) {
+                $urls[] = "https://{$base}.{$zone}";
+            }
+        }
+
+        return array_slice($urls, 0, self::MAX_DOMAIN_CANDIDATES);
+    }
+
+    /** Локальная часть email → домен-основа: "ah.silk" из "ah.silk@yandex.ru" → "ahsilk". */
+    private function emailDomainCandidate(string $email): ?string
+    {
+        $at = strrpos($email, '@');
+        if ($at === false) {
+            return null;
+        }
+
+        $local = strtolower(substr($email, 0, $at));
+        $local = explode('+', $local, 2)[0];                     // без плюс-суффикса
+        $local = str_replace('.', '', $local);                   // без точек
+        $local = preg_replace('/\d+$/', '', $local) ?? $local;   // без цифрового хвоста
+        $local = preg_replace('/[^a-z]/', '', $local) ?? $local;
+
+        return mb_strlen($local) > 3 ? $local : null;
+    }
+
+    /** Транслитерация значащих слов названия (генерик-филлер вырезан) — одна база или null. */
+    private function titleDomainCandidate(string $title): ?string
+    {
+        $normalized = str_replace('ё', 'е', mb_strtolower($title));
+        preg_match_all('/\p{L}+/u', $normalized, $m);
+
+        $latin = '';
+        foreach ($m[0] as $word) {
+            if (mb_strlen($word) <= 3 || in_array($word, self::TITLE_STOPWORDS, true)) {
+                continue;
+            }
+            $latin .= $this->transliterate($word);
+        }
+
+        return strlen($latin) > 3 ? $latin : null;
+    }
+
+    private function transliterate(string $word): string
+    {
+        $out = '';
+        foreach (mb_str_split($word) as $ch) {
+            $out .= self::TRANSLIT[$ch] ?? $ch;
+        }
+
+        return $out;
     }
 
     /** @return array{0:string[],1:string[]} [missing, red_flags] */
