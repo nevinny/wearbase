@@ -124,9 +124,10 @@ class SocialPublishTickCommand extends Command
             }
 
             try {
-                $mediaAbs = $post->getMediaPath() !== null
-                    ? $this->projectDir . '/public_html' . $post->getMediaPath()
-                    : null;
+                $mediaAbs = array_map(
+                    fn (string $path) => $this->projectDir . '/public_html' . $path,
+                    $post->getMediaPaths(),
+                );
 
                 $externalId = $this->registry->get($ch->getPlatform())
                     ->publish($ch, $post, $mediaAbs);
