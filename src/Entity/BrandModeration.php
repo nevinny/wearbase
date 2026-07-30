@@ -72,10 +72,13 @@ class BrandModeration
     #[ORM\Column(options: ['default' => 0])]
     private int $analyzeAttempts = 0;
 
-    #[ORM\Column(nullable: true)]
+    // type указан явно: DateTimeInterface (интерфейс) не входит в карту типов Doctrine
+    // (DefaultTypedFieldMapper знает только DateTime/DateTimeImmutable) — без явного type
+    // колонка молча маппится в 'string', а PDO падает при биндинге объекта DateTime.
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTimeInterface $analyzedAt = null;
 
-    #[ORM\Column(nullable: true)]
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTimeInterface $decidedAt = null;
 
     #[ORM\Column(length: 10, nullable: true)]
