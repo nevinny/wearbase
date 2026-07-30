@@ -15,6 +15,7 @@ use App\Service\Moderation\ApplicationMatcher;
 use App\Service\NearDuplicateDetector;
 use App\Service\SearxClient;
 use App\Service\SearxUnavailableException;
+use App\Service\Support\LinkTypeClassifier;
 use App\Service\WebScraperService;
 use App\Service\YandexSearchClient;
 use App\Service\YandexSearchMeter;
@@ -83,32 +84,14 @@ class ModerateTickCommand extends Command
     private const CONTACT_QUERY_JITTER_MS = 1200;
     private const CONTACT_BRAVE_FALLBACK_MIN = 3;
 
-    // Домен → link_type для соц-/маркетплейс-ссылок, найденных на подтверждённом сайте бренда
-    // (docs/brand_self_service.md §4/§6). Тот же набор, что и приватный
-    // OutboundClickController::classify() (там — трекер кликов, здесь — заполнение brand_link
-    // при вердикте); дублирование дешевле общего сервиса ради 15 строк. Домены без явного типа
-    // сюда не попадают — 'other' зарезервирован под известные, но не перечисленные в докблоке
-    // BrandLink соцсети, а не под произвольные ссылки со страницы.
-    private const SOCIAL_MARKETPLACE_TYPES = [
-        'instagram.com'    => 'instagram',
-        'vk.com'           => 'vk',
-        'vkontakte.ru'     => 'vk',
-        't.me'             => 'telegram',
-        'telegram.me'      => 'telegram',
-        'youtube.com'      => 'youtube',
-        'youtu.be'         => 'youtube',
-        'tiktok.com'       => 'tiktok',
-        'wildberries.ru'   => 'marketplace',
-        'ozon.ru'          => 'marketplace',
-        'lamoda.ru'        => 'marketplace',
-        'market.yandex.ru' => 'marketplace',
-        'avito.ru'         => 'marketplace',
-        'facebook.com'     => 'other',
-        'ok.ru'            => 'other',
-        'pinterest.com'    => 'other',
-        'twitter.com'      => 'other',
-        'x.com'            => 'other',
-    ];
+    // Типы, которые считаем соц-/маркетплейс-КАНДИДАТОМ для brand_link из ссылок, найденных
+    // на подтверждённом сайте бренда (docs/brand_self_service.md §4/§6). Хосты — общий
+    // App\Service\Support\LinkTypeClassifier (тот же, что и клик-аналитика в
+    // OutboundClickController, — не дублируем список доменов). 'website'/'other' из
+    // классификатора сюда НЕ попадают: почти любая внутренняя ссылка сайта классифицируется
+    // как 'website' по умолчанию — это не сигнал соцсети, а сайт уже добавлен отдельно
+    // (buildLinksPayload).
+    private const CANDIDATE_LINK_TYPES = ['instagram', 'vk', 'telegram', 'youtube', 'tiktok', 'marketplace'];
     private const MAX_SOCIAL_LINKS = 6;
 
     public function __construct(
@@ -370,7 +353,8 @@ class ModerateTickCommand extends Command
     /**
      * Соц-/маркетплейс-ссылки со страниц сайта (WebScraperService::extractLinks() уже
      * абсолютизирует href и режет self-домены/job-noise через UrlFilter) — здесь только
-     * классификация по хосту + дедуп + кап MAX_SOCIAL_LINKS.
+     * классификация по хосту (LinkTypeClassifier — общий с OutboundClickController) + фильтр
+     * до CANDIDATE_LINK_TYPES + дедуп + кап MAX_SOCIAL_LINKS.
      *
      * @param array<int,array{url:string,html:string}> $pages
      * @return list<array{link_type:string,link_url:string}>
@@ -383,9 +367,8 @@ class ModerateTickCommand extends Command
                 if (isset($found[$url]) || count($found) >= self::MAX_SOCIAL_LINKS) {
                     continue;
                 }
-                $host = $this->hostOf($url);
-                $type = $host !== null ? $this->classifySocialHost($host) : null;
-                if ($type !== null) {
+                $type = LinkTypeClassifier::classify($url);
+                if (in_array($type, self::CANDIDATE_LINK_TYPES, true)) {
                     $found[$url] = $type;
                 }
             }
@@ -397,17 +380,6 @@ class ModerateTickCommand extends Command
         }
 
         return $links;
-    }
-
-    private function classifySocialHost(string $host): ?string
-    {
-        foreach (self::SOCIAL_MARKETPLACE_TYPES as $domain => $type) {
-            if ($host === $domain || str_ends_with($host, '.' . $domain)) {
-                return $type;
-            }
-        }
-
-        return null;
     }
 
     /**
