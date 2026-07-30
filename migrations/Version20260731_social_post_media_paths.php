@@ -22,11 +22,15 @@ final class Version20260731_social_post_media_paths extends AbstractMigration
 
     public function up(Schema $schema): void
     {
+        // CHANGE на уже переведённой колонке — no-op без ошибки, повторный прогон безопасен.
         $this->addSql('ALTER TABLE social_post CHANGE media_path media_path LONGTEXT DEFAULT NULL');
     }
 
     public function down(Schema $schema): void
     {
+        // ⚠️ Откат при уже сохранённых каруселях упадёт с «Data too long» (strict mode) — это
+        // намеренно: лучше громкая ошибка, чем обрезанный список слайдов. Сначала свернуть
+        // многослайдовые посты в один путь, потом откатывать.
         $this->addSql('ALTER TABLE social_post CHANGE media_path media_path VARCHAR(255) DEFAULT NULL');
     }
 }

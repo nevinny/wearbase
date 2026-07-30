@@ -100,6 +100,10 @@ class InstagramPublisher implements SocialPublisherInterface
      * родительский CAROUSEL с children. Каждый слайд ждём до FINISHED — незавершённый
      * child ломает создание родителя.
      *
+     * Поллинг слайдов последовательный: картиночные контейнеры почти всегда готовы с первого
+     * запроса (без sleep), но в худшем случае тик занимает до 10×60с. Осознанный обмен —
+     * тик и так под локом и запускается раз в час, а гонка за родителем стоила бы retry поста.
+     *
      * @param list<string> $paths
      */
     private function createCarouselContainer(string $igUserId, array $paths, string $caption, string $token): string
