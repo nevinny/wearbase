@@ -38,6 +38,70 @@ class BrandModerationApiTest extends WebTestCase
         $this->assertArrayHasKey('items', $data);
     }
 
+    public function testQueueWithoutIdExcludesReviewedModeration(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        $brand = (new Brand())->setTitle('Проверенный бренд')->setSlug('reviewed-brand');
+        $brand->setStatus(Statuses::Active);
+        $em->persist($brand);
+
+        $moderation = (new BrandModeration())->setBrand($brand)->setStatus(BrandModeration::STATUS_REVIEWED);
+        $em->persist($moderation);
+        $em->flush();
+
+        $client->request('GET', '/api/v1/moderation/queue', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN]);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $brandIds = array_column($data['items'], 'brand_id');
+        $this->assertNotContains($brand->getId(), $brandIds);
+    }
+
+    public function testQueueWithExplicitIdReturnsRegardlessOfStatus(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        $brand = (new Brand())->setTitle('Проверенный бренд 2')->setSlug('reviewed-brand-2');
+        $brand->setStatus(Statuses::Active);
+        $em->persist($brand);
+
+        $moderation = (new BrandModeration())->setBrand($brand)->setStatus(BrandModeration::STATUS_REVIEWED);
+        $em->persist($moderation);
+        $em->flush();
+
+        $client->request(
+            'GET',
+            '/api/v1/moderation/queue?id=' . $brand->getId(),
+            [],
+            [],
+            ['HTTP_X_AGENT_TOKEN' => self::TOKEN],
+        );
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(1, $data['items']);
+        $this->assertSame($brand->getId(), $data['items'][0]['brand_id']);
+    }
+
+    public function testQueueWithUnknownIdReturnsEmptyNot500(): void
+    {
+        $client = static::createClient();
+        $client->request(
+            'GET',
+            '/api/v1/moderation/queue?id=999999',
+            [],
+            [],
+            ['HTTP_X_AGENT_TOKEN' => self::TOKEN],
+        );
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame([], $data['items']);
+    }
+
     public function testVerdictMinimalPayloadReturns200AndPersistsModeration(): void
     {
         $client = static::createClient();
