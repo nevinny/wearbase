@@ -15,6 +15,7 @@ use App\Service\Moderation\ApplicationMatcher;
 use App\Service\NearDuplicateDetector;
 use App\Service\SearxClient;
 use App\Service\SearxUnavailableException;
+use App\Service\Support\LinkTypeClassifier;
 use App\Service\WebScraperService;
 use App\Service\YandexSearchClient;
 use App\Service\YandexSearchMeter;
@@ -82,6 +83,16 @@ class ModerateTickCommand extends Command
     private const CONTACT_QUERY_SLEEP_MS  = 1800;
     private const CONTACT_QUERY_JITTER_MS = 1200;
     private const CONTACT_BRAVE_FALLBACK_MIN = 3;
+
+    // Типы, которые считаем соц-/маркетплейс-КАНДИДАТОМ для brand_link из ссылок, найденных
+    // на подтверждённом сайте бренда (docs/brand_self_service.md §4/§6). Хосты — общий
+    // App\Service\Support\LinkTypeClassifier (тот же, что и клик-аналитика в
+    // OutboundClickController, — не дублируем список доменов). 'website'/'other' из
+    // классификатора сюда НЕ попадают: почти любая внутренняя ссылка сайта классифицируется
+    // как 'website' по умолчанию — это не сигнал соцсети, а сайт уже добавлен отдельно
+    // (buildLinksPayload).
+    private const CANDIDATE_LINK_TYPES = ['instagram', 'vk', 'telegram', 'youtube', 'tiktok', 'marketplace'];
+    private const MAX_SOCIAL_LINKS = 6;
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
@@ -247,6 +258,7 @@ class ModerateTickCommand extends Command
         [$nicheStatus, $originStatus, $note] = $this->classifyOnMacIfMirrored($slug);
         $verdict = $this->decideVerdict($match, $redFlags, $nicheStatus, $originStatus);
         $summary = $this->buildSummary($match, $missing, $redFlags, $note);
+        $links   = $this->buildLinksPayload($match, $pages);
 
         $io->text(sprintf('  identity=%s control=%s verdict=%s', $match['identity_match'], $match['control_proof'], $verdict));
         if ($redFlags !== []) {
@@ -254,6 +266,9 @@ class ModerateTickCommand extends Command
         }
         if ($missing !== []) {
             $io->text('  missing: ' . implode(',', $missing));
+        }
+        if ($links !== []) {
+            $io->text('  links: ' . implode(', ', array_map(static fn (array $l) => "{$l['link_type']}:{$l['link_url']}", $links)));
         }
 
         $tgText = $this->buildTgText($title, $match, $missing, $redFlags, $summary);
@@ -264,7 +279,7 @@ class ModerateTickCommand extends Command
             return;
         }
 
-        $this->postVerdict($slug, $match, $redFlags, $missing, $summary, $nicheStatus, $originStatus, $verdict);
+        $this->postVerdict($slug, $match, $redFlags, $missing, $summary, $nicheStatus, $originStatus, $verdict, $links);
 
         try {
             $this->notifier->sendWithButtons($tgText, $this->signedButtons((int) $item['brand_id']));
@@ -311,6 +326,60 @@ class ModerateTickCommand extends Command
         $host = parse_url($url, PHP_URL_HOST);
 
         return is_string($host) ? strtolower(preg_replace('/^www\./', '', $host)) : null;
+    }
+
+    /**
+     * Ссылки в payload вердикта — только для ПОДТВЕРЖДЁННОГО сайта (identity_match=confirmed):
+     * неподтверждённые кандидаты и наши доменные догадки в brand_link не пишем (см. докстринг
+     * задачи/docs/brand_self_service.md §4). $pages — уже отфетченные для матчинга страницы
+     * (главная + контакты), сайт как website + соц-/маркетплейс-ссылки с тех же страниц —
+     * побочный продукт того же обхода, второго похода в сеть нет.
+     *
+     * @param array{identity_match:string} $match
+     * @param array<int,array{url:string,html:string}> $pages
+     * @return list<array{link_type:string,link_url:string}>
+     */
+    private function buildLinksPayload(array $match, array $pages): array
+    {
+        if ($match['identity_match'] !== 'confirmed' || $pages === []) {
+            return [];
+        }
+
+        $links = [['link_type' => 'website', 'link_url' => $pages[0]['url']]];
+
+        return array_merge($links, $this->extractSocialLinks($pages));
+    }
+
+    /**
+     * Соц-/маркетплейс-ссылки со страниц сайта (WebScraperService::extractLinks() уже
+     * абсолютизирует href и режет self-домены/job-noise через UrlFilter) — здесь только
+     * классификация по хосту (LinkTypeClassifier — общий с OutboundClickController) + фильтр
+     * до CANDIDATE_LINK_TYPES + дедуп + кап MAX_SOCIAL_LINKS.
+     *
+     * @param array<int,array{url:string,html:string}> $pages
+     * @return list<array{link_type:string,link_url:string}>
+     */
+    private function extractSocialLinks(array $pages): array
+    {
+        $found = [];
+        foreach ($pages as $page) {
+            foreach ($this->scraper->extractLinks($page['html'], $page['url']) as $url) {
+                if (isset($found[$url]) || count($found) >= self::MAX_SOCIAL_LINKS) {
+                    continue;
+                }
+                $type = LinkTypeClassifier::classify($url);
+                if (in_array($type, self::CANDIDATE_LINK_TYPES, true)) {
+                    $found[$url] = $type;
+                }
+            }
+        }
+
+        $links = [];
+        foreach ($found as $url => $type) {
+            $links[] = ['link_type' => $type, 'link_url' => $url];
+        }
+
+        return $links;
     }
 
     /**
@@ -700,7 +769,14 @@ class ModerateTickCommand extends Command
         ];
     }
 
-    /** @param string[] $redFlags @param string[] $missing */
+    /**
+     * @param string[] $redFlags @param string[] $missing
+     * @param list<array{link_type:string,link_url:string}> $links сайт (если подтверждён) +
+     *        соц-/маркетплейс-ссылки, см. buildLinksPayload(). Эндпоинт (BrandIngestController::
+     *        moderationVerdict) сам не создаёт дублей по уже существующему URL и не трогает
+     *        owner-provenance — повторный прогон с тем же payload идемпотентен, дедуп в команде
+     *        не нужен.
+     */
     private function postVerdict(
         string $slug,
         array $match,
@@ -710,6 +786,7 @@ class ModerateTickCommand extends Command
         ?string $nicheStatus,
         ?string $originStatus,
         string $verdict,
+        array $links,
     ): void {
         $body = json_encode([
             'slug'           => $slug,
@@ -722,6 +799,7 @@ class ModerateTickCommand extends Command
             'summary'        => $summary,
             'niche_status'   => $nicheStatus,
             'origin_status'  => $originStatus,
+            'links'          => $links,
         ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
         $this->httpClient->request('POST', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/moderation/verdict', [

@@ -13,6 +13,7 @@ use App\Service\BraveSearchClient;
 use App\Service\Moderation\ApplicationMatcher;
 use App\Service\NearDuplicateDetector;
 use App\Service\SearxClient;
+use App\Service\UrlFilter;
 use App\Service\WebScraperService;
 use App\Service\YandexSearchClient;
 use App\Service\YandexSearchMeter;
@@ -270,5 +271,96 @@ class ModerateTickCommandTest extends TestCase
         $result = $this->invoke($command, 'searchAnyEngine', ['ah.silk@yandex.ru']);
 
         $this->assertSame([], $result);
+    }
+
+    // ── Замыкание конвейера: подтверждённый сайт → payload вердикта (brand_link) ────
+
+    public function testBuildLinksPayloadIncludesConfirmedSiteAsWebsite(): void
+    {
+        $command = $this->makeCommand();
+        $match   = ['identity_match' => 'confirmed', 'control_proof' => 'unconfirmed', 'evidence' => []];
+        $pages   = [['url' => 'https://ahsilk.ru/', 'html' => '<html><body>no links here</body></html>']];
+
+        $links = $this->invoke($command, 'buildLinksPayload', [$match, $pages]);
+
+        $this->assertSame([['link_type' => 'website', 'link_url' => 'https://ahsilk.ru/']], $links);
+    }
+
+    #[DataProvider('unconfirmedIdentityMatrix')]
+    public function testBuildLinksPayloadSkipsUnconfirmedCandidate(string $identity): void
+    {
+        $command = $this->makeCommand();
+        $match   = ['identity_match' => $identity, 'control_proof' => 'unconfirmed', 'evidence' => []];
+        $pages   = [['url' => 'https://ahsilk.ru/', 'html' => '<html><body>Instagram: <a href="https://instagram.com/ahsilk">ig</a></body></html>']];
+
+        $this->assertSame([], $this->invoke($command, 'buildLinksPayload', [$match, $pages]));
+    }
+
+    public static function unconfirmedIdentityMatrix(): iterable
+    {
+        yield 'weak'        => ['weak'];
+        yield 'unconfirmed' => ['unconfirmed'];
+        yield 'no_trace'    => ['no_trace'];
+    }
+
+    public function testBuildLinksPayloadIsIdempotentAcrossRepeatedRuns(): void
+    {
+        $command = $this->makeCommand(null, $this->realScraper());
+        $match   = ['identity_match' => 'confirmed', 'control_proof' => 'unconfirmed', 'evidence' => []];
+        $pages   = [['url' => 'https://ahsilk.ru/', 'html' => '<html><body><a href="https://vk.com/ahsilk">vk</a></body></html>']];
+
+        $first  = $this->invoke($command, 'buildLinksPayload', [$match, $pages]);
+        $second = $this->invoke($command, 'buildLinksPayload', [$match, $pages]);
+
+        $this->assertSame($first, $second, 'команда детерминирована — повторный прогон по тем же страницам не должен менять payload');
+    }
+
+    public function testExtractSocialLinksClassifiesAndExcludesSelfAndJobDomains(): void
+    {
+        $html = <<<'HTML'
+            <html><body>
+                <a href="https://instagram.com/ahsilk">ig</a>
+                <a href="https://vk.com/ahsilk">vk</a>
+                <a href="https://t.me/ahsilk">tg</a>
+                <a href="https://www.wildberries.ru/brands/ahsilk">wb</a>
+                <a href="https://wearbase.ru/ru/brand/ahsilk">self</a>
+                <a href="https://hh.ru/vacancy/123">job</a>
+                <a href="https://example.com/about">unrelated external</a>
+                <a href="https://instagram.com/ahsilk">ig dup</a>
+            </body></html>
+            HTML;
+
+        $command = $this->makeCommand(null, $this->realScraper());
+        $pages   = [['url' => 'https://ahsilk.ru/', 'html' => $html]];
+
+        $links = $this->invoke($command, 'extractSocialLinks', [$pages]);
+
+        $byType = array_column($links, 'link_url', 'link_type');
+        $this->assertSame(
+            [
+                'instagram'   => 'https://instagram.com/ahsilk',
+                'vk'          => 'https://vk.com/ahsilk',
+                'telegram'    => 'https://t.me/ahsilk',
+                'marketplace' => 'https://www.wildberries.ru/brands/ahsilk',
+            ],
+            $byType,
+            'self-домен (wearbase.ru) и job-хост (hh.ru) режутся UrlFilter внутри extractLinks; example.com не соцсеть/маркетплейс — не кандидат; дубль instagram схлопнут',
+        );
+    }
+
+    public function testExtractSocialLinksCapsAtSix(): void
+    {
+        $hosts = ['instagram.com/a', 'vk.com/a', 't.me/a', 'youtube.com/a', 'tiktok.com/a', 'ozon.ru/a', 'facebook.com/a'];
+        $html  = '<html><body>' . implode('', array_map(static fn (string $h) => "<a href=\"https://{$h}\">l</a>", $hosts)) . '</body></html>';
+
+        $command = $this->makeCommand(null, $this->realScraper());
+        $links   = $this->invoke($command, 'extractSocialLinks', [[['url' => 'https://ahsilk.ru/', 'html' => $html]]]);
+
+        $this->assertCount(6, $links, 'кап MAX_SOCIAL_LINKS=6, седьмой (facebook.com) отброшен');
+    }
+
+    private function realScraper(): WebScraperService
+    {
+        return new WebScraperService($this->createMock(HttpClientInterface::class), new UrlFilter(''));
     }
 }
