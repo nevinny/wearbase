@@ -19,12 +19,21 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *
  * Graph API требует публичный URL картинки (не файл) — конвертация PNG→JPEG и заливка на
  * прод делает PublicMediaHost.
+ *
+ * Два режима по числу медиа:
+ * - 1 картинка — одиночный контейнер (как было);
+ * - 2..10 картинок — карусель: на каждый слайд свой контейнер с is_carousel_item=true,
+ *   затем родительский контейнер media_type=CAROUSEL со списком children, подпись — только
+ *   у родителя. Публикуется один media_publish (родителя).
  */
 class InstagramPublisher implements SocialPublisherInterface
 {
     private const API_BASE = 'https://graph.instagram.com/v22.0';
     private const POLL_MAX_ATTEMPTS = 12;
     private const POLL_SLEEP_SEC = 5;
+
+    /** Лимит Instagram на число слайдов в карусели. */
+    private const CAROUSEL_MAX_ITEMS = 10;
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
@@ -38,10 +47,18 @@ class InstagramPublisher implements SocialPublisherInterface
         return SocialChannel::PLATFORM_IG;
     }
 
-    public function publish(SocialChannel $channel, SocialPost $post, ?string $mediaAbsPath): string
+    public function publish(SocialChannel $channel, SocialPost $post, array $mediaAbsPaths): string
     {
-        if ($mediaAbsPath === null || !is_file($mediaAbsPath)) {
+        $paths = array_values(array_filter($mediaAbsPaths, 'is_file'));
+        if ($paths === []) {
             throw new \RuntimeException('Instagram требует медиа — текстовый пост невозможен.');
+        }
+        if (count($paths) > self::CAROUSEL_MAX_ITEMS) {
+            throw new \RuntimeException(sprintf(
+                'В карусели Instagram максимум %d слайдов, передано %d — пост не публикуем, чтобы не терять слайды.',
+                self::CAROUSEL_MAX_ITEMS,
+                count($paths),
+            ));
         }
 
         $igUserId = $channel->getTarget();
@@ -55,33 +72,70 @@ class InstagramPublisher implements SocialPublisherInterface
         }
         $token = $this->cipher->decrypt($enc);
 
-        $imageUrl = $this->mediaHost->publicJpegUrl($mediaAbsPath);
-
         // IG: кликабельных ссылок в подписи нет — ссылка живёт в профиле; URL в текст не вставляем.
         $caption = (string) $post->getCaption();
         if ($post->getCtaLabel() !== null) {
             $caption .= "\n\n" . $post->getCtaLabel() . ' — ссылка в профиле';
         }
 
-        $creationId = $this->createContainer($igUserId, $imageUrl, $caption, $token);
+        $creationId = count($paths) === 1
+            ? $this->createSingleContainer($igUserId, $this->mediaHost->publicJpegUrl($paths[0]), $caption, $token)
+            : $this->createCarouselContainer($igUserId, $paths, $caption, $token);
+
         $this->pollUntilFinished($creationId, $token);
 
         return $this->publishContainer($igUserId, $creationId, $token);
     }
 
-    private function createContainer(string $igUserId, string $imageUrl, string $caption, string $token): string
+    private function createSingleContainer(string $igUserId, string $imageUrl, string $caption, string $token): string
+    {
+        return $this->createContainer($igUserId, [
+            'image_url' => $imageUrl,
+            'caption'   => $caption,
+        ], $token, 'media (create container)');
+    }
+
+    /**
+     * Карусель: сначала контейнер на каждый слайд (is_carousel_item, без подписи), потом
+     * родительский CAROUSEL с children. Каждый слайд ждём до FINISHED — незавершённый
+     * child ломает создание родителя.
+     *
+     * Поллинг слайдов последовательный: картиночные контейнеры почти всегда готовы с первого
+     * запроса (без sleep), но в худшем случае тик занимает до 10×60с. Осознанный обмен —
+     * тик и так под локом и запускается раз в час, а гонка за родителем стоила бы retry поста.
+     *
+     * @param list<string> $paths
+     */
+    private function createCarouselContainer(string $igUserId, array $paths, string $caption, string $token): string
+    {
+        $childIds = [];
+        foreach ($paths as $i => $path) {
+            $childId = $this->createContainer($igUserId, [
+                'image_url'        => $this->mediaHost->publicJpegUrl($path),
+                'is_carousel_item' => 'true',
+            ], $token, sprintf('media (carousel item %d/%d)', $i + 1, count($paths)));
+
+            $this->pollUntilFinished($childId, $token);
+            $childIds[] = $childId;
+        }
+
+        return $this->createContainer($igUserId, [
+            'media_type' => 'CAROUSEL',
+            'children'   => implode(',', $childIds),
+            'caption'    => $caption,
+        ], $token, 'media (create carousel container)');
+    }
+
+    /** @param array<string, string> $body поля контейнера помимо access_token */
+    private function createContainer(string $igUserId, array $body, string $token, string $step): string
     {
         $response = $this->httpClient->request('POST', self::API_BASE . "/{$igUserId}/media", [
-            'body'    => [
-                'image_url'    => $imageUrl,
-                'caption'      => $caption,
-                'access_token' => $token,
-            ],
+            'body'    => $body + ['access_token' => $token],
             'timeout' => 60,
         ]);
 
         $data = $response->toArray(false);
-        $this->assertNoError($data, 'media (create container)');
+        $this->assertNoError($data, $step);
 
         $creationId = $data['id'] ?? null;
         if ($creationId === null) {

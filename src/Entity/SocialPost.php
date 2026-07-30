@@ -72,8 +72,11 @@ class SocialPost
     #[ORM\Column(length: 20, options: ['default' => self::MEDIA_NONE])]
     private string $mediaType = self::MEDIA_NONE;
 
-    /** Путь к отрендеренному медиа (картинка/видео). */
-    #[ORM\Column(length: 255, nullable: true)]
+    /**
+     * Путь к отрендеренному медиа (картинка/видео). Для карусели — несколько путей,
+     * по одному на строку (см. getMediaPaths()/setMediaPaths()).
+     */
+    #[ORM\Column(type: 'text', nullable: true)]
     private ?string $mediaPath = null;
 
     /** CTA-ссылка (с UTM) — вынесена из подписи, публикаторы оформляют по-своему. */
@@ -204,6 +207,32 @@ class SocialPost
     public function setMediaPath(?string $mediaPath): self
     {
         $this->mediaPath = $mediaPath;
+        return $this;
+    }
+
+    /**
+     * Все медиа поста по порядку: одиночная картинка → один элемент, карусель → N слайдов.
+     *
+     * @return list<string>
+     */
+    public function getMediaPaths(): array
+    {
+        if ($this->mediaPath === null) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map('trim', explode("\n", $this->mediaPath)),
+            static fn (string $path) => $path !== '',
+        ));
+    }
+
+    /** @param list<string> $paths слайды карусели по порядку */
+    public function setMediaPaths(array $paths): self
+    {
+        $clean = array_values(array_filter(array_map('trim', $paths), static fn (string $p) => $p !== ''));
+        $this->mediaPath = $clean === [] ? null : implode("\n", $clean);
+
         return $this;
     }
 
