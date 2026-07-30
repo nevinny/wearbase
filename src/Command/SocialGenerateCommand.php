@@ -6,9 +6,12 @@ use App\Entity\SocialChannel;
 use App\Entity\SocialPost;
 use App\Repository\SocialPostRepository;
 use App\Service\ContentValidator;
+use App\Service\Social\BrandGalleryImages;
 use App\Service\Social\CaptionGenerator;
 use App\Service\Social\CardImageRenderer;
+use App\Service\Social\GallerySlideRenderer;
 use App\Service\Social\MediaRenderer;
+use App\Service\Social\ReelsSlideshowRenderer;
 use App\Service\Social\SocialRubrics;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -32,6 +35,9 @@ class SocialGenerateCommand extends Command
         private readonly CaptionGenerator $captions,
         private readonly MediaRenderer $media,
         private readonly CardImageRenderer $cardRenderer,
+        private readonly BrandGalleryImages $gallery,
+        private readonly GallerySlideRenderer $slides,
+        private readonly ReelsSlideshowRenderer $reels,
         private readonly ContentValidator $validator,
     ) {
         parent::__construct();
@@ -73,25 +79,41 @@ class SocialGenerateCommand extends Command
                 $post->setAiGenerated(true);
                 $post->setGenerateAttempts($post->getGenerateAttempts() + 1);
 
-                $mediaPath = $this->media->render($post);
+                // Карусель и Reels строятся из фото бренда, а не из сгенерированной картинки.
+                if ($def['media'] === SocialPost::MEDIA_CAROUSEL) {
+                    $slides = $this->gallerySlides($post);
+                    $post->setMediaPaths($slides);
+                    $post->setMediaType(count($slides) >= BrandGalleryImages::MIN_SLIDES
+                        ? SocialPost::MEDIA_CAROUSEL
+                        : SocialPost::MEDIA_NONE);
+                } elseif ($def['media'] === SocialPost::MEDIA_REELS) {
+                    $slides = $this->gallerySlides($post);
+                    $video = count($slides) >= BrandGalleryImages::MIN_SLIDES
+                        ? $this->reels->render($post, $slides)
+                        : null;
+                    $post->setMediaPath($video);
+                    $post->setMediaType($video !== null ? SocialPost::MEDIA_REELS : SocialPost::MEDIA_NONE);
+                } else {
+                    $mediaPath = $this->media->render($post);
 
-                // Доп. ветка (не меняет TG/VK и остальные рубрики): для IG рубрики-шаблоны
-                // получают брендированную карточку с заголовком вместо слабой AI-сцены
-                // (см. docs/marketing_instagram.md §5).
-                if ($post->getChannel()?->getPlatform() === SocialChannel::PLATFORM_IG
-                    && $this->cardRenderer->supports($post->getRubric())
-                ) {
-                    $cardPath = $this->cardRenderer->render($post);
-                    if ($cardPath !== null) {
-                        $mediaPath = $cardPath;
+                    // Доп. ветка (не меняет TG/VK и остальные рубрики): для IG рубрики-шаблоны
+                    // получают брендированную карточку с заголовком вместо слабой AI-сцены
+                    // (см. docs/marketing_instagram.md §5).
+                    if ($post->getChannel()?->getPlatform() === SocialChannel::PLATFORM_IG
+                        && $this->cardRenderer->supports($post->getRubric())
+                    ) {
+                        $cardPath = $this->cardRenderer->render($post);
+                        if ($cardPath !== null) {
+                            $mediaPath = $cardPath;
+                        }
                     }
+
+                    $post->setMediaPath($mediaPath);
+                    // Тип медиа = факт: есть картинка → image, иначе none (для текст-рубрик без карточки).
+                    $post->setMediaType($mediaPath !== null ? SocialPost::MEDIA_IMAGE : SocialPost::MEDIA_NONE);
                 }
 
-                $post->setMediaPath($mediaPath);
-                // Тип медиа = факт: есть картинка → image, иначе none (для текст-рубрик без карточки).
-                $post->setMediaType($mediaPath !== null ? SocialPost::MEDIA_IMAGE : SocialPost::MEDIA_NONE);
-
-                $reason = $this->qaReason($post, (string) $post->getCaption(), $mediaPath);
+                $reason = $this->qaReason($post, (string) $post->getCaption(), $post->getMediaPaths());
                 if ($reason !== null) {
                     $this->hold($post, $reason);
                     $held++;
@@ -117,8 +139,34 @@ class SocialGenerateCommand extends Command
         return Command::SUCCESS;
     }
 
-    /** Причина увести пост в held (null = всё ок). */
-    private function qaReason(SocialPost $post, string $caption, ?string $mediaPath): ?string
+    /**
+     * Слайды поста: фото бренда из brand_image, приведённые к одному холсту, плюс слайд с
+     * логотипом — первым или последним по ветке A/B (SocialPost::VARIANT_*, по умолчанию
+     * логотип последним). Пустой список уводит пост в held ниже, в qaReason.
+     *
+     * @return list<string>
+     */
+    private function gallerySlides(SocialPost $post): array
+    {
+        $brand = $post->getBrand();
+        if ($brand === null) {
+            return [];
+        }
+
+        $sources = $this->gallery->paths($brand);
+        if ($sources === []) {
+            return [];
+        }
+
+        return $this->slides->render($post, $sources, $post->getVariant() === SocialPost::VARIANT_LOGO_FIRST);
+    }
+
+    /**
+     * Причина увести пост в held (null = всё ок).
+     *
+     * @param list<string> $mediaPaths
+     */
+    private function qaReason(SocialPost $post, string $caption, array $mediaPaths): ?string
     {
         $trimmed = trim($caption);
         if ($trimmed === '' || mb_strlen($trimmed) > 2000) {
@@ -131,8 +179,17 @@ class SocialGenerateCommand extends Command
             }
         }
 
+        // Карусель без пары слайдов — не карусель: у бренда нет фото на диске.
+        $def = $this->rubrics->get($post->getRubric());
+        if ($def !== null
+            && $def['media'] === SocialPost::MEDIA_CAROUSEL
+            && count($mediaPaths) < BrandGalleryImages::MIN_SLIDES
+        ) {
+            return sprintf('Для карусели нужно ≥%d фото бренда, найдено %d', BrandGalleryImages::MIN_SLIDES, count($mediaPaths));
+        }
+
         // Instagram не принимает текстовые посты — нужна картинка/видео.
-        if ($post->getChannel()?->getPlatform() === SocialChannel::PLATFORM_IG && $mediaPath === null) {
+        if ($post->getChannel()?->getPlatform() === SocialChannel::PLATFORM_IG && $mediaPaths === []) {
             return 'Instagram требует медиа, а его нет (рубрика-карточка/Reels — на ручную)';
         }
 

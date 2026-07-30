@@ -41,6 +41,10 @@ class SocialPost
     public const MEDIA_REELS    = 'reels';
     public const MEDIA_NONE     = 'none';
 
+    /** Ветки A/B: логотип бренда первым слайдом vs последним. */
+    public const VARIANT_LOGO_FIRST = 'logo_first';
+    public const VARIANT_LOGO_LAST  = 'logo_last';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -78,6 +82,13 @@ class SocialPost
      */
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $mediaPath = null;
+
+    /**
+     * Ветка A/B-эксперимента (VARIANT_*), null — пост вне эксперимента.
+     * Группировка результатов — app:social:evaluate по (рубрика, вариант).
+     */
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $variant = null;
 
     /** CTA-ссылка (с UTM) — вынесена из подписи, публикаторы оформляют по-своему. */
     #[ORM\Column(length: 255, nullable: true)]
@@ -225,6 +236,17 @@ class SocialPost
             array_map('trim', explode("\n", $this->mediaPath)),
             static fn (string $path) => $path !== '',
         ));
+    }
+
+    public function getVariant(): ?string
+    {
+        return $this->variant;
+    }
+
+    public function setVariant(?string $variant): self
+    {
+        $this->variant = $variant;
+        return $this;
     }
 
     /** @param list<string> $paths слайды карусели по порядку */

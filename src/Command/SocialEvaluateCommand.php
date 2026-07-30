@@ -43,9 +43,11 @@ class SocialEvaluateCommand extends Command
         $days = max(1, (int) $input->getOption('days'));
         $since = (new \DateTime("-{$days} days"))->format('Y-m-d H:i:s');
 
-        // Берём ПОСЛЕДНИЙ снимок метрик каждого поста, агрегируем по рубрике.
+        // Берём ПОСЛЕДНИЙ снимок метрик каждого поста, агрегируем по рубрике и ветке A/B
+        // (variant NULL = пост вне эксперимента, показываем как «—»).
         $rows = $this->db->fetchAllAssociative(
-            'SELECT p.rubric AS rubric,
+            "SELECT p.rubric AS rubric,
+                    COALESCE(p.variant, '—') AS variant,
                     COUNT(DISTINCT p.id) AS posts,
                     ROUND(AVG(m.saves*3 + m.shares*3 + m.link_taps*2 + m.comments), 1) AS avg_score,
                     SUM(m.link_taps) AS link_taps
@@ -54,8 +56,8 @@ class SocialEvaluateCommand extends Command
              JOIN (SELECT post_id, MAX(measured_at) mx FROM social_post_metric GROUP BY post_id) lm
                   ON lm.post_id = m.post_id AND lm.mx = m.measured_at
              WHERE p.published_at >= :since
-             GROUP BY p.rubric
-             ORDER BY avg_score DESC',
+             GROUP BY p.rubric, COALESCE(p.variant, '—')
+             ORDER BY avg_score DESC",
             ['since' => $since],
         );
 
@@ -65,13 +67,13 @@ class SocialEvaluateCommand extends Command
         }
 
         $io->table(
-            ['Рубрика', 'Постов', 'Ср. score', 'Клики'],
-            array_map(static fn (array $r) => [$r['rubric'], $r['posts'], $r['avg_score'], $r['link_taps']], $rows),
+            ['Рубрика', 'Ветка A/B', 'Постов', 'Ср. score', 'Клики'],
+            array_map(static fn (array $r) => [$r['rubric'], $r['variant'], $r['posts'], $r['avg_score'], $r['link_taps']], $rows),
         );
 
         if ($input->getOption('notify') && $this->notifier->isEnabled()) {
             $lines = array_map(
-                static fn (array $r) => sprintf('• %s — score %s (%d постов, %d кликов)', $r['rubric'], $r['avg_score'], $r['posts'], $r['link_taps']),
+                static fn (array $r) => sprintf('• %s / %s — score %s (%d постов, %d кликов)', $r['rubric'], $r['variant'], $r['avg_score'], $r['posts'], $r['link_taps']),
                 $rows,
             );
             try {

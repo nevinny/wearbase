@@ -89,6 +89,25 @@ class InstagramPublisherTest extends TestCase
         self::assertSame('parent', $this->requests[8]['body']['creation_id']);
     }
 
+    public function testReelsUsesVideoContainer(): void
+    {
+        $publisher = $this->publisher(['create-1' => 'reel1']);
+        $post = $this->post()->setMediaType(SocialPost::MEDIA_REELS);
+
+        $externalId = $publisher->publish($this->channel(), $post, [$this->tmpFile()]);
+
+        self::assertSame('published-1', $externalId);
+        self::assertCount(3, $this->requests);
+
+        $container = $this->requests[0]['body'];
+        self::assertSame('REELS', $container['media_type']);
+        // Видео уходит как video_url (не image_url) и без конвертации в JPEG.
+        self::assertSame('https://media.example/video-0.mp4', $container['video_url']);
+        self::assertArrayNotHasKey('image_url', $container);
+        self::assertSame('true', $container['share_to_feed']);
+        self::assertStringContainsString('Три слайда', $container['caption']);
+    }
+
     public function testMoreThanTenSlidesRefusedWithoutAnyRequest(): void
     {
         $publisher = $this->publisher([]);
@@ -154,6 +173,12 @@ class InstagramPublisherTest extends TestCase
         $mediaHost->method('publicJpegUrl')->willReturnCallback(
             static function () use (&$slide): string {
                 return 'https://media.example/slide-' . $slide++ . '.jpg';
+            },
+        );
+        $video = 0;
+        $mediaHost->method('publicUrl')->willReturnCallback(
+            static function () use (&$video): string {
+                return 'https://media.example/video-' . $video++ . '.mp4';
             },
         );
 

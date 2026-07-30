@@ -30,6 +30,8 @@ class InstagramPublisher implements SocialPublisherInterface
 {
     private const API_BASE = 'https://graph.instagram.com/v22.0';
     private const POLL_MAX_ATTEMPTS = 12;
+    /** Видео Meta транскодирует ощутимо дольше картинки: 30×5с = до 2.5 минут. */
+    private const POLL_MAX_ATTEMPTS_VIDEO = 30;
     private const POLL_SLEEP_SEC = 5;
 
     /** Лимит Instagram на число слайдов в карусели. */
@@ -78,11 +80,18 @@ class InstagramPublisher implements SocialPublisherInterface
             $caption .= "\n\n" . $post->getCtaLabel() . ' — ссылка в профиле';
         }
 
-        $creationId = count($paths) === 1
-            ? $this->createSingleContainer($igUserId, $this->mediaHost->publicJpegUrl($paths[0]), $caption, $token)
-            : $this->createCarouselContainer($igUserId, $paths, $caption, $token);
+        $isReels = $post->getMediaType() === SocialPost::MEDIA_REELS;
 
-        $this->pollUntilFinished($creationId, $token);
+        if ($isReels) {
+            $creationId = $this->createReelsContainer($igUserId, $this->mediaHost->publicUrl($paths[0]), $caption, $token);
+        } elseif (count($paths) === 1) {
+            $creationId = $this->createSingleContainer($igUserId, $this->mediaHost->publicJpegUrl($paths[0]), $caption, $token);
+        } else {
+            $creationId = $this->createCarouselContainer($igUserId, $paths, $caption, $token);
+        }
+
+        // Видео Meta транскодирует минутами, картинка готова почти сразу.
+        $this->pollUntilFinished($creationId, $token, $isReels ? self::POLL_MAX_ATTEMPTS_VIDEO : self::POLL_MAX_ATTEMPTS);
 
         return $this->publishContainer($igUserId, $creationId, $token);
     }
@@ -93,6 +102,20 @@ class InstagramPublisher implements SocialPublisherInterface
             'image_url' => $imageUrl,
             'caption'   => $caption,
         ], $token, 'media (create container)');
+    }
+
+    /**
+     * Reels: единственный формат IG с существенной раздачей не-подписчикам.
+     * share_to_feed=true — клип виден и в ленте профиля, иначе живёт только во вкладке Reels.
+     */
+    private function createReelsContainer(string $igUserId, string $videoUrl, string $caption, string $token): string
+    {
+        return $this->createContainer($igUserId, [
+            'media_type'    => 'REELS',
+            'video_url'     => $videoUrl,
+            'caption'       => $caption,
+            'share_to_feed' => 'true',
+        ], $token, 'media (create reels container)');
     }
 
     /**
@@ -145,9 +168,9 @@ class InstagramPublisher implements SocialPublisherInterface
         return (string) $creationId;
     }
 
-    private function pollUntilFinished(string $creationId, string $token): void
+    private function pollUntilFinished(string $creationId, string $token, int $maxAttempts = self::POLL_MAX_ATTEMPTS): void
     {
-        for ($attempt = 1; $attempt <= self::POLL_MAX_ATTEMPTS; $attempt++) {
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             $response = $this->httpClient->request('GET', self::API_BASE . "/{$creationId}", [
                 'query'   => [
                     'fields'       => 'status_code',
@@ -170,7 +193,7 @@ class InstagramPublisher implements SocialPublisherInterface
             sleep(self::POLL_SLEEP_SEC);
         }
 
-        throw new \RuntimeException("IG media контейнер {$creationId} не готов после " . self::POLL_MAX_ATTEMPTS . ' попыток поллинга.');
+        throw new \RuntimeException("IG media контейнер {$creationId} не готов после {$maxAttempts} попыток поллинга.");
     }
 
     private function publishContainer(string $igUserId, string $creationId, string $token): string

@@ -42,15 +42,8 @@ class PublicMediaHost
      */
     public function publicJpegUrl(string $localAbsPath): string
     {
-        if (trim((string) $this->sshDest) === '' || trim((string) $this->publicBase) === '') {
-            throw new \RuntimeException('IG_MEDIA_SSH_DEST/IG_MEDIA_PUBLIC_BASE не заданы — некуда заливать картинку для IG.');
-        }
-        if (!str_starts_with($localAbsPath, $this->projectDir)) {
-            throw new \RuntimeException("Путь вне проекта: {$localAbsPath}");
-        }
-        if (!is_file($localAbsPath)) {
-            throw new \RuntimeException("Файл не найден: {$localAbsPath}");
-        }
+        $this->assertConfigured();
+        $this->assertInsideProject($localAbsPath);
 
         $jpegPath = $this->toJpegPath($localAbsPath);
         if (!is_file($jpegPath)) {
@@ -62,9 +55,44 @@ class PublicMediaHost
         return rtrim((string) $this->publicBase, '/') . '/' . basename($jpegPath);
     }
 
+    /**
+     * Отдать файл как есть (без конвертации) через тот же внешний хост — для видео Reels:
+     * Graph API так же требует публичный video_url, а mp4 переупаковывать не нужно.
+     */
+    public function publicUrl(string $localAbsPath): string
+    {
+        $this->assertConfigured();
+        $this->assertInsideProject($localAbsPath);
+
+        $this->uploadToHost($localAbsPath);
+
+        return rtrim((string) $this->publicBase, '/') . '/' . basename($localAbsPath);
+    }
+
+    private function assertConfigured(): void
+    {
+        if (trim((string) $this->sshDest) === '' || trim((string) $this->publicBase) === '') {
+            throw new \RuntimeException('IG_MEDIA_SSH_DEST/IG_MEDIA_PUBLIC_BASE не заданы — некуда заливать медиа для IG.');
+        }
+    }
+
+    private function assertInsideProject(string $localAbsPath): void
+    {
+        if (!str_starts_with($localAbsPath, $this->projectDir)) {
+            throw new \RuntimeException("Путь вне проекта: {$localAbsPath}");
+        }
+        if (!is_file($localAbsPath)) {
+            throw new \RuntimeException("Файл не найден: {$localAbsPath}");
+        }
+    }
+
     private function toJpegPath(string $pngPath): string
     {
-        return preg_replace('/\.png$/i', '', $pngPath) . '.jpg';
+        // Меняем ЛЮБОЕ расширение на .jpg, не только .png: фото брендов (brand_image) уже
+        // .jpg, и при замене только .png получался бы дубль foo.jpg.jpg рядом с оригиналом.
+        // Для .jpg путь совпадает с исходным → is_file() выше пропустит конвертацию и мы
+        // зальём оригинал как есть.
+        return preg_replace('/\.[a-z0-9]+$/i', '', $pngPath) . '.jpg';
     }
 
     private function convertToJpeg(string $pngPath, string $jpegPath): void

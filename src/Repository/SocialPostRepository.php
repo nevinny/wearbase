@@ -83,6 +83,41 @@ class SocialPostRepository extends ServiceEntityRepository
     }
 
     /**
+     * Забрать КОНКРЕТНЫЙ scheduled-пост, не дожидаясь его времени — ручной прогон
+     * («опубликовать сейчас» для проверки формата). Канал/egress не проверяем: id указан
+     * человеком осознанно. Пустой массив — поста нет или он уже не scheduled.
+     *
+     * @return list<SocialPost>
+     */
+    public function claimOne(int $id): array
+    {
+        $em = $this->getEntityManager();
+
+        $affected = $em->getConnection()->executeStatement(
+            'UPDATE social_post
+                SET status = :publishing, claimed_at = NOW()
+              WHERE id = :id AND status = :scheduled',
+            [
+                'publishing' => SocialPost::STATUS_PUBLISHING,
+                'scheduled'  => SocialPost::STATUS_SCHEDULED,
+                'id'         => $id,
+            ],
+        );
+
+        if ($affected === 0) {
+            return [];
+        }
+
+        $post = $this->find($id);
+        if ($post === null) {
+            return [];
+        }
+        $em->refresh($post);
+
+        return [$post];
+    }
+
+    /**
      * Вернуть протухшие publishing-посты (claimed дольше $minutes) в scheduled.
      * Ловит тики, упавшие после claim, но до публикации.
      */
