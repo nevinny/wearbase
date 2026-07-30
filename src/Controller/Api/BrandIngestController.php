@@ -611,8 +611,9 @@ class BrandIngestController extends AbstractController
     /**
      * Очередь премодерации самрег-брендов (agent-pull): app:brand:moderate-tick (Mac) читает
      * досье и прогоняет ApplicationMatcher. Токен обязателен (без подписи тела — GET без бизнес-
-     * эффекта). `?id=` — узкий фильтр на один бренд (ручной прогон `--id`, счётчик analyze_attempts
-     * для гейта «не долбить после 3 попыток»).
+     * эффекта). Без `?id=` — только заявки `status='queued'` (автопрогон очереди); с явным `?id=`
+     * бренд отдаётся независимо от статуса (ручной повторный прогон `--id`, статус не фильтруется) —
+     * но только если строка `brand_moderation` для него уже существует, эндпоинт её не заводит.
      */
     #[Route('/moderation/queue', name: 'api_moderation_queue', methods: ['GET'])]
     public function moderationQueue(
@@ -639,8 +640,7 @@ class BrandIngestController extends AbstractController
                   JOIN brand b ON b.id = bm.brand_id
                   LEFT JOIN brand_user bu ON bu.brand_id = b.id AND bu.role = 'owner'
                   LEFT JOIN client owner ON owner.id = bu.user_id
-                 WHERE bm.status = 'queued'"
-            . ($id !== null ? ' AND b.id = ' . (int) $id : '')
+                 WHERE " . ($id !== null ? 'b.id = ' . (int) $id : "bm.status = 'queued'")
             . ' ORDER BY bm.created_at ASC LIMIT ' . $limit;
 
         $rows = $em->getConnection()->fetchAllAssociative($sql);
