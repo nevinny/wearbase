@@ -41,6 +41,13 @@ class ReelsSlideshowRenderer
     private const SECONDS_PER_SLIDE = 1.5;
 
     /**
+     * Последний кадр (развязка) — три строки текста (имя бренда, город/категории, просьба
+     * сохранить), за 1.5с прочитать не успеть, поэтому ему выделяется отдельная, более долгая
+     * длительность. Итоговая длина клипа: (N−1)×SECONDS_PER_SLIDE + LAST_SLIDE_SECONDS.
+     */
+    private const LAST_SLIDE_SECONDS = 3.0;
+
+    /**
      * Глубина микро-зума за слайд. 6% почти незаметны кадр-к-кадру, но убирают ощущение
      * мёртвой презентации, из-за которого клиповый зритель уходит на первых секундах.
      */
@@ -68,7 +75,8 @@ class ReelsSlideshowRenderer
         if ($slidePublicPaths === []) {
             return null;
         }
-        if (count($slidePublicPaths) * self::SECONDS_PER_SLIDE < self::MIN_DURATION_SEC) {
+        $estimated = (count($slidePublicPaths) - 1) * self::SECONDS_PER_SLIDE + self::LAST_SLIDE_SECONDS;
+        if ($estimated < self::MIN_DURATION_SEC) {
             return null;
         }
 
@@ -83,16 +91,12 @@ class ReelsSlideshowRenderer
             return $this->publicDir() . '/' . $name;
         }
 
-        $concat = $this->writeConcatList($slidePublicPaths, $dir, (int) $post->getId());
-        if ($concat === null) {
+        $plan = $this->planSlides($slidePublicPaths);
+        if ($plan === null) {
             return null;
         }
 
-        try {
-            $this->runFfmpeg($concat['list'], $outAbs, $concat['duration'], (int) $post->getId());
-        } finally {
-            @unlink($concat['list']);
-        }
+        $this->runFfmpeg($plan['slides'], $plan['duration'], $outAbs, (int) $post->getId());
 
         return is_file($outAbs) ? $this->publicDir() . '/' . $name : null;
     }
@@ -103,69 +107,101 @@ class ReelsSlideshowRenderer
     }
 
     /**
-     * Список для concat-демуксера. Последний файл дублируется без duration — иначе
-     * ffmpeg отдаёт последнему слайду один кадр вместо полной длительности.
+     * План слайдов: абсолютный путь + длительность каждого. Развязка (последний
+     * СУЩЕСТВУЮЩИЙ слайд, а не последний элемент входного списка — часть путей может не найтись
+     * на диске) получает LAST_SLIDE_SECONDS вместо SECONDS_PER_SLIDE.
      *
      * @param list<string> $slidePublicPaths
      *
-     * @return array{list: string, duration: float}|null duration нужна для фейд-аута музыки
+     * @return array{slides: list<array{file: string, seconds: float}>, duration: float}|null
+     *         duration нужна для фейд-аута музыки
      */
-    private function writeConcatList(array $slidePublicPaths, string $dir, int $postId): ?array
+    private function planSlides(array $slidePublicPaths): ?array
     {
-        $lines = [];
-        $lastAbs = null;
-        $slideCount = 0;
+        $files = [];
         foreach ($slidePublicPaths as $public) {
             $abs = $this->projectDir . '/public_html' . $public;
-            if (!is_file($abs)) {
-                continue;
+            if (is_file($abs)) {
+                $files[] = $abs;
             }
-            $lines[] = "file '" . $abs . "'";
-            $lines[] = 'duration ' . self::SECONDS_PER_SLIDE;
-            $lastAbs = $abs;
-            $slideCount++;
         }
 
-        if ($lastAbs === null) {
-            return null;
-        }
-        $lines[] = "file '" . $lastAbs . "'";
-
-        $listFile = $dir . '/p' . $postId . '.concat.txt';
-        if (@file_put_contents($listFile, implode("\n", $lines) . "\n") === false) {
+        if ($files === []) {
             return null;
         }
 
-        return ['list' => $listFile, 'duration' => $slideCount * self::SECONDS_PER_SLIDE];
+        $lastIndex = count($files) - 1;
+        $slides = [];
+        $duration = 0.0;
+        foreach ($files as $i => $abs) {
+            $seconds = $i === $lastIndex ? self::LAST_SLIDE_SECONDS : self::SECONDS_PER_SLIDE;
+            $slides[] = ['file' => $abs, 'seconds' => $seconds];
+            $duration += $seconds;
+        }
+
+        return ['slides' => $slides, 'duration' => $duration];
     }
 
-    private function runFfmpeg(string $listFile, string $outAbs, float $duration, int $postId): void
+    /**
+     * Раньше слайды склеивались concat-демуксером из общего списка файлов. На синтетических
+     * (однотонных) JPEG это работало, но на реальных фото брендов клип ВСЕГДА обрывался на
+     * одном и том же 137-м кадре независимо от числа слайдов: GD пишет обычные фото с
+     * imagejpeg(..., 88) как yuvj420p, а слайды с наложенным текстом (h1/h2/биты/развязка/лого,
+     * imagejpeg(..., 90) — качество ≥90 переключает libjpeg на 4:4:4) — как yuvj444p. Когда
+     * concat-демуксер подряд скармливает decoder'у кадры с разным pix_fmt, ffmpeg пересобирает
+     * фильтр-граф на лету, и стейтфул zoompan (несбрасываемый счётчик кадров) обрубает поток.
+     *
+     * Фикс — каждый слайд отдельным входом (`-loop 1 -framerate FPS -t <dur> -i slide.jpg`):
+     * так input уже отдаёт ровно round(dur*FPS) идентичных декодированных кадров нужного
+     * pix_fmt/размера, а zoompan на КАЖДЫЙ слайд — свой отдельный узел графа с собственным
+     * счётчиком on (внутри своего d=1, 1 входной кадр = 1 выходной), поэтому масштаб сам
+     * стартует с 1.0 на границе слайда — без демуксера ронять нечего, сброс зума бесплатный.
+     * Проверено на реальных p136-* (yuvj420p+yuvj444p вперемешку): 10 слайдов → ровно 495
+     * кадров/16.5с, что и требует формула (N−1)×1.5+3.0.
+     *
+     * @param list<array{file: string, seconds: float}> $slides
+     */
+    private function runFfmpeg(array $slides, float $duration, string $outAbs, int $postId): void
     {
-        // in_range=pc→out_range=tv: JPEG-слайды полнодиапазонные, без явной конверсии ffmpeg
-        // оставляет pix_fmt=yuvj420p (full range), а спека Meta ждёт обычный 4:2:0 (limited).
-        //
-        // zoompan — микро-зум (Ken Burns) внутри каждого слайда, иначе клип читается как мёртвая
-        // презентация. Пила mod(on, FRAMES) сбрасывает масштаб на каждом слайде: у zoompan
-        // переменная zoom накапливается через все входные кадры, и без сброса второй слайд
-        // приезжал бы уже полностью приближённым.
-        $frames = (int) round(self::SECONDS_PER_SLIDE * self::FPS);
-        $filter = sprintf(
-            'scale=%d:%d:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,'
-            . 'pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=white,'
-            . 'zoompan=z=\'1+%.4f*mod(on\,%d)/%d\':d=%d:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=%dx%d:fps=%d,'
-            . 'format=yuv420p',
-            self::WIDTH,
-            self::HEIGHT,
-            self::WIDTH,
-            self::HEIGHT,
-            self::ZOOM_RANGE,
-            $frames,
-            $frames,
-            $frames,
-            self::WIDTH,
-            self::HEIGHT,
-            self::FPS,
-        );
+        $inputs = [];
+        $filterParts = [];
+        $labels = [];
+        foreach ($slides as $i => $slide) {
+            $frames = (int) round($slide['seconds'] * self::FPS);
+            $inputs[] = '-loop';
+            $inputs[] = '1';
+            $inputs[] = '-framerate';
+            $inputs[] = (string) self::FPS;
+            $inputs[] = '-t';
+            $inputs[] = (string) $slide['seconds'];
+            $inputs[] = '-i';
+            $inputs[] = $slide['file'];
+
+            // in_range=pc→out_range=tv: JPEG-слайды полнодиапазонные, без явной конверсии ffmpeg
+            // оставляет pix_fmt full range, а спека Meta ждёт обычный 4:2:0 (limited).
+            $label = 'v' . $i;
+            $labels[] = '[' . $label . ']';
+            $filterParts[] = sprintf(
+                '[%d:v]scale=%d:%d:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,'
+                . 'pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=white,setsar=1,'
+                . 'zoompan=z=\'1+%.4f*on/%d\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=%dx%d:fps=%d,'
+                . 'format=yuv420p[%s]',
+                $i,
+                self::WIDTH,
+                self::HEIGHT,
+                self::WIDTH,
+                self::HEIGHT,
+                self::ZOOM_RANGE,
+                $frames,
+                self::WIDTH,
+                self::HEIGHT,
+                self::FPS,
+                $label,
+            );
+        }
+        $audioIndex = count($slides);
+        $filterParts[] = implode('', $labels) . sprintf('concat=n=%d:v=1:a=0[outv]', count($slides));
+        $filterComplex = implode(';', $filterParts);
 
         // Реальный трек зациклен на всю длину клипа (-stream_loop -1), -shortest потом обрежет
         // его до длины видео. Пустая библиотека/её отсутствие → тишина, как раньше.
@@ -178,9 +214,10 @@ class ReelsSlideshowRenderer
         $process = new Process([
             $this->resolveFfmpeg(),
             '-y', '-hide_banner', '-loglevel', 'error',
-            '-f', 'concat', '-safe', '0', '-i', $listFile,
+            ...$inputs,
             ...$audioInput,
-            '-vf', $filter,
+            '-filter_complex', $filterComplex,
+            '-map', '[outv]', '-map', $audioIndex . ':a',
             ...$audioFilter,
             '-r', (string) self::FPS,
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',

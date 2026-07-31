@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Service\Social;
 
 use App\Service\Social\ReelsSlideshowRenderer;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -66,6 +67,45 @@ class ReelsSlideshowRendererTest extends TestCase
 
         self::assertNotNull($this->selectTrack($renderer, 0));
         self::assertNotNull($this->selectTrack($renderer, 1));
+    }
+
+    /**
+     * Развязка (последний кадр) читается за 3.0с, не 1.5с — три строки текста (имя, город/
+     * категории, просьба сохранить) за темп остальных кадров не прочитать. Итоговая
+     * длительность: (N−1)×1.5 + 3.0.
+     */
+    #[DataProvider('slideCounts')]
+    public function testLastSlideGetsLongerDuration(int $slideCount): void
+    {
+        $dir = $this->projectDir . '/public_html/images/social/gallery';
+        @mkdir($dir, 0775, true);
+
+        $paths = [];
+        for ($i = 1; $i <= $slideCount; $i++) {
+            $name = "p1-{$i}.jpg";
+            file_put_contents($dir . '/' . $name, 'x');
+            $paths[] = '/images/social/gallery/' . $name;
+        }
+
+        $renderer = new ReelsSlideshowRenderer($this->projectDir);
+        $method = new \ReflectionMethod($renderer, 'planSlides');
+        $result = $method->invoke($renderer, $paths);
+
+        self::assertNotNull($result);
+        self::assertEqualsWithDelta(($slideCount - 1) * 1.5 + 3.0, $result['duration'], 0.001);
+        self::assertCount($slideCount, $result['slides']);
+        self::assertSame(3.0, $result['slides'][$slideCount - 1]['seconds'], 'развязка держится LAST_SLIDE_SECONDS');
+        if ($slideCount > 1) {
+            self::assertSame(1.5, $result['slides'][0]['seconds']);
+        }
+    }
+
+    /** @return iterable<string, array{int}> */
+    public static function slideCounts(): iterable
+    {
+        yield '1 слайд' => [1];
+        yield '2 слайда' => [2];
+        yield '7 слайдов' => [7];
     }
 
     public function testEmptyLibraryFallsBackToNull(): void
