@@ -12,7 +12,7 @@ use App\Service\Social\CardImageRenderer;
 use App\Service\Social\GallerySlideRenderer;
 use App\Service\Social\MediaRenderer;
 use App\Service\Social\ReelsSlideshowRenderer;
-use App\Service\Social\SlideHookComposer;
+use App\Service\Social\SlideScriptComposer;
 use App\Service\Social\SocialRubrics;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -39,7 +39,7 @@ class SocialGenerateCommand extends Command
         private readonly BrandGalleryImages $gallery,
         private readonly GallerySlideRenderer $slides,
         private readonly ReelsSlideshowRenderer $reels,
-        private readonly SlideHookComposer $hooks,
+        private readonly SlideScriptComposer $scripts,
         private readonly ContentValidator $validator,
     ) {
         parent::__construct();
@@ -163,16 +163,18 @@ class SocialGenerateCommand extends Command
             return [];
         }
 
-        // Хук — по канону удержания внимания, а не поисковая фраза (SlideHookComposer).
-        // Сид = id бренда: карусель и Reels одного бренда получают одинаковый хук, а соседние
-        // бренды в ленте — разные формулировки.
-        $hook = $this->hooks->compose($brand, count($sources), (int) $brand->getId());
+        // Надписи — сценарий по канону удержания внимания, а не поисковая фраза
+        // (SlideScriptComposer: хук, удерживающая реплика, CTA одной связкой).
+        // Сид = id бренда: карусель и Reels одного бренда получают одинаковый текст, ветки A/B —
+        // тоже одинаковый (иначе эксперимент сравнивал бы заодно и копию), а соседние бренды в
+        // ленте — разные формулировки.
+        $script = $this->scripts->compose($brand, (int) $brand->getId());
 
         return $this->slides->render(
             $post,
             $sources,
             $post->getVariant() === SocialPost::VARIANT_LOGO_FIRST,
-            $hook,
+            $script,
         );
     }
 

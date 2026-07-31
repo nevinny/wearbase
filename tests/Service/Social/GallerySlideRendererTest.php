@@ -7,6 +7,8 @@ namespace App\Tests\Service\Social;
 use App\Entity\Brand;
 use App\Entity\SocialPost;
 use App\Service\Social\GallerySlideRenderer;
+use App\Service\Social\SlideScript;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -76,6 +78,91 @@ class GallerySlideRendererTest extends TestCase
 
         self::assertCount(1, $slides);
         self::assertStringContainsString('p20-01.jpg', $slides[0]);
+    }
+
+    /**
+     * Надписи сценария встают на первый / средний / последний кадр — и в обеих ветках A/B на
+     * одни и те же ПОЗИЦИИ. Совпадение самих слов гарантирует композер (у него на входе нет
+     * ветки, см. SlideScriptComposerTest), здесь проверяется геометрия раскладки.
+     *
+     */
+    #[DataProvider('variants')]
+    public function testScriptTextLandsOnFirstMiddleAndLastSlide(int $postId, bool $logoFirst): void
+    {
+        $sources = [];
+        foreach (range(1, 5) as $i) {
+            $this->makeImage("/public_html/images/brands/s{$i}.jpg", 900, 1100);
+            $sources[] = "/images/brands/s{$i}.jpg";
+        }
+        $this->makeImage('/public_html/images/logos/logo.jpg', 400, 200);
+
+        $slides = $this->renderer()->render($this->post($postId), $sources, $logoFirst, $this->script());
+
+        // 5 фото + логотип = 6 слайдов, середина — индекс 3.
+        self::assertCount(6, $slides);
+        self::assertSame("p{$postId}-hook.jpg", basename($slides[0]));
+        self::assertSame("p{$postId}-mid.jpg", basename($slides[3]));
+        self::assertSame("p{$postId}-cta.jpg", basename($slides[5]));
+
+        // Холст у слайдов с надписями тот же — иначе Instagram кадрирует карусель иначе.
+        foreach ($slides as $slide) {
+            $size = getimagesize($this->projectDir . '/public_html' . $slide);
+            self::assertSame([GallerySlideRenderer::WIDTH, GallerySlideRenderer::HEIGHT], [$size[0], $size[1]], $slide);
+        }
+
+        // Обложка Reels — чистое первое фото: надписи пишутся в отдельные файлы, поэтому
+        // p{id}-01.jpg остаётся без текста и обложка у ветвей A/B одинаковая.
+        $cover = $this->renderer()->coverSlide($this->post($postId));
+        self::assertSame("/images/social/gallery/p{$postId}-01.jpg", $cover);
+        self::assertNotSame($cover, $slides[0], 'Обложка не должна быть кадром с надписью');
+    }
+
+    /** @return iterable<string, array{int, bool}> */
+    public static function variants(): iterable
+    {
+        yield 'logo_last'  => [30, false];
+        yield 'logo_first' => [31, true];
+    }
+
+    /** Короткая последовательность обходится без реплики в середине — иначе стена текста. */
+    public function testShortSequenceHasNoRetentionLine(): void
+    {
+        $this->makeImage('/public_html/images/brands/a.jpg', 900, 1100);
+        $this->makeImage('/public_html/images/brands/b.jpg', 900, 1100);
+        $this->makeImage('/public_html/images/logos/logo.jpg', 400, 200);
+
+        $slides = $this->renderer()->render($this->post(40), ['/images/brands/a.jpg', '/images/brands/b.jpg'], false, $this->script());
+
+        self::assertCount(3, $slides);
+        self::assertSame('p40-hook.jpg', basename($slides[0]));
+        self::assertSame('p40-cta.jpg', basename($slides[2]));
+        self::assertFileDoesNotExist($this->projectDir . '/public_html/images/social/gallery/p40-mid.jpg');
+    }
+
+    /**
+     * Логотипа на диске нет → слайд логотипа не рисуется, но хук и CTA всё равно должны
+     * оказаться на первом и последнем кадре (раньше в ветке logo_first хук уезжал вместе с
+     * логотипом, и пост уходил в раздачу вообще без первой надписи).
+     */
+    public function testMissingLogoStillLeavesHookAndCta(): void
+    {
+        $this->makeImage('/public_html/images/brands/a.jpg', 900, 1100);
+        $this->makeImage('/public_html/images/brands/b.jpg', 900, 1100);
+
+        $slides = $this->renderer()->render($this->post(50), ['/images/brands/a.jpg', '/images/brands/b.jpg'], true, $this->script());
+
+        self::assertCount(2, $slides);
+        self::assertSame('p50-hook.jpg', basename($slides[0]));
+        self::assertSame('p50-cta.jpg', basename($slides[1]));
+    }
+
+    private function script(): SlideScript
+    {
+        return new SlideScript(
+            hook: "Пермь. 5 кадров\nСколько тут твоего?",
+            retention: "Считай, не листай.\nВ конце — куда писать.",
+            ctaLines: ['Сколько? Пиши цифру.', 'Сохрани, чтобы не потерять.', 'Отправь тому, кто ищет такое.'],
+        );
     }
 
     private function renderer(): GallerySlideRenderer

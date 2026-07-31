@@ -17,6 +17,10 @@ use App\Entity\SocialPost;
  *
  * Вписываем целиком с полями (contain), а не обрезаем (cover): у одежды обрез съедает вещь,
  * а это единственное, что в кадре важно. Холст 4:5 — максимум площади в ленте IG.
+ *
+ * Текст на слайдах — три позиции сценария (SlideScript): хук на первом кадре, удерживающая
+ * реплика в середине, CTA на последнем. Слова пишет SlideScriptComposer, здесь только
+ * геометрия: где стоит плашка, во сколько строк влезает и на каком кадре появляется.
  */
 class GallerySlideRenderer
 {
@@ -29,14 +33,42 @@ class GallerySlideRenderer
     /** Суффикс имени слайда с логотипом — по нему отличаем его от фотографий. */
     private const LOGO_SUFFIX = '-logo.jpg';
 
-    /** Суффикс слайда с хук-надписью (первый кадр). */
-    private const HOOK_SUFFIX = '-hook.jpg';
+    /**
+     * Суффиксы слайдов с надписями сценария (SlideScript): хук, удерживающая реплика, CTA.
+     * Надпись всегда пишется в ОТДЕЛЬНЫЙ файл, а исходный слайд остаётся чистым — из него
+     * берётся обложка Reels (coverSlide) и он же переиспользуется при повторном рендере.
+     */
+    private const OVERLAY_HOOK      = 'hook';
+    private const OVERLAY_RETENTION = 'mid';
+    private const OVERLAY_CTA       = 'cta';
 
     private const TITLE_FONT_SIZE  = 52;
     private const FOOTER_FONT_SIZE = 28;
     private const HOOK_FONT_SIZE   = 54;
-    private const HOOK_LINE_HEIGHT = 70;
+    /** Вторичные строки CTA (сохранение/пересылка) — мельче основного запроса, это иерархия. */
+    private const CTA_FONT_SIZE    = 40;
     private const COUNTER_FONT_SIZE = 34;
+
+    /** Межстрочный интервал = кегль × это: 54 → 70 px, как было у хука до появления сценария. */
+    private const LINE_HEIGHT_RATIO = 1.3;
+
+    /** Зазор между группами строк разного кегля внутри плашки (основной запрос ↔ вторичные). */
+    private const BAND_GROUP_GAP = 16;
+
+    /**
+     * Все надписи клипа стоят на одной высоте — 0.62 холста. Единая позиция важнее «красивого
+     * центра» у каждой: глаз знает, куда смотреть, и не тратит на поиск текста часть тех самых
+     * 1.5 секунды. 0.62 (нижняя треть) выбрана вместо центра, чтобы не закрывать вещь на фото,
+     * и при этом с запасом выше bottomLimitY() — зоны, перекрытой интерфейсом Reels.
+     */
+    private const BAND_CENTER_RATIO = 0.62;
+
+    /**
+     * Удерживающая реплика рисуется только в достаточно длинной последовательности: при 5+
+     * слайдах (≥7.5 с) надписи расходятся на ~3 секунды, а на коротком клипе три подписи
+     * подряд превратились бы в стену текста.
+     */
+    private const RETENTION_MIN_SLIDES = 5;
 
     /**
      * Безопасная зона Reels: слайд 4:5 вписывается в кадр 1920 со сдвигом (1920-1350)/2,
@@ -54,14 +86,15 @@ class GallerySlideRenderer
     }
 
     /**
-     * Отрендерить слайды поста: нормализованные фото + слайд с логотипом в начале или конце.
-     * Уже отрендеренные файлы переиспользуются (идемпотентно по id поста).
+     * Отрендерить слайды поста: нормализованные фото + слайд с логотипом в начале или конце,
+     * поверх — надписи сценария. Уже отрендеренные файлы переиспользуются (идемпотентно по id
+     * поста), поэтому смена формулировок требует чистки каталога слайдов.
      *
      * @param list<string> $sources публичные пути исходных фото (/images/brands/...)
      *
      * @return list<string> публичные пути слайдов по порядку; [] если рендер невозможен
      */
-    public function render(SocialPost $post, array $sources, bool $logoFirst, ?string $hook = null): array
+    public function render(SocialPost $post, array $sources, bool $logoFirst, ?SlideScript $script = null): array
     {
         $dir = $this->projectDir . '/public_html' . $this->publicDir();
         if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
@@ -86,15 +119,14 @@ class GallerySlideRenderer
             return [];
         }
 
-        $hasHook = $hook !== null && trim($hook) !== '';
-
         $brand = $post->getBrand();
         if ($brand !== null) {
             $logoName = 'p' . $postId . self::LOGO_SUFFIX;
-            // Если логотип идёт первым, хук обязан быть на НЁМ — но плашка поверх обычной
-            // раскладки накрывала сам логотип, поэтому слайд рисуется в компактном варианте.
-            $logoHook = $logoFirst && $hasHook ? $hook : null;
-            if ($this->logoSlide($brand, $dir . '/' . $logoName, $logoFirst ? 1 : $total, $total, $logoHook)) {
+            // Слайд логотипа всегда оказывается либо первым (там хук), либо последним (там CTA),
+            // то есть при наличии сценария на нём заведомо будет надпись. Плашка поверх обычной
+            // раскладки накрыла бы сам логотип, поэтому такой слайд рисуется компактным:
+            // логотип выше и меньше, нижняя треть свободна под текст.
+            if ($this->logoSlide($brand, $dir . '/' . $logoName, $logoFirst ? 1 : $total, $total, $script !== null)) {
                 $logoPath = $this->publicDir() . '/' . $logoName;
                 if ($logoFirst) {
                     array_unshift($slides, $logoPath);
@@ -104,17 +136,12 @@ class GallerySlideRenderer
             }
         }
 
-        // Хук-надпись — на ПЕРВОМ слайде последовательности, каким бы он ни был: первые
-        // ~1.5 секунды решают раздачу Reels, и текст должен быть там в обеих ветках A/B.
-        // Различие между ветками остаётся ровно одно — что за фон под хуком.
-        if ($hasHook && !$logoFirst && $slides !== []) {
-            $hookName = 'p' . $postId . self::HOOK_SUFFIX;
-            if ($this->hookSlide($dir . '/' . basename($slides[0]), $dir . '/' . $hookName, $hook)) {
-                $slides[0] = $this->publicDir() . '/' . $hookName;
-            }
-        }
-
-        return $slides;
+        // Надписи накладываются на УЖЕ СОБРАННУЮ последовательность, а не по ходу её сборки:
+        // позиции считаются от финального порядка слайдов, поэтому текст встаёт на первый /
+        // средний / последний кадр в обеих ветках A/B одинаково — независимо от того, куда попал
+        // логотип и удалось ли его вообще отрисовать (раньше при отсутствующем логотипе ветка
+        // logo_first оставалась совсем без хука).
+        return $script !== null ? $this->applyScript($postId, $dir, $slides, $script) : $slides;
     }
 
     public function publicDir(): string
@@ -165,8 +192,13 @@ class GallerySlideRenderer
         return $ok;
     }
 
-    /** Слайд-обложка: логотип бренда по центру + название и подпись движения. */
-    private function logoSlide(Brand $brand, string $dstAbs, int $index, int $total, ?string $hook = null): bool
+    /**
+     * Слайд-обложка: логотип бренда по центру + название и подпись движения.
+     *
+     * $compact — освободить нижнюю треть под надпись сценария (хук или CTA): логотип уезжает
+     * выше и уменьшается, название поднимается над плашкой.
+     */
+    private function logoSlide(Brand $brand, string $dstAbs, int $index, int $total, bool $compact = false): bool
     {
         if (is_file($dstAbs)) {
             return true;
@@ -190,12 +222,11 @@ class GallerySlideRenderer
         [$bgR, $bgG, $bgB] = $this->cornerColor($src);
         $canvas = $this->canvas($bgR, $bgG, $bgB);
 
-        // С хуком логотип уезжает выше и уменьшается, освобождая середину под текст.
-        $ratio = $hook !== null ? 0.46 : self::LOGO_WIDTH_RATIO;
+        $ratio = $compact ? 0.44 : self::LOGO_WIDTH_RATIO;
         $boxWidth = (int) (self::WIDTH * $ratio);
         $boxHeight = $boxWidth;
         $boxX = (int) ((self::WIDTH - $boxWidth) / 2);
-        $boxY = (int) (self::HEIGHT * ($hook !== null ? 0.10 : 0.22));
+        $boxY = (int) (self::HEIGHT * ($compact ? 0.06 : 0.22));
         $this->drawContained($canvas, $src, $boxX, $boxY, $boxWidth, $boxHeight);
         imagedestroy($src);
 
@@ -208,10 +239,14 @@ class GallerySlideRenderer
             $muted = $dark
                 ? imagecolorallocate($canvas, 209, 213, 219)
                 : imagecolorallocate($canvas, 156, 163, 175);
-            $titleY = (int) (self::HEIGHT * ($hook !== null ? 0.66 : 0.78));
-            $this->centeredText($canvas, (string) $brand->getTitle(), self::TITLE_FONT_SIZE, $titleY, $ink);
-            if ($hook !== null) {
-                $this->drawHookBand($canvas, $hook, (int) (self::HEIGHT * 0.80));
+            // 0.47 в компактной раскладке: название уже ниже логотипа, но ещё выше плашки,
+            // верхний край которой при трёхстрочном CTA приходится на ~0.52 холста.
+            $titleY = (int) (self::HEIGHT * ($compact ? 0.47 : 0.78));
+            // В компактной раскладке (логотип идёт ПЕРВЫМ и на нём же лежит хук) название
+            // бренда не печатаем: по Шварцу имя незнакомой марки вести не должно, а крупный
+            // заголовок перетягивал внимание с хука в решающие полторы секунды.
+            if (!$compact) {
+                $this->centeredText($canvas, (string) $brand->getTitle(), self::TITLE_FONT_SIZE, $titleY, $ink);
             }
             // Футер — выше границы безопасной зоны: на HEIGHT-80 он оказывался в 365 px от низа
             // кадра Reels, то есть под подписью и кнопками Instagram.
@@ -227,55 +262,157 @@ class GallerySlideRenderer
     }
 
     /**
-     * Хук-надпись поверх готового слайда: тёмная подложка + крупный белый текст по центру
-     * кадра. Отдельный файл, чтобы исходный слайд остался чистым (он же второй в другой ветке).
+     * Разложить надписи сценария по собранной последовательности слайдов.
+     *
+     * Позиции: первый кадр — хук (первые ~1.5 секунды решают раздачу Reels), середина —
+     * удерживающая реплика, последний — CTA. Индексы считаются от финального порядка, поэтому
+     * в обеих ветках A/B надписи стоят в одних и тех же МОМЕНТАХ клипа; различие между ветками
+     * остаётся ровно одно — что за фон под текстом.
+     *
+     * Слайд, на который надпись не встала (нет файла, нет шрифта), просто остаётся чистым:
+     * пост без надписи лучше поста без слайдов.
+     *
+     * @param list<string> $slides
+     *
+     * @return list<string>
      */
-    private function hookSlide(string $srcSlideAbs, string $dstAbs, string $hook): bool
+    private function applyScript(int $postId, string $dir, array $slides, SlideScript $script): array
     {
-        if (is_file($dstAbs)) {
-            return true;
-        }
-        if (!is_file($srcSlideAbs) || !is_file($this->fontPath)) {
-            return false;
-        }
+        $total = count($slides);
 
-        $bytes = @file_get_contents($srcSlideAbs);
-        $canvas = $bytes !== false ? @imagecreatefromstring($bytes) : false;
-        if ($canvas === false) {
-            return false;
+        $slides[0] = $this->overlay($postId, $dir, $slides[0], self::OVERLAY_HOOK, $this->bigLines($script->hook));
+
+        // Середина — только на длинной последовательности, и только на кадре, который не занят
+        // хуком или CTA (при total ≥ 5 середина заведомо между ними).
+        if ($total >= self::RETENTION_MIN_SLIDES) {
+            $mid = intdiv($total, 2);
+            $slides[$mid] = $this->overlay($postId, $dir, $slides[$mid], self::OVERLAY_RETENTION, $this->bigLines($script->retention));
         }
 
-        $this->drawHookBand($canvas, $hook, (int) (self::HEIGHT / 2));
+        // CTA — на последнем кадре, если он не совпадает с первым (у поста из одного слайда
+        // просить «сохрани» поверх хука бессмысленно, да и в карусель он всё равно не пойдёт).
+        if ($total >= 2) {
+            $slides[$total - 1] = $this->overlay($postId, $dir, $slides[$total - 1], self::OVERLAY_CTA, $this->ctaBandLines($script->ctaLines));
+        }
 
-        $ok = imagejpeg($canvas, $dstAbs, 90);
-        imagedestroy($canvas);
-
-        return $ok;
+        return $slides;
     }
 
     /**
-     * Плашка с хук-надписью: тёмная подложка на всю ширину + белый текст по центру.
-     * ≤26 символов в строке при кегле 54 и максимум ДВЕ строки: слайд живёт 1.5 секунды,
-     * третью строку клиповый зритель прочитать не успеет.
+     * Копия слайда с плашкой-надписью в отдельном файле p{id}-{suffix}.jpg. Исходный слайд не
+     * трогаем: из p{id}-01.jpg берётся обложка Reels, и она должна остаться без текста.
+     *
+     * @param list<array{0:string,1:int}> $lines
+     *
+     * @return string публичный путь слайда с надписью или исходный, если наложить не удалось
      */
-    private function drawHookBand(\GdImage $canvas, string $hook, int $centerY): void
+    private function overlay(int $postId, string $dir, string $slidePublic, string $suffix, array $lines): string
     {
-        $lines = array_slice($this->wrapByChars($hook, 26), 0, 2);
+        if ($lines === []) {
+            return $slidePublic;
+        }
+
+        $dstName = sprintf('p%d-%s.jpg', $postId, $suffix);
+        $dstAbs = $dir . '/' . $dstName;
+        $public = $this->publicDir() . '/' . $dstName;
+
+        if (is_file($dstAbs)) {
+            return $public;
+        }
+
+        $srcAbs = $dir . '/' . basename($slidePublic);
+        if (!is_file($srcAbs) || !is_file($this->fontPath)) {
+            return $slidePublic;
+        }
+
+        $bytes = @file_get_contents($srcAbs);
+        $canvas = $bytes !== false ? @imagecreatefromstring($bytes) : false;
+        if ($canvas === false) {
+            return $slidePublic;
+        }
+
+        $this->drawBand($canvas, $lines);
+        $ok = imagejpeg($canvas, $dstAbs, 90);
+        imagedestroy($canvas);
+
+        return $ok ? $public : $slidePublic;
+    }
+
+    /**
+     * Хук и удерживающая реплика: до двух строк одним кеглем.
+     *
+     * @return list<array{0:string,1:int}>
+     */
+    private function bigLines(string $text): array
+    {
+        return array_map(
+            static fn (string $line): array => [$line, self::HOOK_FONT_SIZE],
+            $this->wrapLines($text, SlideScript::HOOK_MAX_CHARS, SlideScript::MAX_HOOK_LINES),
+        );
+    }
+
+    /**
+     * CTA: основной запрос крупно (его читают в первую очередь и именно он гейтит комментарии),
+     * сохранение и пересылка — мельче. Иерархия кеглей вместо трёх равных строк: три
+     * одинаковых просьбы читаются как список требований и не выполняется ни одна.
+     *
+     * @param list<string> $ctaLines
+     *
+     * @return list<array{0:string,1:int}>
+     */
+    private function ctaBandLines(array $ctaLines): array
+    {
+        $lines = [];
+        foreach (array_values($ctaLines) as $i => $text) {
+            $isPrimary = $i === 0;
+            $wrapped = $this->wrapLines(
+                $text,
+                $isPrimary ? SlideScript::HOOK_MAX_CHARS : SlideScript::CTA_MAX_CHARS,
+                $isPrimary ? SlideScript::MAX_HOOK_LINES : 1,
+            );
+            foreach ($wrapped as $line) {
+                $lines[] = [$line, $isPrimary ? self::HOOK_FONT_SIZE : self::CTA_FONT_SIZE];
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Плашка с надписью: тёмная подложка на всю ширину + белый текст по центру, на фиксированной
+     * высоте BAND_CENTER_RATIO. Подложка нужна всегда — фото брендов бывают и белыми, и
+     * тёмными, и без неё текст исчезает на половине корпуса.
+     *
+     * @param list<array{0:string,1:int}> $lines [текст, кегль]
+     */
+    private function drawBand(\GdImage $canvas, array $lines): void
+    {
         if ($lines === []) {
             return;
         }
 
-        $blockHeight = count($lines) * self::HOOK_LINE_HEIGHT;
-        $top = $centerY - (int) ($blockHeight / 2);
+        // Базовые линии считаем заранее: между строками разного кегля добавляется зазор, иначе
+        // основной запрос CTA и вторичные строки слипаются в один абзац и иерархия не читается.
+        $baselines = [];
+        $cursor = 0;
+        $prevSize = null;
+        foreach ($lines as [, $size]) {
+            if ($prevSize !== null && $prevSize !== $size) {
+                $cursor += self::BAND_GROUP_GAP;
+            }
+            $baselines[] = $cursor + $size;
+            $cursor += (int) round($size * self::LINE_HEIGHT_RATIO);
+            $prevSize = $size;
+        }
+
+        $top = (int) (self::HEIGHT * self::BAND_CENTER_RATIO) - intdiv($cursor, 2);
 
         $scrim = imagecolorallocatealpha($canvas, 17, 24, 39, 40);
-        imagefilledrectangle($canvas, 0, $top - 40, self::WIDTH - 1, $top + $blockHeight + 24, $scrim);
+        imagefilledrectangle($canvas, 0, $top - 40, self::WIDTH - 1, $top + $cursor + 24, $scrim);
 
         $white = imagecolorallocate($canvas, 255, 255, 255);
-        $y = $top + self::HOOK_FONT_SIZE;
-        foreach ($lines as $line) {
-            $this->centeredText($canvas, $line, self::HOOK_FONT_SIZE, $y, $white);
-            $y += self::HOOK_LINE_HEIGHT;
+        foreach ($lines as $i => [$text, $size]) {
+            $this->centeredText($canvas, $text, $size, $top + $baselines[$i], $white);
         }
     }
 
@@ -341,6 +478,25 @@ class GallerySlideRenderer
         $offset = (int) ((self::FRAME_HEIGHT - self::HEIGHT) / 2);
 
         return self::FRAME_HEIGHT - self::FRAME_BOTTOM_UI - $offset;
+    }
+
+    /**
+     * Разбить надпись на строки. Явный перенос «\n» из сценария уважается: разрыв между
+     * якорем и строкой с напряжением поставлен автором текста, а автоперенос по ширине рвал
+     * фразу в случайном месте («Пермь. 9 / вещей. Одну ты сохранишь»).
+     *
+     * @return list<string> не больше $maxLines строк
+     */
+    private function wrapLines(string $text, int $maxChars, int $maxLines): array
+    {
+        $lines = [];
+        foreach (preg_split('/\R/u', trim($text)) ?: [] as $paragraph) {
+            foreach ($this->wrapByChars($paragraph, $maxChars) as $line) {
+                $lines[] = $line;
+            }
+        }
+
+        return array_slice($lines, 0, $maxLines);
     }
 
     /** @return list<string> */
