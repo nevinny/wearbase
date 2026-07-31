@@ -94,15 +94,34 @@ class RunScheduledCommandsCommand extends Command
         return Command::SUCCESS;
     }
 
+    /**
+     * Due = наступила минута расписания ЛИБО слот был пропущен и мы его догоняем.
+     *
+     * Догон обязателен: isDue() совпадает только в свою минуту, а тик может не случиться —
+     * долгий джоб держит глобальный лок («Пропуск: предыдущий проход ещё выполняется»),
+     * или Mac спал. Тогда задача, чья минута попала в дыру, не запускалась НИКОГДА:
+     * app:gsc:sync висел 08:00–09:00 и 13 дней подряд съедал app:advisor:snapshot (50 8 * * *),
+     * app:kb:sync-tg (30 8 * * *) и весь остальной час.
+     *
+     * next_run_at в прошлом = слот пропущен. Сравниваем как строки 'Y-m-d H:i': в БД лежит
+     * московское wall-time (его пишет dispatch()), а гидрация даёт DateTime в дефолтной зоне
+     * PHP — сравнение объектов уехало бы на разницу зон.
+     */
     private function isDue(ScheduledCommand $cmd, \DateTime $now, SymfonyStyle $io): bool
     {
         try {
-            return (new CronExpression($cmd->getSchedule()))->isDue($now);
+            if ((new CronExpression($cmd->getSchedule()))->isDue($now)) {
+                return true;
+            }
         } catch (\Throwable $e) {
             $io->warning(sprintf('Битое расписание «%s» у «%s»: %s', $cmd->getSchedule(), $cmd->getCommand(), $e->getMessage()));
 
             return false;
         }
+
+        $next = $cmd->getNextRunAt();
+
+        return $next !== null && $next->format('Y-m-d H:i') <= $now->format('Y-m-d H:i');
     }
 
     /** Считаем задачу зависшей, если она «выполняется» дольше своего таймаута — тогда перезапускаем. */

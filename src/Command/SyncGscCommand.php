@@ -56,6 +56,21 @@ class SyncGscCommand extends Command
     private const FRESH_DAYS        = 7;     // «свежие» для приоритета и алертов
     private const BLOG_WATCH_CAP    = 50;    // блог-статей инспектировать за прогон (closed-loop → Дзен)
 
+    /**
+     * Бюджет wall-clock на ВСЮ инспекцию (бренды + блог). Упираемся не в квоту, а в латентность
+     * URL Inspection: замер 2026-08-01 — 6.9с на URL, т.е. очередь из 625 молчунов = ~72 минуты.
+     * Прогон не влезал в timeout крона (3600с), его убивали → report() не доходил, а диспетчер
+     * (у него глобальный лок) целый час пропускал тики и терял app:advisor:snapshot (50 8 * * *)
+     * и весь остальной час задач. Очередь молчунов — round-robin по last_checked_at, поэтому
+     * недоинспектированный остаток просто уходит в следующий прогон, ничего не теряется.
+     */
+    private const INSPECT_BUDGET_SEC = 900;
+
+    /** Момент, после которого фаза инспекции сворачивается; ставится в execute(). */
+    private ?int $inspectDeadline = null;
+
+    private int $inspectBudgetSec = self::INSPECT_BUDGET_SEC;
+
     public function __construct(
         private readonly GscClient  $gsc,
         private readonly Connection $db,
@@ -71,6 +86,7 @@ class SyncGscCommand extends Command
             ->addOption('analytics-only', null, InputOption::VALUE_NONE, 'Только Search Analytics (без Inspection)')
             ->addOption('inspect-only',   null, InputOption::VALUE_NONE, 'Только покрытие индекса')
             ->addOption('inspect-cap',    null, InputOption::VALUE_REQUIRED, 'Потолок Inspection-запросов за прогон', (string) self::INSPECT_DAILY_CAP)
+            ->addOption('inspect-budget', null, InputOption::VALUE_REQUIRED, 'Бюджет секунд на всю фазу инспекции', (string) self::INSPECT_BUDGET_SEC)
             ->addOption('report',         null, InputOption::VALUE_NONE, 'Отчёт/алерты по аномалиям')
         ;
     }
@@ -85,6 +101,9 @@ class SyncGscCommand extends Command
             $io->warning('GSC не настроен (GSC_CREDENTIALS_PATH / GSC_SITE_URL) — пропускаем.');
             return Command::SUCCESS;
         }
+
+        $this->inspectBudgetSec = max(0, (int) $input->getOption('inspect-budget'));
+        $this->inspectDeadline  = time() + $this->inspectBudgetSec;
 
         try {
             if (!$input->getOption('inspect-only')) {
@@ -341,6 +360,11 @@ class SyncGscCommand extends Command
         $checked = $indexed = 0;
 
         foreach ($targets as $brandId => $slug) {
+            if ($this->outOfInspectBudget()) {
+                $io->text(sprintf('Бюджет инспекции %dс исчерпан на %d-м URL — остаток очереди уйдёт в следующий прогон.',
+                    $this->inspectBudgetSec, $checked));
+                break;
+            }
             $url = "{$siteBase}/ru/brands/{$slug}";
             try {
                 $result = $this->gsc->inspectUrl($url);
@@ -376,6 +400,11 @@ class SyncGscCommand extends Command
         }
 
         $io->text(sprintf('Проверено: %d, в индексе: %d', $checked, $indexed));
+    }
+
+    private function outOfInspectBudget(): bool
+    {
+        return $this->inspectDeadline !== null && time() >= $this->inspectDeadline;
     }
 
     /** Алерты — read-only метрики; дрип-публикацию НЕ трогают (fail-open). */
@@ -506,6 +535,9 @@ class SyncGscCommand extends Command
 
         $lines = [];
         foreach ($rows as $r) {
+            if ($this->outOfInspectBudget()) {
+                break;  // бюджет общий с брендовой инспекцией — остаток статей проверим завтра
+            }
             $url = sprintf('https://wearbase.ru/%s/blog/%s', $r['locale'], $r['slug']);
             try {
                 $res = $this->gsc->inspectUrl($url);
