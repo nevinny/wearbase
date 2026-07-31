@@ -38,8 +38,15 @@ class SocialEnqueueBrandGalleryCommand extends Command
     private const RUBRIC = 'brand_gallery';
     private const RUBRIC_REELS = 'brand_reels';
 
-    /** Ветки A/B чередуются по позиции в очереди — деление 50/50 без случайности. */
-    private const VARIANTS = [SocialPost::VARIANT_LOGO_FIRST, SocialPost::VARIANT_LOGO_LAST];
+    /**
+     * Позиция логотипа зафиксирована: logo_last (решение владельца 2026-07-31 по рекомендации
+     * двух независимых проектирований и ревью маркетолога). logo_first ставил первым кадром
+     * логотип незнакомой марки (часто с вордмарком-именем) — противоречит хукам «Чей — в конце»
+     * (утечка ответа), vision-порядку кадров (вертикальный товарный первым) и Шварцу.
+     * Экспериментальный слот отдан сравнению формулировок хука — оно едет на script_key,
+     * колонка variant остаётся для истории и будущих экспериментов.
+     */
+    private const FIXED_VARIANT = SocialPost::VARIANT_LOGO_LAST;
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -113,9 +120,7 @@ class SocialEnqueueBrandGalleryCommand extends Command
 
             $slot = count($queued);
             $day = $today->modify('+' . ($startIn + intdiv($slot, $perDay)) . ' day');
-            // Вариант A/B — по позиции в очереди; карусель и Reels одного бренда получают
-            // ОДИН вариант, иначе позиция логотипа мешалась бы с форматом.
-            $variant = self::VARIANTS[$slot % count(self::VARIANTS)];
+            $variant = self::FIXED_VARIANT;
 
             $carousel = (new SocialPost())
                 ->setChannel($channel)
