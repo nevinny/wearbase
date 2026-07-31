@@ -56,6 +56,26 @@ class InstagramPublisherTest extends TestCase
         self::assertSame('cid1', $this->requests[2]['body']['creation_id']);
     }
 
+    /**
+     * Ссылка на профиль — в мёртвой зоне подписи, если стоит ПОСЛЕ хэштегов (IG сворачивает
+     * длинную подпись, последний абзац почти никогда не разворачивают). Проверяем, что строка
+     * ссылки стоит РАНЬШЕ блока хэштегов.
+     */
+    public function testCtaLinkInsertedBeforeHashtags(): void
+    {
+        $publisher = $this->publisher(['create-1' => 'cid1']);
+
+        $publisher->publish($this->channel(), $this->post(), [$this->tmpFile()]);
+
+        $caption = $this->requests[0]['body']['caption'];
+        $ctaPos = mb_strpos($caption, 'Каталог — ссылка в профиле');
+        $hashPos = mb_strpos($caption, '#');
+
+        self::assertNotFalse($ctaPos, 'Строка ссылки не найдена в подписи');
+        self::assertNotFalse($hashPos, 'Хэштеги не найдены в подписи');
+        self::assertLessThan($hashPos, $ctaPos, 'Ссылка на профиль должна стоять до блока хэштегов');
+    }
+
     public function testCarouselCreatesChildContainersThenParent(): void
     {
         $publisher = $this->publisher(['create-1' => 'child1', 'create-2' => 'child2', 'create-3' => 'child3', 'create-4' => 'parent']);
@@ -217,7 +237,7 @@ class InstagramPublisherTest extends TestCase
     private function post(): SocialPost
     {
         return (new SocialPost())
-            ->setCaption('Три слайда про российские бренды')
+            ->setCaption("Три слайда про российские бренды\n\n#ПрямойБренд #российскиебренды")
             ->setCtaLabel('Каталог');
     }
 

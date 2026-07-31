@@ -14,6 +14,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Нормализация слайдов и позиция логотипа — сердце A/B: если холст не один, Instagram
  * кадрирует карусель по первому слайду и эксперимент сравнивает не то, что задумано.
+ * Плюс раскладка сценария v3: hookA (кадр 1), hookA+hookB (кадр 2, hookA не сдвигается),
+ * биты (кадры 4,6,8…), развязка (последний кадр).
  */
 class GallerySlideRendererTest extends TestCase
 {
@@ -81,13 +83,13 @@ class GallerySlideRendererTest extends TestCase
     }
 
     /**
-     * Надписи сценария встают на первый / средний / последний кадр — и в обеих ветках A/B на
-     * одни и те же ПОЗИЦИИ. Совпадение самих слов гарантирует композер (у него на входе нет
-     * ветки, см. SlideScriptComposerTest), здесь проверяется геометрия раскладки.
-     *
+     * Раскладка сценария v3 на 5 фото + логотип = 6 кадров: hookA (1), hookA+hookB (2), бит
+     * (4, budget=maxBits(6)=1), развязка (6) — в обеих ветках A/B на одних и тех же ПОЗИЦИЯХ.
+     * Совпадение самих слов гарантирует композер (у него на входе нет ветки, см.
+     * SlideScriptComposerTest), здесь проверяется геометрия раскладки.
      */
     #[DataProvider('variants')]
-    public function testScriptTextLandsOnFirstMiddleAndLastSlide(int $postId, bool $logoFirst): void
+    public function testScriptFramesLandOnExpectedPositions(int $postId, bool $logoFirst): void
     {
         $sources = [];
         foreach (range(1, 5) as $i) {
@@ -98,11 +100,16 @@ class GallerySlideRendererTest extends TestCase
 
         $slides = $this->renderer()->render($this->post($postId), $sources, $logoFirst, $this->script());
 
-        // 5 фото + логотип = 6 слайдов, середина — индекс 3.
+        // 5 фото + логотип = 6 слайдов.
         self::assertCount(6, $slides);
-        self::assertSame("p{$postId}-hook.jpg", basename($slides[0]));
-        self::assertSame("p{$postId}-mid.jpg", basename($slides[3]));
-        self::assertSame("p{$postId}-cta.jpg", basename($slides[5]));
+        self::assertSame("p{$postId}-h1.jpg", basename($slides[0]));
+        self::assertSame("p{$postId}-h2.jpg", basename($slides[1]));
+        self::assertSame("p{$postId}-b1.jpg", basename($slides[3]));
+        self::assertSame("p{$postId}-fin.jpg", basename($slides[5]));
+        // Кадр 3 (индекс 2) — чистый, надпись на него не встаёт.
+        self::assertStringNotContainsString('-h', basename($slides[2]));
+        self::assertStringNotContainsString('-b', basename($slides[2]));
+        self::assertStringNotContainsString('-fin', basename($slides[2]));
 
         // Холст у слайдов с надписями тот же — иначе Instagram кадрирует карусель иначе.
         foreach ($slides as $slide) {
@@ -124,27 +131,29 @@ class GallerySlideRendererTest extends TestCase
         yield 'logo_first' => [31, true];
     }
 
-    /** Короткая последовательность обходится без реплики в середине — иначе стена текста. */
-    public function testShortSequenceHasNoRetentionLine(): void
+    /**
+     * Короткая последовательность (2 кадра): hookB и развязка претендуют на один и тот же
+     * последний кадр — развязка побеждает (имя+просьба сохранить важнее второй строки хука).
+     */
+    public function testTwoSlideSequenceGivesLastFrameToFinale(): void
     {
         $this->makeImage('/public_html/images/brands/a.jpg', 900, 1100);
         $this->makeImage('/public_html/images/brands/b.jpg', 900, 1100);
-        $this->makeImage('/public_html/images/logos/logo.jpg', 400, 200);
 
         $slides = $this->renderer()->render($this->post(40), ['/images/brands/a.jpg', '/images/brands/b.jpg'], false, $this->script());
 
-        self::assertCount(3, $slides);
-        self::assertSame('p40-hook.jpg', basename($slides[0]));
-        self::assertSame('p40-cta.jpg', basename($slides[2]));
-        self::assertFileDoesNotExist($this->projectDir . '/public_html/images/social/gallery/p40-mid.jpg');
+        self::assertCount(2, $slides);
+        self::assertSame('p40-h1.jpg', basename($slides[0]));
+        self::assertSame('p40-fin.jpg', basename($slides[1]));
+        self::assertFileDoesNotExist($this->projectDir . '/public_html/images/social/gallery/p40-h2.jpg');
     }
 
     /**
-     * Логотипа на диске нет → слайд логотипа не рисуется, но хук и CTA всё равно должны
+     * Логотипа на диске нет → слайд логотипа не рисуется, но hookA и развязка всё равно должны
      * оказаться на первом и последнем кадре (раньше в ветке logo_first хук уезжал вместе с
      * логотипом, и пост уходил в раздачу вообще без первой надписи).
      */
-    public function testMissingLogoStillLeavesHookAndCta(): void
+    public function testMissingLogoStillLeavesHookAndFinale(): void
     {
         $this->makeImage('/public_html/images/brands/a.jpg', 900, 1100);
         $this->makeImage('/public_html/images/brands/b.jpg', 900, 1100);
@@ -152,16 +161,45 @@ class GallerySlideRendererTest extends TestCase
         $slides = $this->renderer()->render($this->post(50), ['/images/brands/a.jpg', '/images/brands/b.jpg'], true, $this->script());
 
         self::assertCount(2, $slides);
-        self::assertSame('p50-hook.jpg', basename($slides[0]));
-        self::assertSame('p50-cta.jpg', basename($slides[1]));
+        self::assertSame('p50-h1.jpg', basename($slides[0]));
+        self::assertSame('p50-fin.jpg', basename($slides[1]));
+    }
+
+    /** Бит на 4-м кадре пишется, только если бюджет (SlideScript::maxBits) это позволяет. */
+    public function testBitBeyondBudgetIsNotRendered(): void
+    {
+        $sources = [];
+        foreach (range(1, 2) as $i) {
+            $this->makeImage("/public_html/images/brands/s{$i}.jpg", 900, 1100);
+            $sources[] = "/images/brands/s{$i}.jpg";
+        }
+        // 2 фото + логотип = 3 слайда: maxBits(3) = 0, бит рисоваться не должен вовсе.
+        $this->makeImage('/public_html/images/logos/logo.jpg', 400, 200);
+
+        $slides = $this->renderer()->render($this->post(60), $sources, false, $this->scriptWithBits(['Основан в 1998.']));
+
+        self::assertCount(3, $slides);
+        foreach ($slides as $slide) {
+            self::assertStringNotContainsString('-b1', basename($slide));
+        }
     }
 
     private function script(): SlideScript
     {
+        return $this->scriptWithBits(['Основан в 1998.']);
+    }
+
+    /** @param list<string> $bits */
+    private function scriptWithBits(array $bits): SlideScript
+    {
         return new SlideScript(
-            hook: "Пермь. 5 кадров\nСколько тут твоего?",
-            retention: "Считай, не листай.\nВ конце — куда писать.",
-            ctaLines: ['Сколько? Пиши цифру.', 'Сохрани, чтобы не потерять.', 'Отправь тому, кто ищет такое.'],
+            hookA: 'Угадай город.',
+            hookB: 'Скажу в конце.',
+            bits: $bits,
+            finaleTitle: 'Тест',
+            finaleMeta: 'Пермь · брюки',
+            finaleAsk: 'Сохрани, чтобы не искать.',
+            scriptKey: 'h2.city|b.det1|c.save',
         );
     }
 

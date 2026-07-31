@@ -80,10 +80,7 @@ class InstagramPublisher implements SocialPublisherInterface
         $token = $this->cipher->decrypt($enc);
 
         // IG: кликабельных ссылок в подписи нет — ссылка живёт в профиле; URL в текст не вставляем.
-        $caption = (string) $post->getCaption();
-        if ($post->getCtaLabel() !== null) {
-            $caption .= "\n\n" . $post->getCtaLabel() . ' — ссылка в профиле';
-        }
+        $caption = $this->insertCtaLine((string) $post->getCaption(), $post->getCtaLabel());
 
         $isReels = $post->getMediaType() === SocialPost::MEDIA_REELS;
 
@@ -105,6 +102,38 @@ class InstagramPublisher implements SocialPublisherInterface
         $this->pollUntilFinished($creationId, $token, $isReels ? self::POLL_MAX_ATTEMPTS_VIDEO : self::POLL_MAX_ATTEMPTS);
 
         return $this->publishContainer($igUserId, $creationId, $token);
+    }
+
+    /**
+     * Строка «{ctaLabel} — ссылка в профиле» встаёт ПЕРЕД абзацем хэштегов, не после: в ленте IG
+     * длинная подпись сворачивается по высоте, и абзац после хэштегов (последний в подписи)
+     * почти никогда не попадает в развёрнутый вид — ссылка туда добавленная просто не читалась.
+     * Абзацы разделены пустой строкой (CaptionGenerator), хэштеги — последний абзац, начинающийся
+     * с '#'. Нет хэштегов (не должно случаться для собранной подписи, но на всякий) — как раньше,
+     * строка уходит в конец.
+     */
+    private function insertCtaLine(string $caption, ?string $ctaLabel): string
+    {
+        if ($ctaLabel === null || trim($ctaLabel) === '') {
+            return $caption;
+        }
+        $ctaLine = $ctaLabel . ' — ссылка в профиле';
+
+        $paragraphs = explode("\n\n", $caption);
+        $hashtagIndex = null;
+        foreach ($paragraphs as $i => $paragraph) {
+            if (str_starts_with(ltrim($paragraph), '#')) {
+                $hashtagIndex = $i;
+            }
+        }
+
+        if ($hashtagIndex === null) {
+            $paragraphs[] = $ctaLine;
+        } else {
+            array_splice($paragraphs, $hashtagIndex, 0, [$ctaLine]);
+        }
+
+        return implode("\n\n", $paragraphs);
     }
 
     private function createSingleContainer(string $igUserId, string $imageUrl, string $caption, string $token): string

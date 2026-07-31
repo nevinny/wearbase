@@ -23,6 +23,28 @@ class BrandAttributeRepository extends ServiceEntityRepository
         return $this->findBy(['brand' => $brand], ['name' => 'ASC']);
     }
 
+    /**
+     * Значения атрибута бренда по имени (category|material|…), в порядке id — детерминированно
+     * для слайдов-фактов SlideScriptComposer (не должны на каждый прогон тасоваться местами).
+     *
+     * @return list<string>
+     */
+    public function findValuesByBrandAndName(Brand $brand, string $name): array
+    {
+        return array_column(
+            $this->createQueryBuilder('a')
+                ->select('a.value')
+                ->where('a.brand = :brand')
+                ->andWhere('a.name = :name')
+                ->setParameter('brand', $brand)
+                ->setParameter('name', $name)
+                ->orderBy('a.id', 'ASC')
+                ->getQuery()
+                ->getArrayResult(),
+            'value',
+        );
+    }
+
     /** Перегенерация: убираем только enrichment-значения (owner/crowd_confirmed не трогаем). */
     public function deleteEnrichmentForBrand(Brand $brand): void
     {

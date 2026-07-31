@@ -97,6 +97,25 @@ class SocialPost
     #[ORM\Column(length: 20, nullable: true)]
     private ?string $variant = null;
 
+    /**
+     * Реализованная ступень лестницы хуков + источник битов (SlideScriptComposer), напр.
+     * 'h2.city|b.rag2|c.save'. Пишется только для галерей/Reels (media=carousel|reels) —
+     * по нему CaptionGenerator строит первую строку подписи, а app:social:evaluate группирует
+     * closed-loop.
+     */
+    #[ORM\Column(length: 48, nullable: true)]
+    private ?string $scriptKey = null;
+
+    /** Сериализованный SlideScript (JSON) — переиспользуется между каруселью и Reels ОДНОГО
+     *  бренда (SocialGenerateCommand ищет последний пост бренда с непустым script_json): LLM
+     *  недетерминирован, повторный вызов дал бы другой текст. */
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $scriptJson = null;
+
+    /** Число кадров сценария — нужно app:social:evaluate для watch_ratio Reels. */
+    #[ORM\Column(type: 'smallint', nullable: true)]
+    private ?int $slideCount = null;
+
     /** CTA-ссылка (с UTM) — вынесена из подписи, публикаторы оформляют по-своему. */
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $ctaUrl = null;
@@ -264,6 +283,39 @@ class SocialPost
     public function setVariant(?string $variant): self
     {
         $this->variant = $variant;
+        return $this;
+    }
+
+    public function getScriptKey(): ?string
+    {
+        return $this->scriptKey;
+    }
+
+    public function setScriptKey(?string $scriptKey): self
+    {
+        $this->scriptKey = $scriptKey;
+        return $this;
+    }
+
+    public function getScriptJson(): ?string
+    {
+        return $this->scriptJson;
+    }
+
+    public function setScriptJson(?string $scriptJson): self
+    {
+        $this->scriptJson = $scriptJson;
+        return $this;
+    }
+
+    public function getSlideCount(): ?int
+    {
+        return $this->slideCount;
+    }
+
+    public function setSlideCount(?int $slideCount): self
+    {
+        $this->slideCount = $slideCount;
         return $this;
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use App\Entity\Brand;
 use App\Entity\SocialChannel;
 use App\Entity\SocialPost;
 use App\Repository\SocialPostRepository;
@@ -12,6 +13,7 @@ use App\Service\Social\CardImageRenderer;
 use App\Service\Social\GallerySlideRenderer;
 use App\Service\Social\MediaRenderer;
 use App\Service\Social\ReelsSlideshowRenderer;
+use App\Service\Social\SlideScript;
 use App\Service\Social\SlideScriptComposer;
 use App\Service\Social\SocialRubrics;
 use Doctrine\ORM\EntityManagerInterface;
@@ -76,6 +78,13 @@ class SocialGenerateCommand extends Command
             }
 
             try {
+                // Сценарий слайдов считается ДО подписи: CaptionGenerator читает уже проставленные
+                // script_key/script_json, чтобы построить первую строку подписи по ступени лестницы
+                // хуков («{Город}. Угадай город...» и т.п.) — без этого пришлось бы либо гадать
+                // ступень заново в CaptionGenerator (риск разойтись с реальным сценарием), либо
+                // звать LLM за фактами дважды.
+                $galleryScript = $this->prepareGalleryScript($post, $def);
+
                 $this->captions->compose($post, $def);
                 // Все подписи теперь пишет LLM (ядро — на привязанных фактах, бренд — из описания).
                 $post->setAiGenerated(true);
@@ -83,13 +92,13 @@ class SocialGenerateCommand extends Command
 
                 // Карусель и Reels строятся из фото бренда, а не из сгенерированной картинки.
                 if ($def['media'] === SocialPost::MEDIA_CAROUSEL) {
-                    $slides = $this->gallerySlides($post);
+                    $slides = $this->gallerySlides($post, $galleryScript);
                     $post->setMediaPaths($slides);
                     $post->setMediaType(count($slides) >= BrandGalleryImages::MIN_SLIDES
                         ? SocialPost::MEDIA_CAROUSEL
                         : SocialPost::MEDIA_NONE);
                 } elseif ($def['media'] === SocialPost::MEDIA_REELS) {
-                    $slides = $this->gallerySlides($post);
+                    $slides = $this->gallerySlides($post, $galleryScript);
                     $video = count($slides) >= BrandGalleryImages::MIN_SLIDES
                         ? $this->reels->render($post, $slides)
                         : null;
@@ -125,6 +134,15 @@ class SocialGenerateCommand extends Command
                     continue;
                 }
 
+                // Биты из LLM (b.rag*/b.mix*) — первая партия на ручной просмотр: детерминированные
+                // факты (год/категории/материал/маркетплейс) уже проверены руками один раз здесь, а
+                // сгенерированные моделью — нет, и ошибка попала бы прямо в паблик Instagram.
+                if ($this->needsManualReview($post->getScriptKey())) {
+                    $this->hold($post, 'Биты из LLM на слайдах — ручной просмотр первой партии перед публикацией.');
+                    $held++;
+                    continue;
+                }
+
                 $post->setStatus(SocialPost::STATUS_SCHEDULED);
                 $post->setLastError(null);
                 $ok++;
@@ -145,37 +163,96 @@ class SocialGenerateCommand extends Command
     }
 
     /**
-     * Слайды поста: фото бренда из brand_image, приведённые к одному холсту, плюс слайд с
-     * логотипом — первым или последним по ветке A/B (SocialPost::VARIANT_*, по умолчанию
-     * логотип последним). Пустой список уводит пост в held ниже, в qaReason.
+     * Сценарий надписей карусели/Reels — считается ДО подписи (CaptionGenerator читает
+     * script_key/script_json уже проставленными) и ДО рендера медиа, чтобы карусель и Reels
+     * одного бренда переиспользовали ОДИН текст, а не звали LLM за фактами дважды (второй вызов
+     * дал бы другие факты — модель недетерминирована).
      *
-     * @return list<string>
+     * @param array{day:int,hour:int,source:string,needsBrand:bool,media:string,auto:bool,hashtags:string[]} $def
+     *
+     * @return array{sources: list<string>, script: SlideScript}|null null — нечего рендерить
+     *         (нет бренда/фото), qaReason() ниже уведёт такой пост в held
      */
-    private function gallerySlides(SocialPost $post): array
+    private function prepareGalleryScript(SocialPost $post, array $def): ?array
     {
+        if (!in_array($def['media'], [SocialPost::MEDIA_CAROUSEL, SocialPost::MEDIA_REELS], true)) {
+            return null;
+        }
+
         $brand = $post->getBrand();
         if ($brand === null) {
-            return [];
+            return null;
         }
 
         $sources = $this->gallery->paths($brand);
         if ($sources === []) {
+            return null;
+        }
+
+        $script = $this->resolveScript($brand, count($sources) + 1);
+        $post->setScriptKey($script->scriptKey);
+        $post->setScriptJson(json_encode($script->toArray(), JSON_UNESCAPED_UNICODE));
+
+        return ['sources' => $sources, 'script' => $script];
+    }
+
+    /**
+     * Переиспользовать сценарий последнего поста ЭТОГО бренда, если он уже есть (карусель и
+     * Reels бренда обязаны получить один текст), иначе собрать новый.
+     */
+    private function resolveScript(Brand $brand, int $totalSlides): SlideScript
+    {
+        $existing = $this->posts->findLatestScriptForBrand($brand);
+        if ($existing !== null) {
+            $data = json_decode((string) $existing->getScriptJson(), true);
+            if (is_array($data)) {
+                return SlideScript::fromArray($data);
+            }
+        }
+
+        return $this->scripts->compose($brand, $totalSlides);
+    }
+
+    /**
+     * Слайды поста: фото бренда из brand_image, приведённые к одному холсту, плюс слайд с
+     * логотипом — первым или последним по ветке A/B (SocialPost::VARIANT_*, по умолчанию
+     * логотип последним). $prepared === null уводит пост в held ниже, в qaReason.
+     *
+     * @param array{sources: list<string>, script: SlideScript}|null $prepared
+     *
+     * @return list<string>
+     */
+    private function gallerySlides(SocialPost $post, ?array $prepared): array
+    {
+        if ($prepared === null) {
             return [];
         }
 
-        // Надписи — сценарий по канону удержания внимания, а не поисковая фраза
-        // (SlideScriptComposer: хук, удерживающая реплика, CTA одной связкой).
-        // Сид = id бренда: карусель и Reels одного бренда получают одинаковый текст, ветки A/B —
-        // тоже одинаковый (иначе эксперимент сравнивал бы заодно и копию), а соседние бренды в
-        // ленте — разные формулировки.
-        $script = $this->scripts->compose($brand, (int) $brand->getId());
-
-        return $this->slides->render(
+        $slides = $this->slides->render(
             $post,
-            $sources,
+            $prepared['sources'],
             $post->getVariant() === SocialPost::VARIANT_LOGO_FIRST,
-            $script,
+            $prepared['script'],
         );
+        $post->setSlideCount(count($slides));
+
+        return $slides;
+    }
+
+    /**
+     * Биты из LLM (грамотный источник — 'rag'/'mix' в сегменте b.*) требуют ручного просмотра
+     * первой партии: детерминированные факты уже проверялись руками, сгенерированные моделью —
+     * нет, а провал прямо ведёт в паблик Instagram.
+     */
+    private function needsManualReview(?string $scriptKey): bool
+    {
+        if ($scriptKey === null) {
+            return false;
+        }
+
+        $bitsSegment = explode('|', $scriptKey)[1] ?? '';
+
+        return str_starts_with($bitsSegment, 'b.rag') || str_starts_with($bitsSegment, 'b.mix');
     }
 
     /**

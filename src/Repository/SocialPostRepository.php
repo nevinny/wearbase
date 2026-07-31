@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\Brand;
 use App\Entity\SocialChannel;
 use App\Entity\SocialPost;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
@@ -252,6 +253,24 @@ class SocialPostRepository extends ServiceEntityRepository
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+    }
+
+    /**
+     * Последний пост этого бренда с уже собранным сценарием слайдов (script_json) —
+     * SocialGenerateCommand переиспользует его текст между каруселью и Reels одного бренда
+     * (LLM недетерминирован, повторный вызов дал бы другие факты) и между регенерациями поста.
+     */
+    public function findLatestScriptForBrand(Brand $brand): ?SocialPost
+    {
+        return $this->createQueryBuilder('p')
+            ->where('p.brand = :brand')
+            ->andWhere('p.scriptJson IS NOT NULL')
+            ->andWhere("p.scriptJson != ''")
+            ->setParameter('brand', $brand)
+            ->orderBy('p.id', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
     }
 
     /** Уже есть пост этой рубрики на этот день у канала? (дедуп при планировании). */

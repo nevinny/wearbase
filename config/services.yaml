@@ -128,6 +128,15 @@ services:
         arguments:
             $yamlPath: '%kernel.project_dir%/config/social/departed_brands.yaml'
 
+    App\Service\Social\SlideTextBudget:
+        arguments:
+            $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'
+
+    # Лестница хуков H1 (departed) читает тот же сид ушедших брендов, что DepartedCaptionSource.
+    App\Service\Social\SlideScriptComposer:
+        arguments:
+            $departedYamlPath: '%kernel.project_dir%/config/social/departed_brands.yaml'
+
     App\Service\ArticleQaService:
         arguments:
             $projectDir: '%kernel.project_dir%'
