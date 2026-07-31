@@ -42,6 +42,9 @@ class HealthEnvCommand extends Command
 
     private const HTTP_TIMEOUT = 5;
 
+    /** Попыток на сервис перед вердиктом «недоступен» (см. checkHttp). */
+    private const HTTP_ATTEMPTS = 2;
+
     public function __construct(
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
@@ -186,13 +189,26 @@ class HealthEnvCommand extends Command
             return [false, sprintf('%s: URL не задан в env', $label)];
         }
         $url = rtrim($baseUrl, '/') . $path;
-        try {
-            $status = $this->httpClient->request('GET', $url, [
-                'headers' => $headers,
-                'timeout' => self::HTTP_TIMEOUT,
-            ])->getStatusCode();
-        } catch (\Throwable $e) {
-            return [false, sprintf('%s недоступен (%s)', $label, $e->getMessage())];
+
+        // Один повтор перед вердиктом «недоступен»: сервисы на LAN-риге под нагрузкой
+        // (майнинг + резидентная gemma) отвечают дольше 5с, и одиночный таймаут не отличим
+        // от упавшего процесса — ночью это давало ложные алерты по Qdrant/SearXNG,
+        // которые к утру «сами лечились».
+        $status = null;
+        $error  = '';
+        for ($attempt = 1; $attempt <= self::HTTP_ATTEMPTS; $attempt++) {
+            try {
+                $status = $this->httpClient->request('GET', $url, [
+                    'headers' => $headers,
+                    'timeout' => self::HTTP_TIMEOUT,
+                ])->getStatusCode();
+                break;
+            } catch (\Throwable $e) {
+                $error = $e->getMessage();
+            }
+        }
+        if ($status === null) {
+            return [false, sprintf('%s недоступен, %d попытки (%s)', $label, self::HTTP_ATTEMPTS, $error)];
         }
 
         return in_array($status, $okStatuses, true)
