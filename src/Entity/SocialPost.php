@@ -84,6 +84,13 @@ class SocialPost
     private ?string $mediaPath = null;
 
     /**
+     * Обложка Reels (cover_url контейнера). Без неё IG берёт первый кадр клипа, а он зависит
+     * от ветки A/B — обложка обязана быть одинаковой, иначе эксперимент сравнивает и её.
+     */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $coverPath = null;
+
+    /**
      * Ветка A/B-эксперимента (VARIANT_*), null — пост вне эксперимента.
      * Группировка результатов — app:social:evaluate по (рубрика, вариант).
      */
@@ -236,6 +243,17 @@ class SocialPost
             array_map('trim', explode("\n", $this->mediaPath)),
             static fn (string $path) => $path !== '',
         ));
+    }
+
+    public function getCoverPath(): ?string
+    {
+        return $this->coverPath;
+    }
+
+    public function setCoverPath(?string $coverPath): self
+    {
+        $this->coverPath = $coverPath;
+        return $this;
     }
 
     public function getVariant(): ?string

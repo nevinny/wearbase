@@ -107,6 +107,22 @@ class InstagramPublisherTest extends TestCase
         // Дефолт — true: по докам Meta это «и лента, и вкладка Reels» (максимум поверхностей).
         self::assertSame('true', $container['share_to_feed']);
         self::assertStringContainsString('Три слайда', $container['caption']);
+        // Обложки нет → cover_url не передаём, IG возьмёт первый кадр.
+        self::assertArrayNotHasKey('cover_url', $container);
+    }
+
+    public function testReelsCoverPassedWhenSet(): void
+    {
+        $publisher = $this->publisher(['create-1' => 'reel1']);
+        $post = $this->post()
+            ->setMediaType(SocialPost::MEDIA_REELS)
+            ->setCoverPath('/images/social/gallery/p1-01.jpg');
+
+        $publisher->publish($this->channel(), $post, [$this->tmpFile()]);
+
+        // Обложка идёт через publicJpegUrl (картинка), видео — через publicUrl.
+        self::assertSame('https://media.example/slide-0.jpg', $this->requests[0]['body']['cover_url']);
+        self::assertSame('https://media.example/video-0.mp4', $this->requests[0]['body']['video_url']);
     }
 
     public function testMoreThanTenSlidesRefusedWithoutAnyRequest(): void

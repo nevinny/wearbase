@@ -92,6 +92,9 @@ class SocialGenerateCommand extends Command
                         ? $this->reels->render($post, $slides)
                         : null;
                     $post->setMediaPath($video);
+                    // Обложка — первый ФОТО-слайд: одинаковая в обеих ветках A/B, иначе у
+                    // logo_first обложкой во вкладке Reels становится карточка логотипа.
+                    $post->setCoverPath($video !== null ? $this->slides->firstPhotoSlide($slides) : null);
                     $post->setMediaType($video !== null ? SocialPost::MEDIA_REELS : SocialPost::MEDIA_NONE);
                 } else {
                     $mediaPath = $this->media->render($post);

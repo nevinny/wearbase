@@ -26,6 +26,9 @@ class GallerySlideRenderer
     /** Логотип занимает эту долю ширины холста. */
     private const LOGO_WIDTH_RATIO = 0.62;
 
+    /** Суффикс имени слайда с логотипом — по нему отличаем его от фотографий. */
+    private const LOGO_SUFFIX = '-logo.jpg';
+
     private const TITLE_FONT_SIZE  = 52;
     private const FOOTER_FONT_SIZE = 28;
 
@@ -66,7 +69,7 @@ class GallerySlideRenderer
 
         $brand = $post->getBrand();
         if ($brand !== null) {
-            $logoName = sprintf('p%d-logo.jpg', $postId);
+            $logoName = 'p' . $postId . self::LOGO_SUFFIX;
             if ($this->logoSlide($brand, $dir . '/' . $logoName)) {
                 $logoPath = $this->publicDir() . '/' . $logoName;
                 if ($logoFirst) {
@@ -83,6 +86,24 @@ class GallerySlideRenderer
     public function publicDir(): string
     {
         return '/images/social/gallery';
+    }
+
+    /**
+     * Первый слайд-фотография (не логотип) — обложка Reels. Одинакова в обеих ветках A/B:
+     * если брать просто первый слайд, у logo_first обложкой станет карточка логотипа, и
+     * эксперимент сравнивал бы ещё и обложку.
+     *
+     * @param list<string> $slides
+     */
+    public function firstPhotoSlide(array $slides): ?string
+    {
+        foreach ($slides as $slide) {
+            if (!str_ends_with($slide, self::LOGO_SUFFIX)) {
+                return $slide;
+            }
+        }
+
+        return null;
     }
 
     /** Вписать изображение в холст 1080×1350 на белом поле. */

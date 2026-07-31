@@ -42,6 +42,8 @@ class InstagramPublisher implements SocialPublisherInterface
         private readonly HttpClientInterface $httpClient,
         private readonly SecretCipher $cipher,
         private readonly PublicMediaHost $mediaHost,
+        #[Autowire('%kernel.project_dir%')]
+        private readonly string $projectDir = '',
         #[Autowire('%env(default::IG_REELS_SHARE_TO_FEED)%')]
         private readonly ?string $shareReelsToFeed = null,
     ) {
@@ -86,7 +88,13 @@ class InstagramPublisher implements SocialPublisherInterface
         $isReels = $post->getMediaType() === SocialPost::MEDIA_REELS;
 
         if ($isReels) {
-            $creationId = $this->createReelsContainer($igUserId, $this->mediaHost->publicUrl($paths[0]), $caption, $token);
+            $creationId = $this->createReelsContainer(
+                $igUserId,
+                $this->mediaHost->publicUrl($paths[0]),
+                $this->coverUrl($post, $token),
+                $caption,
+                $token,
+            );
         } elseif (count($paths) === 1) {
             $creationId = $this->createSingleContainer($igUserId, $this->mediaHost->publicJpegUrl($paths[0]), $caption, $token);
         } else {
@@ -117,16 +125,41 @@ class InstagramPublisher implements SocialPublisherInterface
      * env IG_REELS_SHARE_TO_FEED=false позволяет проверить гипотезу «только вкладка Reels»
      * без правки кода.
      */
-    private function createReelsContainer(string $igUserId, string $videoUrl, string $caption, string $token): string
+    private function createReelsContainer(string $igUserId, string $videoUrl, ?string $coverUrl, string $caption, string $token): string
     {
-        return $this->createContainer($igUserId, [
+        $body = [
             'media_type'    => 'REELS',
             'video_url'     => $videoUrl,
             'caption'       => $caption,
             'share_to_feed' => $this->shareReelsToFeed === null || trim($this->shareReelsToFeed) === ''
                 ? 'true'
                 : (filter_var($this->shareReelsToFeed, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false'),
-        ], $token, 'media (create reels container)');
+        ];
+
+        // cover_url — обложка во вкладке Reels. Без неё IG берёт первый кадр клипа.
+        if ($coverUrl !== null) {
+            $body['cover_url'] = $coverUrl;
+        }
+
+        return $this->createContainer($igUserId, $body, $token, 'media (create reels container)');
+    }
+
+    /**
+     * Публичный URL обложки из post.cover_path. Недоступная обложка не должна ронять
+     * публикацию — тогда IG просто возьмёт первый кадр.
+     */
+    private function coverUrl(SocialPost $post, string $token): ?string
+    {
+        $coverPath = $post->getCoverPath();
+        if ($coverPath === null || trim($coverPath) === '') {
+            return null;
+        }
+
+        try {
+            return $this->mediaHost->publicJpegUrl($this->projectDir . '/public_html' . $coverPath);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
