@@ -8,6 +8,7 @@ use App\Entity\SocialChannel;
 use App\Entity\SocialPost;
 use App\Service\SecretCipher;
 use App\Service\Social\PublicMediaHost;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -41,6 +42,8 @@ class InstagramPublisher implements SocialPublisherInterface
         private readonly HttpClientInterface $httpClient,
         private readonly SecretCipher $cipher,
         private readonly PublicMediaHost $mediaHost,
+        #[Autowire('%env(default::IG_REELS_SHARE_TO_FEED)%')]
+        private readonly ?string $shareReelsToFeed = null,
     ) {
     }
 
@@ -106,7 +109,13 @@ class InstagramPublisher implements SocialPublisherInterface
 
     /**
      * Reels: единственный формат IG с существенной раздачей не-подписчикам.
-     * share_to_feed=true — клип виден и в ленте профиля, иначе живёт только во вкладке Reels.
+     *
+     * share_to_feed по документации Meta: true — клип МОЖЕТ появиться и в ленте, и во вкладке
+     * Reels; false — только во вкладке Reels. При этом Meta прямо оговаривает, что значение —
+     * лишь подсказка: фактическое размещение решает Instagram (eligibility + алгоритм), и ни
+     * true, ни false его не гарантируют. Поэтому дефолт true (максимум поверхностей), а
+     * env IG_REELS_SHARE_TO_FEED=false позволяет проверить гипотезу «только вкладка Reels»
+     * без правки кода.
      */
     private function createReelsContainer(string $igUserId, string $videoUrl, string $caption, string $token): string
     {
@@ -114,7 +123,9 @@ class InstagramPublisher implements SocialPublisherInterface
             'media_type'    => 'REELS',
             'video_url'     => $videoUrl,
             'caption'       => $caption,
-            'share_to_feed' => 'true',
+            'share_to_feed' => $this->shareReelsToFeed === null || trim($this->shareReelsToFeed) === ''
+                ? 'true'
+                : (filter_var($this->shareReelsToFeed, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false'),
         ], $token, 'media (create reels container)');
     }
 

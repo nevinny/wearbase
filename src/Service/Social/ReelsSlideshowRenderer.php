@@ -117,8 +117,11 @@ class ReelsSlideshowRenderer
 
     private function runFfmpeg(string $listFile, string $outAbs): void
     {
+        // in_range=pc→out_range=tv: JPEG-слайды полнодиапазонные, без явной конверсии ffmpeg
+        // оставляет pix_fmt=yuvj420p (full range), а спека Meta ждёт обычный 4:2:0 (limited).
         $filter = sprintf(
-            'scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=white,format=yuv420p',
+            'scale=%d:%d:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,'
+            . 'pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=white,format=yuv420p',
             self::WIDTH,
             self::HEIGHT,
             self::WIDTH,
@@ -133,8 +136,15 @@ class ReelsSlideshowRenderer
             '-vf', $filter,
             '-r', (string) self::FPS,
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-            '-c:a', 'aac', '-b:a', '96k',
-            '-shortest', '-movflags', '+faststart',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-shortest',
+            // Спека Meta для Reels: «no edit lists, moov atom at front». faststart двигает moov
+            // вперёд — проверено. negative_cts_offsets/avoid_negative_ts должны снижать нужду в
+            // edit list, но ДВА elst-бокса (видео+аудио) ffmpeg всё равно пишет из-за праймера
+            // AAC — убрать их без внешнего ремуксера (GPAC) не получилось. Instagram такой файл
+            // принимает и классифицирует как REELS, так что отклонение от буквы спеки терпим.
+            '-movflags', '+faststart+negative_cts_offsets',
+            '-avoid_negative_ts', 'make_zero',
             $outAbs,
         ], timeout: 300);
 

@@ -104,6 +104,7 @@ class InstagramPublisherTest extends TestCase
         // Видео уходит как video_url (не image_url) и без конвертации в JPEG.
         self::assertSame('https://media.example/video-0.mp4', $container['video_url']);
         self::assertArrayNotHasKey('image_url', $container);
+        // Дефолт — true: по докам Meta это «и лента, и вкладка Reels» (максимум поверхностей).
         self::assertSame('true', $container['share_to_feed']);
         self::assertStringContainsString('Три слайда', $container['caption']);
     }
