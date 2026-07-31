@@ -30,8 +30,17 @@ class ReelsSlideshowRenderer
     private const HEIGHT = 1920;
     private const FPS    = 30;
 
-    /** Секунд на слайд: 9 слайдов → 22.5с, попадает в комфортный для Reels диапазон. */
-    private const SECONDS_PER_SLIDE = 2.5;
+    /**
+     * Секунд на слайд. Было 2.5 (10 слайдов = 27с статики) — для слайдшоу без движения долго;
+     * 1.5с даёт ~15с, ближе к рабочему диапазону 15–30с при живом темпе.
+     */
+    private const SECONDS_PER_SLIDE = 1.5;
+
+    /**
+     * Глубина микро-зума за слайд. 6% почти незаметны кадр-к-кадру, но убирают ощущение
+     * мёртвой презентации, из-за которого клиповый зритель уходит на первых секундах.
+     */
+    private const ZOOM_RANGE = 0.06;
 
     /** Минимальная длительность Reels у Instagram — 3 секунды. */
     private const MIN_DURATION_SEC = 3.0;
@@ -119,13 +128,28 @@ class ReelsSlideshowRenderer
     {
         // in_range=pc→out_range=tv: JPEG-слайды полнодиапазонные, без явной конверсии ffmpeg
         // оставляет pix_fmt=yuvj420p (full range), а спека Meta ждёт обычный 4:2:0 (limited).
+        //
+        // zoompan — микро-зум (Ken Burns) внутри каждого слайда, иначе клип читается как мёртвая
+        // презентация. Пила mod(on, FRAMES) сбрасывает масштаб на каждом слайде: у zoompan
+        // переменная zoom накапливается через все входные кадры, и без сброса второй слайд
+        // приезжал бы уже полностью приближённым.
+        $frames = (int) round(self::SECONDS_PER_SLIDE * self::FPS);
         $filter = sprintf(
             'scale=%d:%d:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,'
-            . 'pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=white,format=yuv420p',
+            . 'pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=white,'
+            . 'zoompan=z=\'1+%.4f*mod(on\,%d)/%d\':d=%d:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=%dx%d:fps=%d,'
+            . 'format=yuv420p',
             self::WIDTH,
             self::HEIGHT,
             self::WIDTH,
             self::HEIGHT,
+            self::ZOOM_RANGE,
+            $frames,
+            $frames,
+            $frames,
+            self::WIDTH,
+            self::HEIGHT,
+            self::FPS,
         );
 
         $process = new Process([

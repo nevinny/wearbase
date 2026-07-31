@@ -12,6 +12,7 @@ use App\Service\Social\CardImageRenderer;
 use App\Service\Social\GallerySlideRenderer;
 use App\Service\Social\MediaRenderer;
 use App\Service\Social\ReelsSlideshowRenderer;
+use App\Service\Social\SlideHookComposer;
 use App\Service\Social\SocialRubrics;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -38,6 +39,7 @@ class SocialGenerateCommand extends Command
         private readonly BrandGalleryImages $gallery,
         private readonly GallerySlideRenderer $slides,
         private readonly ReelsSlideshowRenderer $reels,
+        private readonly SlideHookComposer $hooks,
         private readonly ContentValidator $validator,
     ) {
         parent::__construct();
@@ -94,7 +96,7 @@ class SocialGenerateCommand extends Command
                     $post->setMediaPath($video);
                     // Обложка — первый ФОТО-слайд: одинаковая в обеих ветках A/B, иначе у
                     // logo_first обложкой во вкладке Reels становится карточка логотипа.
-                    $post->setCoverPath($video !== null ? $this->slides->firstPhotoSlide($slides) : null);
+                    $post->setCoverPath($video !== null ? $this->slides->coverSlide($post) : null);
                     $post->setMediaType($video !== null ? SocialPost::MEDIA_REELS : SocialPost::MEDIA_NONE);
                 } else {
                     $mediaPath = $this->media->render($post);
@@ -161,7 +163,17 @@ class SocialGenerateCommand extends Command
             return [];
         }
 
-        return $this->slides->render($post, $sources, $post->getVariant() === SocialPost::VARIANT_LOGO_FIRST);
+        // Хук — по канону удержания внимания, а не поисковая фраза (SlideHookComposer).
+        // Сид = id бренда: карусель и Reels одного бренда получают одинаковый хук, а соседние
+        // бренды в ленте — разные формулировки.
+        $hook = $this->hooks->compose($brand, count($sources), (int) $brand->getId());
+
+        return $this->slides->render(
+            $post,
+            $sources,
+            $post->getVariant() === SocialPost::VARIANT_LOGO_FIRST,
+            $hook,
+        );
     }
 
     /**
