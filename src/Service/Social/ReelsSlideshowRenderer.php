@@ -12,9 +12,13 @@ use Symfony\Component\Process\Process;
  * Reels — единственная поверхность Instagram с существенной раздачей НЕ подписчикам,
  * поэтому тот же контент отдаём и туда, не порождая новых источников материала.
  *
- * Холст 9:16 (1080×1920): слайд 4:5 вписывается с полями. Звук — тишина (AAC): трендовое
- * аудио через API легально не приклеить (docs/marketing_instagram.md §5), а совсем без
- * аудиодорожки контейнер Reels принимается нестабильно.
+ * Холст 9:16 (1080×1920): слайд 4:5 вписывается с полями. Звук — трек из локальной библиотеки
+ * `config/social/audio` (Mixkit Free License, коммерческое использование без атрибуции):
+ * трендовое аудио через API легально не приклеить (docs/marketing_instagram.md §5), а совсем
+ * без аудиодорожки контейнер Reels принимается нестабильно. Трек выбирается детерминированно
+ * по id поста (id % количество треков) — соседние посты звучат по-разному, повторный рендер
+ * того же поста даёт тот же трек. Если библиотека пуста — мягкая деградация на тишину
+ * (`anullsrc`), клип всё равно должен собраться.
  *
  * ⚠️ cron PATH пуст — ffmpeg ищем по абсолютным путям, как rsync в PublicMediaHost.
  */
@@ -44,6 +48,10 @@ class ReelsSlideshowRenderer
 
     /** Минимальная длительность Reels у Instagram — 3 секунды. */
     private const MIN_DURATION_SEC = 3.0;
+
+    /** Фейд-ин/фейд-аут фоновой музыки — чтобы трек не начинался и не обрывался резко. */
+    private const AUDIO_FADE_IN_SEC = 0.6;
+    private const AUDIO_FADE_OUT_SEC = 0.8;
 
     public function __construct(
         private readonly string $projectDir,
@@ -75,15 +83,15 @@ class ReelsSlideshowRenderer
             return $this->publicDir() . '/' . $name;
         }
 
-        $listFile = $this->writeConcatList($slidePublicPaths, $dir, (int) $post->getId());
-        if ($listFile === null) {
+        $concat = $this->writeConcatList($slidePublicPaths, $dir, (int) $post->getId());
+        if ($concat === null) {
             return null;
         }
 
         try {
-            $this->runFfmpeg($listFile, $outAbs);
+            $this->runFfmpeg($concat['list'], $outAbs, $concat['duration'], (int) $post->getId());
         } finally {
-            @unlink($listFile);
+            @unlink($concat['list']);
         }
 
         return is_file($outAbs) ? $this->publicDir() . '/' . $name : null;
@@ -99,11 +107,14 @@ class ReelsSlideshowRenderer
      * ffmpeg отдаёт последнему слайду один кадр вместо полной длительности.
      *
      * @param list<string> $slidePublicPaths
+     *
+     * @return array{list: string, duration: float}|null duration нужна для фейд-аута музыки
      */
-    private function writeConcatList(array $slidePublicPaths, string $dir, int $postId): ?string
+    private function writeConcatList(array $slidePublicPaths, string $dir, int $postId): ?array
     {
         $lines = [];
         $lastAbs = null;
+        $slideCount = 0;
         foreach ($slidePublicPaths as $public) {
             $abs = $this->projectDir . '/public_html' . $public;
             if (!is_file($abs)) {
@@ -112,6 +123,7 @@ class ReelsSlideshowRenderer
             $lines[] = "file '" . $abs . "'";
             $lines[] = 'duration ' . self::SECONDS_PER_SLIDE;
             $lastAbs = $abs;
+            $slideCount++;
         }
 
         if ($lastAbs === null) {
@@ -120,11 +132,14 @@ class ReelsSlideshowRenderer
         $lines[] = "file '" . $lastAbs . "'";
 
         $listFile = $dir . '/p' . $postId . '.concat.txt';
+        if (@file_put_contents($listFile, implode("\n", $lines) . "\n") === false) {
+            return null;
+        }
 
-        return @file_put_contents($listFile, implode("\n", $lines) . "\n") !== false ? $listFile : null;
+        return ['list' => $listFile, 'duration' => $slideCount * self::SECONDS_PER_SLIDE];
     }
 
-    private function runFfmpeg(string $listFile, string $outAbs): void
+    private function runFfmpeg(string $listFile, string $outAbs, float $duration, int $postId): void
     {
         // in_range=pc→out_range=tv: JPEG-слайды полнодиапазонные, без явной конверсии ffmpeg
         // оставляет pix_fmt=yuvj420p (full range), а спека Meta ждёт обычный 4:2:0 (limited).
@@ -152,12 +167,21 @@ class ReelsSlideshowRenderer
             self::FPS,
         );
 
+        // Реальный трек зациклен на всю длину клипа (-stream_loop -1), -shortest потом обрежет
+        // его до длины видео. Пустая библиотека/её отсутствие → тишина, как раньше.
+        $track = $this->selectTrack($postId);
+        $audioInput = $track !== null
+            ? ['-stream_loop', '-1', '-i', $track]
+            : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100'];
+        $audioFilter = $track !== null ? ['-af', $this->audioFadeFilter($duration)] : [];
+
         $process = new Process([
             $this->resolveFfmpeg(),
             '-y', '-hide_banner', '-loglevel', 'error',
             '-f', 'concat', '-safe', '0', '-i', $listFile,
-            '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+            ...$audioInput,
             '-vf', $filter,
+            ...$audioFilter,
             '-r', (string) self::FPS,
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
             '-c:a', 'aac', '-b:a', '128k',
@@ -177,6 +201,53 @@ class ReelsSlideshowRenderer
         if (!$process->isSuccessful()) {
             throw new \RuntimeException('ffmpeg не собрал Reels: ' . trim($process->getErrorOutput() ?: $process->getOutput()));
         }
+    }
+
+    /** Фейд-ин с начала + фейд-аут к моменту, когда -shortest обрежет трек по длине видео. */
+    private function audioFadeFilter(float $duration): string
+    {
+        $fadeOutStart = max(0.0, $duration - self::AUDIO_FADE_OUT_SEC);
+
+        return sprintf(
+            'afade=t=in:st=0:d=%.2f,afade=t=out:st=%.3f:d=%.2f',
+            self::AUDIO_FADE_IN_SEC,
+            $fadeOutStart,
+            self::AUDIO_FADE_OUT_SEC,
+        );
+    }
+
+    /**
+     * Трек для конкретного поста — детерминированно по id (id % количество треков), чтобы
+     * соседние посты звучали по-разному, а повторный рендер того же поста давал тот же трек.
+     * Пустая библиотека → null, вызывающий код деградирует на anullsrc.
+     */
+    private function selectTrack(int $postId): ?string
+    {
+        $tracks = $this->listTracks();
+        if ($tracks === []) {
+            return null;
+        }
+
+        return $tracks[abs($postId) % count($tracks)];
+    }
+
+    /** @return list<string> абсолютные пути m4a/mp3 из config/social/audio, сортировка по имени — детерминизм */
+    private function listTracks(): array
+    {
+        $dir = $this->projectDir . '/config/social/audio';
+        if (!is_dir($dir)) {
+            return [];
+        }
+
+        $tracks = [];
+        foreach (scandir($dir) ?: [] as $entry) {
+            if (preg_match('/\.(m4a|mp3)$/i', $entry) === 1) {
+                $tracks[] = $dir . '/' . $entry;
+            }
+        }
+        sort($tracks);
+
+        return $tracks;
     }
 
     private function resolveFfmpeg(): string

@@ -115,6 +115,9 @@ class InstagramPublisher implements SocialPublisherInterface
         ], $token, 'media (create container)');
     }
 
+    /** Разовое переименование оригинального аудио рилса (по докам Meta) — своё именованное аудио вместо «Original audio». */
+    private const REELS_AUDIO_NAME = 'WEARBASE · Прямой бренд';
+
     /**
      * Reels: единственный формат IG с существенной раздачей не-подписчикам.
      *
@@ -131,6 +134,7 @@ class InstagramPublisher implements SocialPublisherInterface
             'media_type'    => 'REELS',
             'video_url'     => $videoUrl,
             'caption'       => $caption,
+            'audio_name'    => self::REELS_AUDIO_NAME,
             'share_to_feed' => $this->shareReelsToFeed === null || trim($this->shareReelsToFeed) === ''
                 ? 'true'
                 : (filter_var($this->shareReelsToFeed, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false'),

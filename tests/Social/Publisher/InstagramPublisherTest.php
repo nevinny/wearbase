@@ -109,6 +109,8 @@ class InstagramPublisherTest extends TestCase
         self::assertStringContainsString('Три слайда', $container['caption']);
         // Обложки нет → cover_url не передаём, IG возьмёт первый кадр.
         self::assertArrayNotHasKey('cover_url', $container);
+        // Разовое переименование оригинального аудио рилса — своё именованное аудио вместо «Original audio».
+        self::assertSame('WEARBASE · Прямой бренд', $container['audio_name']);
     }
 
     public function testReelsCoverPassedWhenSet(): void
