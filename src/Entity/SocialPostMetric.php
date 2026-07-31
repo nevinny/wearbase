@@ -41,6 +41,14 @@ class SocialPostMetric
     #[ORM\Column(options: ['default' => 0])]
     private int $comments = 0;
 
+    /** Просмотры (метрика views; у Reels отличается от reach — один зритель может смотреть повторно). */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $views = 0;
+
+    /** Среднее время просмотра Reels в миллисекундах (ig_reels_avg_watch_time) — показатель удержания. */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $avgWatchMs = 0;
+
     #[ORM\Column(type: 'datetime')]
     private ?\DateTimeInterface $measuredAt = null;
 
@@ -123,6 +131,28 @@ class SocialPostMetric
     public function setComments(int $n): self
     {
         $this->comments = $n;
+        return $this;
+    }
+
+    public function getViews(): int
+    {
+        return $this->views;
+    }
+
+    public function setViews(int $n): self
+    {
+        $this->views = $n;
+        return $this;
+    }
+
+    public function getAvgWatchMs(): int
+    {
+        return $this->avgWatchMs;
+    }
+
+    public function setAvgWatchMs(int $n): self
+    {
+        $this->avgWatchMs = $n;
         return $this;
     }
 

@@ -50,7 +50,9 @@ class SocialEvaluateCommand extends Command
                     COALESCE(p.variant, '—') AS variant,
                     COUNT(DISTINCT p.id) AS posts,
                     ROUND(AVG(m.saves*3 + m.shares*3 + m.link_taps*2 + m.comments), 1) AS avg_score,
-                    SUM(m.link_taps) AS link_taps
+                    SUM(m.link_taps) AS link_taps,
+                    ROUND(AVG(m.views), 1) AS avg_views,
+                    ROUND(AVG(m.avg_watch_ms), 0) AS avg_watch_ms
              FROM social_post p
              JOIN social_post_metric m ON m.post_id = p.id
              JOIN (SELECT post_id, MAX(measured_at) mx FROM social_post_metric GROUP BY post_id) lm
@@ -67,8 +69,11 @@ class SocialEvaluateCommand extends Command
         }
 
         $io->table(
-            ['Рубрика', 'Ветка A/B', 'Постов', 'Ср. score', 'Клики'],
-            array_map(static fn (array $r) => [$r['rubric'], $r['variant'], $r['posts'], $r['avg_score'], $r['link_taps']], $rows),
+            ['Рубрика', 'Ветка A/B', 'Постов', 'Ср. score', 'Клики', 'Ср. просмотры', 'Ср. время просмотра, мс'],
+            array_map(
+                static fn (array $r) => [$r['rubric'], $r['variant'], $r['posts'], $r['avg_score'], $r['link_taps'], $r['avg_views'], $r['avg_watch_ms']],
+                $rows,
+            ),
         );
 
         if ($input->getOption('notify') && $this->notifier->isEnabled()) {

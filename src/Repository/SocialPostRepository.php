@@ -225,6 +225,35 @@ class SocialPostRepository extends ServiceEntityRepository
             ->getOneOrNullResult();
     }
 
+    /**
+     * Опубликованные посты каналов (IN) с внешним id, чей published_at не старше $since —
+     * кандидаты сбора метрик (app:social:collect-metrics). Свежие сначала — им дают
+     * досмотреться, а метрики старых уже стабилизировались.
+     *
+     * @param list<SocialChannel> $channels
+     * @return SocialPost[]
+     */
+    public function findPublishedForMetrics(array $channels, \DateTimeInterface $since, int $limit): array
+    {
+        if ($channels === []) {
+            return [];
+        }
+
+        return $this->createQueryBuilder('p')
+            ->where('p.channel IN (:channels)')
+            ->andWhere('p.status IN (:statuses)')
+            ->andWhere('p.externalId IS NOT NULL')
+            ->andWhere("p.externalId != ''")
+            ->andWhere('p.publishedAt >= :since')
+            ->setParameter('channels', $channels)
+            ->setParameter('statuses', [SocialPost::STATUS_PUBLISHED, SocialPost::STATUS_DONE])
+            ->setParameter('since', $since)
+            ->orderBy('p.publishedAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     /** Уже есть пост этой рубрики на этот день у канала? (дедуп при планировании). */
     public function existsForSlot(SocialChannel $channel, string $rubric, \DateTimeInterface $dayStart): bool
     {
