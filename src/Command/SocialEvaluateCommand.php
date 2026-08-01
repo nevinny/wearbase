@@ -47,9 +47,13 @@ class SocialEvaluateCommand extends Command
         // (variant NULL = пост вне эксперимента, показываем как «—») и сценарию слайдов
         // (script_key NULL — рубрики без SlideScriptComposer, тоже «—»).
         // watch_ratio — доля клипа, которую досматривают в среднем: avg_watch_ms делим на
-        // РЕАЛЬНУЮ длительность конкретного поста ((slide_count−1)×1.5+3.0 — развязка идёт
-        // 3с, см. ReelsSlideshowRenderer::LAST_SLIDE_SECONDS), а не на общую формулу для всех.
-        // slide_count NULL (посты до миграции / не-галерейные рубрики) — ratio пустой.
+        // РЕАЛЬНУЮ длительность конкретного поста. P0-2 (§9 №2 плейбука): приоритет —
+        // duration_ms (фактическая сумма per-slide длительностей, пишет SocialGenerateCommand,
+        // корректна для ЛЮБОГО профиля E1 — flat_150 и hook_hold); фолбэк на старую оценку
+        // ((slide_count−1)×1.5+3.0, см. ReelsSlideshowRenderer::LAST_SLIDE_SECONDS) — только для
+        // постов ДО миграции duration_ms, у которых профиль был всегда flat_150. Без этого
+        // фолбэка формула стала бы ложью для новых постов с профилем hook_hold — E1 портил бы
+        // собственный измеритель.
         $rows = $this->db->fetchAllAssociative(
             "SELECT p.rubric AS rubric,
                     COALESCE(p.variant, '—') AS variant,
@@ -60,7 +64,9 @@ class SocialEvaluateCommand extends Command
                     ROUND(AVG(m.views), 1) AS avg_views,
                     ROUND(AVG(m.avg_watch_ms), 0) AS avg_watch_ms,
                     ROUND(AVG(
-                        CASE WHEN p.slide_count IS NOT NULL AND p.slide_count > 0
+                        CASE WHEN p.duration_ms IS NOT NULL AND p.duration_ms > 0
+                             THEN m.avg_watch_ms / p.duration_ms
+                             WHEN p.slide_count IS NOT NULL AND p.slide_count > 0
                              THEN m.avg_watch_ms / ((p.slide_count - 1) * 1500 + 3000)
                         END
                     ), 3) AS watch_ratio

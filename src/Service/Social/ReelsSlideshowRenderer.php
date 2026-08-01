@@ -43,9 +43,28 @@ class ReelsSlideshowRenderer
     /**
      * Последний кадр (развязка) — три строки текста (имя бренда, город/категории, просьба
      * сохранить), за 1.5с прочитать не успеть, поэтому ему выделяется отдельная, более долгая
-     * длительность. Итоговая длина клипа: (N−1)×SECONDS_PER_SLIDE + LAST_SLIDE_SECONDS.
+     * длительность. Итоговая длина клипа (профиль flat_150): (N−1)×SECONDS_PER_SLIDE +
+     * LAST_SLIDE_SECONDS. Общий для обоих профилей длительностей (slideSeconds()) — в hook_hold
+     * то же значение держит и хук (слайд 1): обе плашки многострочные и решающие для удержания.
      */
     private const LAST_SLIDE_SECONDS = 3.0;
+
+    /**
+     * Профиль А, «хук-холд + ускорение к финалу» (P0-1, §3.1 плейбука): слайды 5..N-1
+     * ускоряются до этого значения. Слайды 2-4 того же профиля используют SECONDS_PER_SLIDE —
+     * тот же темп, что у контрольной ветки flat_150 (DRY, единственное отличие профилей —
+     * растянутый хук и разгон в хвосте).
+     */
+    private const HOOK_HOLD_TAIL_SECONDS = 1.1;
+
+    /**
+     * Потолок длительности клипа (P0-6, §6 п.5 / §9 №6 плейбука): три трека в
+     * `config/social/audio` ровно 40.000с, `-stream_loop -1` даёт слышимый шов ровно на этой
+     * отметке — 38с оставляет 2с запаса. Реализует формат `chapters` (§7.3), пока недостижим
+     * текущими профилями (макс. ~16.5с на MAX_SLIDES=10), но кап должен жить в одном месте
+     * заранее, а не быть добавлен постфактум вместе с форматом.
+     */
+    private const MAX_DURATION_SEC = 38.0;
 
     /**
      * Глубина микро-зума за слайд. 6% почти незаметны кадр-к-кадру, но убирают ощущение
@@ -66,9 +85,26 @@ class ReelsSlideshowRenderer
     /** Минимальная длительность Reels у Instagram — 3 секунды. */
     private const MIN_DURATION_SEC = 3.0;
 
-    /** Фейд-ин/фейд-аут фоновой музыки — чтобы трек не начинался и не обрывался резко. */
-    private const AUDIO_FADE_IN_SEC = 0.6;
-    private const AUDIO_FADE_OUT_SEC = 0.8;
+    /**
+     * Фейд-ин фоновой музыки (P0-3, §6 п.1 плейбука). Было 0.6с — четверть первых решающих 3с
+     * раздачи тратилась на разгон громкости. Аутлаеры выборки стартуют на полной: befree
+     * `DZ2Uz09R4CA` −73→−16 dB за 0.16с, 12storeez `DbFgPsoMC0w` −17 dB уже на нулевом фрейме.
+     * 0.12с — щелчок убран, разгона почти нет.
+     */
+    private const AUDIO_FADE_IN_SEC = 0.12;
+
+    /**
+     * Volume-ramp на развязку вместо afade-out (P0-4, §6 п.2 плейбука). afade-out делал стык
+     * лупа слышимым — против луп-замыкания (§1 п.7, §6 п.2); ровная дорожка без событий это
+     * маркер медианного/провального ролика (`Da7Ocn1MllA` 3 dB разброса → ×0.99, `DaQbULGoJHw`
+     * 2.4 dB → худший LR аккаунта). Аутлаеры дают событие ИМЕННО на развязке: 2MOOD
+     * `Da2RRhxqH7d` +5.5 dB на проявлении вордмарка, befree `DaiVMtSu9zf` +15 dB на пике —
+     * окно совпадает с LAST_SLIDE_SECONDS (те же решающие «завершается — досмотри»).
+     */
+    private const AUDIO_RAMP_SECONDS = self::LAST_SLIDE_SECONDS;
+
+    /** +4 дБ (10^(4/20) ≈ 1.585, округлено до значения из плейбука). */
+    private const AUDIO_RAMP_GAIN = 1.6;
 
     public function __construct(
         private readonly string $projectDir,
@@ -86,7 +122,9 @@ class ReelsSlideshowRenderer
         if ($slidePublicPaths === []) {
             return null;
         }
-        $estimated = (count($slidePublicPaths) - 1) * self::SECONDS_PER_SLIDE + self::LAST_SLIDE_SECONDS;
+
+        $profile = $this->durationsProfile($post);
+        $estimated = self::totalSeconds(count($slidePublicPaths), $profile);
         if ($estimated < self::MIN_DURATION_SEC) {
             return null;
         }
@@ -102,7 +140,7 @@ class ReelsSlideshowRenderer
             return $this->publicDir() . '/' . $name;
         }
 
-        $plan = $this->planSlides($slidePublicPaths, (int) $post->getId());
+        $plan = $this->planSlides($slidePublicPaths, (int) $post->getId(), $profile);
         if ($plan === null) {
             return null;
         }
@@ -110,6 +148,66 @@ class ReelsSlideshowRenderer
         $this->runFfmpeg($plan['slides'], $plan['duration'], $outAbs, (int) $post->getId());
 
         return is_file($outAbs) ? $this->publicDir() . '/' . $name : null;
+    }
+
+    /**
+     * Профиль длительностей поста — читается из уже проставленного script_json (P0-1:
+     * SocialGenerateCommand кладёт SlideScript::durationsProfile ДО вызова render()). Пустой/
+     * битый/отсутствующий JSON — деградация на PROFILE_FLAT, тогдашнее фактическое поведение.
+     */
+    private function durationsProfile(SocialPost $post): string
+    {
+        $json = $post->getScriptJson();
+        if ($json === null || $json === '') {
+            return SlideScript::PROFILE_FLAT;
+        }
+
+        $data = json_decode($json, true);
+        $profile = is_array($data) ? (string) ($data['durationsProfile'] ?? '') : '';
+
+        return in_array($profile, [SlideScript::PROFILE_FLAT, SlideScript::PROFILE_HOOK_HOLD], true)
+            ? $profile
+            : SlideScript::PROFILE_FLAT;
+    }
+
+    /**
+     * Секунды на слайд по профилю (P0-1, §3.1 плейбука) — ОДНО место, которое использует и
+     * planSlides() (нужен список на каждую позицию), и SocialGenerateCommand (нужна только
+     * сумма — duration_ms, P0-2). Развязка (последняя позиция) — ВСЕГДА LAST_SLIDE_SECONDS
+     * независимо от профиля: три строки текста читаются медленно в обеих ветках.
+     *
+     * flat_150 (контроль, E1): ровный SECONDS_PER_SLIDE.
+     * hook_hold (профиль А): слайд 1 — LAST_SLIDE_SECONDS (хук держится втрое дольше медианы,
+     * ×2–2.6 у всех 16 разобранных роликов выборки), слайды 2-4 — SECONDS_PER_SLIDE, слайды
+     * 5..N-1 — HOOK_HOLD_TAIL_SECONDS (ускорение к финалу).
+     *
+     * @return list<float> секунды по позициям (0-based), длина = $totalSlides
+     */
+    public static function slideSeconds(int $totalSlides, string $profile): array
+    {
+        if ($totalSlides < 1) {
+            return [];
+        }
+
+        $seconds = [];
+        for ($i = 0; $i < $totalSlides; $i++) {
+            $position = $i + 1;
+            $seconds[] = match (true) {
+                $profile !== SlideScript::PROFILE_HOOK_HOLD => self::SECONDS_PER_SLIDE,
+                $position === 1 => self::LAST_SLIDE_SECONDS,
+                $position <= 4 => self::SECONDS_PER_SLIDE,
+                default => self::HOOK_HOLD_TAIL_SECONDS,
+            };
+        }
+        $seconds[$totalSlides - 1] = self::LAST_SLIDE_SECONDS;
+
+        return $seconds;
+    }
+
+    /** Сумма slideSeconds() — общая длительность клипа для профиля. */
+    public static function totalSeconds(int $totalSlides, string $profile): float
+    {
+        return array_sum(self::slideSeconds($totalSlides, $profile));
     }
 
     public function publicDir(): string
@@ -131,9 +229,13 @@ class ReelsSlideshowRenderer
      * @param list<string> $slidePublicPaths
      *
      * @return array{slides: list<array{file: string, overlay: ?string, seconds: float}>, duration: float}|null
-     *         duration нужна для фейд-аута музыки
+     *         duration нужна для volume-ramp музыки (audioFadeFilter())
+     *
+     * @throws \RuntimeException P0-6 (§9 №6 плейбука) — суммарная длительность > MAX_DURATION_SEC:
+     *         три трека `config/social/audio` ровно 40.000с, `-stream_loop -1` даёт слышимый шов
+     *         ровно на этой отметке, 38с — потолок с запасом
      */
-    private function planSlides(array $slidePublicPaths, int $postId): ?array
+    private function planSlides(array $slidePublicPaths, int $postId, string $profile): ?array
     {
         $files = [];
         foreach ($slidePublicPaths as $i => $public) {
@@ -147,14 +249,20 @@ class ReelsSlideshowRenderer
             return null;
         }
 
-        $lastIndex = count($files) - 1;
+        $seconds = self::slideSeconds(count($files), $profile);
+        $duration = array_sum($seconds);
+        if ($duration > self::MAX_DURATION_SEC) {
+            throw new \RuntimeException(sprintf(
+                'Reels длиннее %.1fс (%.2fс) — шов трека ровно на 40.0с при -stream_loop -1 (P0-6, §6 плейбука).',
+                self::MAX_DURATION_SEC,
+                $duration,
+            ));
+        }
+
         $slides = [];
-        $duration = 0.0;
         foreach ($files as $i => $entry) {
-            $seconds = $i === $lastIndex ? self::LAST_SLIDE_SECONDS : self::SECONDS_PER_SLIDE;
             [$file, $overlay] = $this->reelsLayers($entry['abs'], $postId, $entry['position']);
-            $slides[] = ['file' => $file, 'overlay' => $overlay, 'seconds' => $seconds];
-            $duration += $seconds;
+            $slides[] = ['file' => $file, 'overlay' => $overlay, 'seconds' => $seconds[$i]];
         }
 
         return ['slides' => $slides, 'duration' => $duration];
@@ -322,16 +430,22 @@ class ReelsSlideshowRenderer
         }
     }
 
-    /** Фейд-ин с начала + фейд-аут к моменту, когда -shortest обрежет трек по длине видео. */
+    /**
+     * P0-3/P0-4 (§6 плейбука): короткий фейд-ин (щелчок убран, разгон почти не съедает решающие
+     * первые секунды) + volume-ramp +4дБ на последние AUDIO_RAMP_SECONDS вместо afade-out —
+     * событие подчёркивает развязку И убирает слышимый обрыв на границе loop (afade-out делал
+     * стык слышимым, что противоречит луп-замыканию §1 п.7).
+     */
     private function audioFadeFilter(float $duration): string
     {
-        $fadeOutStart = max(0.0, $duration - self::AUDIO_FADE_OUT_SEC);
+        $rampStart = max(0.0, $duration - self::AUDIO_RAMP_SECONDS);
 
         return sprintf(
-            'afade=t=in:st=0:d=%.2f,afade=t=out:st=%.3f:d=%.2f',
+            "afade=t=in:st=0:d=%.2f,volume=%.2f:enable='between(t,%.3f,%.3f)'",
             self::AUDIO_FADE_IN_SEC,
-            $fadeOutStart,
-            self::AUDIO_FADE_OUT_SEC,
+            self::AUDIO_RAMP_GAIN,
+            $rampStart,
+            $duration,
         );
     }
 

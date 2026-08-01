@@ -6,6 +6,7 @@ namespace App\Tests\Service\Social;
 
 use App\Service\Social\GallerySlideRenderer;
 use App\Service\Social\ReelsSlideshowRenderer;
+use App\Service\Social\SlideScript;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -90,7 +91,7 @@ class ReelsSlideshowRendererTest extends TestCase
 
         $renderer = $this->renderer();
         $method = new \ReflectionMethod($renderer, 'planSlides');
-        $result = $method->invoke($renderer, $paths, 1);
+        $result = $method->invoke($renderer, $paths, 1, SlideScript::PROFILE_FLAT);
 
         self::assertNotNull($result);
         self::assertEqualsWithDelta(($slideCount - 1) * 1.5 + 3.0, $result['duration'], 0.001);
@@ -126,7 +127,7 @@ class ReelsSlideshowRendererTest extends TestCase
 
         $renderer = new ReelsSlideshowRenderer($this->projectDir, $slideRenderer);
         $method = new \ReflectionMethod($renderer, 'planSlides');
-        $result = $method->invoke($renderer, ['/images/social/gallery/p9-01.jpg'], 9);
+        $result = $method->invoke($renderer, ['/images/social/gallery/p9-01.jpg'], 9, SlideScript::PROFILE_FLAT);
 
         self::assertNotNull($result);
         self::assertStringEndsWith('p9-clean-01.jpg', $result['slides'][0]['file']);
@@ -139,6 +140,88 @@ class ReelsSlideshowRendererTest extends TestCase
         yield '1 слайд' => [1];
         yield '2 слайда' => [2];
         yield '7 слайдов' => [7];
+    }
+
+    // --- P0-1: профиль hook_hold (§3.1 плейбука) ----------------------------------------------
+
+    /**
+     * Профиль А на 9 слайдов (раскладка из §3.1 плейбука): хук 3.0с, слайды 2-4 по 1.5с,
+     * слайды 5-8 по 1.1с, развязка (слайд 9) 3.0с.
+     */
+    public function testHookHoldProfileMatchesPlaybookLayoutForNineSlides(): void
+    {
+        $seconds = ReelsSlideshowRenderer::slideSeconds(9, SlideScript::PROFILE_HOOK_HOLD);
+
+        self::assertSame([3.0, 1.5, 1.5, 1.5, 1.1, 1.1, 1.1, 1.1, 3.0], $seconds);
+    }
+
+    /** flat_150 — ровный метроном (контрольная ветка E1), последний слайд всё равно развязка. */
+    public function testFlatProfileIsUniformExceptFinale(): void
+    {
+        $seconds = ReelsSlideshowRenderer::slideSeconds(5, SlideScript::PROFILE_FLAT);
+
+        self::assertSame([1.5, 1.5, 1.5, 1.5, 3.0], $seconds);
+    }
+
+    /** На коротких сценариях (3 слайда) слайды 2-4 не выходят за пределы N — только слайд 2 попадает под 1.5с. */
+    public function testHookHoldProfileOnShortScriptDoesNotOverrunTotal(): void
+    {
+        $seconds = ReelsSlideshowRenderer::slideSeconds(3, SlideScript::PROFILE_HOOK_HOLD);
+
+        self::assertSame([3.0, 1.5, 3.0], $seconds);
+    }
+
+    public function testTotalSecondsIsSumOfSlideSeconds(): void
+    {
+        self::assertEqualsWithDelta(16.0, ReelsSlideshowRenderer::totalSeconds(10, SlideScript::PROFILE_HOOK_HOLD), 0.001);
+        self::assertEqualsWithDelta(16.5, ReelsSlideshowRenderer::totalSeconds(10, SlideScript::PROFILE_FLAT), 0.001);
+    }
+
+    /** planSlides() читает профиль из script_json поста (durationsProfile), не свой параметр по умолчанию. */
+    public function testPlanSlidesUsesHookHoldProfileWhenRequested(): void
+    {
+        $dir = $this->projectDir . '/public_html/images/social/gallery';
+        @mkdir($dir, 0775, true);
+
+        $paths = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $name = "p2-{$i}.jpg";
+            file_put_contents($dir . '/' . $name, 'x');
+            $paths[] = '/images/social/gallery/' . $name;
+        }
+
+        $renderer = $this->renderer();
+        $method = new \ReflectionMethod($renderer, 'planSlides');
+        $result = $method->invoke($renderer, $paths, 2, SlideScript::PROFILE_HOOK_HOLD);
+
+        self::assertNotNull($result);
+        self::assertSame([3.0, 1.5, 1.5, 1.5, 3.0], array_column($result['slides'], 'seconds'));
+    }
+
+    // --- P0-6: кап длины клипа 38с (§6 п.5 / §9 №6 плейбука) -----------------------------------
+
+    /**
+     * Шов трека в `config/social/audio` ровно на 40.000с при `-stream_loop -1` — суммарная
+     * длительность клипа выше 38с обязана падать исключением, а не тихо собираться со швом.
+     */
+    public function testPlanSlidesThrowsWhenDurationExceedsCap(): void
+    {
+        $dir = $this->projectDir . '/public_html/images/social/gallery';
+        @mkdir($dir, 0775, true);
+
+        // flat_150 на 30 слайдов: 29×1.5+3.0 = 46.5с — заведомо выше кап 38с.
+        $paths = [];
+        for ($i = 1; $i <= 30; $i++) {
+            $name = "p3-{$i}.jpg";
+            file_put_contents($dir . '/' . $name, 'x');
+            $paths[] = '/images/social/gallery/' . $name;
+        }
+
+        $renderer = $this->renderer();
+        $method = new \ReflectionMethod($renderer, 'planSlides');
+
+        $this->expectException(\RuntimeException::class);
+        $method->invoke($renderer, $paths, 3, SlideScript::PROFILE_FLAT);
     }
 
     public function testEmptyLibraryFallsBackToNull(): void

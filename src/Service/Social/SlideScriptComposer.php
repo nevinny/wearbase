@@ -156,22 +156,47 @@ class SlideScriptComposer
     ) {
     }
 
-    public function compose(Brand $brand, int $totalSlides): SlideScript
+    public function compose(Brand $brand, int $totalSlides, string $durationsProfile = SlideScript::PROFILE_FLAT): SlideScript
     {
         $budget = SlideScript::maxBits($totalSlides);
 
         $departed = $this->departedMatch($brand);
         $departedHookA = $departed !== null ? 'Вместо ' . $departed['departed'] . '?' : null;
-        if ($departedHookA !== null && $this->fitsLine($departedHookA)) {
-            return $this->composeDeparted($brand, $budget, $departedHookA);
+        $script = $departedHookA !== null && $this->fitsLine($departedHookA)
+            ? $this->composeDeparted($brand, $budget, $departedHookA, $durationsProfile)
+            : $this->composeFactBranch($brand, $budget, $durationsProfile);
+
+        return $this->enforceScriptGuards($script, $brand, $budget, $durationsProfile);
+    }
+
+    /**
+     * P0-5 (§9 №5 плейбука) — двойная защита от класса провала `Da7Ocn1MllA` (12storeez, строб
+     * без единого текстового объекта и без речи → ×0.99 медианы, LR ниже нормы аккаунта):
+     *
+     * (а) hookA пуст — у нас нет ни голоса, ни аномального материала, поэтому плашка первого
+     *     кадра это и есть весь «голос» ролика; фолбэк на F2 (единственная ветка, собираемая
+     *     всегда, без RAG/departed);
+     * (б) hookA/hookB заканчивается «?» — незакрытый вопрос обязан получить ответ в развязке
+     *     (для H1 «Вместо {X}?» ответ — имя бренда), иначе связка живёт только в подписи, как
+     *     у `Da7Ocn1MllA` («мечта × ракета» была только в тексте, а не в кадре).
+     */
+    private function enforceScriptGuards(SlideScript $script, Brand $brand, int $budget, string $durationsProfile): SlideScript
+    {
+        if (trim($script->hookA) === '') {
+            return $this->composeFeeFallback($brand, $budget, $durationsProfile);
         }
 
-        return $this->composeFactBranch($brand, $budget);
+        $endsWithQuestion = str_ends_with(trim($script->hookA), '?') || str_ends_with(trim($script->hookB), '?');
+        if ($endsWithQuestion && trim($script->finaleTitle) === '') {
+            throw new \RuntimeException('Хук заканчивается вопросом, но развязка не даёт ответа (finaleTitle пуст) — P0-5(б), §9 плейбука.');
+        }
+
+        return $script;
     }
 
     // --- H1: ушедший бренд ---------------------------------------------------------------
 
-    private function composeDeparted(Brand $brand, int $budget, string $hookA): SlideScript
+    private function composeDeparted(Brand $brand, int $budget, string $hookA, string $durationsProfile): SlideScript
     {
         $hookB = self::DEPARTED_HOOK_B;
         $usedKeys = [$this->dedupKey($hookA) => true, $this->dedupKey($hookB) => true];
@@ -186,6 +211,7 @@ class SlideScriptComposer
             finaleMeta: $this->finaleMeta($brand),
             finaleAsk: self::FINALE_ASK,
             scriptKey: sprintf('h1.departed|b.%s|c.save', $this->bitsSourceKey($ragCount, $detCount, count($bits))),
+            durationsProfile: $durationsProfile,
         );
     }
 
@@ -226,7 +252,7 @@ class SlideScriptComposer
      * иначе F2. hookA в F1 — ЛУЧШИЙ по скору из подходящих (не обязательно candidates[0], если
      * тот не прошёл hookA-порог); в биты идут все остальные кандидаты по убыванию скора.
      */
-    private function composeFactBranch(Brand $brand, int $budget): SlideScript
+    private function composeFactBranch(Brand $brand, int $budget, string $durationsProfile): SlideScript
     {
         $candidates = $this->dedupCandidates($this->groundedCandidates($brand));
 
@@ -238,22 +264,30 @@ class SlideScriptComposer
             }
         }
 
-        if ($hookIndex !== null) {
-            $hookA = $candidates[$hookIndex];
-            unset($candidates[$hookIndex]);
-            $bits = array_slice(array_values($candidates), 0, min(2, $budget));
-
-            return new SlideScript(
-                hookA: $hookA,
-                hookB: self::RAG_HOOK_B,
-                bits: $bits,
-                finaleTitle: trim((string) $brand->getTitle()),
-                finaleMeta: $this->finaleMeta($brand),
-                finaleAsk: self::FINALE_ASK,
-                scriptKey: sprintf('f1.rag|b.%s|c.save', $this->bitsSourceKey(count($bits), 0, count($bits))),
-            );
+        if ($hookIndex === null) {
+            return $this->composeFeeFallback($brand, $budget, $durationsProfile);
         }
 
+        $hookA = $candidates[$hookIndex];
+        unset($candidates[$hookIndex]);
+        $bits = array_slice(array_values($candidates), 0, min(2, $budget));
+
+        return new SlideScript(
+            hookA: $hookA,
+            hookB: self::RAG_HOOK_B,
+            bits: $bits,
+            finaleTitle: trim((string) $brand->getTitle()),
+            finaleMeta: $this->finaleMeta($brand),
+            finaleAsk: self::FINALE_ASK,
+            scriptKey: sprintf('f1.rag|b.%s|c.save', $this->bitsSourceKey(count($bits), 0, count($bits))),
+            durationsProfile: $durationsProfile,
+        );
+    }
+
+    /** F2 — фактов нет вообще (или ни один не тянет на хук): единственная ветка, собираемая без
+     *  RAG/departed, поэтому это и фолбэк enforceScriptGuards() при пустом hookA (P0-5а). */
+    private function composeFeeFallback(Brand $brand, int $budget, string $durationsProfile): SlideScript
+    {
         $hookA = $this->feeHookA();
         $hookB = self::FEE_HOOK_B;
         $usedKeys = [$this->dedupKey($hookA) => true, $this->dedupKey($hookB) => true];
@@ -267,6 +301,7 @@ class SlideScriptComposer
             finaleMeta: $this->finaleMeta($brand),
             finaleAsk: self::FINALE_ASK,
             scriptKey: sprintf('f2.fee|b.%s|c.save', $this->bitsSourceKey(0, $detCount, count($bits))),
+            durationsProfile: $durationsProfile,
         );
     }
 

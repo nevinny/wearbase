@@ -56,11 +56,26 @@ class CaptionGenerator
             $body = $prefix . "\n\n" . $body;
         }
 
-        $tags = implode(' ', $rubricDef['hashtags']);
-        $post->setCaption($body . "\n\n" . $tags);
+        $tags = $this->hashtags($post, $rubricDef);
+        $post->setCaption($tags !== '' ? $body . "\n\n" . $tags : $body);
 
         [$label, $url] = $this->cta($post);
         $post->setCtaLabel($label)->setCtaUrl($url);
+    }
+
+    /**
+     * E4 (§5.2/§8.3 плейбука) — ветка `tags_0` рубрики brand_reels выходит совсем без хэштегов:
+     * 0 тегов у 14 из 16 разобранных вирусных рилсов, включая ВСЕ аутлаеры ×3 и выше. Ветка
+     * `tags_3` (контроль) — как сейчас, 3 тега рубрики из SocialRubrics. Variant для brand_reels
+     * пишет SocialGenerateCommand::assignExperimentVariant() как "{e1}|{e4}".
+     */
+    private function hashtags(SocialPost $post, array $rubricDef): string
+    {
+        if ($post->getRubric() === 'brand_reels' && str_ends_with((string) $post->getVariant(), '|tags_0')) {
+            return '';
+        }
+
+        return implode(' ', $rubricDef['hashtags']);
     }
 
     /**

@@ -292,6 +292,71 @@ YAML;
         self::assertEquals($first, $second);
     }
 
+    // --- P0-1: профиль длительностей (durationsProfile) --------------------------------------
+
+    /** compose() без явного профиля — контрольная ветка E1 (flat_150), тогдашнее поведение. */
+    public function testDefaultDurationsProfileIsFlat(): void
+    {
+        $script = $this->composer()->compose($this->brand(), totalSlides: 4);
+
+        self::assertSame(SlideScript::PROFILE_FLAT, $script->durationsProfile);
+    }
+
+    /** Профиль — сквозной параметр compose(), не зависит от того, какая ветка (H1/F1/F2) выбрана. */
+    public function testDurationsProfilePassesThroughToAnyBranch(): void
+    {
+        $script = $this->composer()->compose($this->brand(), totalSlides: 4, durationsProfile: SlideScript::PROFILE_HOOK_HOLD);
+
+        self::assertSame(SlideScript::PROFILE_HOOK_HOLD, $script->durationsProfile);
+    }
+
+    // --- P0-5: валидация сценария (§9 №5 плейбука) --------------------------------------------
+
+    /**
+     * (а) Пустой hookA — отрицательный контроль `Da7Ocn1MllA` (ноль текста и ноль голоса → ×0.99
+     * медианы): guard откатывается на F2 (единственная ветка, собираемая без RAG/departed),
+     * а не публикует ролик без единого текстового объекта на первом кадре.
+     */
+    public function testEmptyHookAFallsBackToFeeBranch(): void
+    {
+        $composer = $this->composer();
+        $brand = $this->brand();
+        $empty = new SlideScript('', 'Чей — в конце.', [], 'Тест', 'Российский бренд', 'Сохрани, чтобы не искать.', 'f1.rag|b.rag0|c.save');
+
+        $method = new \ReflectionMethod($composer, 'enforceScriptGuards');
+        /** @var SlideScript $result */
+        $result = $method->invoke($composer, $empty, $brand, 2, SlideScript::PROFILE_FLAT);
+
+        self::assertNotSame('', trim($result->hookA));
+        self::assertStringStartsWith('f2.fee|', $result->scriptKey);
+    }
+
+    /**
+     * (б) Хук H1 «Вместо {X}?» заканчивается вопросом — развязка ОБЯЗАНА содержать ответ
+     * (finaleTitle = имя бренда). Пустой title (бренд без имени — вырожденный случай) не даёт
+     * ответа на кадре, связка держалась бы только в подписи, как у `Da7Ocn1MllA`.
+     */
+    public function testQuestionHookWithoutFinaleTitleThrows(): void
+    {
+        $yaml = <<<'YAML'
+-
+  departed: "Zara"
+  alternatives: ["our-brand"]
+YAML;
+
+        $this->expectException(\RuntimeException::class);
+
+        $this->composer(departedYaml: $yaml)->compose($this->brand(title: '', slug: 'our-brand'), totalSlides: 7);
+    }
+
+    /** Хук БЕЗ вопроса — finaleTitle пустым быть не обязан (guard срабатывает только на «?»). */
+    public function testNonQuestionHookWithEmptyFinaleTitleDoesNotThrow(): void
+    {
+        $script = $this->composer()->compose($this->brand(title: ''), totalSlides: 4);
+
+        self::assertSame('Маркетплейс: до 67%.', $script->hookA);
+    }
+
     // --- Ужесточённый гейт LLM-фактов (v4) --------------------------------------------------
 
     /** Латинский обрывок ≤4 знаков, которого нет в выдержках дословно, — брак целиком. */

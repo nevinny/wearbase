@@ -78,6 +78,10 @@ class SocialGenerateCommand extends Command
             }
 
             try {
+                // E1×E4 (§8.3 плейбука) — только для brand_reels, ДО сценария: профиль
+                // длительностей (E1) едет в SlideScript, хэштеги (E4) читает CaptionGenerator.
+                $this->assignExperimentVariant($post);
+
                 // Сценарий слайдов считается ДО подписи: CaptionGenerator читает уже проставленные
                 // script_key/script_json, чтобы построить первую строку подписи из hookA («факт
                 // вперёд» + «Дальше — в ролике/карусели.») — без этого пришлось бы либо пересчитывать
@@ -103,6 +107,13 @@ class SocialGenerateCommand extends Command
                         ? $this->reels->render($post, $slides)
                         : null;
                     $post->setMediaPath($video);
+                    // P0-2 (§9 №2 плейбука): фактическая сумма длительностей в мс, а не оценка
+                    // задним числом по slide_count — иначе E1 портит собственный измеритель
+                    // watch_ratio (SocialEvaluateCommand делит avg_watch_ms на неправильный
+                    // знаменатель для новых постов с профилем hook_hold).
+                    $post->setDurationMs($video !== null
+                        ? (int) round(ReelsSlideshowRenderer::totalSeconds(count($slides), $this->durationsProfileFor($post)) * 1000)
+                        : null);
                     // Обложка — первый ФОТО-слайд: одинаковая в обеих ветках A/B, иначе у
                     // logo_first обложкой во вкладке Reels становится карточка логотипа.
                     $post->setCoverPath($video !== null ? $this->slides->coverSlide($post) : null);
@@ -189,7 +200,7 @@ class SocialGenerateCommand extends Command
             return null;
         }
 
-        $script = $this->resolveScript($brand, count($sources) + 1);
+        $script = $this->resolveScript($brand, count($sources) + 1, $this->durationsProfileFor($post));
         $post->setScriptKey($script->scriptKey);
         $post->setScriptJson(json_encode($script->toArray(), JSON_UNESCAPED_UNICODE));
 
@@ -198,25 +209,74 @@ class SocialGenerateCommand extends Command
 
     /**
      * Переиспользовать сценарий последнего поста ЭТОГО бренда, если он уже есть (карусель и
-     * Reels бренда обязаны получить один текст), иначе собрать новый.
+     * Reels бренда обязаны получить один текст), иначе собрать новый. Профиль длительностей
+     * (E1) переопределяется поверх переиспользованного текста — он решается per-post (brand_id
+     * этого поста через assignExperimentVariant()), а не наследуется от карусельного соседа,
+     * для которого durationsProfile — инертное поле (GallerySlideRenderer его не читает).
      */
-    private function resolveScript(Brand $brand, int $totalSlides): SlideScript
+    private function resolveScript(Brand $brand, int $totalSlides, string $durationsProfile): SlideScript
     {
         $existing = $this->posts->findLatestScriptForBrand($brand);
         if ($existing !== null) {
             $data = json_decode((string) $existing->getScriptJson(), true);
             if (is_array($data)) {
-                return SlideScript::fromArray($data);
+                return SlideScript::fromArray($data)->withDurationsProfile($durationsProfile);
             }
         }
 
-        return $this->scripts->compose($brand, $totalSlides);
+        return $this->scripts->compose($brand, $totalSlides, $durationsProfile);
+    }
+
+    /**
+     * E1 (§8.3 плейбука) — пер-слайдовая длительность, только для рубрики brand_reels (карусель
+     * профиль не использует — GallerySlideRenderer его не читает, там важен только текст).
+     * Читает уже проставленный assignExperimentVariant() variant, а не пересчитывает id%2 —
+     * одна точка истины на пост.
+     */
+    private function durationsProfileFor(SocialPost $post): string
+    {
+        if ($post->getRubric() !== 'brand_reels') {
+            return SlideScript::PROFILE_FLAT;
+        }
+
+        $variant = (string) $post->getVariant();
+
+        return str_starts_with($variant, SlideScript::PROFILE_HOOK_HOLD) ? SlideScript::PROFILE_HOOK_HOLD : SlideScript::PROFILE_FLAT;
+    }
+
+    /**
+     * E1×E4 факториал 2×2 (§8.3 плейбука) — ОСОЗНАННОЕ отступление оркестратора от правила §8.1
+     * «строго последовательно, одна переменная на ветку»: E1 (тайминг) и E4 (хэштеги) не делят
+     * общий механизм измерения (E1 двигает watch_ratio/avg_watch_ms через сам рендер, E4 — views/
+     * reach через охват вне поста) и не пересекаются по гипотезе, поэтому смешение переменных не
+     * искажает ни одну из двух метрик решения. Обе ветки детерминированы от id бренда (не от
+     * времени/рандома), чтобы повторный прогон generate на том же посте не поменял ветку:
+     *  E1 — чётный id → hook_hold, нечётный → flat_150 (контроль, текущее поведение);
+     *  E4 — id/2 чётный → tags_0 (§5.2: 0 тегов у 14/16 разобранных рилсов, включая все
+     *      аутлаеры), нечётный → tags_3 (контроль, нынешние 3 тега рубрики).
+     * Только brand_reels: variant у brand_gallery не трогаем (см. gallerySlides()).
+     * Позиция логотипа больше не читает variant (506fe56 зафиксировал logo_last безусловно) —
+     * поле полностью свободно под E1|E4.
+     */
+    private function assignExperimentVariant(SocialPost $post): void
+    {
+        if ($post->getRubric() !== 'brand_reels') {
+            return;
+        }
+
+        $brandId = (int) $post->getBrand()?->getId();
+        $e1 = $brandId % 2 === 0 ? SlideScript::PROFILE_HOOK_HOLD : SlideScript::PROFILE_FLAT;
+        $e4 = intdiv($brandId, 2) % 2 === 0 ? 'tags_0' : 'tags_3';
+
+        $post->setVariant($e1 . '|' . $e4);
     }
 
     /**
      * Слайды поста: фото бренда из brand_image, приведённые к одному холсту, плюс слайд с
-     * логотипом — первым или последним по ветке A/B (SocialPost::VARIANT_*, по умолчанию
-     * логотип последним). $prepared === null уводит пост в held ниже, в qaReason.
+     * логотипом. Позиция логотипа зафиксирована — всегда последним (506fe56, решение владельца:
+     * logo_first противоречит хукам «Чей — в конце» и правилу отложенного имени H9). variant
+     * больше не кодирует ветку логотипа — там E1|E4 (assignExperimentVariant()). $prepared ===
+     * null уводит пост в held ниже, в qaReason.
      *
      * @param array{sources: list<string>, script: SlideScript}|null $prepared
      *
@@ -231,7 +291,7 @@ class SocialGenerateCommand extends Command
         $slides = $this->slides->render(
             $post,
             $prepared['sources'],
-            $post->getVariant() === SocialPost::VARIANT_LOGO_FIRST,
+            false,
             $prepared['script'],
         );
         $post->setSlideCount(count($slides));

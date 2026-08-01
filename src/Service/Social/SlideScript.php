@@ -40,6 +40,17 @@ final class SlideScript
     private const BIT_FRAME_STEP = 2;
 
     /**
+     * Профили пер-слайдовой длительности (P0-1, §3.1/§9 №1 плейбука reels_viral_playbook.md):
+     * контрольная ветка E1 (`flat_150` — сегодняшнее ровное 1.5с/слайд, отрицательный
+     * контроль — 12storeez `Da7Ocn1MllA`, единственный ролик выборки с ровным метрономом, ×0.99
+     * медианы) против `hook_hold` (профиль А — хук держится втрое дольше медианы, ×2–2.6 у всех
+     * 16 разобранных роликов). Секунды на слайд считает ReelsSlideshowRenderer::slideSeconds() —
+     * здесь только ключ профиля, переживающий сериализацию в script_json.
+     */
+    public const PROFILE_FLAT      = 'flat_150';
+    public const PROFILE_HOOK_HOLD = 'hook_hold';
+
+    /**
      * @param list<string> $bits 0..MAX_BITS фактов, каждый ≤MAX_LINE_CHARS
      */
     public function __construct(
@@ -50,7 +61,16 @@ final class SlideScript
         public readonly string $finaleMeta,
         public readonly string $finaleAsk,
         public readonly string $scriptKey,
+        public readonly string $durationsProfile = self::PROFILE_FLAT,
     ) {
+    }
+
+    /** Копия с другим профилем длительностей — durationsProfile решает E1 конкретного поста
+     *  (brand_reels), а текст сценария при этом может быть переиспользован от поста-соседа
+     *  того же бренда (SocialGenerateCommand::resolveScript). */
+    public function withDurationsProfile(string $profile): self
+    {
+        return new self($this->hookA, $this->hookB, $this->bits, $this->finaleTitle, $this->finaleMeta, $this->finaleAsk, $this->scriptKey, $profile);
     }
 
     /**
@@ -81,7 +101,7 @@ final class SlideScript
     }
 
     /**
-     * @return array{hookA:string,hookB:string,bits:list<string>,finaleTitle:string,finaleMeta:string,finaleAsk:string,scriptKey:string}
+     * @return array{hookA:string,hookB:string,bits:list<string>,finaleTitle:string,finaleMeta:string,finaleAsk:string,scriptKey:string,durationsProfile:string}
      */
     public function toArray(): array
     {
@@ -93,10 +113,12 @@ final class SlideScript
             'finaleMeta' => $this->finaleMeta,
             'finaleAsk' => $this->finaleAsk,
             'scriptKey' => $this->scriptKey,
+            'durationsProfile' => $this->durationsProfile,
         ];
     }
 
-    /** @param array<string,mixed> $data */
+    /** @param array<string,mixed> $data durationsProfile отсутствует у script_json, записанных до
+     *   P0-1 — фолбэк на PROFILE_FLAT (тогдашнее фактическое поведение рендерера). */
     public static function fromArray(array $data): self
     {
         return new self(
@@ -107,6 +129,7 @@ final class SlideScript
             (string) ($data['finaleMeta'] ?? ''),
             (string) ($data['finaleAsk'] ?? ''),
             (string) ($data['scriptKey'] ?? ''),
+            (string) ($data['durationsProfile'] ?? self::PROFILE_FLAT),
         );
     }
 }

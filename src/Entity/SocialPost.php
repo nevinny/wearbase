@@ -116,6 +116,15 @@ class SocialPost
     #[ORM\Column(type: 'smallint', nullable: true)]
     private ?int $slideCount = null;
 
+    /**
+     * Фактическая длительность Reels в мс (сумма ReelsSlideshowRenderer::slideSeconds()), NULL
+     * для карусели/картинки. P0-2 (§9 №2 плейбука) — watch_ratio делится на неё, а не на оценку
+     * задним числом по slide_count: с появлением пер-слайдовой длительности (E1, hook_hold vs
+     * flat_150) формула «(slide_count−1)×1500+3000» верна только для flat-профиля.
+     */
+    #[ORM\Column(nullable: true)]
+    private ?int $durationMs = null;
+
     /** CTA-ссылка (с UTM) — вынесена из подписи, публикаторы оформляют по-своему. */
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $ctaUrl = null;
@@ -316,6 +325,17 @@ class SocialPost
     public function setSlideCount(?int $slideCount): self
     {
         $this->slideCount = $slideCount;
+        return $this;
+    }
+
+    public function getDurationMs(): ?int
+    {
+        return $this->durationMs;
+    }
+
+    public function setDurationMs(?int $durationMs): self
+    {
+        $this->durationMs = $durationMs;
         return $this;
     }
 

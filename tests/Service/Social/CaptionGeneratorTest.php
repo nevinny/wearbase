@@ -168,6 +168,50 @@ class CaptionGeneratorTest extends TestCase
         self::assertSame('Бренд целиком', $post->getCtaLabel());
     }
 
+    // --- E4: хэштеги brand_reels (§5.2/§8.3 плейбука) -----------------------------------------
+
+    /** Ветка tags_0 — совсем без хэштегов (0 тегов у 14/16 разобранных рилсов, все аутлаеры). */
+    public function testReelsTagsZeroVariantOmitsHashtags(): void
+    {
+        $post = (new SocialPost())
+            ->setChannel((new SocialChannel())->setPlatform(SocialChannel::PLATFORM_IG))
+            ->setRubric('brand_reels')
+            ->setBrand((new Brand())->setTitle('Тест'))
+            ->setVariant('flat_150|tags_0');
+
+        $this->galleryGenerator()->compose($post, (new SocialRubrics())->get('brand_reels'));
+
+        self::assertStringNotContainsString('#', (string) $post->getCaption());
+    }
+
+    /** Ветка tags_3 (контроль) — как сейчас, 3 тега рубрики из SocialRubrics. */
+    public function testReelsTagsThreeVariantKeepsHashtags(): void
+    {
+        $post = (new SocialPost())
+            ->setChannel((new SocialChannel())->setPlatform(SocialChannel::PLATFORM_IG))
+            ->setRubric('brand_reels')
+            ->setBrand((new Brand())->setTitle('Тест'))
+            ->setVariant('hook_hold|tags_3');
+
+        $this->galleryGenerator()->compose($post, (new SocialRubrics())->get('brand_reels'));
+
+        self::assertStringContainsString('#ПрямойБренд', (string) $post->getCaption());
+    }
+
+    /** brand_gallery не участвует в E4 — хэштеги остаются независимо от значения variant. */
+    public function testGalleryRubricIgnoresTagsVariant(): void
+    {
+        $post = (new SocialPost())
+            ->setChannel((new SocialChannel())->setPlatform(SocialChannel::PLATFORM_IG))
+            ->setRubric('brand_gallery')
+            ->setBrand((new Brand())->setTitle('Тест'))
+            ->setVariant('logo_last');
+
+        $this->galleryGenerator()->compose($post, (new SocialRubrics())->get('brand_gallery'));
+
+        self::assertStringContainsString('#ПрямойБренд', (string) $post->getCaption());
+    }
+
     private function galleryGenerator(): CaptionGenerator
     {
         $source = new class implements CaptionSourceInterface {
