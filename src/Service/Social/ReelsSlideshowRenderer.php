@@ -53,6 +53,16 @@ class ReelsSlideshowRenderer
      */
     private const ZOOM_RANGE = 0.06;
 
+    /**
+     * Во сколько раз апскейлить слайд ПЕРЕД zoompan. Прямая подача 1080×1920 в zoompan даёт
+     * приращение зума 0.06/45≈0.0013 за кадр — на исходном разрешении это доли пикселя, zoompan
+     * округляет x/y до целых, и получившиеся ступеньки видны как дрожь картинки. Апскейл в 3
+     * раза (3240×5760) переводит то же приращение в межпиксельный шаг исходника ×3 меньше, а
+     * downscale обратно в 1080×1920 (через собственный `s=` zoompan, без отдельного шага)
+     * сглаживает округление интерполяцией — дрожь визуально пропадает.
+     */
+    private const ZOOM_UPSCALE = 3;
+
     /** Минимальная длительность Reels у Instagram — 3 секунды. */
     private const MIN_DURATION_SEC = 3.0;
 
@@ -62,6 +72,7 @@ class ReelsSlideshowRenderer
 
     public function __construct(
         private readonly string $projectDir,
+        private readonly GallerySlideRenderer $slideRenderer,
     ) {
     }
 
@@ -91,7 +102,7 @@ class ReelsSlideshowRenderer
             return $this->publicDir() . '/' . $name;
         }
 
-        $plan = $this->planSlides($slidePublicPaths);
+        $plan = $this->planSlides($slidePublicPaths, (int) $post->getId());
         if ($plan === null) {
             return null;
         }
@@ -111,18 +122,24 @@ class ReelsSlideshowRenderer
      * СУЩЕСТВУЮЩИЙ слайд, а не последний элемент входного списка — часть путей может не найтись
      * на диске) получает LAST_SLIDE_SECONDS вместо SECONDS_PER_SLIDE.
      *
+     * Фото и статичный UI (счётчик/прогресс/текст) — РАЗНЫЕ файлы (см. runFfmpeg): `file` —
+     * чистый фото/лого-слой без UI (GallerySlideRenderer::reelsCleanPhotoPath), его зумит
+     * ffmpeg; `overlay` — прозрачный PNG того же кадра (reelsOverlayPath), накладывается
+     * неподвижно. Позиция для поиска обоих — исходный (до фильтрации отсутствующих файлов)
+     * индекс в $slidePublicPaths: именно под ним GallerySlideRenderer::render() их сохранил.
+     *
      * @param list<string> $slidePublicPaths
      *
-     * @return array{slides: list<array{file: string, seconds: float}>, duration: float}|null
+     * @return array{slides: list<array{file: string, overlay: ?string, seconds: float}>, duration: float}|null
      *         duration нужна для фейд-аута музыки
      */
-    private function planSlides(array $slidePublicPaths): ?array
+    private function planSlides(array $slidePublicPaths, int $postId): ?array
     {
         $files = [];
-        foreach ($slidePublicPaths as $public) {
+        foreach ($slidePublicPaths as $i => $public) {
             $abs = $this->projectDir . '/public_html' . $public;
             if (is_file($abs)) {
-                $files[] = $abs;
+                $files[] = ['abs' => $abs, 'position' => $i + 1];
             }
         }
 
@@ -133,13 +150,35 @@ class ReelsSlideshowRenderer
         $lastIndex = count($files) - 1;
         $slides = [];
         $duration = 0.0;
-        foreach ($files as $i => $abs) {
+        foreach ($files as $i => $entry) {
             $seconds = $i === $lastIndex ? self::LAST_SLIDE_SECONDS : self::SECONDS_PER_SLIDE;
-            $slides[] = ['file' => $abs, 'seconds' => $seconds];
+            [$file, $overlay] = $this->reelsLayers($entry['abs'], $postId, $entry['position']);
+            $slides[] = ['file' => $file, 'overlay' => $overlay, 'seconds' => $seconds];
             $duration += $seconds;
         }
 
         return ['slides' => $slides, 'duration' => $duration];
+    }
+
+    /**
+     * Чистый фото-слой + статичный оверлей для позиции $position, если оба отрендерены
+     * (GallerySlideRenderer это делает попутно с каруселью — см. renderReelsCleanLayer/
+     * buildReelsOverlay). Деградация: если хотя бы одного нет на диске (напр. повторный
+     * рендер поста, у которого исходное фото бренда уже удалено), используем $bakedAbs —
+     * тот же слайд, что и в карусели, со вжаренным UI — как раньше, без разделения слоёв.
+     *
+     * @return array{0: string, 1: ?string} [файл фото, файл оверлея или null]
+     */
+    private function reelsLayers(string $bakedAbs, int $postId, int $position): array
+    {
+        $cleanAbs = $this->projectDir . '/public_html' . $this->slideRenderer->reelsCleanPhotoPath($postId, $position);
+        $overlayAbs = $this->projectDir . '/public_html' . $this->slideRenderer->reelsOverlayPath($postId, $position);
+
+        if (is_file($cleanAbs) && is_file($overlayAbs)) {
+            return [$cleanAbs, $overlayAbs];
+        }
+
+        return [$bakedAbs, null];
     }
 
     /**
@@ -159,15 +198,24 @@ class ReelsSlideshowRenderer
      * Проверено на реальных p136-* (yuvj420p+yuvj444p вперемешку): 10 слайдов → ровно 495
      * кадров/16.5с, что и требует формула (N−1)×1.5+3.0.
      *
-     * @param list<array{file: string, seconds: float}> $slides
+     * Фото и UI — отдельные входы (см. planSlides/reelsLayers): фото идёт через upscale→zoompan
+     * (ZOOM_UPSCALE — иначе субпиксельные шаги зума округляются в целые и картинка дрожит), UI
+     * — статичным слоем, который просто держится $slide['seconds'] и накладывается сверху
+     * (`overlay`) БЕЗ зума, поэтому счётчик/прогресс/текст на экране не увеличиваются и не
+     * дрожат. Если оверлея нет (деградация в reelsLayers — старый слайд с уже вжаренным UI),
+     * слайд получает только фото-ветвь, как до разделения слоёв.
+     *
+     * @param list<array{file: string, overlay: ?string, seconds: float}> $slides
      */
     private function runFfmpeg(array $slides, float $duration, string $outAbs, int $postId): void
     {
         $inputs = [];
         $filterParts = [];
         $labels = [];
+        $inputIndex = 0;
         foreach ($slides as $i => $slide) {
             $frames = (int) round($slide['seconds'] * self::FPS);
+            $photoIndex = $inputIndex++;
             $inputs[] = '-loop';
             $inputs[] = '1';
             $inputs[] = '-framerate';
@@ -178,28 +226,62 @@ class ReelsSlideshowRenderer
             $inputs[] = $slide['file'];
 
             // in_range=pc→out_range=tv: JPEG-слайды полнодиапазонные, без явной конверсии ffmpeg
-            // оставляет pix_fmt full range, а спека Meta ждёт обычный 4:2:0 (limited).
-            $label = 'v' . $i;
-            $labels[] = '[' . $label . ']';
+            // оставляет pix_fmt full range, а спека Meta ждёт обычный 4:2:0 (limited). scale в
+            // ZOOM_UPSCALE раз ПЕРЕД zoompan — фикс дрожи (см. константу); сам zoompan уже
+            // ужимает обратно до WIDTHxHEIGHT через свой s=, отдельный downscale не нужен.
+            $baseLabel = 'base' . $i;
             $filterParts[] = sprintf(
                 '[%d:v]scale=%d:%d:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,'
                 . 'pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=white,setsar=1,'
-                . 'zoompan=z=\'1+%.4f*on/%d\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=%dx%d:fps=%d,'
-                . 'format=yuv420p[%s]',
-                $i,
+                . 'scale=%d:%d,'
+                . 'zoompan=z=\'1+%.4f*on/%d\':d=1:x=\'iw/2-(iw/zoom/2)\':y=\'ih/2-(ih/zoom/2)\':s=%dx%d:fps=%d[%s]',
+                $photoIndex,
                 self::WIDTH,
                 self::HEIGHT,
                 self::WIDTH,
                 self::HEIGHT,
+                self::WIDTH * self::ZOOM_UPSCALE,
+                self::HEIGHT * self::ZOOM_UPSCALE,
                 self::ZOOM_RANGE,
                 $frames,
                 self::WIDTH,
                 self::HEIGHT,
                 self::FPS,
-                $label,
+                $baseLabel,
             );
+
+            $label = 'v' . $i;
+            $labels[] = '[' . $label . ']';
+            if ($slide['overlay'] !== null) {
+                $overlayIndex = $inputIndex++;
+                $inputs[] = '-loop';
+                $inputs[] = '1';
+                $inputs[] = '-framerate';
+                $inputs[] = (string) self::FPS;
+                $inputs[] = '-t';
+                $inputs[] = (string) $slide['seconds'];
+                $inputs[] = '-i';
+                $inputs[] = $slide['overlay'];
+
+                $ovlLabel = 'ovl' . $i;
+                $filterParts[] = sprintf(
+                    '[%d:v]scale=%d:%d:force_original_aspect_ratio=decrease,'
+                    . 'pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=0x00000000,format=rgba[%s]',
+                    $overlayIndex,
+                    self::WIDTH,
+                    self::HEIGHT,
+                    self::WIDTH,
+                    self::HEIGHT,
+                    $ovlLabel,
+                );
+                // format=yuv420 внутри overlay — то же требование лимитед-диапазона 4:2:0, что
+                // раньше давал отдельный `format` фильтр; после наложения оно уже не нужно.
+                $filterParts[] = sprintf('[%s][%s]overlay=format=yuv420,format=yuv420p[%s]', $baseLabel, $ovlLabel, $label);
+            } else {
+                $filterParts[] = sprintf('[%s]format=yuv420p[%s]', $baseLabel, $label);
+            }
         }
-        $audioIndex = count($slides);
+        $audioIndex = $inputIndex;
         $filterParts[] = implode('', $labels) . sprintf('concat=n=%d:v=1:a=0[outv]', count($slides));
         $filterComplex = implode(';', $filterParts);
 

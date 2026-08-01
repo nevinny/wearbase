@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Service\Social;
 
+use App\Service\Social\GallerySlideRenderer;
 use App\Service\Social\ReelsSlideshowRenderer;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -34,7 +35,7 @@ class ReelsSlideshowRendererTest extends TestCase
         $this->makeTrack('b.m4a');
         $this->makeTrack('c.m4a');
 
-        $renderer = new ReelsSlideshowRenderer($this->projectDir);
+        $renderer = $this->renderer();
 
         self::assertSame($this->selectTrack($renderer, 42), $this->selectTrack($renderer, 42));
     }
@@ -45,7 +46,7 @@ class ReelsSlideshowRendererTest extends TestCase
         $this->makeTrack('b.m4a');
         $this->makeTrack('c.m4a');
 
-        $renderer = new ReelsSlideshowRenderer($this->projectDir);
+        $renderer = $this->renderer();
 
         // 3 трека, сортировка по имени детерминирует индекс: id % 3.
         $tracks = [
@@ -63,7 +64,7 @@ class ReelsSlideshowRendererTest extends TestCase
         $this->makeTrack('one.mp3');
         $this->makeTrack('two.m4a');
 
-        $renderer = new ReelsSlideshowRenderer($this->projectDir);
+        $renderer = $this->renderer();
 
         self::assertNotNull($this->selectTrack($renderer, 0));
         self::assertNotNull($this->selectTrack($renderer, 1));
@@ -87,9 +88,9 @@ class ReelsSlideshowRendererTest extends TestCase
             $paths[] = '/images/social/gallery/' . $name;
         }
 
-        $renderer = new ReelsSlideshowRenderer($this->projectDir);
+        $renderer = $this->renderer();
         $method = new \ReflectionMethod($renderer, 'planSlides');
-        $result = $method->invoke($renderer, $paths);
+        $result = $method->invoke($renderer, $paths, 1);
 
         self::assertNotNull($result);
         self::assertEqualsWithDelta(($slideCount - 1) * 1.5 + 3.0, $result['duration'], 0.001);
@@ -98,6 +99,38 @@ class ReelsSlideshowRendererTest extends TestCase
         if ($slideCount > 1) {
             self::assertSame(1.5, $result['slides'][0]['seconds']);
         }
+        // Ни clean-фото, ни оверлей для этих фикстур не рендерились (нет GallerySlideRenderer::
+        // render() перед тестом) — деградация на сам baked-файл, без слоя UI.
+        foreach ($result['slides'] as $i => $slide) {
+            self::assertSame($paths[$i], '/images/social/gallery/' . basename($slide['file']));
+            self::assertNull($slide['overlay']);
+        }
+    }
+
+    /**
+     * Когда GallerySlideRenderer успел отрендерить чистый фото-слой и оверлей позиции (обычный
+     * путь для новых постов), planSlides() берёт ИХ, а не baked-файл со вжаренным UI — иначе
+     * счётчик/прогресс/текст зумились бы вместе с фото (дефект, который и чинит разделение
+     * слоёв).
+     */
+    public function testPlanSlidesPrefersCleanAndOverlayLayersWhenBothExist(): void
+    {
+        $dir = $this->projectDir . '/public_html/images/social/gallery';
+        @mkdir($dir, 0775, true);
+
+        $slideRenderer = new GallerySlideRenderer($this->projectDir, __DIR__ . '/../../../config/social/fonts/NotoSans.ttf');
+
+        file_put_contents($dir . '/p9-01.jpg', 'baked');
+        file_put_contents($this->projectDir . '/public_html' . $slideRenderer->reelsCleanPhotoPath(9, 1), 'clean');
+        file_put_contents($this->projectDir . '/public_html' . $slideRenderer->reelsOverlayPath(9, 1), 'overlay');
+
+        $renderer = new ReelsSlideshowRenderer($this->projectDir, $slideRenderer);
+        $method = new \ReflectionMethod($renderer, 'planSlides');
+        $result = $method->invoke($renderer, ['/images/social/gallery/p9-01.jpg'], 9);
+
+        self::assertNotNull($result);
+        self::assertStringEndsWith('p9-clean-01.jpg', $result['slides'][0]['file']);
+        self::assertStringEndsWith('p9-ovl-01.png', $result['slides'][0]['overlay']);
     }
 
     /** @return iterable<string, array{int}> */
@@ -111,7 +144,7 @@ class ReelsSlideshowRendererTest extends TestCase
     public function testEmptyLibraryFallsBackToNull(): void
     {
         // Каталог существует, но пуст.
-        $renderer = new ReelsSlideshowRenderer($this->projectDir);
+        $renderer = $this->renderer();
 
         self::assertNull($this->selectTrack($renderer, 7));
     }
@@ -120,9 +153,16 @@ class ReelsSlideshowRendererTest extends TestCase
     {
         $this->rmrf($this->projectDir . '/config/social/audio');
 
-        $renderer = new ReelsSlideshowRenderer($this->projectDir);
+        $renderer = $this->renderer();
 
         self::assertNull($this->selectTrack($renderer, 7));
+    }
+
+    private function renderer(): ReelsSlideshowRenderer
+    {
+        $fontPath = __DIR__ . '/../../../config/social/fonts/NotoSans.ttf';
+
+        return new ReelsSlideshowRenderer($this->projectDir, new GallerySlideRenderer($this->projectDir, $fontPath));
     }
 
     private function selectTrack(ReelsSlideshowRenderer $renderer, int $postId): ?string

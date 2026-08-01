@@ -109,8 +109,11 @@ class GallerySlideRenderer
         $photoShift = $logoFirst ? 1 : 0;
         foreach ($sources as $i => $source) {
             $name = sprintf('p%d-%02d.jpg', $postId, $i + 1);
-            if ($this->normalize($this->projectDir . '/public_html' . $source, $dir . '/' . $name, $i + 1 + $photoShift, $total)) {
+            $position = $i + 1 + $photoShift;
+            $srcAbs = $this->projectDir . '/public_html' . $source;
+            if ($this->normalize($srcAbs, $dir . '/' . $name, $position, $total)) {
                 $slides[] = $this->publicDir() . '/' . $name;
+                $this->renderReelsCleanLayer($postId, $dir, $position, fn (): ?\GdImage => $this->composePhotoCanvas($srcAbs));
             }
         }
 
@@ -125,13 +128,16 @@ class GallerySlideRenderer
             // то есть при наличии сценария на нём заведомо будет надпись. Плашка поверх обычной
             // раскладки накрыла бы сам логотип, поэтому такой слайд рисуется компактным:
             // логотип выше и меньше, нижняя треть свободна под текст.
-            if ($this->logoSlide($brand, $dir . '/' . $logoName, $logoFirst ? 1 : $total, $total, $script !== null)) {
+            $logoPosition = $logoFirst ? 1 : $total;
+            if ($this->logoSlide($brand, $dir . '/' . $logoName, $logoPosition, $total, $script !== null)) {
                 $logoPath = $this->publicDir() . '/' . $logoName;
                 if ($logoFirst) {
                     array_unshift($slides, $logoPath);
                 } else {
                     $slides[] = $logoPath;
                 }
+                $compact = $script !== null;
+                $this->renderReelsCleanLayer($postId, $dir, $logoPosition, fn (): ?\GdImage => $this->composeLogoCard($brand, $compact));
             }
         }
 
@@ -140,7 +146,27 @@ class GallerySlideRenderer
         // средний / последний кадр в обеих ветках A/B одинаково — независимо от того, куда попал
         // логотип и удалось ли его вообще отрисовать (раньше при отсутствующем логотипе ветка
         // logo_first оставалась совсем без хука).
-        return $script !== null ? $this->applyScript($postId, $dir, $slides, $script) : $slides;
+        $finalTotal = count($slides);
+        $overlays = $script !== null ? $this->scriptOverlays($finalTotal, $script) : [];
+
+        // Reels-оверлей строится для КАЖДОЙ позиции (не только тех, что попали в $overlays):
+        // счётчик и полоса прогресса нужны на любом кадре, текстовая плашка — только там, где
+        // её назначил scriptOverlays(). Один проход на позицию — одна точка идемпотентности
+        // (is_file внутри buildReelsOverlay), поэтому повторный рендер не подрисовывает текст
+        // поверх уже готового PNG.
+        for ($idx = 0; $idx < $finalTotal; $idx++) {
+            $this->buildReelsOverlay($postId, $dir, $idx + 1, $finalTotal, $overlays[$idx][1] ?? null);
+        }
+
+        if ($overlays === []) {
+            return $slides;
+        }
+
+        foreach ($overlays as $idx => [$suffix, $draw]) {
+            $slides[$idx] = $this->overlay($postId, $dir, $slides[$idx], $suffix, $draw);
+        }
+
+        return $slides;
     }
 
     public function publicDir(): string
@@ -162,14 +188,55 @@ class GallerySlideRenderer
         return is_file($this->projectDir . '/public_html' . $public) ? $public : null;
     }
 
+    /**
+     * Чистый фото/лого-слой Reels для позиции $position в ИТОГОВОЙ последовательности слайдов
+     * (1-based, та же нумерация, что у счётчика «N/M» — не индекс исходного фото: логотип и
+     * ветка A/B сдвигают её). Без счётчика, без полосы прогресса, без текстовой плашки —
+     * ffmpeg зумит только этот файл, поэтому UI под зумом не дрожит и не увеличивается.
+     */
+    public function reelsCleanPhotoPath(int $postId, int $position): string
+    {
+        return sprintf('%s/p%d-clean-%02d.jpg', $this->publicDir(), $postId, $position);
+    }
+
+    /**
+     * Статичный UI-оверлей той же позиции: прозрачный PNG со счётчиком, полосой прогресса и
+     * (если scriptOverlays() решил, что на этой позиции есть текст сценария) плашкой хука/бита/
+     * развязки. ffmpeg накладывает его НЕПОДВИЖНО поверх зумящегося reelsCleanPhotoPath().
+     */
+    public function reelsOverlayPath(int $postId, int $position): string
+    {
+        return sprintf('%s/p%d-ovl-%02d.png', $this->publicDir(), $postId, $position);
+    }
+
     /** Вписать изображение в холст 1080×1350 на белом поле + счётчик слайдов. */
     private function normalize(string $srcAbs, string $dstAbs, int $index, int $total): bool
     {
         if (is_file($dstAbs)) {
             return true;
         }
-        if (!is_file($srcAbs)) {
+
+        $canvas = $this->composePhotoCanvas($srcAbs);
+        if ($canvas === null) {
             return false;
+        }
+        $this->drawCounter($canvas, $index, $total);
+
+        $ok = imagejpeg($canvas, $dstAbs, 88);
+        imagedestroy($canvas);
+
+        return $ok;
+    }
+
+    /**
+     * Вписанное фото на белом поле БЕЗ счётчика — общая часть normalize() и чистого
+     * фото-слоя Reels (reelsCleanPhotoPath): один и тот же холст, разница только в том,
+     * рисуем ли поверх него счётчик перед сохранением.
+     */
+    private function composePhotoCanvas(string $srcAbs): ?\GdImage
+    {
+        if (!is_file($srcAbs)) {
+            return null;
         }
 
         // Формат определяем по содержимому, а не по расширению: в корпусе брендов .jpg
@@ -177,18 +244,14 @@ class GallerySlideRenderer
         $bytes = @file_get_contents($srcAbs);
         $src = $bytes !== false ? @imagecreatefromstring($bytes) : false;
         if ($src === false) {
-            return false;
+            return null;
         }
 
         $canvas = $this->canvas();
         $this->drawContained($canvas, $src, 0, 0, self::WIDTH, self::HEIGHT);
         imagedestroy($src);
-        $this->drawCounter($canvas, $index, $total);
 
-        $ok = imagejpeg($canvas, $dstAbs, 88);
-        imagedestroy($canvas);
-
-        return $ok;
+        return $canvas;
     }
 
     /**
@@ -203,16 +266,36 @@ class GallerySlideRenderer
             return true;
         }
 
+        $canvas = $this->composeLogoCard($brand, $compact);
+        if ($canvas === null) {
+            return false;
+        }
+
+        $this->drawCounter($canvas, $index, $total);
+
+        $ok = imagejpeg($canvas, $dstAbs, 90);
+        imagedestroy($canvas);
+
+        return $ok;
+    }
+
+    /**
+     * Логотип + название/футер на холсте БЕЗ счётчика — общая часть logoSlide() и чистого
+     * лого-слоя Reels (reelsCleanPhotoPath для позиции логотипа): один и тот же холст,
+     * разница только в счётчике, который дорисовывается уже поверх.
+     */
+    private function composeLogoCard(Brand $brand, bool $compact): ?\GdImage
+    {
         $logo = $brand->getLogo();
         if ($logo === null || trim($logo) === '') {
-            return false;
+            return null;
         }
 
         $logoAbs = $this->projectDir . '/public_html/images/logos/' . $logo;
         $bytes = is_file($logoAbs) ? @file_get_contents($logoAbs) : false;
         $src = $bytes !== false ? @imagecreatefromstring($bytes) : false;
         if ($src === false) {
-            return false;
+            return null;
         }
 
         // Фон холста = фон самого логотипа (угловой пиксель): часть логотипов в корпусе —
@@ -252,12 +335,7 @@ class GallerySlideRenderer
             $this->centeredText($canvas, 'WEARBASE · #ПрямойБренд', self::FOOTER_FONT_SIZE, $this->bottomLimitY(), $muted);
         }
 
-        $this->drawCounter($canvas, $index, $total);
-
-        $ok = imagejpeg($canvas, $dstAbs, 90);
-        imagedestroy($canvas);
-
-        return $ok;
+        return $canvas;
     }
 
     /**
@@ -271,18 +349,19 @@ class GallerySlideRenderer
      * перезаписывает более раннее назначение той же позиции): это единственный кадр с именем
      * бренда и просьбой сохранить, отдавать его под хук нельзя.
      *
-     * @param list<string> $slides
+     * Общая раскладка для ДВУХ потребителей в render(): карусельных копий слайдов (p{id}-h1.jpg
+     * и т.п., рисует сам текст поверх фото) и Reels-оверлеев той же позиции (p{id}-ovl-NN.png,
+     * тот же $draw, но на прозрачном холсте) — геометрия должна быть посчитана ровно один раз,
+     * иначе плашка в Reels рискует разъехаться с плашкой в карусели.
      *
-     * @return list<string>
+     * @return array<int, array{0:string,1:\Closure(\GdImage):void}> индекс кадра (0-based) => [суффикс, рисовалка]
      */
-    private function applyScript(int $postId, string $dir, array $slides, SlideScript $script): array
+    private function scriptOverlays(int $total, SlideScript $script): array
     {
-        $total = count($slides);
         if ($total < 1) {
-            return $slides;
+            return [];
         }
 
-        /** @var array<int, array{0:string,1:\Closure}> $overlays индекс кадра => [суффикс, рисовалка] */
         $overlays = [];
 
         $overlays[0] = [self::SUFFIX_HOOK_A, fn (\GdImage $c) => $this->drawBigLineBand($c, $script->hookA, null)];
@@ -302,11 +381,7 @@ class GallerySlideRenderer
 
         $overlays[$total - 1] = [self::SUFFIX_FINALE, fn (\GdImage $c) => $this->drawFinaleBand($c, $script)];
 
-        foreach ($overlays as $idx => [$suffix, $draw]) {
-            $slides[$idx] = $this->overlay($postId, $dir, $slides[$idx], $suffix, $draw);
-        }
-
-        return $slides;
+        return $overlays;
     }
 
     /**
@@ -343,6 +418,68 @@ class GallerySlideRenderer
         imagedestroy($canvas);
 
         return $ok ? $public : $slidePublic;
+    }
+
+    /**
+     * Чистый фото/лого-слой Reels позиции $position (reelsCleanPhotoPath) — тот же холст, что
+     * normalize()/logoSlide() строят ДО счётчика, но отдельным файлом: карусельный слайд с
+     * счётчиком/прогрессом остаётся как есть, ffmpeg зумит только этот файл.
+     *
+     * @param \Closure():?\GdImage $compose строит холст с нуля (декодирует исходник заново) —
+     *        вызывается только если файла ещё нет, поэтому повторный рендер ничего не декодирует
+     */
+    private function renderReelsCleanLayer(int $postId, string $dir, int $position, \Closure $compose): void
+    {
+        $dstAbs = $dir . '/' . basename($this->reelsCleanPhotoPath($postId, $position));
+        if (is_file($dstAbs)) {
+            return;
+        }
+
+        $canvas = $compose();
+        if ($canvas === null) {
+            return;
+        }
+
+        imagejpeg($canvas, $dstAbs, 88);
+        imagedestroy($canvas);
+    }
+
+    /**
+     * Reels-оверлей позиции $position (reelsOverlayPath) — прозрачный PNG со счётчиком,
+     * полосой прогресса и, если scriptOverlays() назначил этой позиции текст, той же плашкой.
+     * Один проход, одна идемпотентность (is_file на PNG): повторный рендер не подрисовывает
+     * плашку поверх уже готового файла.
+     *
+     * @param ?\Closure(\GdImage):void $draw
+     */
+    private function buildReelsOverlay(int $postId, string $dir, int $position, int $total, ?\Closure $draw): void
+    {
+        $dstAbs = $dir . '/' . basename($this->reelsOverlayPath($postId, $position));
+        if (is_file($dstAbs) || !is_file($this->fontPath)) {
+            return;
+        }
+
+        $canvas = $this->transparentCanvas();
+        $this->drawCounter($canvas, $position, $total);
+        if ($draw !== null) {
+            $draw($canvas);
+        }
+
+        imagepng($canvas, $dstAbs);
+        imagedestroy($canvas);
+    }
+
+    /** Прозрачный холст 1080×1350 под Reels-оверлей — та же геометрия, что у слайда. */
+    private function transparentCanvas(): \GdImage
+    {
+        $canvas = imagecreatetruecolor(self::WIDTH, self::HEIGHT);
+        imagesavealpha($canvas, true);
+        imagealphablending($canvas, false);
+        $transparent = imagecolorallocatealpha($canvas, 0, 0, 0, 127);
+        imagefilledrectangle($canvas, 0, 0, self::WIDTH - 1, self::HEIGHT - 1, $transparent);
+        imagealphablending($canvas, true);
+
+        return $canvas;
     }
 
     /**

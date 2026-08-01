@@ -124,6 +124,51 @@ class GallerySlideRendererTest extends TestCase
         self::assertNotSame($cover, $slides[0], 'Обложка не должна быть кадром с надписью');
     }
 
+    /**
+     * Reels зумит фото, но не UI: для каждой позиции render() обязан отрендерить ДВА
+     * дополнительных файла — чистое фото/лого без счётчика/прогресса/текста
+     * (reelsCleanPhotoPath) и прозрачный оверлей с ними же (reelsOverlayPath). Позиция 1
+     * (hookA) несёт текстовую плашку, позиция 3 — чистый кадр без плашки (только счётчик и
+     * прогресс) — тот же расклад, что и в testScriptFramesLandOnExpectedPositions.
+     */
+    #[DataProvider('variants')]
+    public function testReelsLayersSeparatePhotoFromStaticUi(int $postId, bool $logoFirst): void
+    {
+        $sources = [];
+        foreach (range(1, 5) as $i) {
+            $this->makeImage("/public_html/images/brands/s{$i}.jpg", 900, 1100);
+            $sources[] = "/images/brands/s{$i}.jpg";
+        }
+        $this->makeImage('/public_html/images/logos/logo.jpg', 400, 200);
+
+        $renderer = $this->renderer();
+        $slides = $renderer->render($this->post($postId), $sources, $logoFirst, $this->script());
+        self::assertCount(6, $slides);
+
+        for ($position = 1; $position <= 6; $position++) {
+            $cleanAbs = $this->projectDir . '/public_html' . $renderer->reelsCleanPhotoPath($postId, $position);
+            $overlayAbs = $this->projectDir . '/public_html' . $renderer->reelsOverlayPath($postId, $position);
+
+            self::assertFileExists($cleanAbs, "clean-слой позиции {$position}");
+            self::assertFileExists($overlayAbs, "оверлей позиции {$position}");
+
+            $cleanSize = getimagesize($cleanAbs);
+            self::assertSame([GallerySlideRenderer::WIDTH, GallerySlideRenderer::HEIGHT], [$cleanSize[0], $cleanSize[1]], "размер clean-слоя {$position}");
+
+            $overlay = imagecreatefrompng($overlayAbs);
+            self::assertNotFalse($overlay, "оверлей {$position} должен быть валидным PNG");
+            self::assertSame(GallerySlideRenderer::WIDTH, imagesx($overlay));
+            self::assertSame(GallerySlideRenderer::HEIGHT, imagesy($overlay));
+            imagedestroy($overlay);
+        }
+
+        // Позиция 1 (hookA) несёт текстовую плашку — её оверлей заметно тяжелее позиции 3
+        // (чистый кадр без плашки, только счётчик/прогресс).
+        $overlayWithText = filesize($this->projectDir . '/public_html' . $renderer->reelsOverlayPath($postId, 1));
+        $overlayCounterOnly = filesize($this->projectDir . '/public_html' . $renderer->reelsOverlayPath($postId, 3));
+        self::assertGreaterThan($overlayCounterOnly, $overlayWithText, 'оверлей с текстовой плашкой должен быть тяжелее чистого счётчика');
+    }
+
     /** @return iterable<string, array{int, bool}> */
     public static function variants(): iterable
     {
