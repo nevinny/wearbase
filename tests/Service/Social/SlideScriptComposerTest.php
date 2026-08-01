@@ -17,11 +17,13 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Лестница хуков v3 (H1 ушедший → H2 город → H3 факты → H4 общий), биты-факты (grounded LLM +
- * детерминированный «добор») и development-развязка. Ядро проверок: правильная ступень
- * выигрывает, дедуп/грaунdинг реально выбрасывают невалидные кандидаты, а НИ ОДНА константная
- * строка не переполняет пиксельный бюджет плашки (SlideTextBudget) — иначе она молча ломает ВСЕ
- * посты сразу, а не один конкретный бренд.
+ * v4 «ФАКТ ВПЕРЁД»: H1 (ушедший бренд, не тронут) → бинарный выбор F1 (grounded LLM-факт ведёт
+ * хук) / F2 (фактов нет — хук фиксирован на комиссии маркетплейса), детерминированный «добор»
+ * (год/категории/материал) и развязка с именем. Ядро проверок: правильная ветка выигрывает,
+ * ужесточённый гейт (латиница-обрывки/анти-слоганы/производственные claim'ы без глагола)
+ * реально выбрасывает невалидные кандидаты, а НИ ОДНА константная строка не переполняет
+ * пиксельный бюджет плашки (SlideTextBudget) — иначе она молча ломает ВСЕ посты сразу, а не
+ * один конкретный бренд.
  */
 class SlideScriptComposerTest extends TestCase
 {
@@ -48,8 +50,8 @@ YAML;
         self::assertSame('h1.departed|b.det2|c.save', $script->scriptKey);
     }
 
-    /** Имя ушедшего не влезает в плашку → лестница опускается на H2 (город доступен). */
-    public function testDepartedNameTooLongFallsBackToCity(): void
+    /** Имя ушедшего не влезает в плашку → H1 пропускается, дальше — бинарная ветка F1/F2. */
+    public function testDepartedNameTooLongFallsBackToFactBranch(): void
     {
         $yaml = <<<'YAML'
 -
@@ -60,32 +62,12 @@ YAML;
         $script = $this->composer(departedYaml: $yaml)
             ->compose($this->brand(slug: 'our-brand', city: 'Пермь'), totalSlides: 7);
 
-        self::assertSame('Угадай город.', $script->hookA);
-        self::assertStringStartsWith('h2.city|', $script->scriptKey);
+        // Нет RAG-фактов у этого бренда → F2 (город больше не выбирает отдельную ступень хука).
+        self::assertSame('Маркетплейс: до 67%.', $script->hookA);
+        self::assertStringStartsWith('f2.fee|', $script->scriptKey);
     }
 
-    public function testCityStageWinsWhenNoDepartedMatch(): void
-    {
-        $script = $this->composer()->compose($this->brand(city: 'Пермь'), totalSlides: 7);
-
-        self::assertSame('Угадай город.', $script->hookA);
-        self::assertSame('Скажу в конце.', $script->hookB);
-        self::assertSame('Пермь', $script->finaleMeta);
-        self::assertStringStartsWith('h2.city|', $script->scriptKey);
-    }
-
-    /** Москва и Санкт-Петербург — угадывать нечего, лестница уходит ниже. */
-    public function testMoscowAndSpbDoNotTriggerCityStage(): void
-    {
-        foreach (['Москва', 'Санкт-Петербург'] as $city) {
-            $script = $this->composer()->compose($this->brand(city: $city), totalSlides: 4); // budget=0
-            self::assertSame('Имя — в конце.', $script->hookA, $city);
-            self::assertSame('Просто посмотри.', $script->hookB, $city);
-            self::assertSame('h4.generic|b.none|c.save', $script->scriptKey, $city);
-        }
-    }
-
-    public function testFactsStageWinsWithGroundedBits(): void
+    public function testRagBranchWinsWithGroundedFacts(): void
     {
         $context = 'Бренд начинали для себя в 2015 году. Первый цех — обычный гараж. '
             . 'Ткань — только футер. Название — фамилия основателя.';
@@ -94,28 +76,38 @@ YAML;
         $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)
             ->compose($this->brand(), totalSlides: 7); // budget=2
 
-        self::assertSame('Имя — в конце.', $script->hookA);
-        self::assertSame('Сначала — два факта.', $script->hookB);
-        self::assertCount(2, $script->bits);
+        // Лучший (первый hookA-годный) факт ведёт хук, связка с развязкой фиксирована.
+        self::assertSame('Начинали для себя.', $script->hookA);
+        self::assertSame('Чей — в конце.', $script->hookB);
+        self::assertSame(['Первый цех — гараж.', 'Название — фамилия.'], $script->bits);
         // «Основан в 1990.» — год НЕ упомянут в выдержках (там 2015) → выброшен без ретрая.
         self::assertNotContains('Основан в 1990.', $script->bits);
-        self::assertStringStartsWith('h3.facts|b.rag2|c.save', $script->scriptKey);
+        self::assertStringStartsWith('f1.rag|b.rag2|c.save', $script->scriptKey);
     }
 
-    public function testGenericStageIsUltimateFallback(): void
+    public function testFeeBranchIsUltimateFallbackWithNoFacts(): void
     {
-        $script = $this->composer()->compose($this->brand(), totalSlides: 4); // budget=0, нет города/departed/битов
+        $script = $this->composer()->compose($this->brand(), totalSlides: 4); // нет RAG/года/категорий/материала
 
-        self::assertSame('Имя — в конце.', $script->hookA);
-        self::assertSame('Просто посмотри.', $script->hookB);
+        // Длинная формулировка (25 знаков) не влезает в пиксельный бюджет хук-плашки — короткая.
+        self::assertSame('Маркетплейс: до 67%.', $script->hookA);
+        self::assertSame('У этого бренда — 0%.', $script->hookB);
         self::assertSame([], $script->bits);
-        self::assertSame('h4.generic|b.none|c.save', $script->scriptKey);
+        self::assertSame('f2.fee|b.none|c.save', $script->scriptKey);
+    }
+
+    /** Комиссия уже сказана в хуке F2 — на слайдах-битах её больше не повторяем (в отличие от H1). */
+    public function testFeeBranchNeverRepeatsMarketplacePairAsBits(): void
+    {
+        $script = $this->composer()->compose($this->brand(), totalSlides: 7); // budget=2, F2
+
+        self::assertStringStartsWith('f2.fee|', $script->scriptKey);
+        self::assertSame([], $script->bits);
     }
 
     /**
      * Цифра, которой нет в выдержках (и не год основания) — кандидат выброшен целиком (не
-     * доходит до финального списка, даже если пустой бюджет добирается детерминированным
-     * фолбэком — здесь маркетплейс-парой, потому что у бренда нет ни года, ни категорий).
+     * доходит до финального списка).
      */
     public function testUngroundedNumberRejectsCandidate(): void
     {
@@ -126,19 +118,23 @@ YAML;
             ->compose($this->brand(), totalSlides: 7);
 
         self::assertNotContains('Продано 5000 штук.', $script->bits);
+        self::assertNotSame('Продано 5000 штук.', $script->hookA);
     }
 
     /** Строка из одних общих слов каталога — не факт, отбраковывается как филлер. */
     public function testFillerLineIsRejected(): void
     {
-        $context = 'Компания продаёт одежду с 2015 года. Первый цех — гараж.';
-        $llmOutput = "Это бренд одежды.\nПервый цех — гараж.";
+        $context = 'Компания продаёт одежду с 2015 года. Первый цех — гараж. Ткань — только футер.';
+        $llmOutput = "Это бренд одежды.\nПервый цех — гараж.\nТкань — только футер.";
 
         $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)
             ->compose($this->brand(), totalSlides: 7);
 
+        self::assertNotSame('Это бренд одежды.', $script->hookA);
         self::assertNotContains('Это бренд одежды.', $script->bits);
-        self::assertContains('Первый цех — гараж.', $script->bits);
+        // Оставшиеся два факта реально факты — один стал хуком (F1), второй битом.
+        self::assertSame('Первый цех — гараж.', $script->hookA);
+        self::assertSame(['Ткань — только футер.'], $script->bits);
     }
 
     /** Два похожих факта (один и тот же корневой смысл) — второй дедупится. */
@@ -150,31 +146,37 @@ YAML;
         $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)
             ->compose($this->brand(), totalSlides: 9); // budget=3, но дублей быть не должно
 
-        $tkanLines = array_filter($script->bits, static fn (string $b) => str_starts_with($b, 'Ткань'));
+        $tkanLines = array_filter(
+            [$script->hookA, ...$script->bits],
+            static fn (string $b) => str_starts_with($b, 'Ткань'),
+        );
         self::assertCount(1, $tkanLines, 'Обе строки про ткань делят один дедуп-ключ — выжить должна одна');
     }
 
-    /** Бит, чей дедуп-ключ совпал с уже выбранным хуком, выбрасывается — идёт следующий фолбэк. */
+    /** Бит, чей дедуп-ключ совпал с уже выбранным хуком H1, выбрасывается — идёт следующий фолбэк. */
     public function testBitCollidingWithHookKeyIsDropped(): void
     {
-        $script = $this->composer(categories: ['угадайка', 'футболки'], materials: ['хлопок'])
-            ->compose($this->brand(city: 'Пермь'), totalSlides: 7); // H2: hookA='Угадай город.' → ключ 'угада'
+        $yaml = <<<'YAML'
+-
+  departed: "Вместе"
+  alternatives: ["our-brand"]
+YAML;
 
-        self::assertSame('Угадай город.', $script->hookA);
-        // «Угадайка, футболки.» делит 5-префикс с «Угадай» → отброшен целиком, несмотря на валидность.
-        self::assertNotContains('Угадайка, футболки.', $script->bits);
+        $script = $this->composer(departedYaml: $yaml, categories: ['вместе', 'футболки'], materials: ['хлопок'])
+            ->compose($this->brand(slug: 'our-brand'), totalSlides: 7); // H1: hookA='Вместо Вместе?' → ключ 'вмест'
+
+        self::assertSame('Вместо Вместе?', $script->hookA);
+        // «Вместе, футболки.» делит 5-префикс с «Вместо» → отброшен целиком, несмотря на валидность.
+        self::assertNotContains('Вместе, футболки.', $script->bits);
         self::assertContains('Ткань — хлопок.', $script->bits);
     }
 
-    public function testFoundingYearBitUsedAsDeterministicFallback(): void
+    public function testFoundingYearBitUsedAsDeterministicFallbackInFeeBranch(): void
     {
-        $script = $this->composer()->compose($this->brand(foundingYear: '1998'), totalSlides: 7); // budget=2
+        $script = $this->composer()->compose($this->brand(foundingYear: '1998'), totalSlides: 7); // budget=2, F2
 
-        // Единственный фолбэк-бит: остаётся 1 свободный слот — пары маркетплейса не бывает.
         self::assertSame(['Основан в 1998.'], $script->bits);
-        // ≥1 бита (пусть и детерминированного) уже переводит лестницу на H3, а не только RAG-биты.
-        self::assertSame('h3.facts|b.det1|c.save', $script->scriptKey);
-        self::assertSame('Сначала — один факт.', $script->hookB);
+        self::assertSame('f2.fee|b.det1|c.save', $script->scriptKey);
     }
 
     public function testCategoriesBitPacksGreedilyWithinCharBudget(): void
@@ -194,12 +196,19 @@ YAML;
         self::assertSame(['Ткань — хлопок.'], $script->bits);
     }
 
-    public function testMarketplacePairAddedOnlyWhenTwoSlotsRemain(): void
+    /** Пара про комиссию — только в H1 (developer-хук не про неё), и только целиком, не половиной. */
+    public function testMarketplacePairAddedOnlyWhenTwoSlotsRemainInDepartedBranch(): void
     {
-        $withTwoSlots = $this->composer()->compose($this->brand(), totalSlides: 7); // budget=2
+        $yaml = <<<'YAML'
+-
+  departed: "Zara"
+  alternatives: ["our-brand"]
+YAML;
+
+        $withTwoSlots = $this->composer(departedYaml: $yaml)->compose($this->brand(slug: 'our-brand'), totalSlides: 7); // budget=2
         self::assertSame(['Маркетплейс — 30–67%.', 'Мы — 0%.'], $withTwoSlots->bits);
 
-        $withOneSlot = $this->composer()->compose($this->brand(), totalSlides: 5); // budget=1
+        $withOneSlot = $this->composer(departedYaml: $yaml)->compose($this->brand(slug: 'our-brand'), totalSlides: 5); // budget=1
         self::assertSame([], $withOneSlot->bits, 'Пара маркетплейса не бывает половинчатой');
     }
 
@@ -208,7 +217,7 @@ YAML;
         $script = $this->composer(categories: ['брюки', 'футболки', 'платья'])
             ->compose($this->brand(city: 'Пермь'), totalSlides: 4);
 
-        self::assertSame('Пермь · брюки, футболки', $script->finaleMeta);
+        self::assertSame('Пермь · брюки и футболки', $script->finaleMeta);
         self::assertLessThanOrEqual(SlideScript::FINALE_META_MAX_CHARS, mb_strlen($script->finaleMeta));
     }
 
@@ -216,7 +225,7 @@ YAML;
     {
         $script = $this->composer(categories: ['брюки', 'футболки'])->compose($this->brand(), totalSlides: 4);
 
-        self::assertSame('Брюки, футболки', $script->finaleMeta);
+        self::assertSame('Брюки и футболки', $script->finaleMeta);
     }
 
     public function testFinaleMetaUltimateFallbackWithoutAnyData(): void
@@ -224,6 +233,34 @@ YAML;
         $script = $this->composer()->compose($this->brand(), totalSlides: 4);
 
         self::assertSame('Российский бренд', $script->finaleMeta);
+    }
+
+    /**
+     * По ревью: «Стерлитамак · футболка» под роликом с десятком фото курток врёт про
+     * единственную вещь в ассортименте — одна категория хуже нуля, показываем только город.
+     */
+    public function testFinaleMetaOmitsCategoriesWhenOnlyOneKnown(): void
+    {
+        $script = $this->composer(categories: ['куртка'])->compose($this->brand(city: 'Уфа'), totalSlides: 4);
+
+        self::assertSame('Уфа', $script->finaleMeta);
+    }
+
+    /** Ед.ч. из brand_attribute («куртка», «футболка») переводится в мн.ч. по словарю — источник бага. */
+    public function testFinaleMetaPluralizesKnownSingularCategories(): void
+    {
+        $script = $this->composer(categories: ['куртка', 'футболка'])->compose($this->brand(city: 'Уфа'), totalSlides: 4);
+
+        self::assertSame('Уфа · куртки и футболки', $script->finaleMeta);
+    }
+
+    /** Неизвестное слово словарю пропускается, а не гадается — до следующей известной категории. */
+    public function testFinaleMetaSkipsUnknownCategoryWord(): void
+    {
+        $script = $this->composer(categories: ['неведомая штуковина', 'куртка', 'футболка'])
+            ->compose($this->brand(city: 'Уфа'), totalSlides: 4);
+
+        self::assertSame('Уфа · куртки и футболки', $script->finaleMeta);
     }
 
     public function testFinaleAskIsFixedSaveRequest(): void
@@ -241,7 +278,7 @@ YAML;
     }
 
     /**
-     * Повторный вызов на тех же данных обязан давать РОВНО тот же сценарий: в лестнице v3 нет
+     * Повторный вызов на тех же данных обязан давать РОВНО тот же сценарий: в v4 нет
      * seed/рандома — только данные бренда решают, а LLM здесь замокан детерминированно.
      */
     public function testComposeIsDeterministicForSameInput(): void
@@ -255,11 +292,114 @@ YAML;
         self::assertEquals($first, $second);
     }
 
+    // --- Ужесточённый гейт LLM-фактов (v4) --------------------------------------------------
+
+    /** Латинский обрывок ≤4 знаков, которого нет в выдержках дословно, — брак целиком. */
+    public function testShortLatinTokenMissingFromContextRejectsCandidateWholesale(): void
+    {
+        $context = 'Бренд начинали для себя. Есть узнаваемый стиль в коллекции.';
+        $llmOutput = "Свой стиль AM.\nНачинали для себя.";
+
+        $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)->compose($this->brand(), 7);
+
+        self::assertNotSame('Свой стиль AM.', $script->hookA);
+        self::assertNotContains('Свой стиль AM.', $script->bits);
+        self::assertSame('Начинали для себя.', $script->hookA);
+    }
+
+    /** Аббревиатура ≤3 букв — брак ДАЖЕ если дословно есть в выдержках (нечитаема за 1.5с). */
+    public function testShortLatinAbbreviationRejectedEvenWhenGrounded(): void
+    {
+        $context = 'Начинали для себя. Здесь работает SPB отдел.';
+        $llmOutput = "Тут есть SPB.\nНачинали для себя.";
+
+        $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)->compose($this->brand(), 7);
+
+        self::assertNotSame('Тут есть SPB.', $script->hookA);
+        self::assertNotContains('Тут есть SPB.', $script->bits);
+        self::assertSame('Начинали для себя.', $script->hookA);
+    }
+
+    /** Исключение: латинская аббревиатура — категория/материал ЭТОГО бренда — не бракуется. */
+    public function testShortLatinAbbreviationAllowedWhenItIsBrandsOwnCategory(): void
+    {
+        $context = 'Начинали для себя. Есть размер XL, пользуется спросом.';
+        $llmOutput = "Есть размер XL.\nНачинали для себя.";
+
+        $script = $this->composer(ragContext: $context, llmOutput: $llmOutput, categories: ['XL'])
+            ->compose($this->brand(), 7);
+
+        self::assertContains('Есть размер XL.', [$script->hookA, ...$script->bits]);
+    }
+
+    /** Анти-слоган: без цифры, без существительного бренда, начинается с предлога — брак. */
+    public function testAntiSloganWithoutDigitOrKnownNounIsRejected(): void
+    {
+        $context = 'Бренд начинали для себя. Для тех, кто ценит стиль и качество каждый день.';
+        $llmOutput = "Для тех кто ценит.\nНачинали для себя.";
+
+        $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)->compose($this->brand(), 7);
+
+        self::assertNotSame('Для тех кто ценит.', $script->hookA);
+        self::assertNotContains('Для тех кто ценит.', $script->bits);
+    }
+
+    /** Исключение анти-слогана: строка с цифрой не бракуется, даже начинаясь с предлога. */
+    public function testPrepositionLineWithDigitIsNotAntiSlogan(): void
+    {
+        $context = 'Бренд начинали для себя в 2015 году. Для 2015 года — необычно.';
+        $llmOutput = "Для 2015 года.\nНачинали для себя.";
+
+        $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)->compose($this->brand(), 7);
+
+        self::assertContains('Для 2015 года.', [$script->hookA, ...$script->bits]);
+    }
+
+    /** Исключение анти-слогана: упоминание известного существительного (город бренда) — не брак. */
+    public function testPrepositionLineWithKnownCityIsNotAntiSlogan(): void
+    {
+        $context = 'Бренд начинали для себя. Бренд родом из Новосибирска.';
+        $llmOutput = "Для Новосибирска.\nНачинали для себя.";
+
+        $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)
+            ->compose($this->brand(city: 'Новосибирск'), 7);
+
+        self::assertContains('Для Новосибирска.', [$script->hookA, ...$script->bits]);
+    }
+
+    /** Производственный claim без глагола («свой крой») требует того же 5-префиксного заземления. */
+    public function testProductionClaimWithoutVerbRequiresGrounding(): void
+    {
+        $context = 'Начинали для себя. Обычный стиль без затей.';
+        $llmOutput = "Свой крой.\nНачинали для себя.";
+
+        $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)->compose($this->brand(), 7);
+
+        self::assertNotSame('Свой крой.', $script->hookA);
+        self::assertNotContains('Свой крой.', $script->bits);
+    }
+
+    /**
+     * Топ-скор не обязан быть хуком: телеграфный обрывок («Есть цвет.») даже с более высоким
+     * скором (короче 16 знаков) не тянет на hookA (нет слова ≥6 букв и нет цифры) — хуком
+     * становится следующий по скору, ДОСТАТОЧНО «плотный» факт; обрывок остаётся битом.
+     */
+    public function testHookARequiresRicherCandidateThanTopScored(): void
+    {
+        $context = 'Начинали для себя. Есть яркий цвет в коллекции.';
+        $llmOutput = "Есть цвет.\nНачинали для себя.";
+
+        $script = $this->composer(ragContext: $context, llmOutput: $llmOutput)->compose($this->brand(), 7);
+
+        self::assertSame('Начинали для себя.', $script->hookA);
+        self::assertContains('Есть цвет.', $script->bits);
+    }
+
     /**
      * ОБЯЗАТЕЛЬНЫЙ тест пиксельного бюджета: каждая надпись, которую композер реально выдал в
-     * репрезентативном наборе сценариев (все ступени лестницы, все фолбэки битов), обязана
-     * влезать в плашку (imagettfbbox ≤ 952px на кегле рендера) — иначе одна правка текста молча
-     * ломает надписи у ВСЕХ брендов сразу.
+     * репрезентативном наборе сценариев (H1/F1/F2, все фолбэки битов, развязка с категориями),
+     * обязана влезать в плашку (imagettfbbox ≤ 952px на кегле рендера) — иначе одна правка
+     * текста молча ломает надписи у ВСЕХ брендов сразу.
      */
     public function testEveryProducedLineFitsPixelBudget(): void
     {
@@ -268,18 +408,22 @@ YAML;
         $askFontSize = 40;
 
         $scripts = [
+            // H1 — ушедший бренд + маркетплейс-пара как фолбэк битов.
             $this->composer(departedYaml: "-\n  departed: \"Zara\"\n  alternatives: [\"our-brand\"]\n")
                 ->compose($this->brand(slug: 'our-brand'), 7),
-            $this->composer()->compose($this->brand(city: 'Пермь'), 7),
-            $this->composer()->compose($this->brand(city: 'Москва'), 7),
-            $this->composer(
-                ragContext: 'Бренд начинали для себя в 2015 году. Первый цех — гараж. Ткань — футер.',
-                llmOutput: "Начинали для себя.\nПервый цех — гараж.\nТкань — только футер.",
-            )->compose($this->brand(), 9),
+            // F2 — фактов нет вообще (короткая формулировка комиссии, без битов).
             $this->composer()->compose($this->brand(), 4),
+            // F2 — детерминированный добор: год / категории / материал.
+            $this->composer()->compose($this->brand(foundingYear: '1998'), 7),
             $this->composer(categories: ['брюки', 'футболки', 'платья'])->compose($this->brand(), 7),
             $this->composer(materials: ['хлопок'])->compose($this->brand(), 7),
-            $this->composer()->compose($this->brand(foundingYear: '1998'), 7),
+            // F1 — grounded RAG-факт ведёт хук.
+            $this->composer(
+                ragContext: 'Бренд начинали для себя в 2015 году. Первый цех — обычный гараж.',
+                llmOutput: "Начинали для себя.\nПервый цех — гараж.",
+            )->compose($this->brand(), 9),
+            // Развязка — город + 2 известные категории мн.ч.
+            $this->composer(categories: ['куртка', 'футболка'])->compose($this->brand(city: 'Уфа'), 4),
         ];
 
         foreach ($scripts as $script) {

@@ -2,6 +2,7 @@
 
 namespace App\Service\Social;
 
+use App\Entity\Brand;
 use App\Entity\SocialPost;
 use App\Service\Social\Source\CaptionSourceInterface;
 use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
@@ -15,8 +16,9 @@ use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
  */
 class CaptionGenerator
 {
-    /** Рубрики со сценарием слайдов v3 (SlideScriptComposer) — для них подпись получает
-     *  первую строку по ступени лестницы хуков (см. scriptPrefix()). */
+    /** Рубрики со сценарием слайдов (SlideScriptComposer) — для них подпись получает первую
+     *  строку из hookA (см. scriptPrefix()) и тело от источника не должно спойлерить развязку
+     *  (см. stripLeadingSpoiler()). */
     private const GALLERY_RUBRICS = ['brand_gallery', 'brand_reels'];
 
     /** @var array<string, CaptionSourceInterface> */
@@ -48,6 +50,9 @@ class CaptionGenerator
 
         $prefix = $this->scriptPrefix($post);
         if ($prefix !== null) {
+            // Reels показывает подпись ОДНОВРЕМЕННО с первым кадром — имя/город бренда в первых
+            // ~125 знаках подписи выдаёт развязку раньше кадра с ней.
+            $body = $this->stripLeadingSpoiler($body, $post->getBrand());
             $body = $prefix . "\n\n" . $body;
         }
 
@@ -59,10 +64,10 @@ class CaptionGenerator
     }
 
     /**
-     * Первая строка подписи галереи/Reels — по реализованной ступени лестницы хуков
-     * (SocialGenerateCommand считает сценарий ДО этого вызова, script_key/script_json на посте
-     * уже проставлены). Без города («без города — опустить префикс») строки h3/h4 остаются без
-     * ведущего «{Город}. ».
+     * Первая строка подписи галереи/Reels — hookA реализованного сценария (SocialGenerateCommand
+     * считает сценарий ДО этого вызова, script_key/script_json на посте уже проставлены) плюс
+     * призыв досмотреть: hookA сам факт (v4, «ФАКТ ВПЕРЁД») и ничего не спойлерит, поэтому не
+     * нужно ни парсить ступень отдельно, ни городить city-префикс.
      */
     private function scriptPrefix(SocialPost $post): ?string
     {
@@ -79,27 +84,58 @@ class CaptionGenerator
             return null;
         }
         $script = SlideScript::fromArray($data);
-
-        $stage = explode('|', $script->scriptKey, 2)[0];
-        if (str_starts_with($stage, 'h1.')) {
-            // Формат hookA ступени H1 — 'Вместо {ИмяУшедшего}?' (SlideScriptComposer). Парсим,
-            // а не переопределяем departed_brands.yaml заново — источник правды один.
-            if (preg_match('/^Вместо (.+)\?$/u', $script->hookA, $m) === 1) {
-                return 'Чем заменить ' . $m[1] . ' — ответ внутри.';
-            }
-
+        if ($script->hookA === '') {
             return null;
         }
 
-        $city = trim((string) ($post->getBrand()?->getCity() ?? ''));
-        $cityPrefix = $city !== '' ? $city . '. ' : '';
+        $tail = $post->getRubric() === 'brand_reels' ? ' Дальше — в ролике.' : ' Дальше — в карусели.';
 
-        return match (true) {
-            str_starts_with($stage, 'h2.') => $cityPrefix . 'Угадай город по вещам — ответ в конце.',
-            str_starts_with($stage, 'h3.') => $cityPrefix . 'Сначала факты, имя — в конце.',
-            str_starts_with($stage, 'h4.') => $cityPrefix . 'Просто посмотри.',
-            default => null,
-        };
+        return $script->hookA . $tail;
+    }
+
+    /**
+     * Если тело подписи от источника (LLM, FounderStoryCaptionSource/BrandDescriptionCaptionSource)
+     * начинается с упоминания имени бренда или города — переставляет это первое предложение в
+     * конец: развязка ролика/карусели называет бренд последним кадром, тело подписи не должно
+     * называть его первым. Тело из одного предложения переставлять некуда — оставляем как есть
+     * (редкий случай, источники пишут 2–4 предложения).
+     */
+    private function stripLeadingSpoiler(string $body, ?Brand $brand): string
+    {
+        $spoilers = array_values(array_filter([
+            trim((string) $brand?->getTitle()),
+            trim((string) $brand?->getCity()),
+        ], static fn (string $s): bool => $s !== ''));
+        if ($spoilers === [] || $body === '') {
+            return $body;
+        }
+
+        $parts = preg_split('/(?<=[.!?])\s+/u', $body, 2);
+        if (!isset($parts[1])) {
+            return $body;
+        }
+        [$firstSentence, $rest] = $parts;
+
+        foreach ($spoilers as $spoiler) {
+            if ($this->mentionsWord($firstSentence, $spoiler)) {
+                return trim($rest) . ' ' . trim($firstSentence);
+            }
+        }
+
+        return $body;
+    }
+
+    /**
+     * Русские падежи меняют окончание слова («Тверь» → «Твери», «Ромашка» → «Ромашкой») —
+     * сверяем по укороченному префиксу, а не по целому слову, иначе declension прячет спойлер
+     * от буквального substring-поиска.
+     */
+    private function mentionsWord(string $haystack, string $word): bool
+    {
+        $len = mb_strlen($word);
+        $needle = mb_substr($word, 0, min(5, max(3, $len - 1)));
+
+        return $needle !== '' && mb_stripos($haystack, $needle) !== false;
     }
 
     /**

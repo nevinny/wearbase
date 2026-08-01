@@ -19,7 +19,7 @@ namespace App\Service\Social;
  *    не текст (variant на вход compose() намеренно не подаётся).
  *
  * scriptKey фиксирует РЕАЛИЗОВАННУЮ ступень лестницы хуков + источник битов + версию
- * развязки (напр. 'h2.city|b.rag2|c.save') — по нему считается closed-loop (app:social:evaluate)
+ * развязки (напр. 'f1.rag|c.save') — по нему считается closed-loop (app:social:evaluate)
  * и решается held/scheduled (SocialGenerateCommand: биты из LLM → held на ручной просмотр).
  */
 final class SlideScript

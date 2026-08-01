@@ -79,10 +79,10 @@ class SocialGenerateCommand extends Command
 
             try {
                 // Сценарий слайдов считается ДО подписи: CaptionGenerator читает уже проставленные
-                // script_key/script_json, чтобы построить первую строку подписи по ступени лестницы
-                // хуков («{Город}. Угадай город...» и т.п.) — без этого пришлось бы либо гадать
-                // ступень заново в CaptionGenerator (риск разойтись с реальным сценарием), либо
-                // звать LLM за фактами дважды.
+                // script_key/script_json, чтобы построить первую строку подписи из hookA («факт
+                // вперёд» + «Дальше — в ролике/карусели.») — без этого пришлось бы либо пересчитывать
+                // hookA заново в CaptionGenerator (риск разойтись с реальным сценарием), либо звать
+                // LLM за фактами дважды.
                 $galleryScript = $this->prepareGalleryScript($post, $def);
 
                 $this->captions->compose($post, $def);
@@ -240,9 +240,11 @@ class SocialGenerateCommand extends Command
     }
 
     /**
-     * Биты из LLM (грамотный источник — 'rag'/'mix' в сегменте b.*) требуют ручного просмотра
-     * первой партии: детерминированные факты уже проверялись руками, сгенерированные моделью —
-     * нет, а провал прямо ведёт в паблик Instagram.
+     * Ручной просмотр первой партии, пока LLM-контент не проверен глазами хоть раз:
+     * - ветка f1.rag — САМ ХУК (hookA) сгенерирован моделью (v4, «факт вперёд»), не только биты;
+     * - биты 'rag'/'mix' в сегменте b.* (H1/departed-ветка может добрать grounded-битами) —
+     *   детерминированные факты уже проверялись руками, сгенерированные моделью — нет.
+     * Провал любого из двух ведёт прямо в паблик Instagram, поэтому проверяем оба независимо.
      */
     private function needsManualReview(?string $scriptKey): bool
     {
@@ -250,7 +252,13 @@ class SocialGenerateCommand extends Command
             return false;
         }
 
-        $bitsSegment = explode('|', $scriptKey)[1] ?? '';
+        $segments = explode('|', $scriptKey);
+        $stage = $segments[0] ?? '';
+        $bitsSegment = $segments[1] ?? '';
+
+        if (str_starts_with($stage, 'f1.rag')) {
+            return true;
+        }
 
         return str_starts_with($bitsSegment, 'b.rag') || str_starts_with($bitsSegment, 'b.mix');
     }

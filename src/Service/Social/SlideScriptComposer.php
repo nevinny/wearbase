@@ -13,28 +13,33 @@ use App\Service\LlmService;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Сценарий надписей поста-галереи v3 — лестница внимания на честных фактах бренда, не
- * comment-bait («пиши цифру» — Meta демоутит голосовалки, и это ничего не доказывает про
- * бренд). Собирает: hookA/hookB (кадры 1–2), 0..3 бита-факта (кадры 4,6,8…) и развязку
+ * Сценарий надписей поста-галереи v4 — «ФАКТ ВПЕРЁД»: хук сам обязан быть фактом (или самым
+ * сильным фактом о бренде, или платформенным фактом про комиссию маркетплейса), а не
+ * метазаходом-загадкой («Угадай город.», «Имя — в конце.») — те форматы владелец закрыл после
+ * ревью v3. Собирает: hookA/hookB (кадры 1–2), 0..2 бита-факта (кадры 4,6…) и развязку
  * (последний кадр: имя, «город · категории», просьба сохранить).
  *
- * ЛЕСТНИЦА ХУКОВ (верхняя доступная ступень выигрывает; данные бренда решают, а не рандом —
- * повторный рендер того же бренда обязан дать тот же хук, поэтому compose() без seed):
- *  H1 «ушедший бренд» — slug встречается в alternatives departed_brands.yaml;
- *  H2 «угадай город»  — city задан и это не Москва/СПб (там угадывать нечего);
- *  H3 «сначала факты» — есть ≥1 валидный бит;
- *  H4 «просто посмотри» — общий фолбэк.
+ * ВЕТКИ (H1 проверяется первой, дальше — бинарный выбор по наличию годного RAG-факта):
+ *  H1 «ушедший бренд» — slug встречается в alternatives departed_brands.yaml, хук не про сам
+ *      бренд, а про замену — остаётся отдельным независимо от RAG (не переименован в f-схему);
+ *  F1 «rag»  — есть ≥1 LLM-факт, прошедший ужесточённый гейт (см. ниже) И достаточно «плотный»
+ *      для хука (isHookAEligible) — hookA = лучший по скору такой факт, hookB фиксирован
+ *      («Чей — в конце.» — держит связку с развязкой: имя закрывает вопрос «чей»), биты —
+ *      следующие 1-2 факта по скору;
+ *  F2 «fee»  — фактов нет (или ни один не тянет на хук) — hookA/hookB фиксированы (платформенный
+ *      факт про комиссию маркетплейса), биты — только детерминированный добор год→категории→
+ *      материал, БЕЗ пары про маркетплейс на слайдах (комиссия уже сказана в хуке — повторять её
+ *      битом означает дублировать смысл на соседних кадрах).
  *
- * БИТЫ. Сначала grounded (LLM на выдержках BrandRagService, тот же гейт качества, что у
- * FounderStoryCaptionSource), затем детерминированный «добор»: год основания → категории →
- * материал → (только парой, только последними) платформенный факт про комиссию маркетплейса.
- * Каждый LLM-кандидат проходит цепочку guard-проверок (длина/пиксели/запрещённые
- * символы/AI-фразы/глитчи/цифры и слова только из выдержек/пустышки) — провал ЛЮБОЙ ступени
- * выбрасывает кандидата насовсем, без ретрая: подгонять текст под правила опаснее, чем
- * потерять один факт из восьми.
+ * БИТЫ. F1 — только grounded (LLM на выдержках BrandRagService, тот же гейт качества, что у
+ * FounderStoryCaptionSource). F2/H1-добор — детерминированный: год основания → категории →
+ * материал. Каждый LLM-кандидат проходит цепочку guard-проверок (длина/пиксели/запрещённые
+ * символы/AI-фразы/глитчи/цифры и слова только из выдержек/пустышки/короткая латиница/
+ * анти-слоган/производственные претензии) — провал ЛЮБОЙ ступени выбрасывает кандидата насовсем,
+ * без ретрая: подгонять текст под правила опаснее, чем потерять один факт из восьми.
  *
- * scriptKey фиксирует РЕАЛИЗОВАННУЮ ступень + источник битов, напр. 'h2.city|b.rag2|c.save' —
- * по нему SocialGenerateCommand решает held (LLM-биты — ручной просмотр первой партии) vs
+ * scriptKey фиксирует РЕАЛИЗОВАННУЮ ветку + источник битов, напр. 'f1.rag|b.rag2|c.save' —
+ * по нему SocialGenerateCommand решает held (F1 — ручной просмотр первой партии, см. doc там) vs
  * scheduled, и app:social:evaluate группирует closed-loop.
  */
 class SlideScriptComposer
@@ -42,19 +47,26 @@ class SlideScriptComposer
     private const HOOK_FONT_SIZE = 54;
 
     private const DEPARTED_HOOK_B = 'Но не копия.';
-    private const CITY_HOOK_A = 'Угадай город.';
-    private const CITY_HOOK_B = 'Скажу в конце.';
-    private const NAME_AT_END_HOOK_A = 'Имя — в конце.';
-    private const GENERIC_HOOK_B = 'Просто посмотри.';
-    private const FINALE_ASK = 'Сохрани, чтобы не искать.';
 
-    /** Мегаполисы, где «угадай город» не работает — угадывать нечего. */
-    private const NO_GUESS_CITIES = ['Москва', 'Санкт-Петербург'];
+    /** F1: связка с развязкой обязана сохраниться — имя бренда на последнем кадре отвечает «чей». */
+    private const RAG_HOOK_B = 'Чей — в конце.';
 
     /**
-     * B4+B5 — платформенный факт (проверяемый, PillarCaptionSource::PILLARS), но только как
-     * пара и только последними битами: разрозненно «мы — 0%» без пары про маркетплейс не несёт
-     * смысла.
+     * F2. Длинная формулировка (25 знаков) не влезает в пиксельный бюджет хук-плашки на кегле
+     * HOOK_FONT_SIZE (963px > 952px, см. testEveryProducedLineFitsPixelBudget) — feeHookA()
+     * проверяет это через SlideTextBudget и отдаёт короткую.
+     */
+    private const FEE_HOOK_A_LONG = 'Маркетплейс берёт до 67%.';
+    private const FEE_HOOK_A_SHORT = 'Маркетплейс: до 67%.';
+    private const FEE_HOOK_B = 'У этого бренда — 0%.';
+
+    private const FINALE_ASK = 'Сохрани, чтобы не искать.';
+
+    /**
+     * H1-фолбэк (см. composeBits()/deterministicBits() doc) — платформенный факт (проверяемый,
+     * PillarCaptionSource::PILLARS), но только как пара и только последними битами: разрозненно
+     * «мы — 0%» без пары про маркетплейс не несёт смысла. В F2 эта пара не используется — там
+     * комиссия уже в хуке.
      */
     private const MARKETPLACE_BIT = 'Маркетплейс — 30–67%.';
     private const OURS_BIT = 'Мы — 0%.';
@@ -72,10 +84,58 @@ class SlideScriptComposer
     ];
 
     /**
-     * Слова-корни непроверяемых претензий («шьют вручную», «эксклюзивно», «дешевле») —
-     * пропускаются только если тот же корень дословно есть в выдержках бренда.
+     * Категории мн.ч. для развязки (finaleMeta) — словарь построен по реальному распределению
+     * brand_attribute.category (SELECT value, COUNT(*) ... GROUP BY value, июль 2026): бо́льшая
+     * часть значений в БД уже во мн.ч. (identity-записи), но заметная часть — в ед.ч. («футболка»,
+     * «платье», «куртка» …) и именно они давали враньё вида «Стерлитамак · футболка» под роликом
+     * с десятком фото курток. Категория не из словаря — пропускается (finaleCategoriesText()), а
+     * не гадается по морфологии.
+     *
+     * @var array<string,string>
      */
-    private const CLAIM_PATTERN = '/(шьют|шьёт|шили|сшит\w*|ручн\w*|вручную|дешев\w*|дёшев\w*|лимит\w*|эксклюз\w*|лучш\w*|единствен\w*|только\s+у\s+нас)/iu';
+    private const CATEGORY_PLURAL = [
+        'брюки' => 'брюки', 'футболки' => 'футболки', 'платья' => 'платья',
+        'аксессуары' => 'аксессуары', 'шорты' => 'шорты', 'юбки' => 'юбки',
+        'рубашки' => 'рубашки', 'топы' => 'топы', 'сумки' => 'сумки',
+        'верхняя одежда' => 'верхняя одежда', 'костюмы' => 'костюмы', 'обувь' => 'обувь',
+        'джинсы' => 'джинсы', 'худи' => 'худи', 'куртки' => 'куртки', 'толстовки' => 'толстовки',
+        'жакеты' => 'жакеты', 'жилеты' => 'жилеты', 'пальто' => 'пальто',
+        'нижнее бельё' => 'нижнее бельё', 'одежда' => 'одежда', 'свитшоты' => 'свитшоты',
+        'лонгсливы' => 'лонгсливы', 'комбинезоны' => 'комбинезоны', 'блузы' => 'блузы',
+        'кардиганы' => 'кардиганы', 'штаны' => 'штаны', 'джемперы' => 'джемперы',
+        'кофты' => 'кофты', 'ботинки' => 'ботинки', 'кроссовки' => 'кроссовки',
+        'пиджаки' => 'пиджаки', 'майки' => 'майки', 'блузки' => 'блузки', 'туфли' => 'туфли',
+        'купальники' => 'купальники', 'сандалии' => 'сандалии', 'поло' => 'поло',
+        'рюкзаки' => 'рюкзаки', 'боди' => 'боди', 'кеды' => 'кеды', 'трикотаж' => 'трикотаж',
+        'свитеры' => 'свитеры', 'свитера' => 'свитера', 'пуховики' => 'пуховики',
+        'носки' => 'носки', 'сарафаны' => 'сарафаны', 'шапки' => 'шапки', 'сапоги' => 'сапоги',
+        'мистери боксы' => 'мистери боксы', 'босоножки' => 'босоножки', 'лоферы' => 'лоферы',
+        'шарфы' => 'шарфы', 'леггинсы' => 'леггинсы', 'женская одежда' => 'женская одежда',
+        'головные уборы' => 'головные уборы', 'водолазки' => 'водолазки',
+        'перчатки' => 'перчатки', 'балетки' => 'балетки', 'парфюмерия' => 'парфюмерия',
+        'бомберы' => 'бомберы', 'плащи' => 'плащи', 'кошельки' => 'кошельки',
+        'кепки' => 'кепки', 'ботильоны' => 'ботильоны', 'ветровки' => 'ветровки',
+        'пижамы' => 'пижамы', 'ремни' => 'ремни', 'трусы' => 'трусы', 'браслеты' => 'браслеты',
+        'сыворотки' => 'сыворотки', 'комплекты' => 'комплекты', 'маски' => 'маски',
+        'туники' => 'туники', 'серьги' => 'серьги', 'украшения' => 'украшения', 'сабо' => 'сабо',
+        'халаты' => 'халаты', 'джоггеры' => 'джоггеры',
+        // ед.ч. → мн.ч. — источник бага
+        'футболка' => 'футболки', 'платье' => 'платья', 'юбка' => 'юбки',
+        'рубашка' => 'рубашки', 'лонгслив' => 'лонгсливы', 'джемпер' => 'джемперы',
+        'куртка' => 'куртки', 'свитшот' => 'свитшоты', 'топ' => 'топы', 'костюм' => 'костюмы',
+        'блуза' => 'блузы',
+    ];
+
+    /**
+     * Слова-корни непроверяемых претензий («шьют вручную», «эксклюзивно», «дешевле», «свои
+     * лекала») — пропускаются только если тот же корень дословно есть в выдержках бренда.
+     * «цех(?!ов)» — «цех»/«цеха» ловим, «цехов» (обобщённая claim-конструкция без привязки к
+     * конкретному цеху бренда) — нет.
+     */
+    private const CLAIM_PATTERN = '/(шьют|шьёт|шили|сшит\w*|ручн\w*|вручную|дешев\w*|дёшев\w*|лимит\w*|эксклюз\w*|лучш\w*|единствен\w*|только\s+у\s+нас|лекал|крой|пошив|цех(?!ов)|производств)/iu';
+
+    /** Строка, начинающаяся с одного из этих предлогов, без цифры и без существительного бренда — слоган, см. isAntiSlogan(). */
+    private const ANTI_SLOGAN_START = '/^(Для|Во|Ради|К|На)\b/u';
 
     /** Общие слова каталога — строка из них одних не факт, а филлер (см. isFillerLine()). */
     private const FILLER_ROOTS = ['бренд', 'одежд', 'вещ', 'качеств', 'стил', 'мод', 'коллекц', 'магазин', 'покупател', 'клиент'];
@@ -99,72 +159,34 @@ class SlideScriptComposer
     public function compose(Brand $brand, int $totalSlides): SlideScript
     {
         $budget = SlideScript::maxBits($totalSlides);
-        $usedKeys = [];
-
-        $hookA = null;
-        $hookB = null;
-        $hookKey = null;
 
         $departed = $this->departedMatch($brand);
         $departedHookA = $departed !== null ? 'Вместо ' . $departed['departed'] . '?' : null;
         if ($departedHookA !== null && $this->fitsLine($departedHookA)) {
-            $hookA = $departedHookA;
-            $hookB = self::DEPARTED_HOOK_B;
-            $hookKey = 'h1.departed';
-        } elseif ($this->cityEligibleForGuess($brand)) {
-            $hookA = self::CITY_HOOK_A;
-            $hookB = self::CITY_HOOK_B;
-            $hookKey = 'h2.city';
+            return $this->composeDeparted($brand, $budget, $departedHookA);
         }
 
-        if ($hookA !== null && $hookB !== null) {
-            $usedKeys[$this->dedupKey($hookA)] = true;
-            $usedKeys[$this->dedupKey($hookB)] = true;
-        }
+        return $this->composeFactBranch($brand, $budget);
+    }
+
+    // --- H1: ушедший бренд ---------------------------------------------------------------
+
+    private function composeDeparted(Brand $brand, int $budget, string $hookA): SlideScript
+    {
+        $hookB = self::DEPARTED_HOOK_B;
+        $usedKeys = [$this->dedupKey($hookA) => true, $this->dedupKey($hookB) => true];
 
         ['bits' => $bits, 'ragCount' => $ragCount, 'detCount' => $detCount] = $this->composeBits($brand, $budget, $usedKeys);
 
-        if ($hookA === null) {
-            if ($bits !== []) {
-                $hookA = self::NAME_AT_END_HOOK_A;
-                $hookB = $this->factsHookB(count($bits));
-                $hookKey = 'h3.facts';
-            } else {
-                $hookA = self::NAME_AT_END_HOOK_A;
-                $hookB = self::GENERIC_HOOK_B;
-                $hookKey = 'h4.generic';
-            }
-        }
-
-        $scriptKey = sprintf('%s|b.%s|c.save', $hookKey, $this->bitsSourceKey($ragCount, $detCount, count($bits)));
-
         return new SlideScript(
             hookA: $hookA,
-            hookB: (string) $hookB,
+            hookB: $hookB,
             bits: $bits,
             finaleTitle: trim((string) $brand->getTitle()),
             finaleMeta: $this->finaleMeta($brand),
             finaleAsk: self::FINALE_ASK,
-            scriptKey: $scriptKey,
+            scriptKey: sprintf('h1.departed|b.%s|c.save', $this->bitsSourceKey($ragCount, $detCount, count($bits))),
         );
-    }
-
-    // --- Хук: лестница ------------------------------------------------------------------
-
-    private function factsHookB(int $count): string
-    {
-        return match (min(3, max(1, $count))) {
-            1 => 'Сначала — один факт.',
-            2 => 'Сначала — два факта.',
-            default => 'Сначала — три факта.',
-        };
-    }
-
-    private function cityEligibleForGuess(Brand $brand): bool
-    {
-        $city = trim((string) $brand->getCity());
-
-        return $city !== '' && !in_array($city, self::NO_GUESS_CITIES, true);
     }
 
     /** @return array<string,mixed>|null запись departed_brands.yaml, чьи alternatives содержат slug бренда */
@@ -196,57 +218,173 @@ class SlideScriptComposer
         return $this->departedRecords;
     }
 
+    // --- F1/F2: факт вперёд ----------------------------------------------------------------
+
+    /**
+     * F1, если хотя бы один grounded-кандидат достаточно «плотный» для хука
+     * (isHookAEligible — совсем телеграфные обрывки в хук не пускаем, хотя в биты они годятся),
+     * иначе F2. hookA в F1 — ЛУЧШИЙ по скору из подходящих (не обязательно candidates[0], если
+     * тот не прошёл hookA-порог); в биты идут все остальные кандидаты по убыванию скора.
+     */
+    private function composeFactBranch(Brand $brand, int $budget): SlideScript
+    {
+        $candidates = $this->dedupCandidates($this->groundedCandidates($brand));
+
+        $hookIndex = null;
+        foreach ($candidates as $i => $candidate) {
+            if ($this->isHookAEligible($candidate)) {
+                $hookIndex = $i;
+                break;
+            }
+        }
+
+        if ($hookIndex !== null) {
+            $hookA = $candidates[$hookIndex];
+            unset($candidates[$hookIndex]);
+            $bits = array_slice(array_values($candidates), 0, min(2, $budget));
+
+            return new SlideScript(
+                hookA: $hookA,
+                hookB: self::RAG_HOOK_B,
+                bits: $bits,
+                finaleTitle: trim((string) $brand->getTitle()),
+                finaleMeta: $this->finaleMeta($brand),
+                finaleAsk: self::FINALE_ASK,
+                scriptKey: sprintf('f1.rag|b.%s|c.save', $this->bitsSourceKey(count($bits), 0, count($bits))),
+            );
+        }
+
+        $hookA = $this->feeHookA();
+        $hookB = self::FEE_HOOK_B;
+        $usedKeys = [$this->dedupKey($hookA) => true, $this->dedupKey($hookB) => true];
+        ['bits' => $bits, 'count' => $detCount] = $this->deterministicBits($brand, $budget, $usedKeys);
+
+        return new SlideScript(
+            hookA: $hookA,
+            hookB: $hookB,
+            bits: $bits,
+            finaleTitle: trim((string) $brand->getTitle()),
+            finaleMeta: $this->finaleMeta($brand),
+            finaleAsk: self::FINALE_ASK,
+            scriptKey: sprintf('f2.fee|b.%s|c.save', $this->bitsSourceKey(0, $detCount, count($bits))),
+        );
+    }
+
+    /**
+     * Хук-открывашка не может быть телеграфным обрывком: ≤20 знаков (жёстче общего лимита в 22 —
+     * хук держит внимание один кадр, без соседних слов бита) И (хотя бы одно слово ≥6 букв ИЛИ
+     * есть цифра — конкретика). Кандидат, не прошедший это, всё ещё годится в биты — там порог
+     * ниже (общий гейт groundedCandidates()).
+     */
+    private function isHookAEligible(string $line): bool
+    {
+        if (mb_strlen($line) > 20) {
+            return false;
+        }
+        if (preg_match('/\d/', $line) === 1) {
+            return true;
+        }
+
+        preg_match_all('/\p{L}+/u', $line, $words);
+        foreach ($words[0] as $word) {
+            if (mb_strlen($word) >= 6) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** См. константу FEE_HOOK_A_LONG/SHORT. */
+    private function feeHookA(): string
+    {
+        return $this->budget->fits(self::FEE_HOOK_A_LONG, self::HOOK_FONT_SIZE)
+            ? self::FEE_HOOK_A_LONG
+            : self::FEE_HOOK_A_SHORT;
+    }
+
+    /**
+     * Первый кандидат с каждым уникальным dedup-ключом (candidates уже отсортированы по убыванию
+     * скора groundedCandidates()) — иначе «Ткань — шерсть.» и «Ткань очень мягкая.» заняли бы
+     * обе позиции hookA/бит одним и тем же смыслом.
+     *
+     * @param list<string> $candidates
+     *
+     * @return list<string>
+     */
+    private function dedupCandidates(array $candidates): array
+    {
+        $result = [];
+        $seen = [];
+        foreach ($candidates as $candidate) {
+            $key = $this->dedupKey($candidate);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $result[] = $candidate;
+        }
+
+        return $result;
+    }
+
     // --- Развязка -------------------------------------------------------------------------
 
     /**
-     * «{Город} · {до 2 категорий}», ≤30 знаков, жадно по числу категорий. Единственная
-     * степень свободы — категории бренда (BrandAttribute::NAME_CATEGORY), выбор которых уже
-     * определён заранее (не привязан к битам): развязка отвечает на общий вопрос «что это за
-     * бренд», а не пересказывает уже показанные факты.
+     * «{Город} · {категория1} и {категория2}», ≤30 знаков. Категории попадают в мету ТОЛЬКО
+     * парой (finaleCategoriesText()) — одна категория хуже нуля: под роликом с десятком фото
+     * курток строка «Стерлитамак · футболка» врёт про единственную вещь в ассортименте (ревью).
      */
     private function finaleMeta(Brand $brand): string
     {
-        $parts = [];
         $city = trim((string) $brand->getCity());
-        if ($city !== '') {
-            $parts[] = $city;
+        $categories = $this->finaleCategoriesText($brand, $city);
+
+        if ($categories !== null) {
+            return $city !== '' ? $city . ' · ' . $categories : $this->capitalize($categories);
         }
 
-        $categories = $this->attributes->findValuesByBrandAndName($brand, BrandAttribute::NAME_CATEGORY);
-        $chosenCategories = [];
-        foreach ($categories as $category) {
-            if (count($chosenCategories) >= 2) {
-                break;
-            }
-            $candidate = [...$chosenCategories, $category];
-            $text = $this->joinMeta($city, $candidate);
-            if (mb_strlen($text) > SlideScript::FINALE_META_MAX_CHARS) {
-                break;
-            }
-            $chosenCategories = $candidate;
-        }
-
-        if ($chosenCategories !== []) {
-            return $this->joinMeta($city, $chosenCategories);
-        }
-
-        // Ни города, ни категорий (данных о бренде почти нет) — не оставляем строку пустой.
-        return $parts === [] ? 'Российский бренд' : implode(' · ', $parts);
+        return $city !== '' ? $city : 'Российский бренд';
     }
 
-    /** @param list<string> $categories */
-    private function joinMeta(string $city, array $categories): string
+    /**
+     * «категория1 и категория2» — только известные словарю CATEGORY_PLURAL (неизвестное слово
+     * пропускается, а не гадается) и только если пара целиком влезает в бюджет вместе с городом;
+     * меньше двух известных категорий — null (мета остаётся без категорий, только город).
+     */
+    private function finaleCategoriesText(Brand $brand, string $city): ?string
     {
-        $tail = implode(', ', $categories);
+        $known = [];
+        foreach ($this->attributes->findValuesByBrandAndName($brand, BrandAttribute::NAME_CATEGORY) as $value) {
+            $plural = self::CATEGORY_PLURAL[mb_strtolower(trim($value))] ?? null;
+            if ($plural === null) {
+                continue;
+            }
+            $known[] = $plural;
+            if (count($known) >= 2) {
+                break;
+            }
+        }
 
-        return $city !== '' ? $city . ' · ' . $tail : $this->capitalize($tail);
+        if (count($known) < 2) {
+            return null;
+        }
+
+        $text = $known[0] . ' и ' . $known[1];
+        $full = $city !== '' ? $city . ' · ' . $text : $this->capitalize($text);
+
+        return mb_strlen($full) <= SlideScript::FINALE_META_MAX_CHARS ? $text : null;
     }
 
     // --- Биты -------------------------------------------------------------------------------
 
     /**
-     * @param array<string,bool> $usedKeys дедуп-ключи, уже занятые хуком (мутируется по ссылке
-     *                                      извне не нужно — копия внутри метода)
+     * H1-путь: grounded-кандидаты + детерминированный добор (год→категории→материал), и —
+     * только если после добора остаётся дырка ровно на пару слотов — платформенная пара про
+     * маркетплейс (MARKETPLACE_BIT/OURS_BIT). Используется только composeDeparted(): в F1/F2
+     * (composeFactBranch()) хук уже сам факт, добор — deterministicBits() без пары.
+     *
+     * @param array<string,bool> $usedKeys дедуп-ключи, уже занятые хуком
      *
      * @return array{bits:list<string>,ragCount:int,detCount:int}
      */
@@ -271,45 +409,55 @@ class SlideScriptComposer
             $ragCount++;
         }
 
-        $detCount = 0;
-        if (count($bits) < $budget) {
-            // $usedKeys передаём АРГУМЕНТОМ при вызове, а не захватываем в замыкание: порядок
-            // B1→B2→B3 важен именно потому, что каждый следующий обязан видеть ключ, добавленный
-            // предыдущим (иначе, скажем, B2 и B3 могли бы задедуплиться друг с другом только
-            // случайно).
-            foreach ([
-                fn (array $keys): ?array => $this->foundingYearBit($brand, $keys),
-                fn (array $keys): ?array => $this->categoriesBit($brand, $keys),
-                fn (array $keys): ?array => $this->materialBit($brand, $keys),
-            ] as $attempt) {
-                if (count($bits) >= $budget) {
-                    break;
-                }
-                $result = $attempt($usedKeys);
-                if ($result === null) {
-                    continue;
-                }
-                [$text, $key] = $result;
-                $usedKeys[$key] = true;
-                $bits[] = $text;
-                $detCount++;
-            }
+        ['bits' => $detBits, 'count' => $detCount, 'usedKeys' => $usedKeys] = $this->deterministicBits($brand, $budget - count($bits), $usedKeys);
+        $bits = [...$bits, ...$detBits];
 
-            // Пара про комиссию маркетплейса — ТОЛЬКО если после неё не остаётся дырки на один
-            // бит (одна половина пары без другой не несёт смысла) и только последними битами.
-            $remaining = $budget - count($bits);
-            if ($remaining >= 2) {
-                $marketplaceKey = $this->dedupKey(self::MARKETPLACE_BIT);
-                $oursKey = $this->dedupKey(self::OURS_BIT);
-                if (!isset($usedKeys[$marketplaceKey]) && !isset($usedKeys[$oursKey])) {
-                    $bits[] = self::MARKETPLACE_BIT;
-                    $bits[] = self::OURS_BIT;
-                    $detCount += 2;
-                }
+        // Пара про комиссию маркетплейса — ТОЛЬКО если после неё не остаётся дырки на один
+        // бит (одна половина пары без другой не несёт смысла) и только последними битами.
+        $remaining = $budget - count($bits);
+        if ($remaining >= 2) {
+            $marketplaceKey = $this->dedupKey(self::MARKETPLACE_BIT);
+            $oursKey = $this->dedupKey(self::OURS_BIT);
+            if (!isset($usedKeys[$marketplaceKey]) && !isset($usedKeys[$oursKey])) {
+                $bits[] = self::MARKETPLACE_BIT;
+                $bits[] = self::OURS_BIT;
+                $detCount += 2;
             }
         }
 
         return ['bits' => $bits, 'ragCount' => $ragCount, 'detCount' => $detCount];
+    }
+
+    /**
+     * B1→B2→B3: год основания → категории → материал, жадно до $slotsLeft. Порядок важен —
+     * каждый следующий обязан видеть ключ, добавленный предыдущим (иначе, скажем, B2 и B3 могли
+     * бы задедуплиться друг с другом только случайно).
+     *
+     * @param array<string,bool> $usedKeys
+     *
+     * @return array{bits:list<string>,count:int,usedKeys:array<string,bool>}
+     */
+    private function deterministicBits(Brand $brand, int $slotsLeft, array $usedKeys): array
+    {
+        $bits = [];
+        foreach ([
+            fn (array $keys): ?array => $this->foundingYearBit($brand, $keys),
+            fn (array $keys): ?array => $this->categoriesBit($brand, $keys),
+            fn (array $keys): ?array => $this->materialBit($brand, $keys),
+        ] as $attempt) {
+            if (count($bits) >= $slotsLeft) {
+                break;
+            }
+            $result = $attempt($usedKeys);
+            if ($result === null) {
+                continue;
+            }
+            [$text, $key] = $result;
+            $usedKeys[$key] = true;
+            $bits[] = $text;
+        }
+
+        return ['bits' => $bits, 'count' => count($bits), 'usedKeys' => $usedKeys];
     }
 
     private function bitsSourceKey(int $ragCount, int $detCount, int $total): string
@@ -426,6 +574,12 @@ class SlideScriptComposer
             if (!$this->passesGrounding($candidate, $context, $brand)) {
                 continue;
             }
+            if ($this->hasUngroundedShortLatinToken($candidate, $context, $brand)) {
+                continue;
+            }
+            if ($this->isAntiSlogan($candidate, $brand)) {
+                continue;
+            }
             if ($this->isFillerLine($candidate)) {
                 continue;
             }
@@ -503,7 +657,8 @@ EOT;
     /**
      * Заземление на выдержках: каждая цифровая группа — дословно из контекста либо год
      * основания; каждое слово ≥5 букв — его 5-префикс есть в контексте; непроверяемые
-     * претензии («шьют», «эксклюзивно» …) — только если их корень тоже есть в контексте.
+     * претензии («шьют», «эксклюзивно», «свои лекала» …) — только если их корень тоже есть в
+     * контексте.
      */
     private function passesGrounding(string $line, string $context, Brand $brand): bool
     {
@@ -544,6 +699,87 @@ EOT;
         return true;
     }
 
+    /**
+     * Латинские обрывки ≤4 знаков («AM», «PRO», «XZ») зритель не считывает за 1.5с. Токен вне
+     * контекста — брак целиком; токен ≤3 букв («AM») — брак ДАЖЕ если дословно есть в выдержках
+     * (аббревиатура всё равно нечитаема), кроме слов из словаря категорий/материалов ЭТОГО
+     * бренда (brandVocabulary()).
+     */
+    private function hasUngroundedShortLatinToken(string $line, string $context, Brand $brand): bool
+    {
+        preg_match_all('/[\p{L}\p{N}]+/u', $line, $tokens);
+        foreach ($tokens[0] as $token) {
+            if (preg_match('/[A-Za-z]/', $token) !== 1) {
+                continue;
+            }
+            if (mb_strlen($token) > 4) {
+                continue;
+            }
+            if (!str_contains($context, $token)) {
+                return true;
+            }
+            if (mb_strlen($token) <= 3 && !$this->isKnownVocabularyWord($token, $brand)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isKnownVocabularyWord(string $token, Brand $brand): bool
+    {
+        $needle = mb_strtolower($token);
+        foreach ($this->brandVocabulary($brand) as $word) {
+            preg_match_all('/[\p{L}\p{N}]+/u', mb_strtolower($word), $wordTokens);
+            if (in_array($needle, $wordTokens[0], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Анти-слоган: строка без единой цифры И без существительного из словаря бренда
+     * (категории/материалы/город) И начинающаяся с предлога («Для», «Во», «Ради», «К», «На») —
+     * слоган, а не факт («Для тех, кто ценит стиль.»), даже если формально прошла заземление
+     * (предлоги короче 5 букв — 5-префиксная проверка их не ловит).
+     */
+    private function isAntiSlogan(string $line, Brand $brand): bool
+    {
+        if (preg_match('/\d/', $line) === 1) {
+            return false;
+        }
+        if ($this->containsBrandNoun($line, $brand)) {
+            return false;
+        }
+
+        return preg_match(self::ANTI_SLOGAN_START, trim($line)) === 1;
+    }
+
+    private function containsBrandNoun(string $line, Brand $brand): bool
+    {
+        $normalizedLine = $this->normalize($line);
+        $dictionary = $this->brandVocabulary($brand);
+        $city = trim((string) $brand->getCity());
+        if ($city !== '') {
+            $dictionary[] = $city;
+        }
+
+        foreach ($dictionary as $word) {
+            $word = trim($word);
+            if ($word === '') {
+                continue;
+            }
+            $needle = mb_strlen($word) >= 5 ? $this->normalize(mb_substr($word, 0, 5)) : $this->normalize($word);
+            if ($needle !== '' && mb_stripos($normalizedLine, $needle) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** Строка из одних общих слов каталога («это бренд одежды») — не факт, а филлер. */
     private function isFillerLine(string $line): bool
     {
@@ -571,9 +807,9 @@ EOT;
     }
 
     /**
-     * +2 год из контекста, +1 слово из категорий/материалов бренда (топикальность факта),
-     * +1 короче 16 знаков (влезает с запасом), −1 начинается с «Это»/«Они» (обезличенный
-     * пересказ хуже прямого факта).
+     * +2 год из контекста, +1 наличие любой цифры (конкретика вперёд — v4), +1 слово из
+     * категорий/материалов бренда (топикальность факта), +1 короче 16 знаков (влезает с
+     * запасом), −1 начинается с «Это»/«Они» (обезличенный пересказ хуже прямого факта).
      */
     private function scoreBit(string $line, string $context, Brand $brand): int
     {
@@ -581,6 +817,10 @@ EOT;
 
         if (preg_match('/\b(19|20)\d{2}\b/', $line, $m) === 1 && mb_stripos($context, $m[0]) !== false) {
             $score += 2;
+        }
+
+        if (preg_match('/\d/', $line) === 1) {
+            $score += 1;
         }
 
         $normalizedLine = $this->normalize($line);
@@ -603,7 +843,7 @@ EOT;
         return $score;
     }
 
-    /** @return list<string> категории + материалы бренда — словарь для scoreBit() */
+    /** @return list<string> категории + материалы бренда — словарь для scoreBit()/гейта латиницы/анти-слогана */
     private function brandVocabulary(Brand $brand): array
     {
         return [

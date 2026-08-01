@@ -72,13 +72,14 @@ class CaptionGeneratorTest extends TestCase
     }
 
     /**
-     * Галерея/Reels — первая строка подписи по РЕАЛИЗОВАННОЙ ступени лестницы хуков
-     * (script_key/script_json на посте уже проставлены SocialGenerateCommand'ом до compose()).
+     * Галерея/Reels — первая строка подписи это hookA реализованного сценария («факт вперёд»,
+     * v4) плюс призыв досмотреть карусель (script_key/script_json на посте уже проставлены
+     * SocialGenerateCommand'ом до compose()).
      */
-    public function testGalleryCaptionPrefixByScriptStage(): void
+    public function testGalleryCaptionPrefixIsHookAPlusCarouselCta(): void
     {
         $brand = (new Brand())->setTitle('Тест')->setCity('Пермь');
-        $script = new SlideScript('Угадай город.', 'Скажу в конце.', [], 'Тест', 'Пермь · обувь', 'Сохрани, чтобы не искать.', 'h2.city|b.rag2|c.save');
+        $script = new SlideScript('Маркетплейс: до 67%.', 'У этого бренда — 0%.', [], 'Тест', 'Пермь · обувь', 'Сохрани, чтобы не искать.', 'f2.fee|b.none|c.save');
 
         $post = (new SocialPost())
             ->setChannel((new SocialChannel())->setPlatform(SocialChannel::PLATFORM_IG))
@@ -89,11 +90,11 @@ class CaptionGeneratorTest extends TestCase
 
         $this->galleryGenerator()->compose($post, (new SocialRubrics())->get('brand_gallery'));
 
-        self::assertStringStartsWith("Пермь. Угадай город по вещам — ответ в конце.\n\n", (string) $post->getCaption());
+        self::assertStringStartsWith("Маркетплейс: до 67%. Дальше — в карусели.\n\n", (string) $post->getCaption());
     }
 
-    /** H1 (ушедший бренд) достаёт имя из уже собранного hookA 'Вместо {Имя}?' — не лезет в yaml повторно. */
-    public function testGalleryCaptionPrefixForDepartedStage(): void
+    /** Reels — тот же hookA, но призыв про ролик, а не карусель. */
+    public function testGalleryCaptionPrefixForReelsUsesVideoCta(): void
     {
         $script = new SlideScript('Вместо Zara?', 'Но не копия.', [], 'Тест', 'Российский бренд', 'Сохрани, чтобы не искать.', 'h1.departed|b.det0|c.save');
 
@@ -106,24 +107,51 @@ class CaptionGeneratorTest extends TestCase
 
         $this->galleryGenerator()->compose($post, (new SocialRubrics())->get('brand_reels'));
 
-        self::assertStringStartsWith("Чем заменить Zara — ответ внутри.\n\n", (string) $post->getCaption());
+        self::assertStringStartsWith("Вместо Zara? Дальше — в ролике.\n\n", (string) $post->getCaption());
     }
 
-    /** Без города h3/h4 остаются без ведущего «{Город}. » — «без города, опустить префикс». */
-    public function testGalleryCaptionPrefixDropsMissingCity(): void
+    /**
+     * Reels показывает подпись ОДНОВРЕМЕННО с первым кадром — имя/город бренда в первых 125
+     * знаках подписи выдаёт развязку раньше кадра с ней. Тело от источника, начинающееся с
+     * имени бренда, переставляется в конец.
+     */
+    public function testGalleryCaptionDoesNotSpoilBrandNameInFirst125Chars(): void
     {
-        $script = new SlideScript('Имя — в конце.', 'Просто посмотри.', [], 'Тест', 'Российский бренд', 'Сохрани, чтобы не искать.', 'h4.generic|b.none|c.save');
+        $brand = (new Brand())->setTitle('Ромашка')->setCity('Тверь');
+        $script = new SlideScript('Начинали для себя.', 'Чей — в конце.', [], 'Ромашка', 'Тверь', 'Сохрани, чтобы не искать.', 'f1.rag|b.rag1|c.save');
 
         $post = (new SocialPost())
             ->setChannel((new SocialChannel())->setPlatform(SocialChannel::PLATFORM_IG))
-            ->setRubric('brand_gallery')
-            ->setBrand(new Brand())
+            ->setRubric('brand_reels')
+            ->setBrand($brand)
             ->setScriptKey($script->scriptKey)
             ->setScriptJson(json_encode($script->toArray(), JSON_UNESCAPED_UNICODE));
 
-        $this->galleryGenerator()->compose($post, (new SocialRubrics())->get('brand_gallery'));
+        $source = new class implements CaptionSourceInterface {
+            public function key(): string
+            {
+                return SocialRubrics::SOURCE_FOUNDER_STORY;
+            }
 
-        self::assertStringStartsWith("Просто посмотри.\n\n", (string) $post->getCaption());
+            public function body(SocialPost $post): string
+            {
+                // Типичный вывод FounderStoryCaptionSource (3–4 предложения, до 60 слов) —
+                // начинает именно с имени бренда.
+                return 'Бренд «Ромашка» создала мастерица из Твери. Сегодня в нём живёт та же теплота, '
+                    . 'что была в первых вещах, сшитых на кухне, а не в цеху. Здесь всё ещё делают вещи '
+                    . 'медленно и вручную, для тех, кто ценит детали в каждой мелочи.';
+            }
+        };
+
+        (new CaptionGenerator([$source], 'https://wearbase.ru'))->compose($post, (new SocialRubrics())->get('brand_reels'));
+
+        $caption = (string) $post->getCaption();
+        $firstChars = mb_substr($caption, 0, 125);
+
+        self::assertStringNotContainsString('Ромашка', $firstChars);
+        self::assertStringNotContainsString('Твери', $firstChars);
+        // Предложение с именем не потеряно, просто переставлено в конец тела.
+        self::assertStringContainsString('Бренд «Ромашка» создала мастерица из Твери.', $caption);
     }
 
     /** ctaLabel галерейных рубрик — «Бренд целиком», а не общее «Бренд напрямую». */

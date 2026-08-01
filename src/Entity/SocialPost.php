@@ -99,7 +99,7 @@ class SocialPost
 
     /**
      * Реализованная ступень лестницы хуков + источник битов (SlideScriptComposer), напр.
-     * 'h2.city|b.rag2|c.save'. Пишется только для галерей/Reels (media=carousel|reels) —
+     * 'f1.rag|c.save'. Пишется только для галерей/Reels (media=carousel|reels) —
      * по нему CaptionGenerator строит первую строку подписи, а app:social:evaluate группирует
      * closed-loop.
      */
