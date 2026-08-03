@@ -1933,3 +1933,40 @@ GenerateListicleCommand/SeoGuideCommand (SEO Boost, не входит в явн�
 SQL-инъекция там, где стоит `(int)`); зато один её 🟡 был прав — дублирование классификатора.
 **Правило: ни один шаг автономного контура не включаем в крон, пока он не отработал вручную на
 реальных данных.** Иначе автономия начнёт молча отказывать живым брендам.
+
+---
+
+## 2026-08-03 — регулярный ингест TG-каналов + CI/CD (GitHub Actions)
+
+### Сделано
+
+**1. Регулярный инкремент TG-каналов в RAG советника** (память [[drmax-seo-knowledge-source]]).
+- Карта per-channel (role+name) вынесена из кода в `config/knowledge/channels.yaml`, читается
+  `App\Service\Knowledge\KnowledgeChannelRegistry`; общий эмбеддинг-код — в `KnowledgeIngestor`
+  (убраны дублирующие const из `IngestKnowledgeChannelsCommand` и `AdvisorRag`).
+- `TgChannelScraper` (скрап `t.me/s/<handle>` с Mac напрямую, без прокси) + команда
+  `app:kb:sync-tg --channel=<handle>` — пишет .txt только для новых постов и до-эмбеддит только их.
+- Крон `scheduled_command` env=dev: `app:kb:sync-tg --channel=drmaxseo`, `30 8 * * *` (до snapshot 08:50).
+- **Добавить новый канал = 2 шага:** строка в `channels.yaml` + крон-строка. PHP не трогать.
+- Ограничение: `t.me/s/` отдаёт только последнюю страницу (~20 постов) → первичный backfill истории
+  канала — по-прежнему разовой ручной цепочкой `?before=<msgid>`.
+
+**2. CI/CD** (полная схема и грабли — память [[wearbase-cicd-github-actions]]).
+- `main` под branch protection: мерж только через PR (0 апрувов, admin-bypass вкл.), force-push/удаление off.
+- Правило branch-per-change добавлено в `AGENTS.md` (Rule 5) — Codex читает по умолчанию.
+- Workflow `.github/workflows/ci.yml`: PHPUnit на каждом PR (307 тестов, PHP 8.4, sqlite) →
+  на мерже в main автодеплой на прод (rsync из облака + миграции + cache:clear + smoke), деплой `needs: tests`.
+- Секреты `DEPLOY_*` в GitHub Secrets, выделенный ed25519-ключ (основной не засвечен).
+- Ручной `/deploy` (rsync с Mac) остаётся независимым запасным путём.
+
+### Осталось / follow-ups
+
+- [ ] **Playwright E2E в CI** — сознательно отложено (сейчас только PHPUnit; E2E требует живой сервер
+  в раннере, флакает). Добавить, когда CI устоится.
+- [ ] **Дисциплина `composer.lock`**: в этой сессии lock висел на admin-core 1.0.4 (прод уже на 1.0.6) →
+  CI-контейнер не компилился. Всегда коммитить lock после `composer update`, иначе CI (ставит по локу)
+  разъезжается с прод-vendor.
+- [ ] Мерж в main деплоит на прод **на любой PR, включая докс-only** — при желании можно сузить триггер
+  деплоя по путям (paths-ignore), пока не трогал.
+- [ ] Роль `seo` оставлена в `AdvisorRag::IDEA_ROLES` — SEO-знания (DrMax и др.) подмешиваются в
+  автономную генерацию идей советника (раньше в памяти было обратное — устарело).
