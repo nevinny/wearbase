@@ -62,6 +62,7 @@ class SocialPublishTickCommand extends Command
         $this
             ->addOption('host', null, InputOption::VALUE_REQUIRED, 'egress-хост: mac|prod', SocialChannel::HOST_MAC)
             ->addOption('batch', null, InputOption::VALUE_REQUIRED, 'Сколько постов за тик', '10')
+            ->addOption('post', null, InputOption::VALUE_REQUIRED, 'Опубликовать конкретный пост сейчас, не дожидаясь расписания (ручная проверка)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Посчитать лимиты, не публиковать');
     }
 
@@ -103,9 +104,15 @@ class SocialPublishTickCommand extends Command
             return Command::SUCCESS;
         }
 
-        $claimed = $this->posts->claimDue($host, $batch);
+        $onePost = $input->getOption('post');
+        $claimed = $onePost !== null
+            ? $this->posts->claimOne((int) $onePost)
+            : $this->posts->claimDue($host, $batch);
+
         if ($claimed === []) {
-            $io->text('Нет готовых к публикации постов (scheduled, время подошло).');
+            $io->text($onePost !== null
+                ? "Пост #{$onePost} не найден или он не в статусе scheduled."
+                : 'Нет готовых к публикации постов (scheduled, время подошло).');
             return Command::SUCCESS;
         }
 

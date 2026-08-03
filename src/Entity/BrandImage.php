@@ -16,6 +16,16 @@ use Vich\UploaderBundle\Mapping\Annotation as Vich;
 class BrandImage
 {
     use DefaultFields, Created, Owner, Status;
+
+    /** Вещь на человеке — приоритетный кадр для открытия галереи/Reels. */
+    public const FRAME_PRODUCT_PERSON = 'product_person';
+    /** Вещь без человека: раскладка/вешалка/предметка. */
+    public const FRAME_PRODUCT_FLAT = 'product_flat';
+    /** Лукбук-сцена/атмосфера, вещь не главное — уместна, но не в начале. */
+    public const FRAME_SCENE = 'scene';
+    /** Витрина/интерьер/текст/логотип — берётся только если без него не набрать MIN_SLIDES. */
+    public const FRAME_OTHER = 'other';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -39,6 +49,13 @@ class BrandImage
 
     #[Vich\UploadableField(mapping: 'brand_image_image', fileNameProperty: 'image')]
     private ?File $imageFile = null;
+
+    /** product_person|product_flat|scene|other, NULL = ещё не классифицирован. */
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $frameKind = null;
+
+    #[ORM\Column(type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $frameCheckedAt = null;
 
     public function getId(): ?int
     {
@@ -120,6 +137,30 @@ class BrandImage
     public function setSortOrder(int $sortOrder): static
     {
         $this->sortOrder = $sortOrder;
+        return $this;
+    }
+
+    public function getFrameKind(): ?string
+    {
+        return $this->frameKind;
+    }
+
+    public function setFrameKind(?string $frameKind): static
+    {
+        $this->frameKind = $frameKind;
+
+        return $this;
+    }
+
+    public function getFrameCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->frameCheckedAt;
+    }
+
+    public function setFrameCheckedAt(?\DateTimeInterface $frameCheckedAt): static
+    {
+        $this->frameCheckedAt = $frameCheckedAt;
+
         return $this;
     }
 }

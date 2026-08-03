@@ -56,6 +56,26 @@ class InstagramPublisherTest extends TestCase
         self::assertSame('cid1', $this->requests[2]['body']['creation_id']);
     }
 
+    /**
+     * Ссылка на профиль — в мёртвой зоне подписи, если стоит ПОСЛЕ хэштегов (IG сворачивает
+     * длинную подпись, последний абзац почти никогда не разворачивают). Проверяем, что строка
+     * ссылки стоит РАНЬШЕ блока хэштегов.
+     */
+    public function testCtaLinkInsertedBeforeHashtags(): void
+    {
+        $publisher = $this->publisher(['create-1' => 'cid1']);
+
+        $publisher->publish($this->channel(), $this->post(), [$this->tmpFile()]);
+
+        $caption = $this->requests[0]['body']['caption'];
+        $ctaPos = mb_strpos($caption, 'Каталог — ссылка в профиле');
+        $hashPos = mb_strpos($caption, '#');
+
+        self::assertNotFalse($ctaPos, 'Строка ссылки не найдена в подписи');
+        self::assertNotFalse($hashPos, 'Хэштеги не найдены в подписи');
+        self::assertLessThan($hashPos, $ctaPos, 'Ссылка на профиль должна стоять до блока хэштегов');
+    }
+
     public function testCarouselCreatesChildContainersThenParent(): void
     {
         $publisher = $this->publisher(['create-1' => 'child1', 'create-2' => 'child2', 'create-3' => 'child3', 'create-4' => 'parent']);
@@ -87,6 +107,44 @@ class InstagramPublisherTest extends TestCase
 
         self::assertStringEndsWith('/media_publish', $this->requests[8]['url']);
         self::assertSame('parent', $this->requests[8]['body']['creation_id']);
+    }
+
+    public function testReelsUsesVideoContainer(): void
+    {
+        $publisher = $this->publisher(['create-1' => 'reel1']);
+        $post = $this->post()->setMediaType(SocialPost::MEDIA_REELS);
+
+        $externalId = $publisher->publish($this->channel(), $post, [$this->tmpFile()]);
+
+        self::assertSame('published-1', $externalId);
+        self::assertCount(3, $this->requests);
+
+        $container = $this->requests[0]['body'];
+        self::assertSame('REELS', $container['media_type']);
+        // Видео уходит как video_url (не image_url) и без конвертации в JPEG.
+        self::assertSame('https://media.example/video-0.mp4', $container['video_url']);
+        self::assertArrayNotHasKey('image_url', $container);
+        // Дефолт — true: по докам Meta это «и лента, и вкладка Reels» (максимум поверхностей).
+        self::assertSame('true', $container['share_to_feed']);
+        self::assertStringContainsString('Три слайда', $container['caption']);
+        // Обложки нет → cover_url не передаём, IG возьмёт первый кадр.
+        self::assertArrayNotHasKey('cover_url', $container);
+        // Разовое переименование оригинального аудио рилса — своё именованное аудио вместо «Original audio».
+        self::assertSame('WEARBASE · Прямой бренд', $container['audio_name']);
+    }
+
+    public function testReelsCoverPassedWhenSet(): void
+    {
+        $publisher = $this->publisher(['create-1' => 'reel1']);
+        $post = $this->post()
+            ->setMediaType(SocialPost::MEDIA_REELS)
+            ->setCoverPath('/images/social/gallery/p1-01.jpg');
+
+        $publisher->publish($this->channel(), $post, [$this->tmpFile()]);
+
+        // Обложка идёт через publicJpegUrl (картинка), видео — через publicUrl.
+        self::assertSame('https://media.example/slide-0.jpg', $this->requests[0]['body']['cover_url']);
+        self::assertSame('https://media.example/video-0.mp4', $this->requests[0]['body']['video_url']);
     }
 
     public function testMoreThanTenSlidesRefusedWithoutAnyRequest(): void
@@ -156,6 +214,12 @@ class InstagramPublisherTest extends TestCase
                 return 'https://media.example/slide-' . $slide++ . '.jpg';
             },
         );
+        $video = 0;
+        $mediaHost->method('publicUrl')->willReturnCallback(
+            static function () use (&$video): string {
+                return 'https://media.example/video-' . $video++ . '.mp4';
+            },
+        );
 
         return new InstagramPublisher($client, new SecretCipher($this->key()), $mediaHost);
     }
@@ -173,7 +237,7 @@ class InstagramPublisherTest extends TestCase
     private function post(): SocialPost
     {
         return (new SocialPost())
-            ->setCaption('Три слайда про российские бренды')
+            ->setCaption("Три слайда про российские бренды\n\n#ПрямойБренд #российскиебренды")
             ->setCtaLabel('Каталог');
     }
 

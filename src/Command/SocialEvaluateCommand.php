@@ -43,19 +43,40 @@ class SocialEvaluateCommand extends Command
         $days = max(1, (int) $input->getOption('days'));
         $since = (new \DateTime("-{$days} days"))->format('Y-m-d H:i:s');
 
-        // Берём ПОСЛЕДНИЙ снимок метрик каждого поста, агрегируем по рубрике.
+        // Берём ПОСЛЕДНИЙ снимок метрик каждого поста, агрегируем по рубрике, ветке A/B
+        // (variant NULL = пост вне эксперимента, показываем как «—») и сценарию слайдов
+        // (script_key NULL — рубрики без SlideScriptComposer, тоже «—»).
+        // watch_ratio — доля клипа, которую досматривают в среднем: avg_watch_ms делим на
+        // РЕАЛЬНУЮ длительность конкретного поста. P0-2 (§9 №2 плейбука): приоритет —
+        // duration_ms (фактическая сумма per-slide длительностей, пишет SocialGenerateCommand,
+        // корректна для ЛЮБОГО профиля E1 — flat_150 и hook_hold); фолбэк на старую оценку
+        // ((slide_count−1)×1.5+3.0, см. ReelsSlideshowRenderer::LAST_SLIDE_SECONDS) — только для
+        // постов ДО миграции duration_ms, у которых профиль был всегда flat_150. Без этого
+        // фолбэка формула стала бы ложью для новых постов с профилем hook_hold — E1 портил бы
+        // собственный измеритель.
         $rows = $this->db->fetchAllAssociative(
-            'SELECT p.rubric AS rubric,
+            "SELECT p.rubric AS rubric,
+                    COALESCE(p.variant, '—') AS variant,
+                    COALESCE(p.script_key, '—') AS script_key,
                     COUNT(DISTINCT p.id) AS posts,
                     ROUND(AVG(m.saves*3 + m.shares*3 + m.link_taps*2 + m.comments), 1) AS avg_score,
-                    SUM(m.link_taps) AS link_taps
+                    SUM(m.link_taps) AS link_taps,
+                    ROUND(AVG(m.views), 1) AS avg_views,
+                    ROUND(AVG(m.avg_watch_ms), 0) AS avg_watch_ms,
+                    ROUND(AVG(
+                        CASE WHEN p.duration_ms IS NOT NULL AND p.duration_ms > 0
+                             THEN m.avg_watch_ms / p.duration_ms
+                             WHEN p.slide_count IS NOT NULL AND p.slide_count > 0
+                             THEN m.avg_watch_ms / ((p.slide_count - 1) * 1500 + 3000)
+                        END
+                    ), 3) AS watch_ratio
              FROM social_post p
              JOIN social_post_metric m ON m.post_id = p.id
              JOIN (SELECT post_id, MAX(measured_at) mx FROM social_post_metric GROUP BY post_id) lm
                   ON lm.post_id = m.post_id AND lm.mx = m.measured_at
              WHERE p.published_at >= :since
-             GROUP BY p.rubric
-             ORDER BY avg_score DESC',
+             GROUP BY p.rubric, COALESCE(p.variant, '—'), COALESCE(p.script_key, '—')
+             ORDER BY avg_score DESC",
             ['since' => $since],
         );
 
@@ -65,13 +86,19 @@ class SocialEvaluateCommand extends Command
         }
 
         $io->table(
-            ['Рубрика', 'Постов', 'Ср. score', 'Клики'],
-            array_map(static fn (array $r) => [$r['rubric'], $r['posts'], $r['avg_score'], $r['link_taps']], $rows),
+            ['Рубрика', 'Ветка A/B', 'Сценарий', 'Постов', 'Ср. score', 'Клики', 'Ср. просмотры', 'Ср. время просмотра, мс', 'Досмотр, доля'],
+            array_map(
+                static fn (array $r) => [
+                    $r['rubric'], $r['variant'], $r['script_key'], $r['posts'], $r['avg_score'],
+                    $r['link_taps'], $r['avg_views'], $r['avg_watch_ms'], $r['watch_ratio'] ?? '—',
+                ],
+                $rows,
+            ),
         );
 
         if ($input->getOption('notify') && $this->notifier->isEnabled()) {
             $lines = array_map(
-                static fn (array $r) => sprintf('• %s — score %s (%d постов, %d кликов)', $r['rubric'], $r['avg_score'], $r['posts'], $r['link_taps']),
+                static fn (array $r) => sprintf('• %s / %s / %s — score %s (%d постов, %d кликов)', $r['rubric'], $r['variant'], $r['script_key'], $r['avg_score'], $r['posts'], $r['link_taps']),
                 $rows,
             );
             try {

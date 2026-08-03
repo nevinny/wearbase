@@ -1,0 +1,33 @@
+{
+  "collected_at": "2026-07-31",
+  "method": "IG web clips API (/api/v1/clips/user/), logged-in session, 12 последних рилсов на аккаунт",
+  "format": "code:plays:duration_s:likes",
+  "accounts": {
+    "12storeez": ["DbctxPKOcDk:142223:68:3667","Dbat7tisdF_:547573:37:10802","DbX6bj_uu26:74138:52:1405","DbFgPsoMC0w:199465:10:2020","Da7Ocn1MllA:138399:6:1988","Da5cYpAMuAx:188857:55:3551","Da4reLBOHQj:169759:67:3495","DaxBi16uP_6:96851:18:1240","DapWtXkugDD:85126:13:1530","DafGGVCum0h:142885:22:1963","DaZ05FasTKY:92819:55:1816","DaIQ2_fM7Zj:105446:61:2275"],
+    "lichi_brand": ["DYe9CBdtCq7:203785:11:5279","DYhB7rPxRXy:50113:19:746","DYZTqXIRGch:115983:35:4112","DbdABzixZtP:35510:12:543","DbaaKoPNLlm:54810:10:961","DbXa6iexKFd:64209:28:791","DbQjhppxHGy:42585:8:367","DbNH0Gax2Zb:64129:7:261","DbH-M0ORlbn:74974:34:549","DbGQXjGRRGW:74967:7:628","DbF05KAxeqS:86623:13:431","DbFZZzDxH4G:77624:8:1005"],
+    "2moodstore": ["DbaPqGLqh5O:31835:19:270","DbVH5OCKPqL:34998:25:334","DbTHKuKqU7d:59757:4:418","DbQo269qvZz:67964:59:1071","DbC9CfvKhfX:333837:77:19926","Da-T7v7K1w5:55123:91:631","Da2RRhxqH7d:248957:15:1752","Dazi_4rKy8i:83080:8:734","DasYT6Bq822:84620:12:669","DapuyaZqe1B:299738:8:8535"],
+    "31gate": ["DbQAzD8idFb:6874:15:3","DbIYQTCCJbm:7467:15:3","DapQrrFhc2J:35940:12:3","DakR22jxSpP:21305:4:3","DaXY7TSCU9s:14356:15:3","DaDJ3TUCCgs:24825:7:3","DaA_meGC5ix:9411:36:3","DZAWj3ss3E8:53803:32:3","DW9TY5Vi6yP:16195:7:3","DWlpFvBiMj3:9212:12:3","DWQgmQtCPAD:9598:10:3","DVntSoSF80j:18848:30:3"],
+    "zarina_fashion": ["DbId0Z2ttN6:4242:44:75","DbGvjy7Rq3Q:38263:11:483","Da8NumSIxO3:58054:27:657","Da4kKMAq22k:274488:95:19261","Da2DiKvN42j:79129:200:2523","Dawy-64N1rI:29774:30:297","DauPMUjNo0z:45952:44:600","DangirYt3SH:26104:29:223","DadRhyfI_E0:66455:13:704","DaUoFOuofZ3:54721:10:513","DaS4eBoKEwX:17882:11:236","DZsJ0xQIetz:41222:13:297"],
+    "befree_fashion": ["DbTGaZ7I5zD:28335:12:634","DbLGYAzOTWN:65469:22:1743","Da44GW-uEoa:74253:30:1970","Dau7yH2ODf2:71601:10:1804","DaiVMtSu9zf:288336:7:4364","DaiImBioDlk:52606:6:1418","DaVbqL9OLV2:827498:10:13569","DaSi5E3oJCd:49879:11:1499","DaFxlbKTxZN:29141:5:508","DZ7tQ2mIJcU:110572:172:3003","DZ2Uz09R4CA:148710:18:6233","DZwrv0CuKqi:122836:9:5000"],
+    "loverepublic_official": ["DbDn0jVo2uQ:36368:21:546","Da-lYb1IBOx:35146:10:742","Dane8_VIXOh:27384:48:319","DaVDpxjoiTp:86118:45:1158","DaQbULGoJHw:116146:15:585","DaNxSscIFuR:33897:7:205","DZ42SGBIxkC:107243:116:621","DZXoTFkoqiG:44425:26:472","DZU2czNIUiT:60193:5:525","DY7RxuaIePP:33220:10:360","DY4sHyXI1JW:21512:9:133","DY2LKRDoGOG:21120:18:130"],
+    "ushatava_live": ["DbV5O1WO5cu:55264:9:3","DbLh6ChyP0K:67094:18:3","DbGVoeiheSx:49656:10:3","DaNd5GmvW5x:394445:26:3","DZ-dalQsFK9:36961:13:3","DZzoTIHO14B:52970:19:3","DZiLJvMSag1:60783:14:3","DY4u_6RBtaI:42179:7:3","DY1t_ycPJZK:25370:15:3","DYzk5p9OE04:35078:7:3","DYzEEr1sWae:28756:32:201","DYfNUujy8SM:28419:10:3"]
+  },
+  "selected_for_deep_analysis": [
+    {"acc": "befree_fashion", "code": "DaVbqL9OLV2", "plays": 827498, "dur": 10, "why": "мега-аутлаер x11 медианы, 10s"},
+    {"acc": "12storeez", "code": "Dbat7tisdF_", "plays": 547573, "dur": 37, "why": "сторителл-аутлаер, история теннисной формы"},
+    {"acc": "ushatava_live", "code": "DaNd5GmvW5x", "plays": 394445, "dur": 26, "why": "аутлаер x9 медианы"},
+    {"acc": "2moodstore", "code": "DbC9CfvKhfX", "plays": 333837, "dur": 77, "why": "длинный 77s + ER-рекорд (20k likes)"},
+    {"acc": "2moodstore", "code": "DapuyaZqe1B", "plays": 299738, "dur": 8, "why": "8s, 8.5k likes"},
+    {"acc": "befree_fashion", "code": "DaiVMtSu9zf", "plays": 288336, "dur": 7, "why": "7s хук"},
+    {"acc": "zarina_fashion", "code": "Da4kKMAq22k", "plays": 274488, "dur": 95, "why": "95s + 19k likes — длинный формат с гиганским ER"},
+    {"acc": "2moodstore", "code": "Da2RRhxqH7d", "plays": 248957, "dur": 15, "why": "15s"},
+    {"acc": "lichi_brand", "code": "DYe9CBdtCq7", "plays": 203785, "dur": 11, "why": "ивент-контент, топ аккаунта"},
+    {"acc": "12storeez", "code": "DbFgPsoMC0w", "plays": 199465, "dur": 10, "why": "10s продукт-бестселлер"},
+    {"acc": "befree_fashion", "code": "DZ2Uz09R4CA", "plays": 148710, "dur": 18, "why": "18s, 6.2k likes"},
+    {"acc": "12storeez", "code": "Da7Ocn1MllA", "plays": 138399, "dur": 6, "why": "6 секунд — минимальный формат"},
+    {"acc": "loverepublic_official", "code": "DaQbULGoJHw", "plays": 116146, "dur": 15, "why": "15s"},
+    {"acc": "loverepublic_official", "code": "DZ42SGBIxkC", "plays": 107243, "dur": 116, "why": "116s длинный"},
+    {"acc": "befree_fashion", "code": "DZ7tQ2mIJcU", "plays": 110572, "dur": 172, "why": "172s — почему длинный работает"},
+    {"acc": "zarina_fashion", "code": "Da2DiKvN42j", "plays": 79129, "dur": 200, "why": "200s — крайняя точка длинного формата"}
+  ]
+}

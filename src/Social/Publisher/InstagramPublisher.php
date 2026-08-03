@@ -8,6 +8,7 @@ use App\Entity\SocialChannel;
 use App\Entity\SocialPost;
 use App\Service\SecretCipher;
 use App\Service\Social\PublicMediaHost;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -30,6 +31,8 @@ class InstagramPublisher implements SocialPublisherInterface
 {
     private const API_BASE = 'https://graph.instagram.com/v22.0';
     private const POLL_MAX_ATTEMPTS = 12;
+    /** Видео Meta транскодирует ощутимо дольше картинки: 30×5с = до 2.5 минут. */
+    private const POLL_MAX_ATTEMPTS_VIDEO = 30;
     private const POLL_SLEEP_SEC = 5;
 
     /** Лимит Instagram на число слайдов в карусели. */
@@ -39,6 +42,10 @@ class InstagramPublisher implements SocialPublisherInterface
         private readonly HttpClientInterface $httpClient,
         private readonly SecretCipher $cipher,
         private readonly PublicMediaHost $mediaHost,
+        #[Autowire('%kernel.project_dir%')]
+        private readonly string $projectDir = '',
+        #[Autowire('%env(default::IG_REELS_SHARE_TO_FEED)%')]
+        private readonly ?string $shareReelsToFeed = null,
     ) {
     }
 
@@ -73,18 +80,60 @@ class InstagramPublisher implements SocialPublisherInterface
         $token = $this->cipher->decrypt($enc);
 
         // IG: кликабельных ссылок в подписи нет — ссылка живёт в профиле; URL в текст не вставляем.
-        $caption = (string) $post->getCaption();
-        if ($post->getCtaLabel() !== null) {
-            $caption .= "\n\n" . $post->getCtaLabel() . ' — ссылка в профиле';
+        $caption = $this->insertCtaLine((string) $post->getCaption(), $post->getCtaLabel());
+
+        $isReels = $post->getMediaType() === SocialPost::MEDIA_REELS;
+
+        if ($isReels) {
+            $creationId = $this->createReelsContainer(
+                $igUserId,
+                $this->mediaHost->publicUrl($paths[0]),
+                $this->coverUrl($post, $token),
+                $caption,
+                $token,
+            );
+        } elseif (count($paths) === 1) {
+            $creationId = $this->createSingleContainer($igUserId, $this->mediaHost->publicJpegUrl($paths[0]), $caption, $token);
+        } else {
+            $creationId = $this->createCarouselContainer($igUserId, $paths, $caption, $token);
         }
 
-        $creationId = count($paths) === 1
-            ? $this->createSingleContainer($igUserId, $this->mediaHost->publicJpegUrl($paths[0]), $caption, $token)
-            : $this->createCarouselContainer($igUserId, $paths, $caption, $token);
-
-        $this->pollUntilFinished($creationId, $token);
+        // Видео Meta транскодирует минутами, картинка готова почти сразу.
+        $this->pollUntilFinished($creationId, $token, $isReels ? self::POLL_MAX_ATTEMPTS_VIDEO : self::POLL_MAX_ATTEMPTS);
 
         return $this->publishContainer($igUserId, $creationId, $token);
+    }
+
+    /**
+     * Строка «{ctaLabel} — ссылка в профиле» встаёт ПЕРЕД абзацем хэштегов, не после: в ленте IG
+     * длинная подпись сворачивается по высоте, и абзац после хэштегов (последний в подписи)
+     * почти никогда не попадает в развёрнутый вид — ссылка туда добавленная просто не читалась.
+     * Абзацы разделены пустой строкой (CaptionGenerator), хэштеги — последний абзац, начинающийся
+     * с '#'. Нет хэштегов (не должно случаться для собранной подписи, но на всякий) — как раньше,
+     * строка уходит в конец.
+     */
+    private function insertCtaLine(string $caption, ?string $ctaLabel): string
+    {
+        if ($ctaLabel === null || trim($ctaLabel) === '') {
+            return $caption;
+        }
+        $ctaLine = $ctaLabel . ' — ссылка в профиле';
+
+        $paragraphs = explode("\n\n", $caption);
+        $hashtagIndex = null;
+        foreach ($paragraphs as $i => $paragraph) {
+            if (str_starts_with(ltrim($paragraph), '#')) {
+                $hashtagIndex = $i;
+            }
+        }
+
+        if ($hashtagIndex === null) {
+            $paragraphs[] = $ctaLine;
+        } else {
+            array_splice($paragraphs, $hashtagIndex, 0, [$ctaLine]);
+        }
+
+        return implode("\n\n", $paragraphs);
     }
 
     private function createSingleContainer(string $igUserId, string $imageUrl, string $caption, string $token): string
@@ -93,6 +142,57 @@ class InstagramPublisher implements SocialPublisherInterface
             'image_url' => $imageUrl,
             'caption'   => $caption,
         ], $token, 'media (create container)');
+    }
+
+    /** Разовое переименование оригинального аудио рилса (по докам Meta) — своё именованное аудио вместо «Original audio». */
+    private const REELS_AUDIO_NAME = 'WEARBASE · Прямой бренд';
+
+    /**
+     * Reels: единственный формат IG с существенной раздачей не-подписчикам.
+     *
+     * share_to_feed по документации Meta: true — клип МОЖЕТ появиться и в ленте, и во вкладке
+     * Reels; false — только во вкладке Reels. При этом Meta прямо оговаривает, что значение —
+     * лишь подсказка: фактическое размещение решает Instagram (eligibility + алгоритм), и ни
+     * true, ни false его не гарантируют. Поэтому дефолт true (максимум поверхностей), а
+     * env IG_REELS_SHARE_TO_FEED=false позволяет проверить гипотезу «только вкладка Reels»
+     * без правки кода.
+     */
+    private function createReelsContainer(string $igUserId, string $videoUrl, ?string $coverUrl, string $caption, string $token): string
+    {
+        $body = [
+            'media_type'    => 'REELS',
+            'video_url'     => $videoUrl,
+            'caption'       => $caption,
+            'audio_name'    => self::REELS_AUDIO_NAME,
+            'share_to_feed' => $this->shareReelsToFeed === null || trim($this->shareReelsToFeed) === ''
+                ? 'true'
+                : (filter_var($this->shareReelsToFeed, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false'),
+        ];
+
+        // cover_url — обложка во вкладке Reels. Без неё IG берёт первый кадр клипа.
+        if ($coverUrl !== null) {
+            $body['cover_url'] = $coverUrl;
+        }
+
+        return $this->createContainer($igUserId, $body, $token, 'media (create reels container)');
+    }
+
+    /**
+     * Публичный URL обложки из post.cover_path. Недоступная обложка не должна ронять
+     * публикацию — тогда IG просто возьмёт первый кадр.
+     */
+    private function coverUrl(SocialPost $post, string $token): ?string
+    {
+        $coverPath = $post->getCoverPath();
+        if ($coverPath === null || trim($coverPath) === '') {
+            return null;
+        }
+
+        try {
+            return $this->mediaHost->publicJpegUrl($this->projectDir . '/public_html' . $coverPath);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -145,9 +245,9 @@ class InstagramPublisher implements SocialPublisherInterface
         return (string) $creationId;
     }
 
-    private function pollUntilFinished(string $creationId, string $token): void
+    private function pollUntilFinished(string $creationId, string $token, int $maxAttempts = self::POLL_MAX_ATTEMPTS): void
     {
-        for ($attempt = 1; $attempt <= self::POLL_MAX_ATTEMPTS; $attempt++) {
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             $response = $this->httpClient->request('GET', self::API_BASE . "/{$creationId}", [
                 'query'   => [
                     'fields'       => 'status_code',
@@ -170,7 +270,7 @@ class InstagramPublisher implements SocialPublisherInterface
             sleep(self::POLL_SLEEP_SEC);
         }
 
-        throw new \RuntimeException("IG media контейнер {$creationId} не готов после " . self::POLL_MAX_ATTEMPTS . ' попыток поллинга.');
+        throw new \RuntimeException("IG media контейнер {$creationId} не готов после {$maxAttempts} попыток поллинга.");
     }
 
     private function publishContainer(string $igUserId, string $creationId, string $token): string

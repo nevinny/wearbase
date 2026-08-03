@@ -69,6 +69,22 @@ final class SocialRubrics
             'media' => SocialPost::MEDIA_IMAGE, 'auto' => true,
             'hashtags' => ['#ПрямойБренд', '#российскиебренды', '#чемзаменить'],
         ],
+        // day=0 — вне еженедельной сетки: ставится пачкой командой app:social:enqueue-brand-gallery
+        // по всем брендам, у которых есть фото в brand_image. Медиа — карусель из РЕАЛЬНЫХ фото
+        // бренда (BrandGalleryImages), не AI-карточка.
+        'brand_gallery' => [
+            'day' => 0, 'hour' => 15, 'source' => self::SOURCE_FOUNDER_STORY, 'needsBrand' => true,
+            'media' => SocialPost::MEDIA_CAROUSEL, 'auto' => true,
+            'hashtags' => ['#ПрямойБренд', '#российскиебренды', '#сделановроссии'],
+        ],
+        // Те же нормализованные слайды, собранные в Reels-слайдшоу: Reels — единственная
+        // поверхность IG с существенной раздачей НЕ подписчикам, поэтому контент идёт в оба
+        // формата. Ставится той же командой enqueue-brand-gallery.
+        'brand_reels' => [
+            'day' => 0, 'hour' => 19, 'source' => self::SOURCE_FOUNDER_STORY, 'needsBrand' => true,
+            'media' => SocialPost::MEDIA_REELS, 'auto' => true,
+            'hashtags' => ['#ПрямойБренд', '#российскиебренды', '#сделановроссии'],
+        ],
         // Сб/Вс — ручные рубрики (UGC/лайфстайл): план создаёт held-заглушку.
         'ugc' => [
             'day' => 6, 'hour' => 13, 'source' => self::SOURCE_TEMPLATE, 'needsBrand' => false,

@@ -2,6 +2,7 @@
 
 namespace App\Repository;
 
+use App\Entity\Brand;
 use App\Entity\SocialChannel;
 use App\Entity\SocialPost;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
@@ -80,6 +81,41 @@ class SocialPostRepository extends ServiceEntityRepository
 
             return $rows;
         });
+    }
+
+    /**
+     * Забрать КОНКРЕТНЫЙ scheduled-пост, не дожидаясь его времени — ручной прогон
+     * («опубликовать сейчас» для проверки формата). Канал/egress не проверяем: id указан
+     * человеком осознанно. Пустой массив — поста нет или он уже не scheduled.
+     *
+     * @return list<SocialPost>
+     */
+    public function claimOne(int $id): array
+    {
+        $em = $this->getEntityManager();
+
+        $affected = $em->getConnection()->executeStatement(
+            'UPDATE social_post
+                SET status = :publishing, claimed_at = NOW()
+              WHERE id = :id AND status = :scheduled',
+            [
+                'publishing' => SocialPost::STATUS_PUBLISHING,
+                'scheduled'  => SocialPost::STATUS_SCHEDULED,
+                'id'         => $id,
+            ],
+        );
+
+        if ($affected === 0) {
+            return [];
+        }
+
+        $post = $this->find($id);
+        if ($post === null) {
+            return [];
+        }
+        $em->refresh($post);
+
+        return [$post];
     }
 
     /**
@@ -185,6 +221,53 @@ class SocialPostRepository extends ServiceEntityRepository
             ->setParameter('clickAt', $clickAt)
             ->setParameter('earliest', $earliest)
             ->orderBy('p.publishedAt', 'DESC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
+    /**
+     * Опубликованные посты каналов (IN) с внешним id, чей published_at не старше $since —
+     * кандидаты сбора метрик (app:social:collect-metrics). Свежие сначала — им дают
+     * досмотреться, а метрики старых уже стабилизировались.
+     *
+     * @param list<SocialChannel> $channels
+     * @return SocialPost[]
+     */
+    public function findPublishedForMetrics(array $channels, \DateTimeInterface $since, int $limit): array
+    {
+        if ($channels === []) {
+            return [];
+        }
+
+        return $this->createQueryBuilder('p')
+            ->where('p.channel IN (:channels)')
+            ->andWhere('p.status IN (:statuses)')
+            ->andWhere('p.externalId IS NOT NULL')
+            ->andWhere("p.externalId != ''")
+            ->andWhere('p.publishedAt >= :since')
+            ->setParameter('channels', $channels)
+            ->setParameter('statuses', [SocialPost::STATUS_PUBLISHED, SocialPost::STATUS_DONE])
+            ->setParameter('since', $since)
+            ->orderBy('p.publishedAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Последний пост этого бренда с уже собранным сценарием слайдов (script_json) —
+     * SocialGenerateCommand переиспользует его текст между каруселью и Reels одного бренда
+     * (LLM недетерминирован, повторный вызов дал бы другие факты) и между регенерациями поста.
+     */
+    public function findLatestScriptForBrand(Brand $brand): ?SocialPost
+    {
+        return $this->createQueryBuilder('p')
+            ->where('p.brand = :brand')
+            ->andWhere('p.scriptJson IS NOT NULL')
+            ->andWhere("p.scriptJson != ''")
+            ->setParameter('brand', $brand)
+            ->orderBy('p.id', 'DESC')
             ->setMaxResults(1)
             ->getQuery()
             ->getOneOrNullResult();
