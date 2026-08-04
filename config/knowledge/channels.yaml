@@ -8,6 +8,7 @@ channels:
   mtokovinin:            { role: framing, name: "Токовинин" }
   AlexanderSokolovskiy:  { role: case,    name: "Соколовский" }
   FedotovM:              { role: tone,    name: "Федотов" }
+  kuznecov_coach:        { role: tone,    name: "Кузнецов (копирайтинг)" }
   drmaxseo:              { role: seo,     name: "DrMax SEO" }
   freychu:               { role: seo,     name: "Frey Chu (directories)" }
   big_bad_coach:         { role: seo,     name: "big_bad_coach" }
