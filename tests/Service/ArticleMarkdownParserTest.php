@@ -76,16 +76,22 @@ class ArticleMarkdownParserTest extends TestCase
      * mdToHtml() в бесконечный цикл (accumulator абзаца и ветка заголовка обе
      * отвергали строку, не продвигая курсор). set_time_limit — страховка: если
      * защита когда-нибудь регрессирует, тест упадёт по таймауту, а не подвесит
-     * весь прогон.
+     * весь прогон. Лимит действует на весь остаток PHP-процесса (не только на
+     * этот тест) — finally возвращает безлимит CLI, иначе GD-тяжёлые тесты
+     * дальше по суите падают fatal'ом на медленном CI-раннере.
      */
     public function testStrayHeadingMarkerDoesNotHang(): void
     {
         set_time_limit(5);
 
-        $md = "# Заголовок\n\n## Коротко\n\nОтвет.\n\nтекст\n##\n\nещё текст\n### \n\n"
-            . "## Раздел\n\n- пункт [ссылка](https://example.com)\n";
+        try {
+            $md = "# Заголовок\n\n## Коротко\n\nОтвет.\n\nтекст\n##\n\nещё текст\n### \n\n"
+                . "## Раздел\n\n- пункт [ссылка](https://example.com)\n";
 
-        $result = (new ArticleMarkdownParser())->parse($md);
+            $result = (new ArticleMarkdownParser())->parse($md);
+        } finally {
+            set_time_limit(0);
+        }
 
         self::assertNotNull($result);
         [$title, , $html] = $result;
