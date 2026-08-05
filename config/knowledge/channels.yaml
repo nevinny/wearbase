@@ -5,6 +5,7 @@
 channels:
   grebenukm:            { role: idea,    name: "Гребенюк" }
   dolgov_alexandr:       { role: idea,    name: "Долгов" }
+  romarayt:              { role: idea,    name: "Рома Райт (AI-продукты)" }
   mtokovinin:            { role: framing, name: "Токовинин" }
   AlexanderSokolovskiy:  { role: case,    name: "Соколовский" }
   FedotovM:              { role: tone,    name: "Федотов" }
