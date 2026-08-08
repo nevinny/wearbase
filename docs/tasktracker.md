@@ -1991,6 +1991,28 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [ ] Закрепить обязательный fallback: несколько отдельных ссылок/артикулов WB.
 - [ ] Контрактным тестом доказать: второй provider добавляется без миграции purchase entities.
 
+### Фаза 0A — family onboarding и wardrobe-app API
+
+- [x] Добавить `/account/wardrobe-app`: отдельный controller/dashboard, быстрые действия, личный и
+  семейные гардеробы.
+- [x] Показать всем участникам безопасный состав семьи; ребёнку не показывать чужие wardrobe links
+  и item counts.
+- [x] Дать родителю действия «Добавить ребёнка» и «Пригласить взрослого» через существующие CSRF
+  family routes.
+- [x] Добавить read-only `/api/v1/wardrobe-app/bootstrap` и cursor-paginated `/items`, session-auth,
+  explicit DTO, `no-store`, FamilyService IDOR guard.
+- [x] Покрыть web/API: guest, parent→child, child roster, child→parent/sibling deny, schema/privacy.
+- [ ] Зафиксировать capability matrix owner/parent/child и решение spouse-to-spouse privacy.
+- [x] Скрыть family add/invite для child в family/wardrobe-app UI и явно запретить POST invite;
+  гардеробы parent/sibling закрыты `FamilyService::resolveMember` и тестами.
+- [ ] Добавить claim expiry/rotate/revoke/recovery с сохранением User ID и истории гардероба.
+- [ ] Добавить invite expiry/revoke/regenerate, optional intended email и atomic single-use accept.
+- [ ] Добавить lifecycle семьи: leave/remove, owner transfer, last-parent invariant, role changes.
+- [ ] Разделить consent несовершеннолетнего на private processing, personalization, shared learning
+  и публикацию фото; пересматривать при взрослении.
+- [ ] Для native iOS добавить revocable per-device access/refresh tokens; не переиспользовать
+  X-Agent-Token/HMAC и не доверять user/member ID из клиента.
+
 ### Фаза 1 — запрос ребёнка и решение родителя
 
 - [ ] Добавить `PurchaseRequest`, `PurchaseRequestItem`, `PurchaseRequestEvent` и миграцию.
@@ -1998,7 +2020,16 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [ ] Сделать детский флоу: черновик → provider/manual import → вариант → отправка.
 - [ ] Сделать родительскую очередь и решения по каждой позиции: approve/reject/change/defer.
 - [ ] Добавить лимит цены, частичное одобрение и in-app уведомления.
-- [ ] Реализовать mobile-first PWA: нижняя навигация «Семья / Покупки / Снять образ / Гардероб».
+- [x] Добавить отдельный mobile-first Twig-shell с safe-area и нижней навигацией:
+  `templates/account/family_wardrobe/layout.html.twig`; несуществующие routes не хардкодить.
+- [x] Перевести существующие family/wardrobe страницы на shell, сохранив формы, CSRF, family member
+  context, импорт, AI-стилиста и touch targets.
+- [x] Добавить installable PWA-фундамент: manifest, Apple/192/512 icons, scoped service worker,
+  offline 503 без кеширования приватных HTML/API/фото.
+- [x] Проверить Twig/manifest/JS, профильные tests (67/375) и полный PHPUnit: 611 tests,
+  1974 assertions; только 7 существующих deprecation.
+- [ ] Перевести новые экраны покупок/образов на готовый shell после реализации их routes.
+- [ ] Убрать runtime Tailwind CDN в локальную production-сборку перед строгим CSP/offline-first.
 - [ ] Сделать интерфейс role-aware: ребёнку — запросы/ответы, родителю — решения/примерки.
 - [ ] Покрыть PHPUnit: переходы, CSRF, IDOR между семьями, managed-child, конкурентные решения.
 
