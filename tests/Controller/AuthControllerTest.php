@@ -101,6 +101,21 @@ class AuthControllerTest extends WebTestCase
         $this->assertSelectorExists('a[href*="register"]');
     }
 
+    public function testLoginNeverExposesManagedChildTechnicalEmail(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/login');
+        $client->getRequest()->getSession()->set(
+            \Symfony\Component\Security\Http\SecurityRequestAttributes::LAST_USERNAME,
+            'child-2-secret@family.wearbase.local',
+        );
+
+        $client->request('GET', '/login');
+
+        $this->assertSelectorExists('input[name="_username"][value=""]');
+        $this->assertStringNotContainsString('family.wearbase.local', $client->getResponse()->getContent());
+    }
+
     // ── /register ─────────────────────────────────────────────────────────────
 
     public function testRegisterPageReturns200(): void

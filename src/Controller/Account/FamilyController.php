@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Controller\Account;
 
 use App\Entity\User;
+use App\Dto\Family\ChildProfileInput;
 use App\Form\Account\FamilyChildFormType;
 use App\Repository\FamilyInviteRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Service\FamilyService;
+use App\Service\Family\ChildProfileService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -35,14 +37,18 @@ class FamilyController extends AbstractController
         $itemCounts = [];
         $claimUrls  = [];
         foreach ($members as $member) {
-            $itemCounts[$member->getId()] = $itemRepo->countActiveForUser($member);
-            $url = $familyService->claimUrl($member);
-            if ($url !== null) {
-                $claimUrls[$member->getId()] = $url;
+            if ($familyService->canManage($user, $member)) {
+                $itemCounts[$member->getId()] = $itemRepo->countActiveForUser($member);
+            }
+            if ($user->isFamilyParent()) {
+                $url = $familyService->claimUrl($member);
+                if ($url !== null) {
+                    $claimUrls[$member->getId()] = $url;
+                }
             }
         }
 
-        $invites    = $family !== null ? $inviteRepo->findPendingForFamily($family) : [];
+        $invites    = $family !== null && $user->isFamilyParent() ? $inviteRepo->findPendingForFamily($family) : [];
         $inviteUrls = [];
         foreach ($invites as $invite) {
             $inviteUrls[$invite->getId()] = $familyService->inviteUrl($invite);
@@ -59,7 +65,7 @@ class FamilyController extends AbstractController
     }
 
     #[Route('/add', name: 'add', methods: ['GET', 'POST'])]
-    public function add(Request $request, FamilyService $familyService): Response
+    public function add(Request $request, ChildProfileService $childProfiles): Response
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -68,12 +74,13 @@ class FamilyController extends AbstractController
             throw $this->createAccessDeniedException('Добавлять членов семьи может только родитель');
         }
 
-        $form = $this->createForm(FamilyChildFormType::class);
+        $form = $this->createForm(FamilyChildFormType::class, new ChildProfileInput());
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
-            $data  = $form->getData();
-            $child = $familyService->createChild($user, $data['firstName'], $data['birthDate']);
+            /** @var ChildProfileInput $data */
+            $data = $form->getData();
+            $child = $childProfiles->create($user, $data);
 
             $this->addFlash('success', sprintf('%s добавлен(а) в семью', $child->getFirstName()));
             return $this->redirectToRoute('account_family_index');
@@ -81,6 +88,34 @@ class FamilyController extends AbstractController
 
         return $this->render('account/family/add.html.twig', [
             'form' => $form,
+            'profileMode' => false,
+        ]);
+    }
+
+    #[Route('/profile', name: 'profile', methods: ['GET', 'POST'])]
+    public function profile(Request $request, ChildProfileService $childProfiles): Response
+    {
+        /** @var User $user */
+        $user = $this->getUser();
+        if ($user->getFamilyRole() !== User::FAMILY_ROLE_CHILD) {
+            throw $this->createAccessDeniedException('Анкета доступна детскому профилю');
+        }
+
+        $form = $this->createForm(FamilyChildFormType::class, $childProfiles->input($user));
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            /** @var ChildProfileInput $data */
+            $data = $form->getData();
+            $childProfiles->updateSelf($user, $data);
+            $this->addFlash('success', 'Анкета сохранена');
+
+            return $this->redirectToRoute('account_wardrobe_app');
+        }
+
+        return $this->render('account/family/add.html.twig', [
+            'form' => $form,
+            'profileMode' => true,
         ]);
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller\Auth;
 
+use App\Entity\User;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -18,8 +19,13 @@ class LoginController extends AbstractController
             return $this->redirectToRoute('account_dashboard');
         }
 
+        $lastUsername = $authenticationUtils->getLastUsername();
+        if (str_ends_with($lastUsername, '@' . User::MANAGED_EMAIL_DOMAIN)) {
+            $lastUsername = '';
+        }
+
         return $this->render('auth/login.html.twig', [
-            'last_username' => $authenticationUtils->getLastUsername(),
+            'last_username' => $lastUsername,
             'error'         => $authenticationUtils->getLastAuthenticationError(),
         ]);
     }

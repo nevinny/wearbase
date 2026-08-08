@@ -2001,6 +2001,10 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   и item counts.
 - [x] Дать родителю действия «Добавить ребёнка» и «Пригласить взрослого» через существующие CSRF
   family routes.
+- [x] Сделать invite-first основным сценарием подростка: регистрация со своей почтой → роль child →
+  анкета-визард; managed-профиль оставить отдельным вариантом «без входа».
+- [x] Добавить необязательную анкету ребёнка: дата рождения, пол, рост, размеры, предпочтения,
+  аватар; скрыть synthetic email, claim tokens и чужие counts/links от child UI.
 - [x] Добавить read-only `/api/v1/wardrobe-app/bootstrap` и cursor-paginated `/items`, session-auth,
   explicit DTO, `no-store`, FamilyService IDOR guard.
 - [x] Покрыть web/API: guest, parent→child, child roster, child→parent/sibling deny, schema/privacy.
@@ -2017,6 +2021,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 
 ### Фаза 1 — запрос ребёнка и решение родителя
 
+- [x] Реализовать provider-agnostic web/PWA MVP: одна HTTPS-ссылка без server fetch, комментарий,
+  child/parent inbox, approve/reject с причиной, CSRF, IDOR-защита и append-only audit.
 - [ ] Добавить `PurchaseRequest`, `PurchaseRequestItem`, `PurchaseRequestEvent` и миграцию.
 - [ ] Реализовать доменный lifecycle и `FamilyService`-проверки actor/profileSubject.
 - [ ] Сделать детский флоу: черновик → provider/manual import → вариант → отправка.
@@ -2034,6 +2040,18 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [ ] Убрать runtime Tailwind CDN в локальную production-сборку перед строгим CSP/offline-first.
 - [ ] Сделать интерфейс role-aware: ребёнку — запросы/ответы, родителю — решения/примерки.
 - [ ] Покрыть PHPUnit: переходы, CSRF, IDOR между семьями, managed-child, конкурентные решения.
+
+### Фаза 1A — домен семейного приложения
+
+- [ ] Перенести PWA на family.wearbase.ru: DNS/TLS, trusted hosts, session cookie domain,
+  CORS/CSP, manifest scope/start URL, API/deep links и redirects со старых /account/* URL.
+
+### Фаза 4A — безопасный share snapshot
+
+- [ ] Делится только immutable snapshot выбранного образа/подборки, не профиль и не live-гардероб.
+- [ ] Parent approval для несовершеннолетнего, 256-bit hashed token, TTL до 7 дней, revoke/410.
+- [ ] Строгая allowlist полей без имени, возраста, размеров, roster, EXIF и истории покупок.
+- [ ] Public page: noindex/nofollow/noarchive, no-store, no-referrer, CSP и без аналитики.
 
 ### Фаза 2 — заказ, примерка и карточка вещи
 
