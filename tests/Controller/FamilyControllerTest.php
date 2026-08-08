@@ -56,8 +56,12 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
         $crawler = $client->request('GET', '/account/family/add');
         $this->assertResponseIsSuccessful();
 
-        $form = $crawler->selectButton('Сохранить')->form([
+        $form = $crawler->selectButton('Создать профиль')->form([
             'family_child_form[firstName]' => 'Маша',
+            'family_child_form[birthDate]' => '2012-03-04',
+            'family_child_form[heightCm]' => '158',
+            'family_child_form[clothingSize]' => '158',
+            'family_child_form[shoeSize]' => '38',
         ]);
         $client->submit($form);
 
@@ -77,6 +81,8 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
         $this->assertStringEndsWith('@' . User::MANAGED_EMAIL_DOMAIN, $child->getEmail());
         $this->assertSame(User::FAMILY_ROLE_CHILD, $child->getFamilyRole());
         $this->assertTrue($child->isManaged());
+        $this->assertSame('158', $child->getClothingSize());
+        $this->assertSame(158, $child->getHeightCm());
 
         $client->request('GET', '/account/family');
         $this->assertSelectorTextContains('body', 'Маша');
@@ -133,6 +139,8 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseIsSuccessful();
         $this->assertSelectorNotExists('a[href="/account/family/add"]');
         $this->assertSelectorNotExists('form[action="/account/family/invite"]');
+        $this->assertSelectorNotExists('input[id^="claim-url-"]');
+        $this->assertStringNotContainsString(User::MANAGED_EMAIL_DOMAIN, $client->getResponse()->getContent());
 
         $client->request('POST', '/account/family/invite', [
             'role' => User::FAMILY_ROLE_PARENT,
@@ -184,6 +192,25 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
 
         $client->request('GET', '/family/invite/' . $token);
         $this->assertResponseStatusCodeSame(410);
+    }
+
+    public function testChildInviteUsesOwnAccountAndStartsProfileWizard(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-child-invite-parent@test.local');
+        $invite = static::getContainer()->get(FamilyService::class)
+            ->createInvite($parent, User::FAMILY_ROLE_CHILD);
+        $child = UserFactory::withEmail(static::getContainer(), 'teenager@example.test');
+        $client->loginUser($child);
+
+        $crawler = $client->request('GET', '/family/invite/'.$invite->getToken());
+        $client->submit($crawler->selectButton('Принять приглашение')->form());
+
+        $this->assertResponseRedirects('/account/family/profile');
+        $client->followRedirect();
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('h1', 'Моя анкета');
+        $this->assertStringNotContainsString(User::MANAGED_EMAIL_DOMAIN, $client->getResponse()->getContent());
     }
 
     public function testClaimActivatesManagedChild(): void

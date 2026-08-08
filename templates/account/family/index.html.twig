@@ -6,8 +6,11 @@
 <div class="mb-5 flex items-center justify-between gap-3">
     <h1 class="text-xl font-black text-slate-950">Семья</h1>
     {% if canManageFamily %}
-    <a href="{{ path('account_family_add') }}"
-       class="rounded-xl bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-black">+ Добавить ребёнка</a>
+    <form method="post" action="{{ path('account_family_invite') }}">
+        <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
+        <input type="hidden" name="role" value="child">
+        <button type="submit" class="rounded-xl bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-black">+ Пригласить ребёнка</button>
+    </form>
     {% endif %}
 </div>
 
@@ -19,8 +22,13 @@
         <p class="mb-1 font-semibold text-gray-700">Добавьте членов семьи</p>
         <p class="mb-5 text-sm">У каждого свой гардероб, вещи можно передавать</p>
         {% if canManageFamily %}<div class="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+            <form method="post" action="{{ path('account_family_invite') }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
+                <input type="hidden" name="role" value="child">
+                <button type="submit" class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">+ Пригласить ребёнка</button>
+            </form>
             <a href="{{ path('account_family_add') }}"
-               class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">+ Добавить ребёнка</a>
+               class="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Профиль без входа</a>
             <form method="post" action="{{ path('account_family_invite') }}" class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
                 <select name="role"
@@ -48,9 +56,11 @@
                     <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-600">Родитель</span>
                 {% endif %}
             </div>
-            <div class="mb-3 text-xs text-gray-500">{{ itemCounts[member.id] ?? 0 }} вещей</div>
-            <a href="{{ path('account_wardrobe_index', {member: member.id}) }}"
-               class="text-sm font-semibold underline decoration-gray-300 underline-offset-2 hover:decoration-gray-900">Гардероб →</a>
+            {% if itemCounts[member.id] is defined %}
+                <div class="mb-3 text-xs text-gray-500">{{ itemCounts[member.id] }} вещей</div>
+                <a href="{{ path('account_wardrobe_index', {member: member.id}) }}"
+                   class="text-sm font-semibold underline decoration-gray-300 underline-offset-2 hover:decoration-gray-900">Гардероб →</a>
+            {% endif %}
 
             {% if claimUrls[member.id] is defined %}
                 <details class="mt-4 border-t border-gray-100 pt-3">

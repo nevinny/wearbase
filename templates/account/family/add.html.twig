@@ -1,46 +1,128 @@
 {% extends 'account/family_wardrobe/layout.html.twig' %}
-{% block family_mobile_title %}Добавить ребёнка{% endblock %}
+{% block family_mobile_title %}Профиль ребёнка{% endblock %}
 
 {% macro err(field) %}
     {% if field.vars.errors|length > 0 %}
-        <div class="form-error mt-1 text-sm text-red-600">{{ form_errors(field) }}</div>
+        <div class="mt-1 text-sm text-red-600">{{ form_errors(field) }}</div>
     {% endif %}
 {% endmacro %}
 
 {% block family_mobile_content %}
 {% import _self as f %}
 {% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
-{% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% set tw_input = 'w-full min-h-11 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-600' %}
 
 <div class="mb-5 flex items-center gap-3">
-    <a href="{{ path('account_family_index') }}"
-       class="flex min-h-11 items-center rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50">← Назад</a>
-    <h1 class="text-xl font-black text-slate-950">Добавить ребёнка</h1>
+    <a href="{{ path('account_family_index') }}" class="flex min-h-11 items-center rounded-xl border border-gray-300 px-3 text-sm text-gray-600">← Назад</a>
+    <div>
+        <p id="wizard-progress" class="text-xs font-bold uppercase tracking-wider text-indigo-600">Шаг 1 из 3</p>
+        <h1 class="text-xl font-black text-slate-950">{{ profileMode ? 'Моя анкета' : 'Профиль ребёнка без входа' }}</h1>
+    </div>
 </div>
 
-{{ form_start(form) }}
+<div class="mb-5 h-1.5 overflow-hidden rounded-full bg-slate-200">
+    <div id="wizard-progress-bar" class="h-full w-1/3 rounded-full bg-indigo-600 transition-all"></div>
+</div>
 
-<div class="mb-4 rounded-2xl bg-white p-5 shadow-sm sm:p-6">
-    <div class="grid grid-cols-12 gap-4">
-        <div class="col-span-12 md:col-span-6">
-            <label class="{{ tw_label }}">Имя <span class="text-red-600">*</span></label>
-            {{ form_widget(form.firstName, {'attr': {'class': tw_input, 'placeholder': 'Имя ребёнка'}}) }}
+{{ form_start(form, {attr: {id: 'child-profile-wizard'}}) }}
+
+<section data-wizard-step="1" class="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+    <h2 class="text-lg font-black">Как зовут ребёнка?</h2>
+    <p class="mt-1 text-sm text-slate-500">Имя обязательно, остальное можно заполнить позже.</p>
+    <div class="mt-5 grid gap-4 sm:grid-cols-2">
+        <div>
+            {{ form_label(form.firstName, null, {label_attr: {class: tw_label}}) }}
+            {{ form_widget(form.firstName, {attr: {class: tw_input, autocomplete: 'off'}}) }}
             {{ f.err(form.firstName) }}
         </div>
-        <div class="col-span-12 md:col-span-6">
-            <label class="{{ tw_label }}">Дата рождения</label>
-            {{ form_widget(form.birthDate, {'attr': {'class': tw_input}}) }}
+        <div>
+            {{ form_label(form.lastName, null, {label_attr: {class: tw_label}}) }}
+            {{ form_widget(form.lastName, {attr: {class: tw_input, autocomplete: 'off'}}) }}
+            {{ f.err(form.lastName) }}
+        </div>
+        <div>
+            {{ form_label(form.birthDate, null, {label_attr: {class: tw_label}}) }}
+            {{ form_widget(form.birthDate, {attr: {class: tw_input}}) }}
             {{ f.err(form.birthDate) }}
         </div>
+        <div>
+            {{ form_label(form.gender, null, {label_attr: {class: tw_label}}) }}
+            {{ form_widget(form.gender, {attr: {class: tw_input}}) }}
+            {{ f.err(form.gender) }}
+        </div>
     </div>
-    <p class="mt-3 text-xs text-gray-400">У ребёнка появится свой гардероб. Позже можно дать ему собственный доступ по ссылке.</p>
-</div>
+</section>
 
-<div class="mt-6 flex flex-col gap-2 sm:flex-row">
-    <button type="submit" class="min-h-11 rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-black">Сохранить</button>
-    <a href="{{ path('account_family_index') }}"
-       class="min-h-11 rounded-xl border border-gray-300 px-5 py-2.5 text-center text-sm font-semibold text-gray-600 transition hover:bg-gray-50">Отмена</a>
+<section data-wizard-step="2" class="hidden rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+    <h2 class="text-lg font-black">Аватар</h2>
+    <p class="mt-1 text-sm text-slate-500">Необязательно. Фото будет видно только участникам семьи.</p>
+    <div class="mt-5">
+        {{ form_widget(form.avatarFile, {attr: {accept: 'image/jpeg,image/png,image/webp', capture: 'user'}}) }}
+        {{ f.err(form.avatarFile) }}
+    </div>
+</section>
+
+<section data-wizard-step="3" class="hidden rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+    <h2 class="text-lg font-black">Размеры и предпочтения</h2>
+    <p class="mt-1 text-sm text-slate-500">Все поля необязательны и помогут оценивать будущие покупки.</p>
+    <div class="mt-5 grid gap-4 sm:grid-cols-3">
+        <div>
+            {{ form_label(form.heightCm, null, {label_attr: {class: tw_label}}) }}
+            {{ form_widget(form.heightCm, {attr: {class: tw_input}}) }}
+            {{ f.err(form.heightCm) }}
+        </div>
+        <div>
+            {{ form_label(form.clothingSize, null, {label_attr: {class: tw_label}}) }}
+            {{ form_widget(form.clothingSize, {attr: {class: tw_input}}) }}
+            {{ f.err(form.clothingSize) }}
+        </div>
+        <div>
+            {{ form_label(form.shoeSize, null, {label_attr: {class: tw_label}}) }}
+            {{ form_widget(form.shoeSize, {attr: {class: tw_input}}) }}
+            {{ f.err(form.shoeSize) }}
+        </div>
+    </div>
+    <div class="mt-4">
+        {{ form_label(form.profileNotes, null, {label_attr: {class: tw_label}}) }}
+        {{ form_widget(form.profileNotes, {attr: {class: tw_input}}) }}
+        {{ f.err(form.profileNotes) }}
+    </div>
+</section>
+
+<div class="sticky bottom-20 mt-5 flex gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+    <button id="wizard-back" type="button" class="hidden min-h-12 rounded-xl border border-slate-300 px-5 text-sm font-semibold">Назад</button>
+    <button id="wizard-next" type="button" class="min-h-12 flex-1 rounded-xl bg-slate-950 px-5 text-sm font-bold text-white">Продолжить</button>
+    <button id="wizard-submit" type="submit" class="hidden min-h-12 flex-1 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white">{{ profileMode ? 'Сохранить анкету' : 'Создать профиль' }}</button>
 </div>
 
 {{ form_end(form) }}
+{% endblock %}
+
+{% block family_mobile_javascripts %}
+<script>
+(function () {
+    var step = 1;
+    var sections = document.querySelectorAll('[data-wizard-step]');
+    var back = document.getElementById('wizard-back');
+    var next = document.getElementById('wizard-next');
+    var submit = document.getElementById('wizard-submit');
+    var label = document.getElementById('wizard-progress');
+    var bar = document.getElementById('wizard-progress-bar');
+
+    function render() {
+        sections.forEach(function (section) {
+            section.classList.toggle('hidden', Number(section.dataset.wizardStep) !== step);
+        });
+        back.classList.toggle('hidden', step === 1);
+        next.classList.toggle('hidden', step === 3);
+        submit.classList.toggle('hidden', step !== 3);
+        label.textContent = 'Шаг ' + step + ' из 3';
+        bar.style.width = (step * 100 / 3) + '%';
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+
+    next.addEventListener('click', function () { step = Math.min(3, step + 1); render(); });
+    back.addEventListener('click', function () { step = Math.max(1, step - 1); render(); });
+})();
+</script>
 {% endblock %}

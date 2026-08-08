@@ -36,7 +36,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorExists('a[href="/account/wardrobe/outfits"]');
         $this->assertSelectorExists('a[href="/account/wardrobe/statistics"]');
         $this->assertSelectorTextContains('body', 'Состав семьи');
-        $this->assertSelectorExists('a[href="/account/family/add"]');
+        $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="child"]');
         $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="parent"]');
     }
 
@@ -78,5 +78,6 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorNotExists(sprintf('a[href="/account/wardrobe?member=%d"]', $parent->getId()));
         $this->assertSelectorNotExists('a[href="/account/family/add"]');
         $this->assertSelectorNotExists('form[action="/account/family/invite"]');
+        $this->assertSelectorExists('#share-wardrobe-app[data-share-url$="/ru/wardrobe"]');
     }
 }

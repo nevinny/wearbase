@@ -15,6 +15,21 @@
         <h1 id="wardrobe-app-title" class="mt-1 text-2xl font-black tracking-tight text-slate-950">Что хотите сделать?</h1>
 
         <div class="mt-5 grid grid-cols-2 gap-3">
+            {% if app.user.familyRole == 'child' %}
+            <a href="{{ path('account_purchase_new') }}"
+               class="rounded-2xl bg-rose-500 p-4 text-white shadow-sm transition hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2">
+                <span class="block text-2xl" aria-hidden="true">♡</span>
+                <span class="mt-5 block text-sm font-bold">Хочу купить</span>
+                <span class="mt-1 block text-xs text-rose-100">Отправить ссылку родителю</span>
+            </a>
+            {% else %}
+            <a href="{{ path('account_purchase_index') }}"
+               class="rounded-2xl bg-rose-500 p-4 text-white shadow-sm transition hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2">
+                <span class="block text-2xl" aria-hidden="true">♡</span>
+                <span class="mt-5 block text-sm font-bold">Запросы покупок</span>
+                <span class="mt-1 block text-xs text-rose-100">Решения для детей</span>
+            </a>
+            {% endif %}
             <a href="{{ path('account_wardrobe_new') }}"
                class="rounded-2xl bg-indigo-600 p-4 text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
                 <span class="block text-2xl" aria-hidden="true">＋</span>
@@ -81,10 +96,13 @@
 
         {% if canManageFamily %}
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
-                <a href="{{ path('account_family_add') }}"
-                   class="flex min-h-12 items-center justify-center rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2">
-                    + Добавить ребёнка
-                </a>
+                <form method="post" action="{{ path('account_family_invite') }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
+                    <input type="hidden" name="role" value="child">
+                    <button type="submit" class="min-h-12 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2">
+                        Пригласить ребёнка
+                    </button>
+                </form>
                 <form method="post" action="{{ path('account_family_invite') }}">
                     <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
                     <input type="hidden" name="role" value="parent">
@@ -94,6 +112,41 @@
                     </button>
                 </form>
             </div>
+        {% elseif app.user.familyRole == 'child' %}
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                <a href="{{ path('account_family_profile') }}"
+                   class="flex min-h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800">
+                    Заполнить мою анкету
+                </a>
+                <button type="button" id="share-wardrobe-app"
+                        data-share-url="{{ url('landing_wardrobe', {_locale: 'ru'}) }}"
+                        class="min-h-12 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800">
+                    Поделиться с друзьями
+                </button>
+            </div>
         {% endif %}
     </section>
+{% endblock %}
+
+{% block family_mobile_javascripts %}
+<script>
+(function () {
+    var button = document.getElementById('share-wardrobe-app');
+    if (!button) return;
+
+    button.addEventListener('click', function () {
+        var url = button.dataset.shareUrl;
+        var done = function () {
+            button.textContent = 'Ссылка скопирована';
+            setTimeout(function () { button.textContent = 'Поделиться с друзьями'; }, 2000);
+        };
+
+        if (navigator.share) {
+            navigator.share({title: 'WEARBASE Гардероб', text: 'Попробуй цифровой гардероб', url: url}).catch(function () {});
+        } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(done);
+        }
+    });
+})();
+</script>
 {% endblock %}

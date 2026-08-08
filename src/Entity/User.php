@@ -111,6 +111,24 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     #[ORM\Column(type: 'date_immutable', nullable: true)]
     private ?\DateTimeImmutable $birthDate = null;
 
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $gender = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?int $heightCm = null;
+
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $clothingSize = null;
+
+    #[ORM\Column(length: 10, nullable: true)]
+    private ?string $shoeSize = null;
+
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $profileNotes = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $profileCompletedAt = null;
+
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
@@ -395,6 +413,54 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     public function setBirthDate(?\DateTimeImmutable $birthDate): static
     {
         $this->birthDate = $birthDate;
+        return $this;
+    }
+
+    public function getGender(): ?string { return $this->gender; }
+
+    public function setGender(?string $gender): static
+    {
+        $this->gender = $gender;
+        return $this;
+    }
+
+    public function getHeightCm(): ?int { return $this->heightCm; }
+
+    public function setHeightCm(?int $heightCm): static
+    {
+        $this->heightCm = $heightCm;
+        return $this;
+    }
+
+    public function getClothingSize(): ?string { return $this->clothingSize; }
+
+    public function setClothingSize(?string $clothingSize): static
+    {
+        $this->clothingSize = $clothingSize;
+        return $this;
+    }
+
+    public function getShoeSize(): ?string { return $this->shoeSize; }
+
+    public function setShoeSize(?string $shoeSize): static
+    {
+        $this->shoeSize = $shoeSize;
+        return $this;
+    }
+
+    public function getProfileNotes(): ?string { return $this->profileNotes; }
+
+    public function setProfileNotes(?string $profileNotes): static
+    {
+        $this->profileNotes = $profileNotes;
+        return $this;
+    }
+
+    public function getProfileCompletedAt(): ?\DateTimeImmutable { return $this->profileCompletedAt; }
+
+    public function completeProfile(): static
+    {
+        $this->profileCompletedAt = new \DateTimeImmutable();
         return $this;
     }
 

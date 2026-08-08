@@ -119,6 +119,9 @@ class FamilyClaimController extends AbstractController
             try {
                 $familyService->acceptInvite($user, $invite);
                 $this->addFlash('success', 'Вы присоединились к семье');
+                if ($invite->getRole() === User::FAMILY_ROLE_CHILD) {
+                    return $this->redirectToRoute('account_family_profile');
+                }
             } catch (\DomainException $e) {
                 $this->addFlash('error', $e->getMessage());
             }

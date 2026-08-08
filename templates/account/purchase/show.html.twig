@@ -1,0 +1,102 @@
+{% extends 'account/family_wardrobe/layout.html.twig' %}
+
+{% block family_mobile_title %}Запрос на покупку{% endblock %}
+
+{% block family_mobile_content %}
+    {% set isParent = actor.familyParent %}
+    {% set isPending = purchaseRequest.status == 'pending' %}
+    {% set statusLabels = {
+        draft: 'Черновик',
+        pending: 'Ждёт решения',
+        approved: 'Одобрено',
+        rejected: 'Отклонено'
+    } %}
+    {% set statusClasses = {
+        draft: 'bg-slate-100 text-slate-700',
+        pending: 'bg-amber-100 text-amber-800',
+        approved: 'bg-emerald-100 text-emerald-800',
+        rejected: 'bg-rose-100 text-rose-800'
+    } %}
+
+    <div class="flex items-center justify-between gap-3">
+        <a href="{{ path('account_purchase_index') }}"
+           class="flex min-h-11 items-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
+            ← Назад
+        </a>
+        <span class="rounded-full px-3 py-1.5 text-xs font-bold {{ statusClasses[purchaseRequest.status]|default('bg-slate-100 text-slate-700') }}">
+            {{ statusLabels[purchaseRequest.status]|default(purchaseRequest.status) }}
+        </span>
+    </div>
+
+    <section class="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="purchase-title">
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Для {{ purchaseRequest.subject.fullName }}
+        </p>
+        <h1 id="purchase-title" class="mt-1 text-xl font-black text-slate-950">Запрос на покупку</h1>
+        <p class="mt-2 text-xs text-slate-500">
+            {{ purchaseRequest.createdBy.fullName }} · {{ purchaseRequest.createdAt|date('d.m.Y, H:i') }}
+        </p>
+
+        <a href="{{ purchaseRequest.productUrl }}" target="_blank" rel="noopener noreferrer"
+           class="mt-5 flex min-h-14 items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800 transition hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
+            <span class="min-w-0 break-all">Открыть товар в магазине</span>
+            <span class="shrink-0 text-lg" aria-hidden="true">↗</span>
+        </a>
+
+        {% if purchaseRequest.comment %}
+            <div class="mt-5">
+                <h2 class="text-sm font-bold text-slate-900">Комментарий</h2>
+                <p class="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{{ purchaseRequest.comment }}</p>
+            </div>
+        {% endif %}
+    </section>
+
+    {% if purchaseRequest.decisionComment %}
+        <section class="mt-4 rounded-2xl border {{ purchaseRequest.status == 'approved' ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50' }} p-5">
+            <h2 class="text-sm font-bold {{ purchaseRequest.status == 'approved' ? 'text-emerald-900' : 'text-rose-900' }}">Комментарий родителя</h2>
+            <p class="mt-2 whitespace-pre-line text-sm leading-6 {{ purchaseRequest.status == 'approved' ? 'text-emerald-800' : 'text-rose-800' }}">{{ purchaseRequest.decisionComment }}</p>
+            {% if purchaseRequest.decidedAt %}
+                <p class="mt-2 text-xs opacity-70">{{ purchaseRequest.decidedAt|date('d.m.Y, H:i') }}</p>
+            {% endif %}
+        </section>
+    {% endif %}
+
+    {% if isParent and isPending %}
+        <section class="mt-5" aria-labelledby="parent-decision-title">
+            <h2 id="parent-decision-title" class="text-lg font-black text-slate-950">Ваше решение</h2>
+            <p class="mt-1 text-sm text-slate-500">Комментарий поможет объяснить решение ребёнку.</p>
+
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                <form method="post" action="{{ path('account_purchase_decide', {id: purchaseRequest.id, status: 'approved'}) }}"
+                      class="rounded-2xl border border-emerald-200 bg-white p-4">
+                    <input type="hidden" name="_token" value="{{ csrf_token('purchase_decide_' ~ purchaseRequest.id) }}">
+                    <input type="hidden" name="decision" value="approved">
+                    <label for="approve-comment" class="block text-sm font-bold text-slate-800">Комментарий <span class="font-normal text-slate-400">(необязательно)</span></label>
+                    <textarea id="approve-comment" name="decisionComment" rows="3" placeholder="Например, закажем вечером"
+                              class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-base placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"></textarea>
+                    <button type="submit"
+                            class="mt-3 min-h-12 w-full rounded-xl bg-emerald-600 px-4 py-3 text-base font-bold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2">
+                        Одобрить
+                    </button>
+                </form>
+
+                <form method="post" action="{{ path('account_purchase_decide', {id: purchaseRequest.id, status: 'rejected'}) }}"
+                      class="rounded-2xl border border-rose-200 bg-white p-4">
+                    <input type="hidden" name="_token" value="{{ csrf_token('purchase_decide_' ~ purchaseRequest.id) }}">
+                    <input type="hidden" name="decision" value="rejected">
+                    <label for="reject-comment" class="block text-sm font-bold text-slate-800">Почему не сейчас</label>
+                    <textarea id="reject-comment" name="decisionComment" rows="3" required placeholder="Коротко объясните решение"
+                              class="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-base placeholder-slate-400 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-200"></textarea>
+                    <button type="submit"
+                            class="mt-3 min-h-12 w-full rounded-xl border border-rose-300 bg-white px-4 py-3 text-base font-bold text-rose-700 transition hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-600 focus:ring-offset-2">
+                        Отклонить
+                    </button>
+                </form>
+            </div>
+        </section>
+    {% elseif not isParent and isPending %}
+        <div class="mt-5 rounded-2xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+            Запрос отправлен родителю. Здесь появится решение и комментарий.
+        </div>
+    {% endif %}
+{% endblock %}
