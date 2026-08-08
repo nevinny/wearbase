@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Advisor;
 
 use App\Service\EmbeddingService;
+use App\Service\Knowledge\KnowledgeChannelRegistry;
 use App\Service\VectorStoreService;
 
 /**
@@ -12,7 +13,7 @@ use App\Service\VectorStoreService;
  * советника (docs/advisor.md §«Роли каналов», шаг 2 цикла идей). Эмбеддит запрос тем же
  * эмбеддером, что ингест, и достаёт топ-k чанков нужных ролей с provenance (канал/видео).
  *
- * Роли (по каналу-источнику, см. IngestKnowledgeChannelsCommand::ROLE_MAP):
+ * Роли (по каналу-источнику, см. config/knowledge/channels.yaml):
  *   idea/framing/case — подмешиваются в генерацию идей;
  *   tone (Федотов) — только стиль подачи, в идеи НЕ идёт (toneExemplars() — на будущее).
  *
@@ -23,20 +24,10 @@ final class AdvisorRag
     /** Роли-источники идей (tone намеренно исключён; seo — SEO/GEO-приёмы DrMax, подмешиваются семантически). */
     public const IDEA_ROLES = ['idea', 'framing', 'case', 'seo'];
 
-    /** Человекочитаемые имена каналов для провенанс-пометки в дайджесте. */
-    private const CHANNEL_NAMES = [
-        'grebenukm'            => 'Гребенюк',
-        'dolgov_alexandr'      => 'Долгов',
-        'mtokovinin'           => 'Токовинин',
-        'AlexanderSokolovskiy' => 'Соколовский',
-        'FedotovM'             => 'Федотов',
-        'drmaxseo'             => 'DrMax SEO',
-        'freychu'              => 'Frey Chu (directories)',
-    ];
-
     public function __construct(
         private readonly EmbeddingService $embedder,
         private readonly VectorStoreService $vectors,
+        private readonly KnowledgeChannelRegistry $channels,
     ) {
     }
 
@@ -115,7 +106,7 @@ final class AdvisorRag
         $blocks = [];
         $total  = 0;
         foreach ($chunks as $i => $c) {
-            $label = self::CHANNEL_NAMES[$c['channel']] ?? ($c['channel'] ?: '—');
+            $label = $this->channels->nameFor($c['channel']) ?? ($c['channel'] ?: '—');
             $block = sprintf('#%d [%s · %s]: %s', $i + 1, $label, $c['role'], trim($c['text']));
             if ($total + mb_strlen($block) > $maxChars) {
                 break;
@@ -127,8 +118,8 @@ final class AdvisorRag
         return implode("\n\n", $blocks);
     }
 
-    public static function channelName(string $channel): string
+    public function channelName(string $channel): string
     {
-        return self::CHANNEL_NAMES[$channel] ?? $channel;
+        return $this->channels->nameFor($channel) ?? $channel;
     }
 }

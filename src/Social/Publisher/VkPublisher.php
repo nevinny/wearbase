@@ -30,8 +30,11 @@ class VkPublisher implements SocialPublisherInterface
         return SocialChannel::PLATFORM_VK;
     }
 
-    public function publish(SocialChannel $channel, SocialPost $post, ?string $mediaAbsPath): string
+    public function publish(SocialChannel $channel, SocialPost $post, array $mediaAbsPaths): string
     {
+        // Мульти-фото на стене VK пока не поддержано (нужен user-токен) — берём первый слайд.
+        $mediaAbsPath = $mediaAbsPaths[0] ?? null;
+
         $enc = $channel->getTokenEnc();
         if ($enc === null || $enc === '') {
             throw new \RuntimeException('У VK-канала нет токена (community access token).');

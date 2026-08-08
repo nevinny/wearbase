@@ -7,11 +7,24 @@ monolog:
 when@dev:
     monolog:
         handlers:
+            # rotating_file, а не stream: единый dev.log никогда не ротировался и дорос до
+            # 1,5 ГБ за 9 месяцев (2025-11-05 → 2026-07-31). На Mac это ещё и внешний том.
+            # Крон тикает раз в минуту, 66% объёма — http_client.INFO (каждый исходящий
+            # запрос RAG/GSC/ollama), т.е. само по себе объём не уймётся: нужен лимит.
             main:
-                type: stream
+                type: rotating_file
+                max_files: 7
                 path: "%kernel.logs_dir%/%kernel.environment%.log"
                 level: debug
-                channels: ["!event"]
+                channels: ["!event", "!deprecation"]
+            # deprecation — в свой файл, ровно как уже сделано в when@prod ниже: в main это
+            # давало 27% объёма при пяти повторяющихся сообщениях.
+            deprecation:
+                type: rotating_file
+                max_files: 3
+                path: "%kernel.logs_dir%/deprecation.log"
+                level: info
+                channels: [deprecation]
             telegram:
                 type: stream
                 path: "%kernel.logs_dir%/telegram.log"

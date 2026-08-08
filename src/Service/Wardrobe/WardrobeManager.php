@@ -76,16 +76,46 @@ class WardrobeManager
         return $status;
     }
 
-    public function archive(WardrobeItem $item): void
+    /**
+     * Статусы, из которых можно уйти «В архив» — те же, что репозиторий считает
+     * «активным списком» (WardrobeItemRepository::ARCHIVE_STATUSES исключает
+     * именно их). Терминальные (sold/donated/lost) туда уже не переводим: это
+     * перезаписало бы факт продажи/дарения молча.
+     */
+    private const ARCHIVABLE_STATUSES = [
+        WardrobeItem::ITEM_ACTIVE,
+        WardrobeItem::ITEM_REPAIR,
+        WardrobeItem::ITEM_TRANSFERRED,
+    ];
+
+    /**
+     * «В архив» — из active/repair/transferred, чтобы вещи не застревали в
+     * основном списке навсегда без пути наружу.
+     */
+    public function archive(WardrobeItem $item): bool
     {
+        if (!in_array($item->getItemStatus(), self::ARCHIVABLE_STATUSES, true)) {
+            return false;
+        }
         $item->setItemStatus(WardrobeItem::ITEM_ARCHIVED);
         $this->entityManager->flush();
+
+        return true;
     }
 
-    public function restore(WardrobeItem $item): void
+    /**
+     * «Вернуть» — только из archived. Терминальные статусы (sold/donated/lost) не
+     * восстанавливаем этой кнопкой — их меняют осознанно через форму редактирования.
+     */
+    public function restore(WardrobeItem $item): bool
     {
+        if ($item->getItemStatus() !== WardrobeItem::ITEM_ARCHIVED) {
+            return false;
+        }
         $item->setItemStatus(WardrobeItem::ITEM_ACTIVE);
         $this->entityManager->flush();
+
+        return true;
     }
 
     private function filled(?string $value): bool

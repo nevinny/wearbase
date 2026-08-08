@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Service\Support\LinkTypeClassifier;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -59,7 +60,7 @@ class OutboundClickController extends AbstractController
                 [
                     'brand_id' => (int) $row['brand_id'],
                     'link_id'  => $id,
-                    'type'     => $this->classify($url),
+                    'type'     => LinkTypeClassifier::classify($url),
                     'host'     => mb_substr((string) parse_url($url, PHP_URL_HOST), 0, 255) ?: null,
                     'locale'   => $request->getLocale(),
                     'referer'  => $ref !== null ? mb_substr($ref, 0, 255) : null,
@@ -77,23 +78,5 @@ class OutboundClickController extends AbstractController
         $resp->headers->set('Referrer-Policy', 'no-referrer');  // не утекать наш URL бренду как referer
 
         return $resp;
-    }
-
-    /** Нормализованный тип цели по хосту (link_type из enrichment часто 'other'). */
-    private function classify(string $url): string
-    {
-        $h = mb_strtolower((string) parse_url($url, PHP_URL_HOST));
-
-        return match (true) {
-            str_contains($h, 'instagram.com')                          => 'instagram',
-            str_contains($h, 'vk.com') || str_contains($h, 'vkontakte') => 'vk',
-            str_contains($h, 't.me') || str_contains($h, 'telegram.')   => 'telegram',
-            str_contains($h, 'youtube.com') || str_contains($h, 'youtu.be') => 'youtube',
-            str_contains($h, 'tiktok.com')                             => 'tiktok',
-            str_contains($h, 'wildberries.') || str_contains($h, 'ozon.')
-                || str_contains($h, 'lamoda.') || str_contains($h, 'market.yandex.') => 'marketplace',
-            $h === ''                                                  => 'other',
-            default                                                    => 'website',
-        };
     }
 }

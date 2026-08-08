@@ -37,6 +37,7 @@ class BrandLkControllerTest extends AuthenticatedWebTestCase
         yield 'brand orders'    => ['/brand/orders'];
         yield 'brand team'      => ['/brand/team'];
         yield 'brand media'     => ['/brand/media'];
+        yield 'brand links'     => ['/brand/links'];
     }
 
     // ── Access control: customer gets 403 ────────────────────────────────────
@@ -67,6 +68,27 @@ class BrandLkControllerTest extends AuthenticatedWebTestCase
         // Brand LK использует компактный app.html.twig (без «WEARBASE» в шапке);
         // проверяем, что отрендерился именно дашборд бренда.
         $this->assertSelectorTextContains('body', 'Дашборд');
+    }
+
+    /**
+     * Премодерация: пока карточка не опубликована, владелец видит явный баннер — иначе он ждёт
+     * трафика с карточки, которой нет в каталоге (регистрация создаёт бренд в статусе new).
+     */
+    public function testDashboardWarnsWhenBrandIsNotPublished(): void
+    {
+        $this->skipIfNoDatabase();
+
+        $client = static::createClient();
+        [, $brand] = $this->loginAsBrandOwnerWithBrand($client);
+
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $brand->setStatus(\Nevinny\AdminCoreBundle\Enum\Statuses::New);
+        $em->flush();
+
+        $client->request('GET', '/brand/dashboard');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('body', 'Карточка на проверке');
     }
 
     public function testBrandProfileLoads(): void

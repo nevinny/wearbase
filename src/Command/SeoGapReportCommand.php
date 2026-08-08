@@ -31,17 +31,26 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *                          бренда → аудит карточки (скилл brand-audit).
  * - other               — не классифицировано.
  *
- * Только чтение по brand/*_query_stats. Побочный эффект — ОДНА строка на
- * (source,intent_group) в seo_gap_snapshot (для трендов неделя-к-неделе),
+ * Две полосы позиций (--band), они не пересекаются и вместе покрывают 4-ю позицию и ниже:
+ * - gap      — position > 10: вторая страница, посадочной либо нет, либо она слабая;
+ * - striking — position 4–10 (3 < pos ≤ 10): страница УЖЕ в топ-10, но не в топ-3.
+ *              Дожать её дешевле, чем родить новую: сверить с топ-3 по главному запросу
+ *              и добавить недостающее (раздел, таблица, FAQ) — правка существующего URL.
+ *              Для GSC URL-владелец резолвится из gsc_page_stats (там есть query),
+ *              у Яндекса page-level запросов нет — там только сам запрос.
+ *
+ * Только чтение по brand/*_query_stats/gsc_page_stats. Побочный эффект — ОДНА строка на
+ * (source,band,intent_group) в seo_gap_snapshot (для трендов неделя-к-неделе),
  * пропускается с --stdout-only. --notify шлёт компактную сводку в Telegram
  * тем же AdminNotifier, что и остальные SEO-команды (app:seo:aio-remediate).
  *
  *   php bin/console app:seo:gap-report --stdout-only
+ *   php bin/console app:seo:gap-report --band=striking --stdout-only
  *   php bin/console app:seo:gap-report --notify --no-debug   # крон, пн 08:00
  */
 #[AsCommand(
     name: 'app:seo:gap-report',
-    description: 'SEO: автопилот position-gap листа (position>10, спрос есть) — группировка по интенту + снапшот тренда',
+    description: 'SEO: автопилот position-листа (gap >10 и дожим 4–10, спрос есть) — группировка по интенту + снапшот тренда',
 )]
 class SeoGapReportCommand extends Command
 {
@@ -50,6 +59,28 @@ class SeoGapReportCommand extends Command
 
     /** Стартовый гео-список из реальных данных мониторинга (docs/yandex_ai_visibility_monitoring.md) — расширять по мере появления новых городов в gap-листе. */
     private const GEO_PATTERN = '/спб|санкт[- ]?петербург|петербург|москв/iu';
+
+    /**
+     * Полосы позиций. `min`/`max` — границы (min исключительно, max включительно; null = без границы).
+     * `action_prefix` дописывается перед интент-действием: в striking страница уже ранжируется,
+     * поэтому дефолт — правка существующего URL, а не новая посадочная.
+     */
+    private const BAND_META = [
+        'striking' => [
+            'label'         => 'Дожим (топ-10 без топ-3, позиция 4–10)',
+            'icon'          => '🎯',
+            'min'           => 3.0,
+            'max'           => 10.0,
+            'action_prefix' => 'страница уже в топ-10 — сверить с топ-3 по главному запросу и добавить недостающее (раздел, таблица, FAQ); ',
+        ],
+        'gap' => [
+            'label'         => 'Gap (2-я страница, позиция >10)',
+            'icon'          => '🕳',
+            'min'           => 10.0,
+            'max'           => null,
+            'action_prefix' => '',
+        ],
+    ];
 
     private const GROUP_META = [
         'brand_entity'       => ['label' => 'Бренд/сущность («чей бренд»)', 'action' => 'проверить app:seo:aio-remediate по карточке (FAQ «Что за бренд?»)'],
@@ -71,6 +102,7 @@ class SeoGapReportCommand extends Command
     {
         $this
             ->addOption('source', null, InputOption::VALUE_REQUIRED, 'yandex|gsc|both', 'both')
+            ->addOption('band', null, InputOption::VALUE_REQUIRED, 'striking (поз. 4–10) | gap (поз. >10) | both', 'both')
             ->addOption('min-shows', null, InputOption::VALUE_REQUIRED, 'Мин. показов, чтобы считать спрос', '10')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Топ-N строк на источник (по показам)', '40')
             ->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Только вывод, без снапшота и без TG')
@@ -83,76 +115,125 @@ class SeoGapReportCommand extends Command
     {
         $io         = new SymfonyStyle($input, $output);
         $source     = (string) $input->getOption('source');
+        $band       = (string) $input->getOption('band');
         $minShows   = max(1, (int) $input->getOption('min-shows'));
         $limit      = max(1, (int) $input->getOption('limit'));
         $stdoutOnly = (bool) $input->getOption('stdout-only');
         $json       = (bool) $input->getOption('json');
         $notify     = (bool) $input->getOption('notify');
 
-        $io->title('SEO · gap-лист (position>10, спрос есть) — автопилот');
+        $bands = $this->resolveBands($band);
+        if ($bands === []) {
+            $io->error(sprintf('Неизвестная полоса --band=%s (ожидается striking|gap|both).', $band));
+            return Command::INVALID;
+        }
 
-        $rows = $this->fetchGapRows($source, $minShows, $limit);
-        if ($rows === []) {
-            $io->warning('Gap-запросов нет (пусто в yandex_query_stats/gsc_query_stats или все на позиции ≤10).');
+        $io->title('SEO · position-лист (дожим 4–10 + gap >10) — автопилот');
+
+        $byBand = [];
+        foreach ($bands as $bandName) {
+            $rows = $this->fetchBandRows($bandName, $source, $minShows, $limit);
+            if ($rows !== []) {
+                $byBand[$bandName] = $this->buildGroups($rows);
+            }
+        }
+
+        if ($byBand === []) {
+            $io->warning('Строк нет (пусто в yandex_query_stats/gsc_query_stats или все позиции вне выбранных полос).');
             return Command::SUCCESS;
         }
 
-        $groups = $this->buildGroups($rows);
-
         if ($json) {
-            $output->writeln(json_encode(['as_of' => (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d'), 'groups' => $groups], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $output->writeln(json_encode(['as_of' => (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d'), 'bands' => $byBand], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
         } else {
-            $io->section(sprintf('Всего gap-строк: %d', count($rows)));
-            foreach ($groups as $name => $g) {
-                $io->section(sprintf('%s — %d', $g['label'], count($g['rows'])));
-                $io->table(
-                    ['Запрос', 'Показы', 'Позиция', 'Источник'],
-                    array_map(
-                        static fn (array $r) => [mb_substr($r['query'], 0, 60), $r['shows'], $r['position'], $r['source']],
-                        $g['rows'],
-                    ),
-                );
-                $io->text('→ ' . $g['action']);
-                $io->newLine();
+            foreach ($byBand as $bandName => $groups) {
+                $meta  = self::BAND_META[$bandName];
+                $total = array_sum(array_map(static fn (array $g) => count($g['rows']), $groups));
+                $io->title(sprintf('%s %s — строк: %d', $meta['icon'], $meta['label'], $total));
+
+                foreach ($groups as $g) {
+                    $io->section(sprintf('%s — %d', $g['label'], count($g['rows'])));
+                    $io->table(
+                        ['Запрос', 'Показы', 'Позиция', 'Источник', 'URL-владелец'],
+                        array_map(
+                            static fn (array $r) => [mb_substr($r['query'], 0, 50), $r['shows'], $r['position'], $r['source'], $r['page'] !== null ? mb_substr($r['page'], 0, 45) : '—'],
+                            $g['rows'],
+                        ),
+                    );
+                    $io->text('→ ' . $meta['action_prefix'] . $g['action']);
+                    $io->newLine();
+                }
             }
             $io->section('Компактная сводка (превью того, что уйдёт в TG с --notify)');
-            $io->text(strip_tags($this->formatDigest($groups)));
+            $io->text(strip_tags($this->formatDigest($byBand)));
         }
 
         if (!$stdoutOnly) {
-            $this->persistSnapshot($this->snapshotRows($groups));
+            foreach ($byBand as $bandName => $groups) {
+                $this->persistSnapshot($bandName, $this->snapshotRows($groups));
+            }
 
             if ($notify && $this->notifier->isEnabled()) {
-                $this->notifier->send($this->formatDigest($groups));
+                $this->notifier->send($this->formatDigest($byBand));
             }
         }
 
         return Command::SUCCESS;
     }
 
-    /** @return list<array{query:string,shows:int,position:float,source:string}> */
-    private function fetchGapRows(string $source, int $minShows, int $limit): array
+    /**
+     * Порядок важен: striking идёт первым и в консоли, и в TG — дожим существующей
+     * страницы дешевле новой посадочной, поэтому он должен читаться раньше gap'а.
+     *
+     * @return list<string>
+     */
+    private function resolveBands(string $band): array
+    {
+        if ($band === 'both') {
+            return array_keys(self::BAND_META);
+        }
+
+        return isset(self::BAND_META[$band]) ? [$band] : [];
+    }
+
+    /** @return list<array{query:string,shows:int,position:float,source:string,page:?string}> */
+    private function fetchBandRows(string $band, string $source, int $minShows, int $limit): array
     {
         $rows = [];
         if ($source === 'yandex' || $source === 'both') {
-            $rows = array_merge($rows, $this->fetchYandexGaps($minShows, $limit));
+            $rows = array_merge($rows, $this->fetchYandexRows($band, $minShows, $limit));
         }
         if ($source === 'gsc' || $source === 'both') {
-            $rows = array_merge($rows, $this->fetchGscGaps($minShows, $limit));
+            $rows = array_merge($rows, $this->fetchGscRows($band, $minShows, $limit));
         }
 
         return $rows;
     }
 
-    /** @return list<array{query:string,shows:int,position:float,source:string}> */
-    private function fetchYandexGaps(int $minShows, int $limit): array
+    /**
+     * SQL-условие полосы: min исключительно, max включительно — так striking (3<pos≤10)
+     * и gap (pos>10) не пересекаются и один запрос не попадает в обе полосы.
+     */
+    private function bandCondition(string $band, string $column): string
+    {
+        $meta = self::BAND_META[$band];
+        $cond = sprintf('%s > %.1f', $column, $meta['min']);
+        if ($meta['max'] !== null) {
+            $cond .= sprintf(' AND %s <= %.1f', $column, $meta['max']);
+        }
+
+        return $cond;
+    }
+
+    /** @return list<array{query:string,shows:int,position:float,source:string,page:?string}> */
+    private function fetchYandexRows(string $band, int $minShows, int $limit): array
     {
         try {
             $data = $this->db->fetchAllAssociative(
                 'SELECT query_text AS query, shows, position
                  FROM yandex_query_stats
                  WHERE date_to = (SELECT MAX(date_to) FROM yandex_query_stats)
-                   AND position > 10 AND shows >= ?
+                   AND ' . $this->bandCondition($band, 'position') . ' AND shows >= ?
                  ORDER BY shows DESC LIMIT ' . $limit,
                 [$minShows],
             );
@@ -160,21 +241,32 @@ class SeoGapReportCommand extends Command
             return []; // таблица не создана / крон синка ещё не отработал
         }
 
+        // search-queries/popular отдаёт запросы без URL, поэтому страница-владелец берётся
+        // из yandex_query_page (POST query-analytics, пишет app:yandex:sync) — там позиции
+        // нет, а URL есть; связка по тексту запроса.
+        $pages = $this->resolveYandexPages(array_map(static fn (array $r) => (string) $r['query'], $data));
+
         return array_map(
-            static fn (array $r) => ['query' => (string) $r['query'], 'shows' => (int) $r['shows'], 'position' => round((float) $r['position'], 1), 'source' => 'yandex'],
+            static fn (array $r) => [
+                'query'    => (string) $r['query'],
+                'shows'    => (int) $r['shows'],
+                'position' => round((float) $r['position'], 1),
+                'source'   => 'yandex',
+                'page'     => $pages[(string) $r['query']] ?? null,
+            ],
             $data,
         );
     }
 
-    /** @return list<array{query:string,shows:int,position:float,source:string}> */
-    private function fetchGscGaps(int $minShows, int $limit): array
+    /** @return list<array{query:string,shows:int,position:float,source:string,page:?string}> */
+    private function fetchGscRows(string $band, int $minShows, int $limit): array
     {
         try {
             $data = $this->db->fetchAllAssociative(
                 'SELECT query, SUM(impressions) shows, AVG(position) position
                  FROM gsc_query_stats
                  GROUP BY query
-                 HAVING position > 10 AND shows >= ?
+                 HAVING ' . $this->bandCondition($band, 'position') . ' AND shows >= ?
                  ORDER BY shows DESC LIMIT ' . $limit,
                 [$minShows],
             );
@@ -182,18 +274,96 @@ class SeoGapReportCommand extends Command
             return [];
         }
 
+        $pages = $this->resolveGscPages(array_map(static fn (array $r) => (string) $r['query'], $data));
+
         return array_map(
-            static fn (array $r) => ['query' => (string) $r['query'], 'shows' => (int) $r['shows'], 'position' => round((float) $r['position'], 1), 'source' => 'gsc'],
+            static fn (array $r) => [
+                'query'    => (string) $r['query'],
+                'shows'    => (int) $r['shows'],
+                'position' => round((float) $r['position'], 1),
+                'source'   => 'gsc',
+                'page'     => $pages[(string) $r['query']] ?? null,
+            ],
             $data,
         );
     }
 
     /**
-     * Группировка gap-строк по интенту. Возвращает только группы с непустым списком,
+     * То же для Яндекса — из yandex_query_page (пишет app:yandex:sync). Отдаёт путь без
+     * домена (так его возвращает Вебмастер), в отличие от GSC с абсолютным URL.
+     *
+     * @param list<string> $queries
+     * @return array<string,string> запрос → путь
+     */
+    private function resolveYandexPages(array $queries): array
+    {
+        if ($queries === []) {
+            return [];
+        }
+
+        try {
+            $rows = $this->db->fetchAllAssociative(
+                'SELECT query, page_url, impressions AS shows
+                 FROM yandex_query_page
+                 WHERE query IN (?)
+                 ORDER BY shows DESC',
+                [$queries],
+                [\Doctrine\DBAL\ArrayParameterType::STRING],
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $pages = [];
+        foreach ($rows as $r) {
+            $pages[(string) $r['query']] ??= (string) $r['page_url'];
+        }
+
+        return $pages;
+    }
+
+    /**
+     * Страница-владелец запроса — из gsc_query_page (срез query×page, пишет app:gsc:sync).
+     * Берём URL с наибольшими показами: именно его и надо дожимать в полосе striking.
+     * Пусто → '—' в отчёте: значит синк ещё не приносил этот срез (fail-open, не ошибка).
+     *
+     * @param list<string> $queries
+     * @return array<string,string> запрос → URL
+     */
+    private function resolveGscPages(array $queries): array
+    {
+        if ($queries === []) {
+            return [];
+        }
+
+        try {
+            $rows = $this->db->fetchAllAssociative(
+                'SELECT query, page_url, impressions AS shows
+                 FROM gsc_query_page
+                 WHERE query IN (?)
+                 ORDER BY shows DESC',
+                [$queries],
+                [\Doctrine\DBAL\ArrayParameterType::STRING],
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $pages = [];
+        foreach ($rows as $r) {
+            // ORDER BY shows DESC → первая строка на запрос и есть главная страница
+            $pages[(string) $r['query']] ??= (string) $r['page_url'];
+        }
+
+        return $pages;
+    }
+
+    /**
+     * Группировка строк полосы по интенту. Возвращает только группы с непустым списком,
      * порядок — приоритет из GROUP_META.
      *
-     * @param list<array{query:string,shows:int,position:float,source:string}> $rows
-     * @return array<string,array{label:string,action:string,rows:list<array{query:string,shows:int,position:float,source:string}>}>
+     * @param list<array{query:string,shows:int,position:float,source:string,page:?string}> $rows
+     * @return array<string,array{label:string,action:string,rows:list<array{query:string,shows:int,position:float,source:string,page:?string}>}>
      */
     private function buildGroups(array $rows): array
     {
@@ -267,7 +437,7 @@ class SeoGapReportCommand extends Command
     }
 
     /**
-     * @param array<string,array{label:string,action:string,rows:list<array{query:string,shows:int,position:float,source:string}>}> $groups
+     * @param array<string,array{label:string,action:string,rows:list<array{query:string,shows:int,position:float,source:string,page:?string}>}> $groups
      * @return list<array{source:string,group:string,count:int,top_query:string}>
      */
     private function snapshotRows(array $groups): array
@@ -291,7 +461,7 @@ class SeoGapReportCommand extends Command
     }
 
     /** @param list<array{source:string,group:string,count:int,top_query:string}> $rows */
-    private function persistSnapshot(array $rows): void
+    private function persistSnapshot(string $band, array $rows): void
     {
         if ($rows === []) {
             return;
@@ -299,30 +469,44 @@ class SeoGapReportCommand extends Command
         $today = (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d');
         foreach ($rows as $r) {
             $this->db->executeStatement(
-                'INSERT INTO seo_gap_snapshot (captured_on, source, intent_group, gap_count, top_query)
-                 VALUES (?, ?, ?, ?, ?)
+                'INSERT INTO seo_gap_snapshot (captured_on, source, band, intent_group, gap_count, top_query)
+                 VALUES (?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE gap_count = VALUES(gap_count), top_query = VALUES(top_query)',
-                [$today, $r['source'], $r['group'], $r['count'], mb_substr($r['top_query'], 0, 255)],
+                [$today, $r['source'], $band, $r['group'], $r['count'], mb_substr($r['top_query'], 0, 255)],
             );
         }
     }
 
     /**
-     * Компактная HTML-сводка под Telegram (parse_mode=HTML, см. TelegramNotifier) — топ-3
-     * запроса на группу, обрезка по символам, чтобы не разваливать сообщение.
+     * Компактная HTML-сводка под Telegram (parse_mode=HTML, см. TelegramNotifier) — топ-N
+     * запросов на группу, обрезка по символам, чтобы не разваливать сообщение.
+     * Полосы идут в порядке BAND_META: сначала дожим (дешевле), потом gap.
      *
-     * @param array<string,array{label:string,action:string,rows:list<array{query:string,shows:int,position:float,source:string}>}> $groups
+     * @param array<string,array<string,array{label:string,action:string,rows:list<array{query:string,shows:int,position:float,source:string,page:?string}>}>> $byBand
      */
-    private function formatDigest(array $groups, int $topPerGroup = 3, int $charCap = 1500): string
+    private function formatDigest(array $byBand, int $topPerGroup = 3, int $charCap = 1800): string
     {
-        $lines = [sprintf('<b>🕳 SEO gap-лист · %s</b>', (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'))];
+        $lines = [sprintf('<b>SEO position-лист · %s</b>', (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'))];
 
-        foreach ($groups as $g) {
-            $lines[] = sprintf("\n<b>%s (%d):</b>", htmlspecialchars($g['label']), count($g['rows']));
-            foreach (array_slice($g['rows'], 0, $topPerGroup) as $row) {
-                $lines[] = sprintf('• %s — %d показ., поз.%s [%s]', htmlspecialchars($row['query']), $row['shows'], $row['position'], $row['source']);
+        foreach ($byBand as $bandName => $groups) {
+            $meta  = self::BAND_META[$bandName];
+            $total = array_sum(array_map(static fn (array $g) => count($g['rows']), $groups));
+            $lines[] = sprintf("\n<b>%s %s — %d</b>", $meta['icon'], htmlspecialchars($meta['label']), $total);
+
+            foreach ($groups as $g) {
+                $lines[] = sprintf('<b>%s (%d):</b>', htmlspecialchars($g['label']), count($g['rows']));
+                foreach (array_slice($g['rows'], 0, $topPerGroup) as $row) {
+                    $lines[] = sprintf(
+                        '• %s — %d показ., поз.%s [%s]%s',
+                        htmlspecialchars($row['query']),
+                        $row['shows'],
+                        $row['position'],
+                        $row['source'],
+                        $row['page'] !== null ? "\n  ↳ " . htmlspecialchars($row['page']) : '',
+                    );
+                }
+                $lines[] = '→ ' . htmlspecialchars($meta['action_prefix'] . $g['action']);
             }
-            $lines[] = '→ ' . htmlspecialchars($g['action']);
         }
 
         $msg = implode("\n", $lines);

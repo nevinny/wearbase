@@ -76,6 +76,8 @@
 /var/
 /public_html/images/brands
 /public_html/images/logos
+/public_html/images/wardrobe
+/public_html/images/wardrobe_drafts
 ###< symfony/framework-bundle ###
 
 # Секреты (Google OAuth/GSC service-account и пр.) — только локально
@@ -109,3 +111,6 @@ docs/*.scratch.md
 # Лид-выгрузки/кандидаты (рабочие данные, возможны контакты/PII) — не в git
 /_docs/*.csv
 /_docs/*.tsv
+# Черновики тёплой рассылки — реальные email лидов + прод-токены, никогда не в git
+/_docs/warm-outreach-*.md
+/public_html/images/products

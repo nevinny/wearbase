@@ -3,9 +3,12 @@
 namespace App\Controller\Api;
 
 use App\Entity\Brand;
+use App\Entity\BrandLink;
+use App\Entity\BrandModeration;
 use App\Service\Agent\BrandIngestService;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -603,6 +606,161 @@ class BrandIngestController extends AbstractController
         ], $rows);
 
         return $this->json(['hours' => $hours, 'since' => $since, 'count' => count($items), 'items' => $items]);
+    }
+
+    /**
+     * Очередь премодерации самрег-брендов (agent-pull): app:brand:moderate-tick (Mac) читает
+     * досье и прогоняет ApplicationMatcher. Токен обязателен (без подписи тела — GET без бизнес-
+     * эффекта). Без `?id=` — только заявки `status='queued'` (автопрогон очереди); с явным `?id=`
+     * бренд отдаётся независимо от статуса (ручной повторный прогон `--id`, статус не фильтруется) —
+     * но только если строка `brand_moderation` для него уже существует, эндпоинт её не заводит.
+     */
+    #[Route('/moderation/queue', name: 'api_moderation_queue', methods: ['GET'])]
+    public function moderationQueue(
+        Request $request,
+        EntityManagerInterface $em,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter, checkSignature: false)) !== null) {
+            return $deny;
+        }
+
+        $limit = max(1, min(50, (int) $request->query->get('limit', 10)));
+        $id    = $request->query->get('id');
+
+        $sql = "SELECT b.id, b.title, b.slug, b.status, b.email, b.phone, b.address, b.city,
+                       b.description, b.anons, b.logo, b.founding_year, b.created_at AS registered_at,
+                       bm.id AS moderation_id, bm.analyze_attempts,
+                       (SELECT COUNT(*) FROM brand_link  bl WHERE bl.brand_id = b.id) AS link_count,
+                       (SELECT COUNT(*) FROM brand_image bi WHERE bi.brand_id = b.id) AS image_count,
+                       (SELECT COUNT(*) FROM product p WHERE p.brand_id = b.id) AS product_count,
+                       (SELECT COUNT(*) FROM product p WHERE p.brand_id = b.id AND p.price IS NOT NULL AND p.price > 0) AS priced_product_count,
+                       owner.email AS owner_email, owner.email_verified_at AS owner_email_verified_at
+                  FROM brand_moderation bm
+                  JOIN brand b ON b.id = bm.brand_id
+                  LEFT JOIN brand_user bu ON bu.brand_id = b.id AND bu.role = 'owner'
+                  LEFT JOIN client owner ON owner.id = bu.user_id
+                 WHERE " . ($id !== null ? 'b.id = ' . (int) $id : "bm.status = 'queued'")
+            . ' ORDER BY bm.created_at ASC LIMIT ' . $limit;
+
+        $rows = $em->getConnection()->fetchAllAssociative($sql);
+
+        $items = array_map(static fn (array $r): array => [
+            'brand_id'             => (int) $r['id'],
+            'title'                => $r['title'],
+            'slug'                 => $r['slug'],
+            'status'               => $r['status'],
+            'email'                => $r['email'],
+            'phone'                => $r['phone'],
+            'address'              => $r['address'],
+            'city'                 => $r['city'],
+            'description'          => $r['description'],
+            'anons'                => $r['anons'],
+            'logo'                 => $r['logo'],
+            'founding_year'        => $r['founding_year'],
+            'registered_at'        => $r['registered_at'],
+            'moderation_id'        => (int) $r['moderation_id'],
+            'analyze_attempts'     => (int) $r['analyze_attempts'],
+            'link_count'           => (int) $r['link_count'],
+            'image_count'          => (int) $r['image_count'],
+            'product_count'        => (int) $r['product_count'],
+            'has_priced_product'   => ((int) $r['priced_product_count']) > 0,
+            'owner_email'          => $r['owner_email'],
+            'owner_email_verified' => $r['owner_email_verified_at'] !== null,
+        ], $rows);
+
+        return $this->json(['items' => $items]);
+    }
+
+    /**
+     * Вердикт агент-конвейера по одному бренду (agent-pull → agent-push): app:brand:moderate-tick
+     * прогнал ApplicationMatcher (identity_match/control_proof/evidence) + чек-лист (missing/
+     * red_flags), здесь фиксируем в brand_moderation (status=reviewed) и переносим ниша/происхождение
+     * на brand, если Mac реально их посчитал (иначе поля отсутствуют — не трогаем). Идемпотентно:
+     * повторный вызов перезаписывает анализ, но НЕ дублирует brand_link (owner-provenance не трогаем,
+     * см. BrandIngestService::replaceLinks).
+     *
+     * Тело: {slug, identity_match, control_proof, verdict, evidence, red_flags, missing, summary,
+     *        niche_status?, origin_status?, links?:[{link_type, link_url}]}
+     */
+    #[Route('/moderation/verdict', name: 'api_moderation_verdict', methods: ['POST'])]
+    public function moderationVerdict(
+        Request $request,
+        EntityManagerInterface $em,
+        RateLimiterFactory $agentApiLimiter,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
+            return $deny;
+        }
+
+        $payload = json_decode((string) $request->getContent(), true);
+        if (!is_array($payload)) {
+            return $this->json(['error' => 'invalid json'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $slug = trim((string) ($payload['slug'] ?? ''));
+        if ($slug === '') {
+            return $this->json(['error' => 'slug required'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $brand = $em->getRepository(Brand::class)->findOneBy(['slug' => $slug]);
+        if ($brand === null) {
+            return $this->json(['status' => 'not_found']);
+        }
+
+        $moderation = $em->getRepository(BrandModeration::class)->findOneBy(['brand' => $brand]);
+        if ($moderation === null) {
+            // Заявки не было в очереди (напр. ручной прогон мимо самрега) — заводим запись сами.
+            $moderation = (new BrandModeration())->setBrand($brand)->setSource(BrandModeration::SOURCE_MANUAL);
+            $em->persist($moderation);
+        }
+
+        $moderation->setStatus(BrandModeration::STATUS_REVIEWED);
+        $moderation->setVerdict(isset($payload['verdict']) ? (string) $payload['verdict'] : null);
+        $moderation->setIdentityMatch(isset($payload['identity_match']) ? (string) $payload['identity_match'] : null);
+        $moderation->setControlProof(isset($payload['control_proof']) ? (string) $payload['control_proof'] : null);
+        $moderation->setEvidence(is_array($payload['evidence'] ?? null) ? $payload['evidence'] : null);
+        $moderation->setRedFlags(is_array($payload['red_flags'] ?? null) ? $payload['red_flags'] : null);
+        $moderation->setMissing(is_array($payload['missing'] ?? null) ? $payload['missing'] : null);
+        $moderation->setSummary(isset($payload['summary']) ? mb_substr((string) $payload['summary'], 0, 4000) : null);
+        $moderation->incrementAnalyzeAttempts();
+        $moderation->setAnalyzedAt(new \DateTime());
+
+        // Ниша/происхождение — только если Mac реально смог их посчитать (бренд зеркалирован
+        // локально); при отсутствии ключей в payload брендовые niche/origin_status не трогаем
+        // (см. app:brand:moderate-tick — MVP этого не делает, зеркалирование бренда — этап 2).
+        if (in_array($payload['niche_status'] ?? null, ['in', 'off'], true)) {
+            $brand->markNiche((string) $payload['niche_status'], 'agent: премодерация самрега', new \DateTime());
+        }
+        if (in_array($payload['origin_status'] ?? null, ['ru', 'foreign', 'unknown'], true)) {
+            $brand->markOrigin((string) $payload['origin_status'], 'agent: премодерация самрега', new \DateTime());
+        }
+
+        // Ссылки — только новые (не перетираем owner-provenance, паттерн BrandIngestService::replaceLinks).
+        if (is_array($payload['links'] ?? null)) {
+            $existingUrls = array_map(static fn (BrandLink $l) => $l->getLinkUrl(), $brand->getLinks()->toArray());
+            foreach (array_slice($payload['links'], 0, 20) as $row) {
+                $url = trim((string) ($row['link_url'] ?? ''));
+                if ($url === '' || !str_starts_with($url, 'http') || in_array($url, $existingUrls, true)) {
+                    continue;
+                }
+                $type = mb_substr((string) ($row['link_type'] ?? 'other'), 0, 32);
+                $link = (new BrandLink())->setBrand($brand)->setLinkUrl(mb_substr($url, 0, 255))->setLinkType($type);
+                $link->setTitle($type);
+                $link->setSlug(substr(md5($type . $url), 0, 24));
+                $link->setStatus(Statuses::Active);
+                $em->persist($link);
+                $existingUrls[] = $url;
+            }
+        }
+
+        $em->flush();
+
+        return $this->json([
+            'status'           => 'reviewed',
+            'brand_id'         => $brand->getId(),
+            'analyze_attempts' => $moderation->getAnalyzeAttempts(),
+        ]);
     }
 
     /** 401/403/429 либо null (доступ разрешён). Подпись тела — только для POST. */

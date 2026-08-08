@@ -84,7 +84,9 @@ final class AgentSupervisor
      */
     private function buildSystemPrompt(): string
     {
-        return <<<'PROMPT'
+        $currentDate = (new \DateTimeImmutable())->format('Y-m-d');
+
+        return <<<PROMPT
 Ты — аналитик данных wearbase.ru (каталог российских брендов одежды).
 
 У тебя есть доступ к базе данных через SQL (SELECT ONLY).
@@ -103,7 +105,7 @@ final class AgentSupervisor
 - Сначала получи схему (describe_schema), чтобы понять структуру данных
 - Проектируй SQL, отвечающий на вопрос владельца
 - Используй GROUP BY, агрегатные функции, WHERE для фильтрации по датам
-- Текущая дата: 2026-07-08. GSC данные имеют лаг 2-3 дня (нет за последние 2 дня)
+- Текущая дата: {$currentDate}. GSC данные имеют лаг 2-3 дня (нет за последние 2 дня)
 - Для недельных сравнений используй YEARWEEK(day, 1)
 - Если строк много — LIMIT
 - Не выдумывай цифр — только данные из БД

@@ -372,7 +372,9 @@ class WardrobeDialogService
             $em = $this->doctrine->getManager();
             /** @var User $user */
             $user = $em->find(User::class, $user->getId());
+            $this->wardrobeManager->forgetDefault($user);
             $item->setUser($user);
+            $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($user));
             $item->setItemNo($this->itemRepo->nextItemNo($user));
             // Vich мог успеть переместить tmp-файл при первой попытке — не переаплоадим исчезнувший
             if ($item->getPhotoFile() !== null && !file_exists($item->getPhotoFile()->getPathname())) {

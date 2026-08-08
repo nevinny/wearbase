@@ -41,6 +41,10 @@ class SocialPost
     public const MEDIA_REELS    = 'reels';
     public const MEDIA_NONE     = 'none';
 
+    /** Ветки A/B: логотип бренда первым слайдом vs последним. */
+    public const VARIANT_LOGO_FIRST = 'logo_first';
+    public const VARIANT_LOGO_LAST  = 'logo_last';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -72,9 +76,54 @@ class SocialPost
     #[ORM\Column(length: 20, options: ['default' => self::MEDIA_NONE])]
     private string $mediaType = self::MEDIA_NONE;
 
-    /** Путь к отрендеренному медиа (картинка/видео). */
-    #[ORM\Column(length: 255, nullable: true)]
+    /**
+     * Путь к отрендеренному медиа (картинка/видео). Для карусели — несколько путей,
+     * по одному на строку (см. getMediaPaths()/setMediaPaths()).
+     */
+    #[ORM\Column(type: 'text', nullable: true)]
     private ?string $mediaPath = null;
+
+    /**
+     * Обложка Reels (cover_url контейнера). Без неё IG берёт первый кадр клипа, а он зависит
+     * от ветки A/B — обложка обязана быть одинаковой, иначе эксперимент сравнивает и её.
+     */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $coverPath = null;
+
+    /**
+     * Ветка A/B-эксперимента (VARIANT_*), null — пост вне эксперимента.
+     * Группировка результатов — app:social:evaluate по (рубрика, вариант).
+     */
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $variant = null;
+
+    /**
+     * Реализованная ступень лестницы хуков + источник битов (SlideScriptComposer), напр.
+     * 'f1.rag|c.save'. Пишется только для галерей/Reels (media=carousel|reels) —
+     * по нему CaptionGenerator строит первую строку подписи, а app:social:evaluate группирует
+     * closed-loop.
+     */
+    #[ORM\Column(length: 48, nullable: true)]
+    private ?string $scriptKey = null;
+
+    /** Сериализованный SlideScript (JSON) — переиспользуется между каруселью и Reels ОДНОГО
+     *  бренда (SocialGenerateCommand ищет последний пост бренда с непустым script_json): LLM
+     *  недетерминирован, повторный вызов дал бы другой текст. */
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $scriptJson = null;
+
+    /** Число кадров сценария — нужно app:social:evaluate для watch_ratio Reels. */
+    #[ORM\Column(type: 'smallint', nullable: true)]
+    private ?int $slideCount = null;
+
+    /**
+     * Фактическая длительность Reels в мс (сумма ReelsSlideshowRenderer::slideSeconds()), NULL
+     * для карусели/картинки. P0-2 (§9 №2 плейбука) — watch_ratio делится на неё, а не на оценку
+     * задним числом по slide_count: с появлением пер-слайдовой длительности (E1, hook_hold vs
+     * flat_150) формула «(slide_count−1)×1500+3000» верна только для flat-профиля.
+     */
+    #[ORM\Column(nullable: true)]
+    private ?int $durationMs = null;
 
     /** CTA-ссылка (с UTM) — вынесена из подписи, публикаторы оформляют по-своему. */
     #[ORM\Column(length: 255, nullable: true)]
@@ -204,6 +253,98 @@ class SocialPost
     public function setMediaPath(?string $mediaPath): self
     {
         $this->mediaPath = $mediaPath;
+        return $this;
+    }
+
+    /**
+     * Все медиа поста по порядку: одиночная картинка → один элемент, карусель → N слайдов.
+     *
+     * @return list<string>
+     */
+    public function getMediaPaths(): array
+    {
+        if ($this->mediaPath === null) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map('trim', explode("\n", $this->mediaPath)),
+            static fn (string $path) => $path !== '',
+        ));
+    }
+
+    public function getCoverPath(): ?string
+    {
+        return $this->coverPath;
+    }
+
+    public function setCoverPath(?string $coverPath): self
+    {
+        $this->coverPath = $coverPath;
+        return $this;
+    }
+
+    public function getVariant(): ?string
+    {
+        return $this->variant;
+    }
+
+    public function setVariant(?string $variant): self
+    {
+        $this->variant = $variant;
+        return $this;
+    }
+
+    public function getScriptKey(): ?string
+    {
+        return $this->scriptKey;
+    }
+
+    public function setScriptKey(?string $scriptKey): self
+    {
+        $this->scriptKey = $scriptKey;
+        return $this;
+    }
+
+    public function getScriptJson(): ?string
+    {
+        return $this->scriptJson;
+    }
+
+    public function setScriptJson(?string $scriptJson): self
+    {
+        $this->scriptJson = $scriptJson;
+        return $this;
+    }
+
+    public function getSlideCount(): ?int
+    {
+        return $this->slideCount;
+    }
+
+    public function setSlideCount(?int $slideCount): self
+    {
+        $this->slideCount = $slideCount;
+        return $this;
+    }
+
+    public function getDurationMs(): ?int
+    {
+        return $this->durationMs;
+    }
+
+    public function setDurationMs(?int $durationMs): self
+    {
+        $this->durationMs = $durationMs;
+        return $this;
+    }
+
+    /** @param list<string> $paths слайды карусели по порядку */
+    public function setMediaPaths(array $paths): self
+    {
+        $clean = array_values(array_filter(array_map('trim', $paths), static fn (string $p) => $p !== ''));
+        $this->mediaPath = $clean === [] ? null : implode("\n", $clean);
+
         return $this;
     }
 

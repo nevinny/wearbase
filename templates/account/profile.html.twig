@@ -27,6 +27,7 @@
                 <div>
                     <div class="mb-1 text-sm font-semibold">Фото профиля</div>
                     {{ form_widget(form.avatarFile, {'attr': {'class': 'text-sm'}}) }}
+                    <div class="form-error mt-1 text-sm text-red-600">{{ form_errors(form.avatarFile) }}</div>
                     <div class="text-xs text-gray-400">JPG, PNG — не более 2 МБ</div>
                 </div>
             </div>

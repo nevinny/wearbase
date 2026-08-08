@@ -13,11 +13,6 @@
     'given_away': 'bg-gray-100 text-gray-500',
 } %}
 
-{# Обратная совместимость для старых клиентов: физического DELETE нет, endpoint делает soft-delete. #}
-<form method="post" action="{{ path('account_wardrobe_delete', {id: item.id}|merge(memberParam)) }}" class="hidden">
-    <input type="hidden" name="_token" value="{{ csrf_token('delete_wardrobe_item') }}">
-</form>
-
 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
     <div class="flex items-center gap-3">
         <a href="{{ path('account_wardrobe_index', backQuery) }}"
@@ -30,24 +25,40 @@
     <div class="flex gap-2">
         <a href="{{ path('account_wardrobe_edit', {id: item.id}|merge(memberParam)) }}"
            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Редактировать</a>
+        {# «В архив» — из active/repair/transferred (гварда WardrobeManager::archive);
+           «Вернуть» — только из archived; терминальные статусы (sold/donated/lost) не
+           показывают ни ту, ни другую кнопку — статус виден чипом ниже, менять его
+           обратно можно только осознанно через форму. #}
         {% if item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ARCHIVED') %}
             <form method="post" action="{{ path('account_wardrobe_restore', {id: item.id}|merge(memberParam)) }}">
                 <input type="hidden" name="_token" value="{{ csrf_token('restore_wardrobe_item_' ~ item.id) }}">
                 <button type="submit" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Вернуть в гардероб</button>
             </form>
-        {% else %}
+        {% elseif item.itemStatus in [
+            constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE'),
+            constant('App\\Entity\\WardrobeItem::ITEM_REPAIR'),
+            constant('App\\Entity\\WardrobeItem::ITEM_TRANSFERRED'),
+        ] %}
             <form method="post" action="{{ path('account_wardrobe_archive', {id: item.id}|merge(memberParam)) }}"
                   onsubmit="return confirm('Переместить вещь в архив?')">
                 <input type="hidden" name="_token" value="{{ csrf_token('archive_wardrobe_item_' ~ item.id) }}">
                 <button type="submit" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">В архив</button>
             </form>
         {% endif %}
+        <form method="post" action="{{ path('account_wardrobe_delete', {id: item.id}|merge(memberParam)) }}"
+              onsubmit="return confirm('Удалить вещь без возможности восстановления из интерфейса?')">
+            <input type="hidden" name="_token" value="{{ csrf_token('delete_wardrobe_item') }}">
+            <button type="submit" class="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition">Удалить</button>
+        </form>
     </div>
 </div>
 
 <div class="mb-4 flex flex-wrap gap-2">
     <span class="rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white">{{ item.category ?: 'Без категории' }}</span>
     <span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{{ item.completionStatusLabel }}</span>
+    {% if item.itemStatus != constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE') %}
+        <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm">{{ item.itemStatusLabel }}</span>
+    {% endif %}
     {% if item.size %}
         <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600 shadow-sm">Размер {{ item.size }}</span>
     {% endif %}
@@ -88,7 +99,8 @@
                             <button class="w-full px-1 py-1 text-[10px] font-semibold text-gray-600">На обложку</button>
                         </form>
                     {% endif %}
-                    <form method="post" action="{{ path('account_wardrobe_photo_delete', {id: item.id, photoId: photo.id}|merge(memberParam)) }}">
+                    <form method="post" action="{{ path('account_wardrobe_photo_delete', {id: item.id, photoId: photo.id}|merge(memberParam)) }}"
+                          onsubmit="return confirm('Убрать фотографию?')">
                         <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_photo_' ~ photo.id) }}">
                         <button class="px-1 py-1 text-[10px] text-red-500" aria-label="Убрать фото">×</button>
                     </form>
@@ -154,6 +166,17 @@
                     <dt class="text-gray-500">Товар</dt>
                     <dd><a href="{{ item.productUrl }}" target="_blank" rel="noopener"
                            class="font-semibold underline decoration-gray-300 underline-offset-2 hover:decoration-gray-900">Ссылка на товар ↗</a></dd>
+                </div>
+                {% endif %}
+                {% if item.loveAtFirstSight %}
+                <div class="flex justify-between gap-4">
+                    <dt class="text-gray-500">Любовь с первого взгляда</dt>
+                    <dd class="font-semibold">
+                        {%- if item.loveAtFirstSight == 'yes' -%}❤️ Да
+                        {%- elseif item.loveAtFirstSight == 'no' -%}Нет
+                        {%- elseif item.loveAtFirstSight == 'unknown' -%}Пока не знаю
+                        {%- endif -%}
+                    </dd>
                 </div>
                 {% endif %}
                 <div class="flex justify-between gap-4">

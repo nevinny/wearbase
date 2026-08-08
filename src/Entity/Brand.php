@@ -8,11 +8,11 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Nevinny\AdminCoreBundle\Entity\Trait\Created;
-use Nevinny\AdminCoreBundle\Entity\Trait\DefaultFields;
 use Nevinny\AdminCoreBundle\Entity\Trait\Owner;
 use Nevinny\AdminCoreBundle\Entity\Trait\Status;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
+use Symfony\Component\Validator\Constraints as Assert;
 use Vich\UploaderBundle\Mapping\Annotation as Vich;
 use Symfony\Component\HttpFoundation\File\File;
 
@@ -37,6 +37,15 @@ class Brand
     private ?string $logo = null;
 
     #[Vich\UploadableField(mapping: 'brand_logo', fileNameProperty: 'logo')]
+    #[Assert\Image(
+        maxSize: '5M',
+        mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        mimeTypesMessage: 'Допустимы только форматы JPEG, PNG и WebP (SVG запрещён)',
+        maxWidth: 5000,
+        maxHeight: 5000,
+        maxWidthMessage: 'Изображение слишком широкое (максимум {{ max_width }}px)',
+        maxHeightMessage: 'Изображение слишком высокое (максимум {{ max_height }}px)',
+    )]
     private ?File $logoFile = null;
 
     /** Логотип закреплён оператором вручную → агент-пуш его не перезаписывает. */
@@ -64,8 +73,10 @@ class Brand
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $title = null;
 
+    // Корневой уровень — 0, как в трейте DefaultFields (Brand его не подключает и объявляет
+    // поле сам). NULL прятал бы карточку из листингов админки до admin-core v1.0.7.
     #[ORM\Column(nullable: true)]
-    private ?int $parent = null;
+    private ?int $parent = 0;
 
     #[ORM\Column(options: ['default' => '0'])]
     private ?int $ord = 0;
@@ -681,7 +692,8 @@ class Brand
 
     /**
      * Ссылки без дублей по нормализованному URL (в brand_link встречаются повторы,
-     * напр. один и тот же wa.me дважды). Порядок сохраняется. Дедуп на уровне модели,
+     * напр. один и тот же wa.me дважды) и без soft-deleted (правило проекта: DELETE
+     * от пользователя только мягкий). Порядок сохраняется. Дедуп на уровне модели,
      * чтобы представление (шаблон/JSON-LD) не занималось этой логикой.
      *
      * @return list<BrandLink>
@@ -691,6 +703,9 @@ class Brand
         $seen = [];
         $out  = [];
         foreach ($this->links as $link) {
+            if ($link->getStatus() === Statuses::Deleted) {
+                continue;
+            }
             $key = mb_strtolower(rtrim((string) $link->getLinkUrl(), '/'));
             if ($key === '' || isset($seen[$key])) {
                 continue;
@@ -700,6 +715,17 @@ class Brand
         }
 
         return $out;
+    }
+
+    /**
+     * Ссылки без soft-deleted (для ЛК бренда; см. getActiveStores).
+     * @return Collection<int, BrandLink>
+     */
+    public function getActiveLinks(): Collection
+    {
+        return $this->links->filter(
+            static fn(BrandLink $l) => $l->getStatus() !== Statuses::Deleted
+        );
     }
 
     public function addLink(BrandLink $link): static

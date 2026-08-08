@@ -19,6 +19,9 @@ class YandexWebmasterClient
 {
     private const BASE = 'https://api.webmaster.yandex.net/v4';
 
+    /** Потолок строк на один запрос у search-queries/popular и query-analytics/list. */
+    private const PAGE = 500;
+
     private ?int $userId = null;
     private ?string $hostId = null;
 
@@ -100,36 +103,200 @@ class YandexWebmasterClient
     }
 
     /**
-     * TOP популярных запросов за прошлую неделю (до 500 по TOTAL_SHOWS).
-     * Аналог GSC Search Analytics, но по Яндексу (приоритетный RU-рынок).
+     * Запросы за прошлую неделю с позицией — С ПАГИНАЦИЕЙ (API отдаёт максимум 500 за
+     * запрос, а у нас их 2000+; без пагинации мы видели только четверть выдачи Яндекса
+     * и «дожимать» было нечего). Аналог GSC Search Analytics по приоритетному RU-рынку.
      *
      * @return array<int,array{query:string,shows:int,clicks:int,position:float,dateFrom:?string,dateTo:?string}>
      */
-    public function popularQueries(int $limit = 500): array
+    public function popularQueries(int $limit = 2000): array
     {
-        // query_indicator должен повторяться (query_indicator=A&query_indicator=B). Symfony HttpClient
-        // сериализует массив как query_indicator[0]=… → Яндекс его не распознаёт и отдаёт пустые
-        // indicators. Поэтому собираем query-строку руками.
-        $qs = http_build_query(['order_by' => 'TOTAL_SHOWS', 'limit' => min(500, $limit)])
-            . '&query_indicator=TOTAL_SHOWS&query_indicator=TOTAL_CLICKS&query_indicator=AVG_SHOW_POSITION';
-        $data = $this->get(
-            self::BASE . '/user/' . $this->userId() . '/hosts/' . $this->hostId() . '/search-queries/popular?' . $qs,
-        );
+        $out    = [];
+        $offset = 0;
+        $from   = null;
+        $to     = null;
 
-        $from = isset($data['date_from']) ? substr((string) $data['date_from'], 0, 10) : null;
-        $to   = isset($data['date_to']) ? substr((string) $data['date_to'], 0, 10) : null;
+        while (count($out) < $limit) {
+            $batch = min(self::PAGE, $limit - count($out));
+            // query_indicator должен повторяться (query_indicator=A&query_indicator=B). Symfony HttpClient
+            // сериализует массив как query_indicator[0]=… → Яндекс его не распознаёт и отдаёт пустые
+            // indicators. Поэтому собираем query-строку руками.
+            $qs = http_build_query(['order_by' => 'TOTAL_SHOWS', 'limit' => $batch, 'offset' => $offset])
+                . '&query_indicator=TOTAL_SHOWS&query_indicator=TOTAL_CLICKS&query_indicator=AVG_SHOW_POSITION';
+            $data = $this->get(
+                self::BASE . '/user/' . $this->userId() . '/hosts/' . $this->hostId() . '/search-queries/popular?' . $qs,
+            );
+
+            $from ??= isset($data['date_from']) ? substr((string) $data['date_from'], 0, 10) : null;
+            $to   ??= isset($data['date_to']) ? substr((string) $data['date_to'], 0, 10) : null;
+
+            $rows = $data['queries'] ?? [];
+            if ($rows === []) {
+                break;
+            }
+
+            foreach ($rows as $q) {
+                $ind = $q['indicators'] ?? [];
+                $out[] = [
+                    'query'    => (string) ($q['query_text'] ?? ''),
+                    'shows'    => (int) round((float) ($ind['TOTAL_SHOWS'] ?? 0)),
+                    'clicks'   => (int) round((float) ($ind['TOTAL_CLICKS'] ?? 0)),
+                    'position' => round((float) ($ind['AVG_SHOW_POSITION'] ?? 0), 1),
+                    'dateFrom' => $from,
+                    'dateTo'   => $to,
+                ];
+            }
+
+            $offset += count($rows);
+            if (count($rows) < $batch || $offset >= (int) ($data['count'] ?? 0)) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * «Анализ запросов» (POST query-analytics/list) — единственный способ узнать, КАКОЙ наш
+     * URL Яндекс показывает по запросу: у каждой строки есть popular_complementary_indicator
+     * с URL. В search-queries/popular URL нет вообще, поэтому дожим по Яндексу без этого
+     * эндпоинта не знал, что править.
+     *
+     * Позиции здесь НЕТ (поля только IMPRESSIONS/CLICKS/CTR/DEMAND по дням) — позиция
+     * берётся из popularQueries(); связка двух источников идёт по тексту запроса.
+     * Значения посуточные — суммируем по окну (impressions/clicks) и берём максимум
+     * спроса (DEMAND — частотность запроса в Яндексе, не наш показатель).
+     *
+     * @return array<int,array{query:string,url:string,impressions:int,clicks:int,demand:int}>
+     */
+    public function queryAnalytics(int $limit = 2000): array
+    {
+        $out    = [];
+        $offset = 0;
+
+        while (count($out) < $limit) {
+            $batch = min(self::PAGE, $limit - count($out));
+            $data  = $this->post(
+                self::BASE . '/user/' . $this->userId() . '/hosts/' . $this->hostId() . '/query-analytics/list',
+                [
+                    'offset'                => $offset,
+                    'limit'                 => $batch,
+                    'device_type_indicator' => 'ALL',
+                    'text_indicator'        => 'QUERY',
+                ],
+            );
+
+            $rows = $data['text_indicator_to_statistics'] ?? [];
+            if ($rows === []) {
+                break;
+            }
+
+            foreach ($rows as $row) {
+                $query = (string) ($row['text_indicator']['value'] ?? '');
+                $url   = (string) ($row['popular_complementary_indicator']['value'] ?? '');
+                if ($query === '' || $url === '') {
+                    continue;
+                }
+
+                $impressions = 0;
+                $clicks      = 0;
+                $demand      = 0;
+                foreach (($row['statistics'] ?? []) as $stat) {
+                    $value = (int) round((float) ($stat['value'] ?? 0));
+                    match ((string) ($stat['field'] ?? '')) {
+                        'IMPRESSIONS' => $impressions += $value,
+                        'CLICKS'      => $clicks += $value,
+                        'DEMAND'      => $demand = max($demand, $value),
+                        default       => null,
+                    };
+                }
+
+                $out[] = ['query' => $query, 'url' => $url, 'impressions' => $impressions, 'clicks' => $clicks, 'demand' => $demand];
+            }
+
+            $offset += count($rows);
+            if (count($rows) < $batch || $offset >= (int) ($data['count'] ?? 0)) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Сводка по хосту: ИКС, страниц в поиске, исключено, счётчики проблем по важности.
+     *
+     * @return array{sqi:int,searchable:int,excluded:int,problems:array<string,int>}
+     */
+    public function siteSummary(): array
+    {
+        $data = $this->get(self::BASE . '/user/' . $this->userId() . '/hosts/' . $this->hostId() . '/summary');
+
+        return [
+            'sqi'        => (int) ($data['sqi'] ?? 0),
+            'searchable' => (int) ($data['searchable_pages_count'] ?? 0),
+            'excluded'   => (int) ($data['excluded_pages_count'] ?? 0),
+            'problems'   => array_map('intval', (array) ($data['site_problems'] ?? [])),
+        ];
+    }
+
+    /**
+     * Диагностика хоста — здесь же живут НАРУШЕНИЯ (в т.ч. малополезный контент).
+     * Возвращаем только проблемы в состоянии PRESENT: state=ABSENT значит «проверено и
+     * не найдено», и алертить по ним нельзя (иначе постоянный ложный шум).
+     *
+     * @return array<int,array{code:string,severity:string,state:string}>
+     */
+    public function diagnostics(): array
+    {
+        $data = $this->get(self::BASE . '/user/' . $this->userId() . '/hosts/' . $this->hostId() . '/diagnostics');
 
         $out = [];
-        foreach (($data['queries'] ?? []) as $q) {
-            $ind = $q['indicators'] ?? [];
-            $out[] = [
-                'query'    => (string) ($q['query_text'] ?? ''),
-                'shows'    => (int) round((float) ($ind['TOTAL_SHOWS'] ?? 0)),
-                'clicks'   => (int) round((float) ($ind['TOTAL_CLICKS'] ?? 0)),
-                'position' => round((float) ($ind['AVG_SHOW_POSITION'] ?? 0), 1),
-                'dateFrom' => $from,
-                'dateTo'   => $to,
-            ];
+        foreach ((array) ($data['problems'] ?? []) as $code => $problem) {
+            $state = (string) ($problem['state'] ?? '');
+            if ($state !== 'PRESENT') {
+                continue;
+            }
+            $out[] = ['code' => (string) $code, 'severity' => (string) ($problem['severity'] ?? ''), 'state' => $state];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Битые ВНУТРЕННИЕ ссылки по данным Яндекса — готовый список, за который не надо
+     * платить краул-бюджетом (app:seo:tech-audit проверяет 404 сам, но с явным cap'ом).
+     *
+     * @return array<int,array{from:string,to:string,found:?string}>
+     */
+    public function brokenInternalLinks(int $cap = 500): array
+    {
+        $out    = [];
+        $offset = 0;
+
+        while (count($out) < $cap) {
+            $batch = min(100, $cap - count($out));
+            $data  = $this->get(
+                self::BASE . '/user/' . $this->userId() . '/hosts/' . $this->hostId() . '/links/internal/broken/samples',
+                ['offset' => $offset, 'limit' => $batch],
+            );
+
+            $rows = $data['links'] ?? [];
+            if ($rows === []) {
+                break;
+            }
+            foreach ($rows as $link) {
+                $out[] = [
+                    'from'  => (string) ($link['source_url'] ?? ''),
+                    'to'    => (string) ($link['destination_url'] ?? ''),
+                    'found' => isset($link['discovery_date']) ? substr((string) $link['discovery_date'], 0, 10) : null,
+                ];
+            }
+
+            $offset += count($rows);
+            if (count($rows) < $batch || $offset >= (int) ($data['count'] ?? 0)) {
+                break;
+            }
         }
 
         return $out;

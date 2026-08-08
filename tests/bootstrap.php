@@ -2,6 +2,7 @@
 
 use App\Entity\Currency;
 use App\Entity\Language;
+use App\Entity\Tariff;
 use App\Kernel;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Component\Dotenv\Dotenv;
@@ -58,6 +59,31 @@ if (($_SERVER['APP_ENV'] ?? null) === 'test') {
             )
         SQL);
 
+        // Находки тех-аудита с дельтой (Version20260728_seo_tech_finding).
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS seo_tech_finding (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url VARCHAR(512) NOT NULL,
+                rule VARCHAR(40) NOT NULL,
+                detail VARCHAR(255) DEFAULT NULL,
+                first_seen_on DATE NOT NULL,
+                last_seen_on DATE NOT NULL,
+                fixed_on DATE DEFAULT NULL
+            )
+        SQL);
+
+        // Карта идемпотентности переноса гардероба (Version20260728_wardrobe_import_map).
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS wardrobe_import_map (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_fingerprint CHAR(64) NOT NULL,
+                source_user_id INTEGER NOT NULL,
+                source_item_id INTEGER NOT NULL,
+                wardrobe_item_id INTEGER NOT NULL,
+                imported_at DATETIME NOT NULL
+            )
+        SQL);
+
         // ── Минимальный сид справочников ──────────────────────────────────────
         if ($em->getRepository(Currency::class)->count([]) === 0) {
             $rub = (new Currency())
@@ -78,6 +104,22 @@ if (($_SERVER['APP_ENV'] ?? null) === 'test') {
                 ->setIsActive(true)
                 ->setIsDefault(true);
             $em->persist($ru);
+        }
+
+        // Free-тариф: без него регистрация бренда и app:brand:grant-access падают на
+        // SubscriptionFactory (assert «Free tariff not found»). На проде его ставит миграция.
+        if ($em->getRepository(Tariff::class)->count([]) === 0) {
+            $free = (new Tariff())
+                ->setName('Бесплатный')
+                ->setCode(Tariff::CODE_FREE)
+                ->setPriceRub('0.00')
+                ->setTrialDays(30)
+                ->setMaxProducts(10)
+                ->setMaxImages(5)
+                ->setHasAnalytics(false)
+                ->setHasPriority(false)
+                ->setIsActive(true);
+            $em->persist($free);
         }
 
         $em->flush();

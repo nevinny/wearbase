@@ -24,13 +24,12 @@
 {# ── Основное ── #}
 <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
     <div class="mb-4 flex items-center justify-between gap-3">
-        <h2 class="text-sm font-bold">{{ fullMode ? 'Полная карточка' : 'Быстрое добавление' }}</h2>
+        <h2 class="text-sm font-bold">Полная карточка</h2>
         {% if item.id %}
             <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">{{ item.completionStatusLabel }}</span>
         {% endif %}
     </div>
     <div class="grid grid-cols-12 gap-4">
-        {% if fullMode %}
         <div class="col-span-12 md:col-span-6">
             <label class="{{ tw_label }}">Категория</label>
             {{ form_widget(form.categoryRef, {'attr': {'class': tw_input}}) }}
@@ -41,7 +40,6 @@
             {{ form_widget(form.name, {'attr': {'class': tw_input, 'placeholder': 'Белая футболка oversize'}}) }}
             {{ f.err(form.name) }}
         </div>
-        {% endif %}
         <div class="col-span-4">
             <label class="{{ tw_label }}">Размер</label>
             {{ form_widget(form.size, {'attr': {'class': tw_input, 'placeholder': 'M'}}) }}
@@ -71,9 +69,6 @@
             <div id="wardrobe-ai-url-preview" class="mt-2 hidden"></div>
         </div>
     </div>
-    {% if not fullMode %}
-        <p class="mt-4 text-xs text-gray-500">Этого достаточно для черновика. Название, категорию, состав и уход можно добавить позже.</p>
-    {% endif %}
 </div>
 
 {# ── Фото ── #}
@@ -92,6 +87,15 @@
     {% endif %}
     {{ form_widget(form.photoFile, {'attr': {'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-black'}}) }}
     {{ f.err(form.photoFile) }}
+    <div class="mt-4">
+        <label class="{{ tw_label }}">Дополнительные фотографии</label>
+        {{ form_widget(form.galleryPhotos, {'attr': {
+            'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-gray-700 hover:file:bg-gray-200',
+            'accept': 'image/jpeg,image/png,image/webp'
+        }}) }}
+        {{ f.err(form.galleryPhotos) }}
+        <p class="mt-1 text-xs text-gray-400">До 8 файлов JPG, PNG или WebP, каждый до 10 МБ.</p>
+    </div>
     <div id="wardrobe-ai-photo-status" class="mt-2 hidden text-xs"></div>
     <div id="wardrobe-ai-photo-diff" class="mt-2 hidden"></div>
 </div>
@@ -100,22 +104,24 @@
 <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
     <h2 class="mb-4 text-sm font-bold">История</h2>
     <div class="grid grid-cols-12 gap-4">
-        <div class="col-span-12">
+        <div class="col-span-12 md:col-span-8">
             <label class="{{ tw_label }}">Причина покупки</label>
             {{ form_widget(form.purchaseReason, {'attr': {'class': tw_input, 'rows': 2, 'placeholder': 'Почему купили эту вещь?'}}) }}
             {{ f.err(form.purchaseReason) }}
         </div>
-        {% if fullMode %}
+        <div class="col-span-12 md:col-span-4">
+            <label class="{{ tw_label }}">Любовь с первого взгляда</label>
+            {{ form_widget(form.loveAtFirstSight, {'attr': {'class': tw_input}}) }}
+            {{ f.err(form.loveAtFirstSight) }}
+        </div>
         <div class="col-span-12">
             <label class="{{ tw_label }}">Характеристики</label>
             {{ form_widget(form.notes, {'attr': {'class': tw_input, 'rows': 3, 'placeholder': 'Состав, уход, особенности…'}}) }}
             {{ f.err(form.notes) }}
         </div>
-        {% endif %}
     </div>
 </div>
 
-{% if fullMode %}
 {# ── Характеристики полной карточки ── #}
 <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
     <h2 class="mb-4 text-sm font-bold">Характеристики и уход</h2>
@@ -128,9 +134,15 @@
         <div class="col-span-12 md:col-span-6"><label class="{{ tw_label }}">Страна производства</label>{{ form_widget(form.countryOfOrigin, {'attr': {'class': tw_input}}) }}</div>
         <div class="col-span-12 md:col-span-6">
             <label class="{{ tw_label }}">Стиль</label>
-            {{ form_widget(form.styles, {'attr': {'class': tw_input}}) }}
+            <div class="flex flex-wrap gap-x-4 gap-y-1">
+                {% for child in form.styles %}
+                <div class="flex items-center gap-2">
+                    {{ form_widget(child, {'attr': {'class': 'h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                    {{ form_label(child, null, {'label_attr': {'class': 'text-sm'}}) }}
+                </div>
+                {% endfor %}
+            </div>
             {{ f.err(form.styles) }}
-            <p class="mt-1 text-xs text-gray-400">Можно выбрать несколько: удерживайте Ctrl или ⌘</p>
         </div>
         <div class="col-span-12"><label class="{{ tw_label }}">Статус вещи</label>{{ form_widget(form.itemStatus, {'attr': {'class': tw_input}}) }}</div>
     </div>
@@ -157,11 +169,10 @@
         </div>
     </div>
 </div>
-{% endif %}
 
 <div class="mt-6 flex gap-2">
     <button type="submit" class="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить</button>
-    {% if not fullMode %}
+    {% if not item.id %}
         <button type="submit" name="save_and_add" value="1" class="rounded-xl border border-gray-900 px-5 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 transition">Сохранить и добавить следующую</button>
     {% endif %}
     <a href="{{ path('account_wardrobe_index') }}"

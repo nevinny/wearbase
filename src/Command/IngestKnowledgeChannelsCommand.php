@@ -2,16 +2,14 @@
 
 namespace App\Command;
 
-use App\Service\EmbeddingService;
+use App\Service\Knowledge\KnowledgeIngestor;
 use App\Service\TextChunker;
-use App\Service\VectorStoreService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\Uid\Uuid;
 
 /**
  * Ингест базы знаний из YouTube-транскриптов в векторный RAG.
@@ -20,6 +18,8 @@ use Symfony\Component\Uid\Uuid;
  * TextChunker'ом, что и бренды, считает эмбеддинги ЭМБЕДДЕРОМ (qwen3-embedding:0.6b,
  * НЕ gemma-генерация — можно параллелить с идущим брендовым конвейером) и заливает
  * в отдельную Qdrant-коллекцию `topic_chunks` (та же размерность 1024, что brand_chunks).
+ * Чанкинг/эмбеддинг/upsert и role-карта — в общем сервисе KnowledgeIngestor (общий
+ * с app:kb:sync-tg, чтобы UUID-namespace не разъезжались).
  *
  * ID точки детерминирован (UUIDv5 от channel:video_id:chunk_index) → повторный
  * прогон делает upsert, а не дубли: батч на тысячи чанков резюмируем после сбоя.
@@ -34,23 +34,6 @@ use Symfony\Component\Uid\Uuid;
 )]
 class IngestKnowledgeChannelsCommand extends Command
 {
-    private const EMBED_BATCH = 32;
-
-    // Своё namespace для UUIDv5 точек topic_chunks (стабильный, не пересекается с brand_chunks).
-    private const ID_NAMESPACE = 'b3d5c1a2-7e4f-5c9a-9b21-8f0e1d2c3a4b';
-
-    /** Роль чанка в payload — определяется каналом-источником. */
-    private const ROLE_MAP = [
-        'grebenukm'          => 'idea',
-        'dolgov_alexandr'    => 'idea',
-        'mtokovinin'         => 'framing',
-        'AlexanderSokolovskiy' => 'case',
-        'FedotovM'           => 'tone',
-        'drmaxseo'           => 'seo',
-        'freychu'            => 'seo',
-        'big_bad_coach'      => 'seo',
-    ];
-
     private int $files   = 0;
     private int $chunks  = 0;
     private int $points  = 0;
@@ -58,9 +41,8 @@ class IngestKnowledgeChannelsCommand extends Command
     private int $failedFiles = 0;
 
     public function __construct(
-        private readonly EmbeddingService   $embedder,
-        private readonly VectorStoreService $vectors,   // инстанс, привязанный к topic_chunks (services.yaml)
-        private readonly TextChunker        $chunker,
+        private readonly KnowledgeIngestor $ingestor,
+        private readonly TextChunker $chunker,   // только для превью счётчиков в --dry-run
     ) {
         parent::__construct();
     }
@@ -68,7 +50,7 @@ class IngestKnowledgeChannelsCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('channel',  null, InputOption::VALUE_REQUIRED, 'Только один канал (' . implode(', ', array_keys(self::ROLE_MAP)) . ')')
+            ->addOption('channel',  null, InputOption::VALUE_REQUIRED, 'Только один канал (' . implode(', ', $this->ingestor->channels()) . ')')
             ->addOption('limit',    null, InputOption::VALUE_REQUIRED, 'Первые N файлов на канал (для теста)')
             ->addOption('dry-run',  null, InputOption::VALUE_NONE,     'Только чанкинг+счётчики, без embed/upsert')
             ->addOption('recreate', null, InputOption::VALUE_NONE,     'Пересоздать коллекцию topic_chunks')
@@ -89,9 +71,9 @@ class IngestKnowledgeChannelsCommand extends Command
             return Command::FAILURE;
         }
 
-        $channels = array_keys(self::ROLE_MAP);
+        $channels = $this->ingestor->channels();
         if ($only !== null) {
-            if (!isset(self::ROLE_MAP[$only])) {
+            if ($this->ingestor->roleFor($only) === null) {
                 $io->error("Неизвестный канал «{$only}». Доступны: " . implode(', ', $channels));
                 return Command::FAILURE;
             }
@@ -108,9 +90,9 @@ class IngestKnowledgeChannelsCommand extends Command
             try {
                 if ($input->getOption('recreate')) {
                     $io->warning('--recreate: удаляю коллекцию topic_chunks');
-                    $this->vectors->dropCollection();
+                    $this->ingestor->dropCollection();
                 }
-                $this->vectors->ensureCollection();
+                $this->ingestor->ensureCollection();
             } catch (\Throwable $e) {
                 $io->error('Qdrant недоступен/несовместим: ' . $e->getMessage());
                 return Command::FAILURE;
@@ -125,7 +107,7 @@ class IngestKnowledgeChannelsCommand extends Command
                 $io->warning("Пропускаю: нет каталога {$dir}");
                 continue;
             }
-            $role  = self::ROLE_MAP[$channel];
+            $role  = $this->ingestor->roleFor($channel);
             $paths = glob("{$dir}/*.txt") ?: [];
             sort($paths);
             if ($limit !== null) {
@@ -140,22 +122,33 @@ class IngestKnowledgeChannelsCommand extends Command
                 $videoId = pathinfo($path, PATHINFO_FILENAME);
                 try {
                     $text = (string) file_get_contents($path);
-                    $pieces = $this->chunker->chunk($text);
-                    if ($pieces === []) {
+
+                    if ($dryRun) {
+                        // dry-run: только чанкинг+счётчики, без embed/upsert
+                        $pieces = $this->chunker->chunk($text);
+                        if ($pieces === []) {
+                            continue;
+                        }
+                        $chFiles++;
+                        $chChunks += count($pieces);
+                        $this->files++;
+                        $this->chunks += count($pieces);
+                        continue;
+                    }
+
+                    $result = $this->ingestor->ingestDocument($channel, $videoId, $text);
+                    if ($result['chunks'] === 0) {
                         continue;
                     }
 
                     $chFiles++;
-                    $chChunks += count($pieces);
+                    $chChunks += $result['chunks'];
                     $this->files++;
-                    $this->chunks += count($pieces);
+                    $this->chunks += $result['chunks'];
+                    $this->points += $result['points'];
+                    $this->skipped += $result['skipped'];
 
-                    if ($dryRun) {
-                        continue;
-                    }
-
-                    $this->embedFile($channel, $videoId, $role, $pieces);
-                    $io->text(sprintf('  → %s: %d чанк(ов)', $videoId, count($pieces)));
+                    $io->text(sprintf('  → %s: %d чанк(ов)', $videoId, $result['chunks']));
                 } catch (\Throwable $e) {
                     $this->failedFiles++;
                     $io->warning(sprintf('  ✗ %s: %s', $videoId, $e->getMessage()));
@@ -176,52 +169,5 @@ class IngestKnowledgeChannelsCommand extends Command
         ]);
 
         return $this->failedFiles > 0 ? Command::FAILURE : Command::SUCCESS;
-    }
-
-    /**
-     * Эмбеддит чанки одного файла по одному (устойчиво к NaN на мусорном чанке —
-     * как в app:brand:embed) и грузит батчами в Qdrant.
-     *
-     * @param string[] $pieces
-     */
-    private function embedFile(string $channel, string $videoId, string $role, array $pieces): void
-    {
-        $batch = [];
-        foreach ($pieces as $idx => $text) {
-            try {
-                $vec = $this->embedder->embed($text);
-            } catch (\Throwable) {
-                $this->skipped++;
-                continue;
-            }
-            $batch[] = [
-                'id'      => $this->pointId($channel, $videoId, $idx),
-                'vector'  => $vec,
-                'payload' => [
-                    'channel'     => $channel,
-                    'video_id'    => $videoId,
-                    'role'        => $role,
-                    'chunk_index' => $idx,
-                    'text'        => $text,
-                ],
-            ];
-            if (count($batch) >= self::EMBED_BATCH) {
-                $this->vectors->upsertPoints($batch);
-                $this->points += count($batch);
-                $batch = [];
-            }
-        }
-        if ($batch !== []) {
-            $this->vectors->upsertPoints($batch);
-            $this->points += count($batch);
-        }
-    }
-
-    private function pointId(string $channel, string $videoId, int $chunkIndex): string
-    {
-        return (string) Uuid::v5(
-            Uuid::fromString(self::ID_NAMESPACE),
-            "{$channel}:{$videoId}:{$chunkIndex}",
-        );
     }
 }

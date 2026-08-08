@@ -10,6 +10,7 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\HttpFoundation\File\File;
+use Symfony\Component\Validator\Constraints as Assert;
 use Vich\UploaderBundle\Mapping\Annotation as Vich;
 
 #[ORM\Entity(repositoryClass: WardrobeItemRepository::class)]
@@ -43,6 +44,19 @@ class WardrobeItem
         self::ITEM_DONATED => 'Подарена',
         self::ITEM_TRANSFERRED => 'Передана',
         self::ITEM_LOST => 'Потеряна',
+    ];
+
+    /**
+     * Статусы, при которых вещь считается «неактивной» и попадает в архив
+     * (сама вещь физически не удаляется — это отдельный от soft-delete срез).
+     * Единственный источник истины: используется и репозиторием (выборки),
+     * и контроллером/шаблонами (какие статусы доступны только в архивном виде).
+     */
+    public const ARCHIVE_STATUSES = [
+        self::ITEM_ARCHIVED,
+        self::ITEM_SOLD,
+        self::ITEM_DONATED,
+        self::ITEM_LOST,
     ];
 
     public const LOVE_YES = 'yes';
@@ -175,6 +189,15 @@ class WardrobeItem
     private ?string $photo = null;
 
     #[Vich\UploadableField(mapping: 'wardrobe_item_photo', fileNameProperty: 'photo')]
+    #[Assert\Image(
+        maxSize: '10M',
+        mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        mimeTypesMessage: 'Разрешены только JPG, PNG и WebP.',
+        maxWidth: 5000,
+        maxHeight: 5000,
+        maxWidthMessage: 'Изображение слишком широкое (максимум {{ max_width }}px)',
+        maxHeightMessage: 'Изображение слишком высокое (максимум {{ max_height }}px)',
+    )]
     private ?File $photoFile = null;
 
     /** @var Collection<int, WardrobeItemPhoto> */
@@ -310,15 +333,6 @@ class WardrobeItem
     /** @return Collection<int, BrandStyle> */
     public function getStyles(): Collection { return $this->styles; }
 
-    /** @return string[] */
-    public function getStyleLabels(): array
-    {
-        return array_values(array_filter(array_map(
-            static fn (BrandStyle $style): ?string => $style->getTitle(),
-            $this->styles->toArray(),
-        )));
-    }
-
     public function addStyle(BrandStyle $style): static
     {
         if (!$this->styles->contains($style)) {
@@ -355,6 +369,11 @@ class WardrobeItem
     }
 
     public function getItemStatus(): string { return $this->itemStatus; }
+
+    public function getItemStatusLabel(): string
+    {
+        return self::ITEM_LABELS[$this->itemStatus] ?? $this->itemStatus;
+    }
 
     public function setItemStatus(string $itemStatus): static
     {
@@ -467,19 +486,23 @@ class WardrobeItem
     /** @return WardrobeItemPhoto[] */
     public function getActivePhotos(): array
     {
-        return $this->photos
+        // array_values() важен: ArrayCollection::filter() сохраняет исходные ключи,
+        // иначе [0] ?? null (здесь и в WardrobePhotoManager) молча вернёт null, если
+        // удалено именно первое добавленное фото.
+        return array_values($this->photos
             ->filter(static fn (WardrobeItemPhoto $photo): bool => !$photo->isDeleted())
-            ->toArray();
+            ->toArray());
     }
 
     public function getCoverPhoto(): ?WardrobeItemPhoto
     {
-        foreach ($this->getActivePhotos() as $photo) {
+        $activePhotos = $this->getActivePhotos();
+        foreach ($activePhotos as $photo) {
             if ($photo->isCover()) {
                 return $photo;
             }
         }
-        return $this->getActivePhotos()[0] ?? null;
+        return $activePhotos[0] ?? null;
     }
 
     public function addPhoto(WardrobeItemPhoto $photo): static

@@ -126,6 +126,9 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToCrud('Учёт AI-запросов', 'fas fa-receipt', AiUsageLog::class);
 
         yield MenuItem::section('Пользователи');
-        yield MenuItem::linkToCrud('Users', 'fas fa-users', User::class);
+        // setController обязателен: для этой сущности есть ещё вендорный CRUD
+        // (nevinny/admin-core) без configureFields, который показывал хеш пароля.
+        yield MenuItem::linkToCrud('Администраторы', 'fas fa-users', User::class)
+            ->setController(UserCrudController::class);
     }
 }

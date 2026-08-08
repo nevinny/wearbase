@@ -6,7 +6,7 @@
 {% set hasFamily = members is defined and currentMember is defined %}
 {% set ownWardrobe = isOwnWardrobe is defined ? isOwnWardrobe : true %}
 {% set memberParam = hasFamily ? {member: currentMember.id} : {} %}
-{% set activeQuery = memberParam|merge(filters) %}
+{% set activeQuery = memberParam|merge(activeFilters) %}
 {% if isArchiveView %}{% set activeQuery = activeQuery|merge({view: 'archive'}) %}{% endif %}
 {% set seasonLabels = {'all': 'Всесезон', 'spring': 'Весна', 'summer': 'Лето', 'autumn': 'Осень', 'winter': 'Зима'} %}
 
@@ -23,9 +23,9 @@
 </div>
 
 <div class="mb-6 flex gap-2">
-    <a href="{{ path('account_wardrobe_index', memberParam|merge(filters)) }}"
+    <a href="{{ path('account_wardrobe_index', memberParam|merge(activeFilters)) }}"
        class="rounded-full px-4 py-2 text-xs font-semibold {{ not isArchiveView ? 'bg-gray-900 text-white' : 'bg-white text-gray-600' }}">Вещи</a>
-    <a href="{{ path('account_wardrobe_index', memberParam|merge(filters)|merge({view: 'archive'})) }}"
+    <a href="{{ path('account_wardrobe_index', memberParam|merge(activeFilters)|merge({view: 'archive'})) }}"
        class="rounded-full px-4 py-2 text-xs font-semibold {{ isArchiveView ? 'bg-gray-900 text-white' : 'bg-white text-gray-600' }}">Архив</a>
     <a href="{{ path('account_wardrobe_statistics', memberParam) }}"
        class="rounded-full bg-white px-4 py-2 text-xs font-semibold text-gray-600">Статистика</a>
@@ -123,8 +123,9 @@
             <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Состояние</label>
             <select name="status" class="w-full rounded-lg border border-gray-200 px-2 py-2.5 text-sm">
                 <option value="">Любое</option>
+                {% set archiveStatuses = constant('App\\Entity\\WardrobeItem::ARCHIVE_STATUSES') %}
                 {% for value, label in constant('App\\Entity\\WardrobeItem::ITEM_LABELS') %}
-                    {% if (isArchiveView and value == 'archived') or (not isArchiveView and value != 'archived') %}
+                    {% if (isArchiveView and value in archiveStatuses) or (not isArchiveView and value not in archiveStatuses) %}
                         <option value="{{ value }}" {{ filters.status == value ? 'selected' }}>{{ label }}</option>
                     {% endif %}
                 {% endfor %}
@@ -200,11 +201,17 @@
         <div class="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:shadow-md">
         <a href="{{ path('account_wardrobe_show', {id: item.id}|merge(activeQuery)) }}" class="block">
             <div class="relative aspect-square bg-gray-100">
-                {% if item.photo %}
+                {% if item.coverPhoto %}
+                    <img src="{{ vich_uploader_asset(item.coverPhoto, 'file') }}"
+                         class="h-full w-full object-cover" alt="{{ item.name }}">
+                {% elseif item.photo %}
                     <img src="{{ vich_uploader_asset(item, 'photoFile') }}"
                          class="h-full w-full object-cover" alt="{{ item.name }}">
                 {% else %}
                     <div class="flex h-full w-full items-center justify-center text-5xl opacity-20">👕</div>
+                {% endif %}
+                {% if item.loveAtFirstSight == 'yes' %}
+                    <span class="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-sm shadow-sm" title="Любовь с первого взгляда">❤️</span>
                 {% endif %}
                 {% if item.wearStatus is defined and item.wearStatus != 'active' %}
                     <span class="absolute left-2 top-2 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm {{ wearChip[item.wearStatus] ?? 'bg-gray-100 text-gray-500' }}">
@@ -225,14 +232,20 @@
                     {% if item.size %}
                         <span class="rounded bg-gray-100 px-1.5 py-0.5 font-semibold">{{ item.size }}</span>
                     {% endif %}
-                    <span class="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">{{ item.completionStatusLabel }}</span>
+                    {% if isArchiveView %}
+                        <span class="rounded bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-600">{{ item.itemStatusLabel }}</span>
+                    {% else %}
+                        <span class="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">{{ item.completionStatusLabel }}</span>
+                    {% endif %}
                 </div>
                 {% if item.price is not null %}
                     <div class="mt-2 text-sm font-bold">{{ item.price|number_format(0, ',', ' ') }} ₽</div>
                 {% endif %}
             </div>
         </a>
-        {% if isArchiveView %}
+        {# Терминальные статусы (sold/donated/lost) видны в архиве с ярлыком, но без
+           кнопки «Вернуть» — их статус зафиксирован как факт, а не состояние видимости. #}
+        {% if isArchiveView and item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ARCHIVED') %}
             <form method="post" action="{{ path('account_wardrobe_restore', {id: item.id}|merge(memberParam)) }}" class="border-t border-gray-100 p-3">
                 <input type="hidden" name="_token" value="{{ csrf_token('restore_wardrobe_item_' ~ item.id) }}">
                 <button type="submit" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50">Вернуть в гардероб</button>

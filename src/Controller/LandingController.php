@@ -158,6 +158,11 @@ class LandingController extends AbstractController
 
         $email = trim((string) $request->request->get('email', ''));
         $source = trim((string) $request->request->get('source', 'no-marketplace'));
+        // Название и ссылка — опциональны на уровне роута: форму `landing_lead` шлют три лендинга,
+        // и только `for-brands` спрашивает бренд (required в разметке). Без них лид всё равно пишем,
+        // иначе no-marketplace / marketplace-fees перестали бы собирать почту (sales_offer.md §11).
+        $brandName = trim((string) $request->request->get('brand_name', ''));
+        $website = trim((string) $request->request->get('website', ''));
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $this->addFlash('error', 'Введите корректный email');
@@ -166,6 +171,15 @@ class LandingController extends AbstractController
 
         $existing = $em->getRepository(LandingLead::class)->findOneBy(['email' => $email]);
         if ($existing) {
+            // Повторная заявка — не дублируем, но дозаполняем то, чего в прошлый раз не спросили.
+            if ($brandName !== '' && $existing->getBrandName() === null) {
+                $existing->setBrandName($brandName);
+            }
+            if ($website !== '' && $existing->getWebsite() === null) {
+                $existing->setWebsite($website);
+            }
+            $em->flush();
+
             $this->addFlash('info', 'Вы уже оставляли заявку — мы скоро свяжемся с вами');
             return $this->redirect($request->headers->get('referer', '/'));
         }
@@ -173,14 +187,28 @@ class LandingController extends AbstractController
         $lead = new LandingLead();
         $lead->setEmail($email);
         $lead->setSource($source);
+        $lead->setBrandName($brandName !== '' ? $brandName : null);
+        $lead->setWebsite($website !== '' ? $website : null);
         $em->persist($lead);
         $em->flush();
 
+        // ⚠️ Ключ `email` в контексте TemplatedEmail зарезервирован (Symfony бросает исключение, а
+        // EmailNotifier soft-fail'ит его в лог) — из-за этого письмо админу про лид не уходило вообще.
+        // Название переменной менять нельзя обратно: только leadEmail.
         $notifier->send(
             $notifier->getAdminEmail(),
             'Новый лид с лендинга — ' . $email,
             'new_lead',
-            ['email' => $email, 'source' => $source]
+            ['leadEmail' => $email, 'source' => $source, 'brandName' => $brandName, 'website' => $website]
+        );
+
+        // Автоответ самому лиду: без него человек оставлял почту и не получал НИЧЕГО — путь в ЛК
+        // (`/register?brand=1`, пароль задаёт сам) существовал, но нигде ему не показывался.
+        $notifier->send(
+            $email,
+            'Ваш кабинет бренда на WEARBASE — как войти',
+            'lead_welcome',
+            ['brandName' => $brandName]
         );
 
         $this->addFlash('success', 'Спасибо! Мы свяжемся с вами в ближайшее время.');

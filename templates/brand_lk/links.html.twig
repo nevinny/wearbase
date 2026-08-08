@@ -1,0 +1,82 @@
+{% extends 'brand_lk/layout.html.twig' %}
+
+{% block title %}Ссылки — {{ brand.title }} — WEARBASE{% endblock %}
+
+{% macro err(field) %}
+    {% if field.vars.errors|length > 0 %}
+        <div class="form-error mt-1 text-sm text-red-600">{{ form_errors(field) }}</div>
+    {% endif %}
+{% endmacro %}
+
+{% block brand_content %}
+{% import _self as f %}
+{% set input_class = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% set label_class = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
+
+<div class="mb-5 flex items-center justify-between">
+    <h1 class="text-lg font-bold">Ссылки бренда</h1>
+</div>
+
+{# Форма добавления/редактирования #}
+<div class="mb-6 rounded-2xl bg-white shadow-sm">
+    <div class="p-5">
+        <h2 class="mb-3 text-sm font-semibold">{{ editLink ? 'Редактировать ссылку' : 'Добавить ссылку' }}</h2>
+        {{ form_start(form, {'action': path('brand_links_save'), 'attr': {'class': 'grid gap-4 md:grid-cols-2'}}) }}
+            {% if editLink %}<input type="hidden" name="id" value="{{ editLink.id }}">{% endif %}
+            <div>
+                <label class="{{ label_class }}">Тип ссылки</label>
+                {{ form_widget(form.linkType, {'attr': {'class': input_class}}) }}
+                {{ f.err(form.linkType) }}
+            </div>
+            <div>
+                <label class="{{ label_class }}">Ссылка</label>
+                {{ form_widget(form.linkUrl, {'attr': {'class': input_class, 'placeholder': 'https://...'}}) }}
+                {{ f.err(form.linkUrl) }}
+            </div>
+            <div class="flex items-center gap-2 md:col-span-2">
+                <button type="submit" class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">{{ editLink ? 'Сохранить' : 'Добавить' }}</button>
+                {% if editLink %}
+                    <a href="{{ path('brand_links') }}" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Отмена</a>
+                {% endif %}
+            </div>
+        {{ form_end(form) }}
+    </div>
+</div>
+
+{# Список ссылок #}
+<div class="overflow-hidden rounded-2xl bg-white shadow-sm">
+    {% if links|length == 0 %}
+        <div class="p-5">
+            <p class="text-sm text-gray-500">Ссылки не добавлены. Максимум — 8 ссылок на бренд.</p>
+        </div>
+    {% else %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <tr>
+                        <th class="px-5 py-3">Тип</th>
+                        <th class="px-5 py-3">Ссылка</th>
+                        <th class="px-5 py-3 text-right"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for link in links %}
+                        <tr>
+                            <td class="px-5 py-3">{{ link.linkType }}</td>
+                            <td class="px-5 py-3 break-all">{{ link.linkUrl }}</td>
+                            <td class="whitespace-nowrap px-5 py-3 text-right">
+                                <a href="{{ path('brand_links', {edit: link.id}) }}" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Изменить</a>
+                                <form method="post" action="{{ path('brand_links_delete', {id: link.id}) }}" class="inline"
+                                      onsubmit="return confirm('Удалить ссылку?')">
+                                    <input type="hidden" name="_token" value="{{ csrf_token('brand_links') }}">
+                                    <button type="submit" class="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition">Удалить</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

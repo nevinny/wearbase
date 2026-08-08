@@ -22,7 +22,9 @@ interface SocialPublisherInterface
      * Опубликовать пост. Возвращает ID поста на площадке (для подтягивания метрик).
      * Бросает \RuntimeException при ошибке/невалидной конфигурации канала.
      *
-     * @param string|null $mediaAbsPath абсолютный путь к локальному медиа (null = текстовый пост)
+     * @param list<string> $mediaAbsPaths абсолютные пути к локальным медиа по порядку:
+     *                                    [] = текстовый пост, 1 элемент = одиночное медиа,
+     *                                    N элементов = карусель (кто не умеет — берёт первый)
      */
-    public function publish(SocialChannel $channel, SocialPost $post, ?string $mediaAbsPath): string;
+    public function publish(SocialChannel $channel, SocialPost $post, array $mediaAbsPaths): string;
 }

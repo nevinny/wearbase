@@ -28,8 +28,11 @@ class TelegramPublisher implements SocialPublisherInterface
         return SocialChannel::PLATFORM_TG;
     }
 
-    public function publish(SocialChannel $channel, SocialPost $post, ?string $mediaAbsPath): string
+    public function publish(SocialChannel $channel, SocialPost $post, array $mediaAbsPaths): string
     {
+        // Карусель в TG (sendMediaGroup) пока не поддержана — берём первый слайд.
+        $mediaAbsPath = $mediaAbsPaths[0] ?? null;
+
         if (trim($this->botToken) === '') {
             throw new \RuntimeException('TELEGRAM_BOT_TOKEN не задан — публикация в TG невозможна.');
         }

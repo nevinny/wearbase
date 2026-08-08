@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller\Account;
 
 use App\Entity\AiUsageLog;
+use App\Entity\BrandStyle;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
@@ -22,6 +23,7 @@ use App\Service\Wardrobe\WardrobeStatisticsService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -53,15 +55,19 @@ class WardrobeController extends AbstractController
 
         $isArchiveView = $request->query->get('view') === 'archive';
         $filters = $this->wardrobeFilters($request);
+        // Sold/donated/lost/archived существуют только в архивном срезе (см.
+        // WardrobeItem::ARCHIVE_STATUSES) — вне архива такой status сбрасываем,
+        // иначе плитка статистики «Продана» вела бы в пустой список.
         if ($isArchiveView) {
             $filters['wear'] = '';
-            if ($filters['status'] !== WardrobeItem::ITEM_ARCHIVED) {
+            if (!in_array($filters['status'], WardrobeItem::ARCHIVE_STATUSES, true)) {
                 $filters['status'] = '';
             }
-        } elseif ($filters['status'] === WardrobeItem::ITEM_ARCHIVED) {
+        } elseif (in_array($filters['status'], WardrobeItem::ARCHIVE_STATUSES, true)) {
             $filters['status'] = '';
         }
-        $hasFilters = count(array_filter($filters, static fn (string $value): bool => $value !== '')) > 0;
+        $activeFilters = array_filter($filters, static fn (string $value): bool => $value !== '');
+        $hasFilters = count($activeFilters) > 0;
         $items = $repo->searchForUser($currentMember, $filters, $isArchiveView);
         $stats = (!$isArchiveView && !$hasFilters) ? $repo->getStats($currentMember) : [];
         $filteredSum = array_sum(array_map(static fn (WardrobeItem $item): float => (float) ($item->getPrice() ?? 0), $items));
@@ -76,6 +82,8 @@ class WardrobeController extends AbstractController
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
             'isArchiveView' => $isArchiveView,
             'filters' => $filters,
+            // Только непустые значения — иначе ссылки/пагинация тащат q=&category=&...
+            'activeFilters' => $activeFilters,
             'hasFilters' => $hasFilters,
             'filterOptions' => $repo->getFilterOptions($currentMember, $isArchiveView),
         ]);
@@ -88,21 +96,23 @@ class WardrobeController extends AbstractController
         $user = $this->getUser();
         $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
         $members = $this->familyService->membersFor($user);
+        $currentStatistics = $statistics->forUser($currentMember);
+
+        // Та же авторизация, что и у resolveMember() (canManage): не-parent видит
+        // сравнение только по себе — сумма гардероба и % заполнения остальных не палим.
         $familyComparison = [];
-        $currentStatistics = null;
         foreach ($members as $member) {
-            $memberStatistics = $statistics->forUser($member);
-            $familyComparison[] = [
-                'member' => $member,
-                'summary' => $memberStatistics['summary'],
-            ];
-            if ($member->getId() === $currentMember->getId()) {
-                $currentStatistics = $memberStatistics;
+            if (!$this->familyService->canManage($user, $member)) {
+                continue;
             }
+            $summary = $member->getId() === $currentMember->getId()
+                ? $currentStatistics['summary']
+                : $statistics->summaryForUser($member);
+            $familyComparison[] = ['member' => $member, 'summary' => $summary];
         }
 
         return $this->render('account/wardrobe/statistics.html.twig', [
-            'statistics' => $currentStatistics ?? $statistics->forUser($currentMember),
+            'statistics' => $currentStatistics,
             'members' => $members,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
@@ -147,11 +157,15 @@ class WardrobeController extends AbstractController
         EntityManagerInterface $em,
     ): Response {
         [$user, $currentMember, $item, $photo] = $this->resolvePhotoAction($id, $photoId, $request, $repo, $em);
-        if ($this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
-            $this->photoManager->setCover($item, $photo);
-            $this->addFlash('success', 'Обложка обновлена');
-        } else {
+        if (!$this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
             $this->addFlash('error', 'Недействительный токен');
+        } else {
+            try {
+                $this->photoManager->setCover($item, $photo);
+                $this->addFlash('success', 'Обложка обновлена');
+            } catch (\InvalidArgumentException $exception) {
+                $this->addFlash('error', $exception->getMessage());
+            }
         }
         return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
     }
@@ -165,12 +179,16 @@ class WardrobeController extends AbstractController
         EntityManagerInterface $em,
     ): Response {
         [$user, $currentMember, $item, $photo] = $this->resolvePhotoAction($id, $photoId, $request, $repo, $em);
-        if ($this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
-            $this->photoManager->softDelete($item, $photo);
-            $this->wardrobeManager->refreshCompletionStatus($item);
-            $this->addFlash('success', 'Фотография убрана');
-        } else {
+        if (!$this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
             $this->addFlash('error', 'Недействительный токен');
+        } else {
+            try {
+                $this->photoManager->softDelete($item, $photo);
+                $this->wardrobeManager->refreshCompletionStatus($item);
+                $this->addFlash('success', 'Фотография убрана');
+            } catch (\InvalidArgumentException $exception) {
+                $this->addFlash('error', $exception->getMessage());
+            }
         }
         return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
     }
@@ -186,8 +204,11 @@ class WardrobeController extends AbstractController
             throw $this->createNotFoundException();
         }
         if ($this->isCsrfTokenValid('archive_wardrobe_item_'.$id, $request->request->get('_token'))) {
-            $this->wardrobeManager->archive($item);
-            $this->addFlash('success', 'Вещь перемещена в архив');
+            if ($this->wardrobeManager->archive($item)) {
+                $this->addFlash('success', 'Вещь перемещена в архив');
+            } else {
+                $this->addFlash('error', 'Эту вещь нельзя переместить в архив');
+            }
         }
         return $this->redirectToRoute('account_wardrobe_index', $this->memberQuery($user, $currentMember));
     }
@@ -203,8 +224,11 @@ class WardrobeController extends AbstractController
             throw $this->createNotFoundException();
         }
         if ($this->isCsrfTokenValid('restore_wardrobe_item_'.$id, $request->request->get('_token'))) {
-            $this->wardrobeManager->restore($item);
-            $this->addFlash('success', 'Вещь восстановлена');
+            if ($this->wardrobeManager->restore($item)) {
+                $this->addFlash('success', 'Вещь восстановлена');
+            } else {
+                $this->addFlash('error', 'Эту вещь нельзя вернуть в гардероб');
+            }
         }
         return $this->redirectToRoute('account_wardrobe_index', ['view' => 'archive'] + $this->memberQuery($user, $currentMember));
     }
@@ -221,12 +245,13 @@ class WardrobeController extends AbstractController
         $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
 
         $item = new WardrobeItem();
-        $form = $this->createForm(WardrobeItemFormType::class, $item, ['full' => false]);
+        $form = $this->createForm(WardrobeItemFormType::class, $item);
         $form->handleRequest($request);
         $remotePhotoUrl = $form->get('remotePhotoUrl')->getData();
+        $galleryPhotos = $form->get('galleryPhotos')->getData() ?? [];
 
         if ($form->isSubmitted() && $form->isValid()) {
-            if ($item->getPhotoFile() === null) {
+            if ($item->getPhotoFile() === null && $galleryPhotos === []) {
                 $this->remotePhotoFetcher->attachWildberriesPhoto($item, $remotePhotoUrl);
             }
             $item->setUser($currentMember);
@@ -264,6 +289,19 @@ class WardrobeController extends AbstractController
                 $em->flush();
             }
 
+            // Вещь на этот момент уже сохранена, поэтому падение загрузчика нельзя пускать
+            // в 500: пользователь увидел бы ошибку и решил, что не сохранилось ничего.
+            // Ловим так же, как штатный эндпоинт photos_upload.
+            if ($galleryPhotos !== []) {
+                try {
+                    $this->photoManager->upload($item, $galleryPhotos, WardrobeItemPhoto::TYPE_PRODUCT);
+                    $this->wardrobeManager->refreshCompletionStatus($item);
+                    $em->flush();
+                } catch (\InvalidArgumentException $exception) {
+                    $this->addFlash('error', 'Вещь сохранена, но фотографии не загрузились: ' . $exception->getMessage());
+                }
+            }
+
             $this->addFlash('success', 'Вещь добавлена');
             if ($request->request->has('save_and_add')) {
                 return $this->redirectToRoute('account_wardrobe_new', $this->memberQuery($user, $currentMember));
@@ -276,7 +314,6 @@ class WardrobeController extends AbstractController
             'item'          => $item,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
-            'fullMode'      => false,
         ]);
     }
 
@@ -443,15 +480,46 @@ class WardrobeController extends AbstractController
             throw $this->createNotFoundException();
         }
 
+        // Форма предлагает к выбору только активные стили (см. WardrobeItemFormType) —
+        // уже привязанный, но с тех пор удалённый в админке стиль не попадает в её
+        // choice-list, и стандартный add/remove-diff Symfony молча его отвяжет на
+        // submit. Запоминаем такие связи до handleRequest и восстанавливаем после.
+        $preservedInactiveStyles = array_values(array_filter(
+            $item->getStyles()->toArray(),
+            static fn (BrandStyle $style): bool => $style->getStatus() !== Statuses::Active,
+        ));
+
         $form = $this->createForm(WardrobeItemFormType::class, $item);
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            foreach ($preservedInactiveStyles as $style) {
+                $item->addStyle($style);
+            }
+            $previousPhoto = $item->getPhoto();
             if ($item->getPhotoFile() === null && $item->getPhoto() === null) {
                 $this->remotePhotoFetcher->attachWildberriesPhoto($item, $form->get('remotePhotoUrl')->getData());
             }
+            $replacingPhotoFile = $item->getPhotoFile() !== null;
             $this->wardrobeManager->refreshCompletionStatus($item);
             $em->flush();
+            if ($replacingPhotoFile) {
+                // Vich уже сохранил новый файл и переписал item.photo — согласуем галерею
+                // (старое фото не теряем физически, но перестаёт быть обложкой).
+                $this->photoManager->reconcileAfterLegacyReplace($item, $previousPhoto);
+            }
+            // Правки уже во flush выше — ошибка загрузчика не должна их «отменять» в глазах
+            // пользователя (см. тот же приём в new() и photos_upload).
+            $galleryPhotos = $form->get('galleryPhotos')->getData() ?? [];
+            if ($galleryPhotos !== []) {
+                try {
+                    $this->photoManager->upload($item, $galleryPhotos, WardrobeItemPhoto::TYPE_PRODUCT);
+                    $this->wardrobeManager->refreshCompletionStatus($item);
+                    $em->flush();
+                } catch (\InvalidArgumentException $exception) {
+                    $this->addFlash('error', 'Изменения сохранены, но фотографии не загрузились: ' . $exception->getMessage());
+                }
+            }
             $this->addFlash('success', 'Изменения сохранены');
             return $this->redirectToRoute(
                 'account_wardrobe_show',
@@ -464,7 +532,6 @@ class WardrobeController extends AbstractController
             'item'          => $item,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
-            'fullMode'      => true,
         ]);
     }
 

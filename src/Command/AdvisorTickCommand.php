@@ -352,7 +352,7 @@ class AdvisorTickCommand extends Command
                 $idx = (int) $m[1] - 1;
                 if (isset($chunks[$idx])) {
                     $c = $chunks[$idx];
-                    $out[] = AdvisorRag::channelName($c['channel']) . ($c['video_id'] !== '' ? ':' . $c['video_id'] : '');
+                    $out[] = $this->rag->channelName($c['channel']) . ($c['video_id'] !== '' ? ':' . $c['video_id'] : '');
                     continue;
                 }
             }

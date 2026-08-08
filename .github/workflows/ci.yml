@@ -1,0 +1,186 @@
+name: CI
+
+# Тесты — на каждый PR и на push в main. Деплой — только на push в main и только
+# после зелёных тестов (needs: tests). Прод достижим через SSH; координаты и ключ
+# лежат в GitHub Secrets (репозиторий публичный — в YAML ничего секретного нет).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          # 8.4 = dev-версия; composer.lock (PHPUnit 12) требует >=8.3. Прод на 8.2,
+          # но dev-зависимости в lock не оставляют выбора — тесты гоняем на dev-версии.
+          php-version: '8.4'
+          extensions: ctype, iconv, mbstring, intl, pdo_sqlite, sqlite3, xml, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --no-scripts
+        env:
+          # nevinny/admin-core — публичный VCS-репозиторий; токен только чтобы не упереться
+          # в анонимный rate-limit GitHub API при резолве пакета.
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+
+      - name: Install importmap assets
+        # composer ставился с --no-scripts (не триггерит авто-importmap:install), а
+        # assets/vendor/ в .gitignore → без этого шага EasyAdmin-страницы падают в
+        # тестах на отсутствии @hotwired/stimulus.
+        run: php bin/console importmap:install
+
+      - name: PHPUnit
+        # APP_ENV=test форсится в phpunit.dist.xml; тест-БД — одноразовый SQLite,
+        # схема провижинится из сущностей в tests/bootstrap.php.
+        run: php -d memory_limit=512M vendor/bin/phpunit
+
+  deploy:
+    name: Deploy to prod (regru)
+    needs: tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, mbstring, intl, pdo_sqlite, sqlite3, xml, tokenizer
+          coverage: none
+          tools: composer:v2
+
+      - name: Build prod dependencies
+        # Ставим prod-vendor из composer.lock (без dev-зависимостей) и rsync'им его на
+        # прод — так же, как ручной /deploy отправляет vendor с Mac. Без этого шага на
+        # прод уехал бы код без обновлённого vendor.
+        run: composer install --no-dev --optimize-autoloader --no-scripts --no-interaction --no-progress
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Rsync to prod
+        id: rsync
+        # Полный rsync из корня, БЕЗ --delete (как канонический /deploy): прод-only файлы
+        # (var, .env.local, загруженные картинки, config/secrets) не трогаем. Список
+        # исключений синхронен docs/production.md.
+        env:
+          H: ${{ secrets.DEPLOY_HOST }}
+          U: ${{ secrets.DEPLOY_USER }}
+          P: ${{ secrets.DEPLOY_PORT }}
+          D: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          rsync -az \
+            --exclude .git --exclude .github --exclude var --exclude .env.local \
+            --exclude config/secrets --exclude node_modules --exclude _seo --exclude _sql \
+            --exclude .opencode --exclude .superpowers --exclude .DS_Store \
+            --exclude playwright-report --exclude test-results \
+            -e "ssh -i ~/.ssh/deploy_key -p ${P} -o UserKnownHostsFile=~/.ssh/known_hosts" \
+            ./ "${U}@${H}:${D}/"
+
+      - name: Prune deleted code files
+        id: prune
+        # Основной rsync идёт без --delete, поэтому удалённые в репозитории файлы жили на
+        # проде вечно: 26.07.2026 там нашлись бутстраповый templates/base.html.twig,
+        # showv2/showv3 и снесённый в этом же релизе слушатель — мёртвый код, который
+        # Symfony продолжает автозагружать. Второй проход с --delete идёт ТОЛЬКО по
+        # каталогам чистого кода: public_html (сгенерированные ассеты, загруженные
+        # картинки), bin, var и config/secrets сюда намеренно не входят.
+        env:
+          H: ${{ secrets.DEPLOY_HOST }}
+          U: ${{ secrets.DEPLOY_USER }}
+          P: ${{ secrets.DEPLOY_PORT }}
+          D: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          for DIR in src templates migrations translations; do
+            rsync -az --delete --exclude .DS_Store \
+              -e "ssh -i ~/.ssh/deploy_key -p ${P} -o UserKnownHostsFile=~/.ssh/known_hosts" \
+              "./$DIR/" "${U}@${H}:${D}/$DIR/"
+          done
+
+      - name: Migrate + clear cache
+        id: migrate
+        # cache:clear на проде ТОЛЬКО с -d memory_limit=512M (дефолт 128M падает).
+        # Вывод ssh пишем в migrate.log (шаг Notify Telegram достаёт оттуда список
+        # применённых версий); set -o pipefail — иначе `tee` съедает код возврата ssh
+        # и упавшая миграция не роняет деплой.
+        env:
+          H: ${{ secrets.DEPLOY_HOST }}
+          U: ${{ secrets.DEPLOY_USER }}
+          P: ${{ secrets.DEPLOY_PORT }}
+          D: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -o pipefail
+          ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${U}@${H}" "cd ${D} && php -d memory_limit=512M bin/console doctrine:migrations:migrate --no-interaction && php -d memory_limit=512M bin/console cache:clear --no-debug" \
+            2>&1 | tee migrate.log
+
+      - name: Smoke test
+        id: smoke
+        run: |
+          set -o pipefail
+          fail=0
+          : > smoke.log
+          # -L: следуем редиректам и проверяем ФИНАЛЬНЫЙ код (напр. /ru/brands/ 301→200).
+          for u in /ru/ /ru/brands/ /sitemap.xml; do
+            code=$(curl -sL -o /dev/null -w '%{http_code}' "https://wearbase.ru${u}")
+            echo "${u} -> ${code}" | tee -a smoke.log
+            [ "${code}" = "200" ] || fail=1
+          done
+          exit $fail
+
+      - name: Notify Telegram
+        # always(): шлём уведомление и при успехе, и при провале любого предыдущего
+        # шага деплоя (rsync/prune/migrate/smoke). continue-on-error — сбой отправки
+        # уведомления не должен превращать успешный деплой в красный.
+        if: always()
+        continue-on-error: true
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.ADMIN_TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+          OUTCOME_RSYNC: ${{ steps.rsync.outcome }}
+          OUTCOME_PRUNE: ${{ steps.prune.outcome }}
+          OUTCOME_MIGRATE: ${{ steps.migrate.outcome }}
+          OUTCOME_SMOKE: ${{ steps.smoke.outcome }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_AUTHOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          BEFORE_SHA: ${{ github.event.before }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MIGRATE_LOG_FILE: migrate.log
+          SMOKE_LOG_FILE: smoke.log
+        run: bash .github/scripts/notify-deploy.sh
