@@ -87,13 +87,17 @@ class FamilyController extends AbstractController
     #[Route('/invite', name: 'invite', methods: ['POST'])]
     public function invite(Request $request, FamilyService $familyService): Response
     {
+        /** @var User $user */
+        $user = $this->getUser();
+
+        if ($user->getFamilyRole() === User::FAMILY_ROLE_CHILD) {
+            throw $this->createAccessDeniedException('Приглашать членов семьи может только родитель');
+        }
+
         if (!$this->isCsrfTokenValid('family_invite', $request->request->get('_token'))) {
             $this->addFlash('error', 'Недействительный токен');
             return $this->redirectToRoute('account_family_index');
         }
-
-        /** @var User $user */
-        $user = $this->getUser();
 
         $role = (string) $request->request->get('role');
         if (!in_array($role, [User::FAMILY_ROLE_PARENT, User::FAMILY_ROLE_CHILD], true)) {

@@ -119,6 +119,28 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
         );
     }
 
+    public function testChildCannotSeeOrCreateFamilyManagementActions(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-child-rights-parent@test.local');
+
+        /** @var FamilyService $familyService */
+        $familyService = static::getContainer()->get(FamilyService::class);
+        $child = $familyService->createChild($parent, 'Лена');
+        $client->loginUser($child);
+
+        $client->request('GET', '/account/family');
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorNotExists('a[href="/account/family/add"]');
+        $this->assertSelectorNotExists('form[action="/account/family/invite"]');
+
+        $client->request('POST', '/account/family/invite', [
+            'role' => User::FAMILY_ROLE_PARENT,
+        ]);
+
+        $this->assertResponseStatusCodeSame(403);
+    }
+
     public function testAcceptInviteJoinsFamily(): void
     {
         $client = static::createClient();

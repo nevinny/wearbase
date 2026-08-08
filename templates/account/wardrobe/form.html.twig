@@ -1,4 +1,4 @@
-{% extends 'account/layout.html.twig' %}
+{% extends 'account/family_wardrobe/layout.html.twig' %}
 {% block title %}{{ item.id ? 'Редактировать вещь' : 'Новая вещь' }} — WEARBASE{% endblock %}
 
 {% macro err(field) %}
@@ -7,7 +7,7 @@
     {% endif %}
 {% endmacro %}
 
-{% block account_content %}
+{% block family_mobile_content %}
 {% import _self as f %}
 {% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
 {% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
