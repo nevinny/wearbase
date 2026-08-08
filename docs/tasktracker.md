@@ -1993,6 +1993,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 
 ### Фаза 0A — family onboarding и wardrobe-app API
 
+- [x] Публичный mobile-first лендинг `/ru/wardrobe` со входом в PWA и ссылкой из подвала сайта.
+
 - [x] Добавить `/account/wardrobe-app`: отдельный controller/dashboard, быстрые действия, личный и
   семейные гардеробы.
 - [x] Показать всем участникам безопасный состав семьи; ребёнку не показывать чужие wardrobe links
