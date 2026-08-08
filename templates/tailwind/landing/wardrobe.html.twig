@@ -1,0 +1,244 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}Семейный цифровой гардероб — вещи, образы и история носки | WEARBASE{% endblock %}
+{% block meta_description %}Ведите личный и семейный гардероб в WEARBASE: карточки вещей, фото, образы, передачи между детьми и статистика. Устанавливается на iPhone с сайта.{% endblock %}
+{% block meta_keywords %}цифровой гардероб, семейный гардероб, приложение для гардероба, учёт одежды, образы из вещей{% endblock %}
+{% block meta_robots %}<meta name="robots" content="index, follow">{% endblock %}
+{% block canonical_url %}{{ url('landing_wardrobe', {_locale: app.request.locale|default('ru')}) }}{% endblock %}
+{% block og_title %}Весь гардероб семьи — в одном приложении{% endblock %}
+{% block og_description %}Знайте, какие вещи есть у каждого, что действительно носится и что можно передать младшим.{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    <style>
+        .wardrobe-grid {
+            background-image: linear-gradient(rgba(15, 23, 42, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(15, 23, 42, .055) 1px, transparent 1px);
+            background-size: 28px 28px;
+        }
+        .wardrobe-glow {
+            background: radial-gradient(circle at 30% 20%, rgba(129, 140, 248, .34), transparent 36%), radial-gradient(circle at 80% 70%, rgba(125, 211, 252, .32), transparent 38%);
+        }
+    </style>
+{% endblock %}
+
+{% block body %}
+<div class="overflow-hidden bg-[#f8fafc] text-slate-950">
+    <section class="wardrobe-grid relative border-b border-slate-200">
+        <div class="wardrobe-glow absolute inset-0" aria-hidden="true"></div>
+        <div class="relative mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 md:py-24 lg:grid-cols-[1.02fr_.98fr] lg:items-center lg:px-8 lg:py-28">
+            <div class="max-w-2xl">
+                <div class="mb-6 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-3 py-1.5 text-xs font-bold text-indigo-700 shadow-sm backdrop-blur">
+                    <span class="h-2 w-2 rounded-full bg-indigo-500"></span>
+                    Личный и семейный гардероб
+                </div>
+                <h1 class="text-4xl font-black leading-[1.03] tracking-[-.045em] sm:text-6xl lg:text-7xl">
+                    Вещи всей семьи.<br>
+                    <span class="text-indigo-600">Наконец-то понятно.</span>
+                </h1>
+                <p class="mt-6 max-w-xl text-lg leading-8 text-slate-600 sm:text-xl">
+                    Что уже есть, кому стало мало, что передать младшим и какие вещи действительно носят — в одном приватном гардеробе семьи.
+                </p>
+                <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+                    <a href="{{ path('account_wardrobe_app') }}"
+                       class="inline-flex min-h-14 items-center justify-center rounded-2xl bg-slate-950 px-7 text-base font-bold text-white shadow-xl shadow-slate-300 transition hover:-translate-y-0.5 hover:bg-indigo-700">
+                        {{ app.user ? 'Открыть мой гардероб' : 'Создать гардероб' }}
+                    </a>
+                    <a href="#how-it-works"
+                       class="inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-300 bg-white/80 px-7 text-base font-bold text-slate-700 transition hover:border-slate-400 hover:bg-white">
+                        Как это работает
+                    </a>
+                </div>
+                <div class="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
+                    <span>✓ Бесплатный старт</span>
+                    <span>✓ Без App Store</span>
+                    <span>✓ Приватно для семьи</span>
+                </div>
+            </div>
+
+            <div class="relative mx-auto w-full max-w-xl">
+                <div class="absolute -inset-5 -rotate-2 rounded-[2.5rem] bg-indigo-200/50 blur-2xl" aria-hidden="true"></div>
+                <div class="relative rounded-[2.25rem] border border-white/80 bg-white/90 p-3 shadow-2xl shadow-slate-400/30 backdrop-blur sm:p-5">
+                    <div class="mb-4 flex items-center justify-between px-2">
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-wider text-indigo-600">WEARBASE гардероб</p>
+                            <p class="mt-1 text-xl font-black">Семья</p>
+                        </div>
+                        <div class="flex -space-x-2" aria-label="Три участника семьи">
+                            <span class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-sm font-black text-indigo-700">А</span>
+                            <span class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-sky-100 text-sm font-black text-sky-700">М</span>
+                            <span class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-amber-100 text-sm font-black text-amber-700">Л</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="col-span-2 rounded-3xl bg-slate-950 p-5 text-white">
+                            <div class="flex items-end justify-between gap-4">
+                                <div>
+                                    <p class="text-xs text-slate-400">Активные вещи</p>
+                                    <p class="mt-1 text-4xl font-black">127</p>
+                                </div>
+                                <div class="grid grid-cols-3 gap-1.5" aria-hidden="true">
+                                    <span class="h-12 w-10 rounded-xl bg-indigo-400"></span>
+                                    <span class="h-16 w-10 rounded-xl bg-sky-300"></span>
+                                    <span class="h-10 w-10 self-end rounded-xl bg-amber-300"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="rounded-3xl bg-indigo-50 p-4">
+                            <p class="text-xs font-semibold text-indigo-600">На вырост</p>
+                            <p class="mt-4 text-3xl font-black text-indigo-950">18</p>
+                            <p class="mt-1 text-xs text-indigo-700">вещей ждут сезона</p>
+                        </div>
+                        <div class="rounded-3xl bg-sky-50 p-4">
+                            <p class="text-xs font-semibold text-sky-700">Пора передать</p>
+                            <p class="mt-4 text-3xl font-black text-sky-950">7</p>
+                            <p class="mt-1 text-xs text-sky-700">стали малы</p>
+                        </div>
+                        <div class="col-span-2 flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-4">
+                            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-2xl text-white">＋</span>
+                            <div>
+                                <p class="font-bold">Добавить вещь по фото</p>
+                                <p class="text-sm text-slate-500">Карточка заполнится с помощью AI</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
+        <div class="mx-auto max-w-3xl text-center">
+            <p class="text-sm font-black uppercase tracking-[.2em] text-indigo-600">Не просто список вещей</p>
+            <h2 class="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Гардероб, который помнит жизнь каждой вещи</h2>
+            <p class="mt-5 text-lg text-slate-600">Разные задачи имеют разный вес — поэтому мы собрали их в bento-интерфейс, где главное видно сразу.</p>
+        </div>
+
+        <div class="mt-12 grid auto-rows-[minmax(180px,auto)] gap-4 md:grid-cols-6">
+            <article class="relative overflow-hidden rounded-[2rem] bg-slate-950 p-7 text-white md:col-span-4 md:row-span-2">
+                <div class="absolute right-0 top-0 h-64 w-64 rounded-full bg-indigo-500/30 blur-3xl" aria-hidden="true"></div>
+                <div class="relative max-w-md">
+                    <span class="inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-indigo-200">Семья</span>
+                    <h3 class="mt-6 text-3xl font-black">У каждого свой гардероб. У семьи — общая картина.</h3>
+                    <p class="mt-4 leading-7 text-slate-300">Родители управляют детскими профилями, дети видят состав семьи, но не получают доступ к чужим вещам.</p>
+                </div>
+                <div class="relative mt-10 grid gap-2 sm:grid-cols-3">
+                    {% for name, count in {'Анна':'52 вещи','Маша':'41 вещь','Лиза':'34 вещи'} %}
+                        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                            <p class="font-bold">{{ name }}</p><p class="mt-1 text-sm text-slate-400">{{ count }}</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="rounded-[2rem] border border-indigo-100 bg-indigo-50 p-7 md:col-span-2">
+                <div class="text-3xl">↗</div>
+                <h3 class="mt-8 text-xl font-black">Передачи между детьми</h3>
+                <p class="mt-2 text-sm leading-6 text-indigo-900/70">История владельцев сохраняется: видно, у кого вещь была и кому перешла.</p>
+            </article>
+
+            <article class="rounded-[2rem] border border-sky-100 bg-sky-50 p-7 md:col-span-2">
+                <div class="text-3xl">✦</div>
+                <h3 class="mt-8 text-xl font-black">Образы из своего шкафа</h3>
+                <p class="mt-2 text-sm leading-6 text-sky-900/70">AI предлагает сочетания только из реальных активных вещей выбранного профиля.</p>
+            </article>
+
+            <article class="rounded-[2rem] border border-slate-200 bg-white p-7 md:col-span-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-3xl">◎</span><span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Скоро</span>
+                </div>
+                <h3 class="mt-8 text-xl font-black">Фото образа → учёт носки</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-600">Распознавание вещей на фото с обязательным подтверждением человеком и стоимостью одной носки.</p>
+            </article>
+
+            <article class="rounded-[2rem] bg-gradient-to-br from-amber-100 to-orange-50 p-7 md:col-span-3">
+                <div class="flex items-center gap-3">
+                    <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-xl shadow-sm">⌁</span>
+                    <p class="text-sm font-bold text-amber-900">Примерка и обратная связь</p>
+                </div>
+                <h3 class="mt-8 text-xl font-black">Понимайте, почему вещь не подошла</h3>
+                <p class="mt-2 text-sm leading-6 text-amber-950/70">Размер, посадка, материал и реальная носка формируют персональную память, а не теряются после возврата.</p>
+            </article>
+        </div>
+    </section>
+
+    <section id="how-it-works" class="border-y border-slate-200 bg-white py-20 lg:py-28">
+        <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <div class="grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:items-start">
+                <div class="lg:sticky lg:top-28">
+                    <p class="text-sm font-black uppercase tracking-[.2em] text-indigo-600">Начало за несколько минут</p>
+                    <h2 class="mt-4 text-3xl font-black tracking-tight sm:text-5xl">Сначала вы. Потом вся семья.</h2>
+                    <p class="mt-5 text-lg leading-8 text-slate-600">Не нужно сразу регистрировать каждого ребёнка. Профили и доступ растут вместе с семьёй.</p>
+                </div>
+                <ol class="space-y-4">
+                    {% set steps = [
+                        ['01','Создайте свой гардероб','Войдите на WEARBASE и добавьте первые вещи вручную, по ссылке или фотографии.'],
+                        ['02','Добавьте детские профили','Маленькому ребёнку отдельная регистрация не нужна — родитель ведёт его вещи сам.'],
+                        ['03','Пригласите второго родителя','Муж входит или регистрируется по parent-инвайту и появляется в составе семьи.'],
+                        ['04','Дайте ребёнку доступ позже','Claim-ссылка активирует тот же профиль с сохранением вещей и всей истории.']
+                    ] %}
+                    {% for step in steps %}
+                        <li class="grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-5 sm:grid-cols-[72px_1fr] sm:p-6">
+                            <span class="text-3xl font-black text-indigo-300">{{ step[0] }}</span>
+                            <div><h3 class="text-lg font-black">{{ step[1] }}</h3><p class="mt-2 leading-7 text-slate-600">{{ step[2] }}</p></div>
+                        </li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+    </section>
+
+    <section class="mx-auto grid max-w-7xl gap-8 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-28">
+        <div class="rounded-[2.25rem] bg-indigo-600 p-8 text-white sm:p-10">
+            <p class="text-sm font-bold uppercase tracking-wider text-indigo-200">На iPhone</p>
+            <h2 class="mt-4 text-3xl font-black">Как приложение — без App Store</h2>
+            <ol class="mt-8 space-y-5 text-indigo-50">
+                <li class="flex gap-4"><span class="font-black text-indigo-200">1</span><span>Откройте пункт «Гардероб» на wearbase.ru в Safari.</span></li>
+                <li class="flex gap-4"><span class="font-black text-indigo-200">2</span><span>Войдите и нажмите «Поделиться».</span></li>
+                <li class="flex gap-4"><span class="font-black text-indigo-200">3</span><span>Выберите «На экран Домой» — появится отдельная иконка WEARBASE.</span></li>
+            </ol>
+        </div>
+        <div class="rounded-[2.25rem] border border-slate-200 bg-white p-8 sm:p-10">
+            <p class="text-sm font-bold uppercase tracking-wider text-slate-400">Приватность</p>
+            <h2 class="mt-4 text-3xl font-black">Семейные данные не становятся публичными</h2>
+            <p class="mt-5 leading-8 text-slate-600">Гардеробы, размеры и фотографии закрыты авторизацией. Офлайн-кеш не сохраняет приватные страницы, API-ответы и пользовательские фото.</p>
+            <div class="mt-8 grid grid-cols-2 gap-3 text-sm font-semibold">
+                <span class="rounded-2xl bg-slate-50 p-4">Закрытые профили</span>
+                <span class="rounded-2xl bg-slate-50 p-4">Права по ролям</span>
+                <span class="rounded-2xl bg-slate-50 p-4">Без WB-паролей</span>
+                <span class="rounded-2xl bg-slate-50 p-4">Удаляемая история</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="border-t border-slate-200 bg-white py-20">
+        <div class="mx-auto max-w-3xl px-4 sm:px-6">
+            <h2 class="text-center text-3xl font-black sm:text-4xl">Вопросы о семейном гардеробе</h2>
+            <div class="mt-10 space-y-3">
+                {% set faq = {
+                    'Ребёнку нужна отдельная регистрация?':'Нет. Родитель может создать детский профиль без входа. Позже ребёнок активирует этот же профиль по claim-ссылке и не теряет историю.',
+                    'Можно добавить мужа или другого родителя?':'Да. Отправьте parent-инвайт: взрослый войдёт или зарегистрируется и после принятия появится в составе семьи.',
+                    'Ребёнок увидит гардероб родителей?':'Нет. Ребёнок видит состав семьи, но имеет доступ только к своему гардеробу. Родитель управляет доступными детскими профилями.',
+                    'Это уже нативное приложение для iOS?':'Сейчас это PWA: оно устанавливается с сайта на экран iPhone. Нативный iOS-клиент сможет использовать тот же защищённый API позже.'
+                } %}
+                {% for question, answer in faq %}
+                    <details class="group rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-bold"><span>{{ question }}</span><span class="text-xl text-slate-400 transition group-open:rotate-45">＋</span></summary>
+                        <p class="mt-4 leading-7 text-slate-600">{{ answer }}</p>
+                    </details>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <section class="bg-slate-950 px-4 py-20 text-center text-white sm:px-6 lg:py-28">
+        <div class="mx-auto max-w-3xl">
+            <p class="text-sm font-black uppercase tracking-[.2em] text-indigo-300">Начните со своего шкафа</p>
+            <h2 class="mt-5 text-4xl font-black tracking-tight sm:text-6xl">Меньше случайных покупок.<br>Больше вещей, которые носят.</h2>
+            <p class="mx-auto mt-6 max-w-xl text-lg leading-8 text-slate-300">Добавьте первые вещи сегодня, а семейные профили подключайте тогда, когда будете готовы.</p>
+            <a href="{{ path('account_wardrobe_app') }}" class="mt-9 inline-flex min-h-14 items-center justify-center rounded-2xl bg-white px-8 text-base font-black text-slate-950 transition hover:-translate-y-0.5 hover:bg-indigo-100">
+                {{ app.user ? 'Перейти в гардероб' : 'Создать семейный гардероб' }}
+            </a>
+        </div>
+    </section>
+</div>
+{% endblock %}
