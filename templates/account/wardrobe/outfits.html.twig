@@ -1,0 +1,58 @@
+{% extends 'account/layout.html.twig' %}
+{% block title %}AI-стилист — WEARBASE{% endblock %}
+
+{% block account_content %}
+<div class="mb-5 flex items-center justify-between gap-3">
+    <div>
+        <h1 class="text-lg font-bold">AI-стилист</h1>
+        <p class="mt-1 text-sm text-gray-500">Подбирает сочетания только из {{ itemCount }} активных вещей гардероба.</p>
+    </div>
+    <a href="{{ path('account_wardrobe_index', {member: member.id}) }}" class="text-sm font-semibold text-gray-600">← К вещам</a>
+</div>
+
+<form method="post" class="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+    <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_outfits') }}">
+    <label for="outfit-prompt" class="mb-2 block text-sm font-semibold">Куда и какой образ нужен?</label>
+    <textarea id="outfit-prompt" name="prompt" maxlength="300" rows="3"
+              placeholder="Например: повседневный образ для офиса, прохладно и дождь"
+              class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">{{ prompt }}</textarea>
+    <div class="mt-3 flex items-center justify-between gap-3">
+        <span class="text-xs text-gray-400">Проверяйте результат: AI может ошибаться в сочетаемости и погоде.</span>
+        <button class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Собрать образы</button>
+    </div>
+</form>
+
+{% if error %}
+    <div class="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ error }}</div>
+{% endif %}
+
+{% if outfits %}
+    <div class="space-y-6">
+        {% for outfit in outfits %}
+            <section class="rounded-2xl bg-white p-5 shadow-sm">
+                <h2 class="font-bold">{{ outfit.title }}</h2>
+                {% if outfit.explanation %}<p class="mt-1 text-sm text-gray-600">{{ outfit.explanation }}</p>{% endif %}
+                <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                    {% for item in outfit.items %}
+                        <a href="{{ path('account_wardrobe_show', {id: item.id, member: member.id}) }}" class="overflow-hidden rounded-xl border border-gray-100 hover:shadow-sm">
+                            <div class="aspect-square bg-gray-100">
+                                {% if item.coverPhoto %}
+                                    <img src="{{ vich_uploader_asset(item.coverPhoto, 'file') }}" class="h-full w-full object-cover" alt="{{ item.name }}">
+                                {% elseif item.photo %}
+                                    <img src="{{ vich_uploader_asset(item, 'photoFile') }}" class="h-full w-full object-cover" alt="{{ item.name }}">
+                                {% else %}
+                                    <div class="flex h-full items-center justify-center text-4xl opacity-20">👕</div>
+                                {% endif %}
+                            </div>
+                            <div class="p-3">
+                                <div class="truncate text-sm font-semibold">{{ item.name ?: 'Без названия' }}</div>
+                                <div class="mt-1 text-xs text-gray-500">{{ item.category ?: 'Без категории' }}{% if item.colorName %} · {{ item.colorName }}{% endif %}</div>
+                            </div>
+                        </a>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

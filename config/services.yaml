@@ -156,6 +156,10 @@ services:
             $visionLocal: '%env(bool:WARDROBE_VISION_LOCAL)%'
             $localModel: '%env(LOCAL_LLM_MODEL)%'
 
+    App\Service\Wardrobe\WardrobeOutfitService:
+        arguments:
+            $model: '%env(OPENROUTER_MODEL)%'
+
     App\Service\YandexSearchClient:
         arguments:
             $apiKey: '%env(YANDEX_SEARCH_API_KEY)%'
