@@ -647,9 +647,11 @@ class BrandsController extends AbstractController
             ->select('s.slug, s.title, COUNT(DISTINCT b.id) as cnt')
             ->join('b.styles', 's')
             ->where('b.status = :status')
+            ->andWhere('s.status = :status')
             ->setParameter('status', Statuses::Active)
             ->groupBy('s.id')
-            ->orderBy('cnt', 'DESC')
+            ->orderBy('s.ord', 'ASC')
+            ->addOrderBy('cnt', 'DESC')
             ->addOrderBy('s.title', 'ASC');
         $repo->excludeForeignOrigin($stylesQb);
         $styles = $stylesQb->getQuery()->getResult();
@@ -665,7 +667,7 @@ class BrandsController extends AbstractController
     public function styleShow(string $slug, BrandRepository $repo, BrandStyleRepository $styleRepo, Request $request): Response
     {
         $style = $styleRepo->findOneBy(['slug' => $slug]);
-        if (!$style) {
+        if (!$style || !$style->isPublished()) {
             throw $this->createNotFoundException('Стиль не найден');
         }
 

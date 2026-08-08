@@ -31,6 +31,25 @@
        class="rounded-full bg-white px-4 py-2 text-xs font-semibold text-gray-600">Статистика</a>
 </div>
 
+<form method="get" class="mb-6 flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm">
+    <input type="hidden" name="member" value="{{ currentMember.id }}">
+    <div>
+        <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Экспорт</label>
+        <select name="scope" class="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            <option value="member">{{ ownWardrobe ? 'Мой гардероб' : currentMember.fullName }}</option>
+            {% if canExportFamily|default(false) %}<option value="family">Вся семья</option>{% endif %}
+        </select>
+    </div>
+    <label class="flex items-center gap-2 pb-2 text-sm text-gray-600">
+        <input type="checkbox" name="archive" value="1">
+        Включить архив
+    </label>
+    <button formaction="{{ path('account_wardrobe_export_download', {format: 'json'}) }}"
+            class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Скачать JSON</button>
+    <button formaction="{{ path('account_wardrobe_export_download', {format: 'csv'}) }}"
+            class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Скачать CSV</button>
+</form>
+
 {# ── Пакетная загрузка фото (сворачиваемая панель) ── #}
 <div id="wardrobe-ingest-panel"
      class="mb-6 hidden rounded-2xl bg-white p-6 shadow-sm"
