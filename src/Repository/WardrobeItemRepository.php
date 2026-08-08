@@ -39,6 +39,33 @@ class WardrobeItemRepository extends ServiceEntityRepository
     }
 
     /**
+     * Стабильная страница активных вещей для mobile API. itemNo уникален внутри
+     * пользователя, поэтому служит простым непрозрачным для других профилей cursor.
+     *
+     * @return WardrobeItem[] Максимум $limit + 1 записей для вычисления hasMore.
+     */
+    public function findActivePageForUser(User $user, ?int $beforeItemNo, int $limit): array
+    {
+        $qb = $this->createQueryBuilder('w')
+            ->andWhere('w.user = :user')
+            ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
+            ->andWhere('w.wearStatus != :givenAway')
+            ->setParameter('user', $user)
+            ->setParameter('archiveStatuses', WardrobeItem::ARCHIVE_STATUSES)
+            ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
+            ->orderBy('w.itemNo', 'DESC')
+            ->setMaxResults($limit + 1);
+
+        if ($beforeItemNo !== null) {
+            $qb->andWhere('w.itemNo < :beforeItemNo')
+                ->setParameter('beforeItemNo', $beforeItemNo);
+        }
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
      * @param User[] $users
      * @return WardrobeItem[]
      */

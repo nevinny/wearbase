@@ -1,7 +1,7 @@
-{% extends 'account/layout.html.twig' %}
+{% extends 'account/family_wardrobe/layout.html.twig' %}
 {% block title %}{{ item.displayNumber }} {{ item.name }} — Мой гардероб — WEARBASE{% endblock %}
 
-{% block account_content %}
+{% block family_mobile_content %}
 {# Гварды на переходный момент: контроллер может ещё не передавать family-переменные #}
 {% set memberParam = currentMember is defined ? {member: currentMember.id} : {} %}
 {% set backQuery = app.request.query.all %}

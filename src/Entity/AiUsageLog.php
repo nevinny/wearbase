@@ -22,6 +22,7 @@ class AiUsageLog
 {
     public const FEATURE_WARDROBE_PHOTO = 'wardrobe_photo';
     public const FEATURE_WARDROBE_URL   = 'wardrobe_url';
+    public const FEATURE_WARDROBE_OUTFIT = 'wardrobe_outfit';
 
     public const STATUS_OK    = 'ok';
     public const STATUS_ERROR = 'error';

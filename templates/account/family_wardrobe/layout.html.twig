@@ -1,0 +1,182 @@
+{% extends 'tailwind/app.html.twig' %}
+
+{#
+  Mobile-first shell for the family wardrobe flow.
+
+  Future purchase/capture controllers pass `familyPurchaseUrl` and `familyCaptureUrl`.
+  Until those routes exist, their navigation items remain visibly disabled instead of
+  calling path() with an unknown route and breaking every page that extends this layout.
+#}
+
+{% block title %}{% block family_mobile_title %}Семейный гардероб{% endblock %} — WEARBASE{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    <meta name="format-detection" content="telephone=no">
+    <style>
+        :root {
+            --family-safe-top: env(safe-area-inset-top, 0px);
+            --family-safe-right: env(safe-area-inset-right, 0px);
+            --family-safe-bottom: env(safe-area-inset-bottom, 0px);
+            --family-safe-left: env(safe-area-inset-left, 0px);
+        }
+
+        .family-safe-header {
+            padding-top: var(--family-safe-top);
+        }
+
+        .family-safe-content {
+            padding-right: max(1rem, var(--family-safe-right));
+            padding-bottom: calc(6.5rem + var(--family-safe-bottom));
+            padding-left: max(1rem, var(--family-safe-left));
+        }
+
+        .family-safe-nav {
+            padding-right: var(--family-safe-right);
+            padding-bottom: var(--family-safe-bottom);
+            padding-left: var(--family-safe-left);
+        }
+
+        @media (min-width: 768px) {
+            .family-safe-content {
+                padding-bottom: 2rem;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block body %}
+    {% set currentRoute = app.request.attributes.get('_route')|default('') %}
+    {% set purchaseUrl = familyPurchaseUrl|default(null) %}
+    {% set captureUrl = familyCaptureUrl|default(null) %}
+    {% set activeSection = familyActiveSection|default(null) %}
+    {% set wardrobeParams = currentMember is defined and currentMember ? {member: currentMember.id} : {} %}
+    {% set isFamilyActive = activeSection == 'family' or (activeSection is null and currentRoute starts with 'account_family') %}
+    {% set isPurchaseActive = activeSection == 'purchases' or (activeSection is null and currentRoute starts with 'account_purchase') %}
+    {% set isCaptureActive = activeSection == 'capture' or (activeSection is null and currentRoute starts with 'account_wardrobe_wear') %}
+    {% set isWardrobeActive = currentRoute starts with 'account_wardrobe' and not isCaptureActive %}
+
+    <a href="#family-main"
+       class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:rounded-lg focus:bg-gray-900 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">
+        К содержанию
+    </a>
+
+    <div class="min-h-screen bg-slate-50">
+        <header class="family-safe-header sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+            <div class="mx-auto flex min-h-14 max-w-3xl items-center justify-between gap-3 px-4 py-2">
+                <div class="min-w-0">
+                    <a href="{{ path('account_wardrobe_app') }}"
+                       class="block truncate text-base font-black tracking-tight text-slate-950"
+                       aria-label="Главная приложения Гардероб">
+                        WEARBASE <span class="text-indigo-600">гардероб</span>
+                    </a>
+                    {% block family_mobile_context %}
+                        {% if currentMember is defined and currentMember %}
+                            <p class="truncate text-xs text-slate-500">{{ currentMember.fullName }}</p>
+                        {% endif %}
+                    {% endblock %}
+                </div>
+
+                <div class="flex shrink-0 items-center gap-2">
+                    {% block family_mobile_header_actions %}{% endblock %}
+                    <a href="{{ path('account_dashboard') }}"
+                       class="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700 transition hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"
+                       aria-label="Открыть аккаунт">
+                        {% set userLabel = app.user ? (app.user.firstName ?: app.user.email) : 'W' %}
+                        {{ userLabel|first|upper }}
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <div id="family-main" class="family-safe-content mx-auto w-full max-w-3xl py-5" tabindex="-1">
+            {% block family_mobile_content %}{% endblock %}
+        </div>
+
+        <nav class="family-safe-nav fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur md:hidden"
+             aria-label="Семейный гардероб">
+            <div class="mx-auto grid h-[4.75rem] max-w-3xl grid-cols-4">
+                <a href="{{ path('account_family_index') }}"
+                   class="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition {{ isFamilyActive ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900' }}"
+                   {% if isFamilyActive %}aria-current="page"{% endif %}>
+                    <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 20v-1.5A3.5 3.5 0 0 0 12.5 15h-5A3.5 3.5 0 0 0 4 18.5V20m8.5-11.5A3.5 3.5 0 1 1 5.5 8.5a3.5 3.5 0 0 1 7 0Zm3 2.5a3 3 0 0 1 0 6m1-11.5a3 3 0 0 1 0 5.5"/>
+                    </svg>
+                    <span class="truncate">Семья</span>
+                </a>
+
+                {% if purchaseUrl %}
+                    <a href="{{ purchaseUrl }}"
+                       class="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition {{ isPurchaseActive ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900' }}"
+                       {% if isPurchaseActive %}aria-current="page"{% endif %}>
+                        <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 7h12l-1 13H7L6 7Zm3 0V5a3 3 0 0 1 6 0v2m-5 4h4"/>
+                        </svg>
+                        <span class="truncate">Покупки</span>
+                    </a>
+                {% else %}
+                    <span class="flex min-w-0 cursor-not-allowed flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold text-slate-300"
+                          aria-disabled="true" title="Раздел появится позже">
+                        <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 7h12l-1 13H7L6 7Zm3 0V5a3 3 0 0 1 6 0v2m-5 4h4"/>
+                        </svg>
+                        <span class="truncate">Покупки</span>
+                    </span>
+                {% endif %}
+
+                {% if captureUrl %}
+                    <a href="{{ captureUrl }}"
+                       class="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition {{ isCaptureActive ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900' }}"
+                       {% if isCaptureActive %}aria-current="page"{% endif %}>
+                        <span class="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-200 ring-4 ring-white">
+                            <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.2-2h5.6L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8ZM15.5 12.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"/>
+                            </svg>
+                        </span>
+                        <span class="truncate">Снять образ</span>
+                    </a>
+                {% else %}
+                    <span class="flex min-w-0 cursor-not-allowed flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold text-slate-300"
+                          aria-disabled="true" title="Раздел появится позже">
+                        <span class="-mt-7 flex h-14 w-14 items-center justify-center rounded-full bg-slate-300 text-white shadow ring-4 ring-white">
+                            <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.2-2h5.6L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8ZM15.5 12.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"/>
+                            </svg>
+                        </span>
+                        <span class="truncate">Снять образ</span>
+                    </span>
+                {% endif %}
+
+                <a href="{{ path('account_wardrobe_index', wardrobeParams) }}"
+                   class="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition {{ isWardrobeActive ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900' }}"
+                   {% if isWardrobeActive %}aria-current="page"{% endif %}>
+                    <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8.5 5a3.5 3.5 0 1 1 7 0c0 1.3-.7 2.4-1.7 3L20 12v2H4v-2l6.2-4c-1-.6-1.7-1.7-1.7-3Zm-3 9h13v6h-13v-6Z"/>
+                    </svg>
+                    <span class="truncate">Гардероб</span>
+                </a>
+            </div>
+        </nav>
+
+        <aside class="mx-auto hidden w-full max-w-3xl px-4 pb-6 md:block" aria-label="Семейный гардероб">
+            <div class="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+                <a href="{{ path('account_family_index') }}"
+                   class="rounded-xl px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ isFamilyActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
+                   {% if isFamilyActive %}aria-current="page"{% endif %}>Семья</a>
+                {% if purchaseUrl %}<a href="{{ purchaseUrl }}" class="rounded-xl px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ isPurchaseActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' }}" {% if isPurchaseActive %}aria-current="page"{% endif %}>Покупки</a>{% endif %}
+                {% if captureUrl %}<a href="{{ captureUrl }}" class="rounded-xl px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ isCaptureActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' }}" {% if isCaptureActive %}aria-current="page"{% endif %}>Снять образ</a>{% endif %}
+                <a href="{{ path('account_wardrobe_index', wardrobeParams) }}"
+                   class="rounded-xl px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ isWardrobeActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
+                   {% if isWardrobeActive %}aria-current="page"{% endif %}>Гардероб</a>
+            </div>
+        </aside>
+    </div>
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    {% block family_mobile_javascripts %}{% endblock %}
+{% endblock %}

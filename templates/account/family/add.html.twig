@@ -1,5 +1,5 @@
-{% extends 'account/layout.html.twig' %}
-{% block title %}Добавить ребёнка — WEARBASE{% endblock %}
+{% extends 'account/family_wardrobe/layout.html.twig' %}
+{% block family_mobile_title %}Добавить ребёнка{% endblock %}
 
 {% macro err(field) %}
     {% if field.vars.errors|length > 0 %}
@@ -7,20 +7,20 @@
     {% endif %}
 {% endmacro %}
 
-{% block account_content %}
+{% block family_mobile_content %}
 {% import _self as f %}
 {% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
 {% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
 
 <div class="mb-5 flex items-center gap-3">
     <a href="{{ path('account_family_index') }}"
-       class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
-    <h1 class="text-lg font-bold">Добавить ребёнка</h1>
+       class="flex min-h-11 items-center rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition hover:bg-gray-50">← Назад</a>
+    <h1 class="text-xl font-black text-slate-950">Добавить ребёнка</h1>
 </div>
 
 {{ form_start(form) }}
 
-<div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+<div class="mb-4 rounded-2xl bg-white p-5 shadow-sm sm:p-6">
     <div class="grid grid-cols-12 gap-4">
         <div class="col-span-12 md:col-span-6">
             <label class="{{ tw_label }}">Имя <span class="text-red-600">*</span></label>
@@ -36,10 +36,10 @@
     <p class="mt-3 text-xs text-gray-400">У ребёнка появится свой гардероб. Позже можно дать ему собственный доступ по ссылке.</p>
 </div>
 
-<div class="mt-6 flex gap-2">
-    <button type="submit" class="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить</button>
+<div class="mt-6 flex flex-col gap-2 sm:flex-row">
+    <button type="submit" class="min-h-11 rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-black">Сохранить</button>
     <a href="{{ path('account_family_index') }}"
-       class="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Отмена</a>
+       class="min-h-11 rounded-xl border border-gray-300 px-5 py-2.5 text-center text-sm font-semibold text-gray-600 transition hover:bg-gray-50">Отмена</a>
 </div>
 
 {{ form_end(form) }}
