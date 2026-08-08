@@ -28,4 +28,35 @@ class WardrobeTransferRepository extends ServiceEntityRepository
     {
         return $this->findBy(['item' => $item], ['transferredAt' => 'DESC', 'id' => 'DESC']);
     }
+
+    /**
+     * @param WardrobeItem[] $items
+     * @return array<int, WardrobeTransfer[]>
+     */
+    public function findGroupedForItems(array $items): array
+    {
+        if ($items === []) {
+            return [];
+        }
+
+        $transfers = $this->createQueryBuilder('transfer')
+            ->addSelect('item', 'fromUser', 'toUser', 'actor')
+            ->join('transfer.item', 'item')
+            ->join('transfer.fromUser', 'fromUser')
+            ->join('transfer.toUser', 'toUser')
+            ->join('transfer.actor', 'actor')
+            ->andWhere('transfer.item IN (:items)')
+            ->setParameter('items', $items)
+            ->orderBy('transfer.transferredAt', 'ASC')
+            ->addOrderBy('transfer.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        $grouped = [];
+        foreach ($transfers as $transfer) {
+            $grouped[$transfer->getItem()->getId()][] = $transfer;
+        }
+
+        return $grouped;
+    }
 }

@@ -39,6 +39,33 @@ class WardrobeItemRepository extends ServiceEntityRepository
     }
 
     /**
+     * @param User[] $users
+     * @return WardrobeItem[]
+     */
+    public function findForExport(array $users, bool $withArchive): array
+    {
+        $qb = $this->createQueryBuilder('w')
+            ->addSelect('photos', 'category', 'categoryParent')
+            ->leftJoin('w.photos', 'photos')
+            ->leftJoin('w.categoryRef', 'category')
+            ->leftJoin('category.parent', 'categoryParent')
+            ->andWhere('w.user IN (:users)')
+            ->andWhere('w.deletedAt IS NULL')
+            ->setParameter('users', $users)
+            ->orderBy('w.user', 'ASC')
+            ->addOrderBy('w.itemNo', 'ASC');
+
+        if (!$withArchive) {
+            $qb->andWhere('w.itemStatus != :archived')
+                ->andWhere('w.wearStatus != :givenAway')
+                ->setParameter('archived', WardrobeItem::ITEM_ARCHIVED)
+                ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY);
+        }
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
      * @param array{q?: string, category?: string, brand?: string, color?: string, size?: string, season?: string, completion?: string, status?: string, wear?: string} $filters
      * @return WardrobeItem[]
      */

@@ -80,6 +80,7 @@ class WardrobeController extends AbstractController
             'members'       => $this->familyService->membersFor($user),
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'canExportFamily' => $user->isFamilyParent() && $user->getFamily() !== null,
             'isArchiveView' => $isArchiveView,
             'filters' => $filters,
             // Только непустые значения — иначе ссылки/пагинация тащат q=&category=&...
@@ -314,6 +315,7 @@ class WardrobeController extends AbstractController
             'item'          => $item,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'fullMode'      => true,
         ]);
     }
 
