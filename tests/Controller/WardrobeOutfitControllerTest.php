@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use App\Entity\WardrobeItem;
+use App\Service\Wardrobe\WardrobeOutfitService;
+
 class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
 {
     public function testOutfitPageRequiresAuthentication(): void
@@ -33,5 +36,46 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('body', 'Недействительный токен');
+    }
+
+    public function testValidPostRendersSuggestedOutfit(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $user = $this->loginAsCustomer($client);
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $shirt = (new WardrobeItem())->setUser($user)->setItemNo(9801)->setName('Белая рубашка')->setCategory('Рубашки');
+        $trousers = (new WardrobeItem())->setUser($user)->setItemNo(9802)->setName('Синие брюки')->setCategory('Брюки');
+        $em->persist($shirt);
+        $em->persist($trousers);
+        $em->flush();
+
+        $mock = $this->createMock(WardrobeOutfitService::class);
+        $mock->expects(self::once())
+            ->method('suggest')
+            ->with(
+                self::callback(static fn ($actor): bool => $actor->getId() === $user->getId()),
+                self::callback(static function (array $items): bool {
+                    $names = array_map(static fn (WardrobeItem $item): ?string => $item->getName(), $items);
+
+                    return in_array('Белая рубашка', $names, true) && in_array('Синие брюки', $names, true);
+                }),
+                'В офис',
+            )
+            ->willReturn([[
+                'title' => 'Спокойный офис',
+                'explanation' => 'Базовые цвета сочетаются.',
+                'items' => [$shirt, $trousers],
+            ]]);
+        static::getContainer()->set(WardrobeOutfitService::class, $mock);
+
+        $crawler = $client->request('GET', '/account/wardrobe/outfits');
+        $token = (string) $crawler->filter('input[name="_token"]')->attr('value');
+        $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'В офис']);
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('h2', 'Спокойный офис');
+        self::assertSelectorTextContains('body', 'Белая рубашка');
+        self::assertSelectorTextContains('body', 'Синие брюки');
     }
 }
