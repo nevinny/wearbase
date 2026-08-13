@@ -15,6 +15,7 @@
 | [marketing_email.md](marketing_email.md) | Email/воронка: двухстадийный ФЗ-38-гейт cold/warm, активационная серия free→paid, newsletter→движение |
 | [legal_email_outreach.md](legal_email_outreach.md) | **Комплаенс email-аутрича (РФ, 2026)**: актуальные штрафы с источниками — ФЗ-38 ст.18, КоАП 14.3 ч.4.1 (ФАС, юрлицу 300тыс–1млн₽), 13.11 после реформы 05.2025 (РКН, 300–700тыс, повтор 1,5млн), оборотные за утечки; правило «цена/офер только в warm». От 2026-07-21 |
 | [marketing_instagram.md](marketing_instagram.md) | Instagram-контент-план в авто-режиме (drip): рубрики, недельная сетка, конвейер автопубликации, ⚠️ Meta/РФ-рамка |
+| [video_gen_comfyui_reference.md](video_gen_comfyui_reference.md) | Разбор рабочего ComfyUI-сетапа видео-генерации (MiniMax H3 / LTX-2.3 / CosyVoice3 / SeedVR2): промпт-схема `[VISUAL]/[SPEECH]/[SOUNDS]`, чекпойнты, разрешения, замеренная VRAM, экономика Clore. От 2026-08-13 |
 | [competitors.md](competitors.md) | Разбор vitrine.market, лид-ген, moat «0% комиссии» |
 | [global_analogs.md](global_analogs.md) | На какую зарубежную модель похож WEARBASE (NJAL/Lyst/W&B) + региональные аналоги (Европа/Латам/Азия) + **разбор кейса Musinsa под перенос**; какие фичи перенять по слоям; ключевая дыра — click-трекинг. От 2026-06-23 |
 | [competitors_seo_audit.md](competitors_seo_audit.md) | SEO-аудит 6 конкурентов + план захвата трафика по одежде (4 слоя intent, приоритет 1-6). От 2026-06-17 |
