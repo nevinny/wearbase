@@ -22,6 +22,12 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 class LandingController extends AbstractController
 {
+    #[Route('/{_locale}/wardrobe', name: 'landing_wardrobe', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'], methods: ['GET'])]
+    public function wardrobe(): Response
+    {
+        return $this->render('tailwind/landing/wardrobe.html.twig');
+    }
+
     #[Route('/{_locale}/without-marketplaces', name: 'landing_no_marketplace', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
     public function noMarketplace(BrandRepository $repo): Response
     {

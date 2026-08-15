@@ -1970,3 +1970,114 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   деплоя по путям (paths-ignore), пока не трогал.
 - [ ] Роль `seo` оставлена в `AdvisorRag::IDEA_ROLES` — SEO-знания (DrMax и др.) подмешиваются в
   автономную генерацию идей советника (раньше в памяти было обратное — устарело).
+
+---
+
+## 2026-08-08 — Семейные покупки, примерки, фото образа и обучаемая носка
+
+> Отдельный продуктовый блок. Полная спецификация, модель данных, права, privacy, критерии приёмки
+> и порядок фаз: [family_purchase_learning.md](family_purchase_learning.md). Ветка разработки:
+> `feature/family-purchase-approval`, worktree `DigitalWardrobe-family-purchase`.
+
+### Фаза 0 — API/PWA-контракт и provider-agnostic импорт
+
+- [ ] Описать resources/endpoints `/api/v1/family-wardrobe` для PWA и будущего iOS-клиента.
+- [ ] Ввести `ExternalProductProviderInterface`, collection importer, registry и normalized snapshot.
+- [ ] Добавить обязательный `ManualProductProvider`: неизвестный магазин не блокирует запрос.
+- [ ] Перевести `WildberriesAdapter` в первую реализацию общего контракта без WB-полей в domain entities.
+- [ ] Собрать обезличенные примеры ссылок «Поделиться корзиной» из web и приложения WB.
+- [ ] Зафиксировать редиректы, срок жизни и публичный payload интеграционными фикстурами.
+- [ ] Решить, можно ли надёжно извлекать список `/catalog/<nm>` без cookies/авторизации.
+- [ ] Закрепить обязательный fallback: несколько отдельных ссылок/артикулов WB.
+- [ ] Контрактным тестом доказать: второй provider добавляется без миграции purchase entities.
+
+### Фаза 0A — family onboarding и wardrobe-app API
+
+- [x] Публичный mobile-first лендинг `/ru/wardrobe` со входом в PWA и ссылкой из подвала сайта.
+
+- [x] Добавить `/account/wardrobe-app`: отдельный controller/dashboard, быстрые действия, личный и
+  семейные гардеробы.
+- [x] Показать всем участникам безопасный состав семьи; ребёнку не показывать чужие wardrobe links
+  и item counts.
+- [x] Дать родителю действия «Добавить ребёнка» и «Пригласить взрослого» через существующие CSRF
+  family routes.
+- [x] Добавить read-only `/api/v1/wardrobe-app/bootstrap` и cursor-paginated `/items`, session-auth,
+  explicit DTO, `no-store`, FamilyService IDOR guard.
+- [x] Покрыть web/API: guest, parent→child, child roster, child→parent/sibling deny, schema/privacy.
+- [ ] Зафиксировать capability matrix owner/parent/child и решение spouse-to-spouse privacy.
+- [x] Скрыть family add/invite для child в family/wardrobe-app UI и явно запретить POST invite;
+  гардеробы parent/sibling закрыты `FamilyService::resolveMember` и тестами.
+- [ ] Добавить claim expiry/rotate/revoke/recovery с сохранением User ID и истории гардероба.
+- [ ] Добавить invite expiry/revoke/regenerate, optional intended email и atomic single-use accept.
+- [ ] Добавить lifecycle семьи: leave/remove, owner transfer, last-parent invariant, role changes.
+- [ ] Разделить consent несовершеннолетнего на private processing, personalization, shared learning
+  и публикацию фото; пересматривать при взрослении.
+- [ ] Для native iOS добавить revocable per-device access/refresh tokens; не переиспользовать
+  X-Agent-Token/HMAC и не доверять user/member ID из клиента.
+
+### Фаза 1 — запрос ребёнка и решение родителя
+
+- [ ] Добавить `PurchaseRequest`, `PurchaseRequestItem`, `PurchaseRequestEvent` и миграцию.
+- [ ] Реализовать доменный lifecycle и `FamilyService`-проверки actor/profileSubject.
+- [ ] Сделать детский флоу: черновик → provider/manual import → вариант → отправка.
+- [ ] Сделать родительскую очередь и решения по каждой позиции: approve/reject/change/defer.
+- [ ] Добавить лимит цены, частичное одобрение и in-app уведомления.
+- [x] Добавить отдельный mobile-first Twig-shell с safe-area и нижней навигацией:
+  `templates/account/family_wardrobe/layout.html.twig`; несуществующие routes не хардкодить.
+- [x] Перевести существующие family/wardrobe страницы на shell, сохранив формы, CSRF, family member
+  context, импорт, AI-стилиста и touch targets.
+- [x] Добавить installable PWA-фундамент: manifest, Apple/192/512 icons, scoped service worker,
+  offline 503 без кеширования приватных HTML/API/фото.
+- [x] Проверить Twig/manifest/JS, профильные tests (67/375) и полный PHPUnit: 611 tests,
+  1974 assertions; только 7 существующих deprecation.
+- [ ] Перевести новые экраны покупок/образов на готовый shell после реализации их routes.
+- [ ] Убрать runtime Tailwind CDN в локальную production-сборку перед строгим CSP/offline-first.
+- [ ] Сделать интерфейс role-aware: ребёнку — запросы/ответы, родителю — решения/примерки.
+- [ ] Покрыть PHPUnit: переходы, CSRF, IDOR между семьями, managed-child, конкурентные решения.
+
+### Фаза 2 — заказ, примерка и карточка вещи
+
+- [ ] Best-effort проверять цену/наличие через исходного provider перед ручным заказом.
+- [ ] Добавить ordered/fitting/bought/refused/returned/cancelled без хранения сессии/оплаты магазина.
+- [ ] Добавить `FittingFeedback`: размерность, посадка, проблемные зоны, качество и причины отказа.
+- [ ] Создавать `WardrobeItem` только после `bought`, идемпотентно и с provenance запроса.
+- [ ] Добавить напоминания через 7–14 и ~30 дней без автоматического создания носок.
+
+### Фаза 3 — фото образа и source of truth носок
+
+- [ ] Добавить `WardrobeWearEvent`, `WardrobeWearEventItem` и миграцию.
+- [ ] Реализовать приватную загрузку фото и асинхронное vision-распознавание.
+- [ ] Ограничить кандидатов вещами выбранного `profileSubject`; unscoped-поиск запретить API.
+- [ ] Сделать обязательное подтверждение/исправление распознанных вещей.
+- [ ] Добавить предупреждение дублей по file hash/perceptual hash/времени/составу.
+- [ ] Считать носки только по подтверждённым `type=worn`; fitting/planned не учитывать.
+- [ ] Вывести историю образов, последнюю носку, количество носок и стоимость одной носки.
+- [ ] Проверить пересчёт после исправления/удаления события и деление на ноль.
+
+### Фаза 4 — обратная связь и сочетаемость
+
+- [ ] Добавить оценку образа после дня носки: удобство, повтор, причина отказа и замена вещи.
+- [ ] Добавить `WardrobeItemRelation` для подтверждённых удачных/неудачных сочетаний.
+- [ ] Сохранять actor/profileSubject/signalSource (`self|parent_observed|child_confirmed`).
+- [ ] Подключить фактические сочетания и повторные носки к AI-стилисту.
+- [ ] Дать родителю аналитику возвратов, неношеных покупок и стоимости одной носки.
+
+### Фаза 5 — персональная память и controlled learning
+
+- [ ] Свести контракт событий с `wardrobe_ai_learning.md` после мержа AI feature-ветки.
+- [ ] Формировать редактируемые MySQL memory facts из подтверждённых примерок и носок.
+- [ ] Подключить scoped embeddings по `profileSubjectId` и идемпотентную переиндексацию.
+- [ ] Добавить экспорт/удаление AI-истории и раздельные consent на персонализацию, общий опыт,
+  публичные фото и обучение весов.
+- [ ] Ввести продуктовые метрики: bought→worn, повторная носка, возвраты, zero-wear и correction rate.
+- [ ] Не начинать fine-tuning до достаточного подтверждённого корпуса, privacy-review и offline eval;
+  выпускать LoRA только через A/B по повторным носкам и снижению неудачных покупок.
+
+### Фаза 6 — iOS и дополнительные каналы
+
+- [ ] До нативной разработки проверить activation/retention PWA и проблемы камеры/push интервью.
+- [ ] Добавить для native API короткоживущий access token, refresh/revoke и управление устройствами.
+- [ ] Реализовать iOS-клиент как presentation layer `/api/v1`, без бизнес-логики в приложении.
+- [ ] Подключить APNs и фоновые загрузки фото; PWA оставить полноценным fallback.
+- [ ] Telegram подключать только как необязательный API-клиент уведомлений/быстрых действий.
+- [ ] Проверить отказоустойчивость: недоступность Telegram не ломает ни один доменный переход.

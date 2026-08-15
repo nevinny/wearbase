@@ -66,6 +66,7 @@
 | [brand-claim-verification.md](brand-claim-verification.md) | Методы подтверждения владения брендом |
 | [virtual-tryon.md](virtual-tryon.md) | Виртуальная примерочная (VTON) — PoC и запуск в прод |
 | [wardrobe_mvp.md](wardrobe_mvp.md) | Цифровой гардероб: совместимый MVP поверх семейных и AI-функций |
+| [family_purchase_learning.md](family_purchase_learning.md) | **Семейные покупки и обучаемая носка**: provider-agnostic запрос ребёнка → решение родителя → примерка → фото образа → журнал носок → персональная память; PWA/API/iOS, модель данных, privacy и план. От 2026-08-08 |
 | [antifraud_plan.md](antifraud_plan.md) | Антифрод и верификация брендов — план на будущее |
 | [superpowers/specs/2026-05-24-product-page-redesign.md](superpowers/specs/2026-05-24-product-page-redesign.md) | Спека редизайна карточки товара (по WB) |
 | [superpowers/plans/2026-05-24-product-page-redesign.md](superpowers/plans/2026-05-24-product-page-redesign.md) | План реализации редизайна карточки товара |
