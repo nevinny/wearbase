@@ -32,12 +32,14 @@ class LoginSuccessHandler implements AuthenticationSuccessHandlerInterface
         $this->mergeGuestCart($request, $token);
 
         // Приоритет 1: _target_path из сессии (Symfony сохраняет куда шёл)
-        $targetPath = $request->getSession()->get('_security.main.target_path');
+        $targetPath = $request->getSession()->remove('_security.main.target_path');
         /** @var User $user */
         $user = $token->getUser();
         $isBrandManager = $user instanceof User && $user->isBrandManager();
 
-        if ($targetPath
+        if (is_string($targetPath)
+            && str_starts_with($targetPath, '/')
+            && !str_starts_with($targetPath, '//')
             && !str_starts_with($targetPath, '/login')
             && !str_starts_with($targetPath, '/register')
             && (!str_starts_with($targetPath, '/brand') || $isBrandManager || str_starts_with($targetPath, '/brand-claim'))

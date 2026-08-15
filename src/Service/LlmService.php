@@ -82,7 +82,7 @@ class LlmService
             $response = $this->httpClient->request('POST', $this->localUrl, [
                 'headers' => ['Content-Type' => 'application/json'],
                 'json'    => $payload,
-                'timeout' => max($timeout, 600),
+                'timeout' => $think ? max($timeout, 600) : $timeout,
             ]);
 
             return $response->toArray()['message']['content'] ?? '';

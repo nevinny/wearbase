@@ -67,6 +67,8 @@
 | [virtual-tryon.md](virtual-tryon.md) | Виртуальная примерочная (VTON) — PoC и запуск в прод |
 | [wardrobe_mvp.md](wardrobe_mvp.md) | Цифровой гардероб: совместимый MVP поверх семейных и AI-функций |
 | [family_purchase_learning.md](family_purchase_learning.md) | **Семейные покупки и обучаемая носка**: provider-agnostic запрос ребёнка → решение родителя → примерка → фото образа → журнал носок → персональная память; PWA/API/iOS, модель данных, privacy и план. От 2026-08-08 |
+| [wardrobe_roadmap.md](wardrobe_roadmap.md) | Семейный гардероб как продуктовая гипотеза/moat: дети, передачи вещей, совместные покупки и AI-стилист |
+| [wardrobe_ai_learning.md](wardrobe_ai_learning.md) | **AI-стилист и обучение**: изоляция личных гардеробов, семейные профили, feedback-loop, embedder/Qdrant, добровольный общий опыт и controlled LoRA. Решение от 2026-08-08 |
 | [antifraud_plan.md](antifraud_plan.md) | Антифрод и верификация брендов — план на будущее |
 | [superpowers/specs/2026-05-24-product-page-redesign.md](superpowers/specs/2026-05-24-product-page-redesign.md) | Спека редизайна карточки товара (по WB) |
 | [superpowers/plans/2026-05-24-product-page-redesign.md](superpowers/plans/2026-05-24-product-page-redesign.md) | План реализации редизайна карточки товара |
@@ -79,6 +81,8 @@
 | [onboarding.md](onboarding.md) | **Локальный запуск с нуля для нового разработчика**: `.env.local.example` → `.env.local`, MySQL (не SQLite), миграции; что LAN-only (LLM-сервер/RAG) и не нужно для разработки. От 2026-07-22 |
 | [production.md](production.md) | Прод-окружение (reg.ru): env-карта, деплой, известные проблемы |
 | [commands.md](commands.md) | Справочник всех console-команд (зачем/как часто/где + cron) |
+| [llm_infra_handoff.md](llm_infra_handoff.md) | Домашний AI-сервер: snapshot железа, Gemma, vision TBD, embedder, Qdrant и LAN-доступ |
+| [llm_relay_handoff.md](llm_relay_handoff.md) | Pull-relay `llmq.php` для локального тестирования вне LAN; production endpoint отдельно |
 
 ## Трекеры и история
 

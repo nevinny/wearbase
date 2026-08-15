@@ -14,6 +14,14 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->skipIfNoDatabase();
     }
 
+    public function testLoginStaysInsideStandaloneAppScope(): void
+    {
+        $manifest = json_decode((string) file_get_contents(dirname(__DIR__, 2).'/public_html/manifest.webmanifest'), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame('/', $manifest['scope']);
+        self::assertStringContainsString("scope: '/'", (string) file_get_contents(dirname(__DIR__, 2).'/public_html/pwa-register.js'));
+    }
+
     public function testGuestIsRedirectedToLogin(): void
     {
         $client = static::createClient();

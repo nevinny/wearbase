@@ -41,6 +41,21 @@ class AiUsageTracker
         $this->em->flush();
     }
 
+    /** Локальная модель не отдаёт usage/cost, но сам факт и выбранную модель сохраняем. */
+    public function recordLocal(?User $user, string $feature, string $model): void
+    {
+        $log = new AiUsageLog();
+        $log->setUser($user);
+        $log->setFeature($feature);
+        $log->setModel($model);
+        $log->setPromptTokens(0);
+        $log->setCompletionTokens(0);
+        $log->setCostUsd(0.0);
+
+        $this->em->persist($log);
+        $this->em->flush();
+    }
+
     /**
      * Ошибка запроса (до/во время LLM-вызова, дневной cap, rate-limit) — токенов
      * не было, model неприменима. $user может быть null (пайплайн-контекст).
