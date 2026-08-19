@@ -54,6 +54,9 @@ class AccountControllerTest extends AuthenticatedWebTestCase
 
         $this->assertResponseIsSuccessful();
         $this->assertSelectorExists('form');
+        $this->assertSelectorExists('input[name="profile_form[tryonSelfieFile][file]"]');
+        $this->assertSelectorExists('input[name="profile_form[tryonFullBodyPhotoFile][file]"]');
+        $this->assertSelectorExists('input[name="profile_form[tryonPhotoConsent]"]');
     }
 
     public function testProfileFormHasNoConfirmPasswordField(): void

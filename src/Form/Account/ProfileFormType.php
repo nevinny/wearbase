@@ -30,6 +30,18 @@ class ProfileFormType extends AbstractType
                 'allow_delete' => true,
                 'download_uri' => false,
             ])
+            ->add('tryonSelfieFile', VichImageType::class, [
+                'label' => 'Селфи для ИИ-примерки', 'required' => false,
+                'allow_delete' => true, 'download_uri' => false,
+            ])
+            ->add('tryonFullBodyPhotoFile', VichImageType::class, [
+                'label' => 'Фото в полный рост', 'required' => false,
+                'allow_delete' => true, 'download_uri' => false,
+            ])
+            ->add('tryonPhotoConsent', \Symfony\Component\Form\Extension\Core\Type\CheckboxType::class, [
+                'label' => 'Я согласна на обработку фотографий для создания виртуальных образов',
+                'mapped' => false, 'required' => false,
+            ])
             ->add('newPassword', PasswordType::class, [
                 'label'       => 'Новый пароль',
                 'mapped'      => false,

@@ -67,6 +67,23 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     )]
     private ?File $avatarFile = null;
 
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $tryonSelfie = null;
+
+    #[Vich\UploadableField(mapping: 'user_tryon_photo', fileNameProperty: 'tryonSelfie')]
+    #[Assert\Image(maxSize: '10M', mimeTypes: ['image/jpeg', 'image/png', 'image/webp'], mimeTypesMessage: 'Допустимы только JPEG, PNG и WebP')]
+    private ?File $tryonSelfieFile = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $tryonFullBodyPhoto = null;
+
+    #[Vich\UploadableField(mapping: 'user_tryon_photo', fileNameProperty: 'tryonFullBodyPhoto')]
+    #[Assert\Image(maxSize: '10M', mimeTypes: ['image/jpeg', 'image/png', 'image/webp'], mimeTypesMessage: 'Допустимы только JPEG, PNG и WebP')]
+    private ?File $tryonFullBodyPhotoFile = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $tryonPhotoConsentAt = null;
+
     // Telegram chat ID для уведомлений
     #[ORM\Column(length: 50, nullable: true)]
     private ?string $telegramChatId = null;
@@ -262,6 +279,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     }
 
     public function getAvatarFile(): ?File { return $this->avatarFile; }
+
+    public function getTryonSelfie(): ?string { return $this->tryonSelfie; }
+    public function setTryonSelfie(?string $value): static { $this->tryonSelfie = $value; return $this; }
+    public function getTryonSelfieFile(): ?File { return $this->tryonSelfieFile; }
+    public function setTryonSelfieFile(?File $file): void
+    {
+        $this->tryonSelfieFile = $file;
+        if ($file !== null) { $this->updatedAt = new \DateTimeImmutable(); }
+    }
+
+    public function getTryonFullBodyPhoto(): ?string { return $this->tryonFullBodyPhoto; }
+    public function setTryonFullBodyPhoto(?string $value): static { $this->tryonFullBodyPhoto = $value; return $this; }
+    public function getTryonFullBodyPhotoFile(): ?File { return $this->tryonFullBodyPhotoFile; }
+    public function setTryonFullBodyPhotoFile(?File $file): void
+    {
+        $this->tryonFullBodyPhotoFile = $file;
+        if ($file !== null) { $this->updatedAt = new \DateTimeImmutable(); }
+    }
+
+    public function getTryonPhotoConsentAt(): ?\DateTimeImmutable { return $this->tryonPhotoConsentAt; }
+    public function setTryonPhotoConsentAt(?\DateTimeImmutable $value): static { $this->tryonPhotoConsentAt = $value; return $this; }
+    public function hasTryonPhotos(): bool { return $this->tryonSelfie !== null && $this->tryonFullBodyPhoto !== null; }
 
     public function getTelegramChatId(): ?string { return $this->telegramChatId; }
 

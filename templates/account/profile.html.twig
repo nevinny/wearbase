@@ -32,6 +32,39 @@
                 </div>
             </div>
 
+            <span class="{{ section }}">Фото для ИИ-примерки</span>
+            <p class="mb-4 text-sm text-gray-500">Сохраним их в профиле: при создании новых образов загружать фотографии заново не придётся.</p>
+            <div class="mb-4 grid gap-4 sm:grid-cols-2">
+                <div class="rounded-2xl border border-gray-200 p-4">
+                    <div class="mb-3 aspect-square overflow-hidden rounded-xl bg-gray-100">
+                        {% if user.tryonSelfie %}
+                            <img src="{{ path('account_tryon_photo', {id: user.id, kind: 'selfie'}) }}" class="h-full w-full object-cover" alt="Селфи для ИИ-примерки">
+                        {% else %}
+                            <div class="flex h-full items-center justify-center px-5 text-center text-sm text-gray-400">Лицо анфас, дневной свет, без фильтров</div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-2 text-sm font-semibold">Селфи</div>
+                    {{ form_widget(form.tryonSelfieFile, {'attr': {'class': 'w-full text-xs', 'accept': 'image/jpeg,image/png,image/webp'}}) }}
+                    <div class="mt-1 text-sm text-red-600">{{ form_errors(form.tryonSelfieFile) }}</div>
+                </div>
+                <div class="rounded-2xl border border-gray-200 p-4">
+                    <div class="mb-3 aspect-[3/4] overflow-hidden rounded-xl bg-gray-100">
+                        {% if user.tryonFullBodyPhoto %}
+                            <img src="{{ path('account_tryon_photo', {id: user.id, kind: 'full-body'}) }}" class="h-full w-full object-contain" alt="Фото в полный рост для ИИ-примерки">
+                        {% else %}
+                            <div class="flex h-full items-center justify-center px-5 text-center text-sm text-gray-400">В полный рост, анфас, руки не закрывают корпус</div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-2 text-sm font-semibold">Фото в полный рост</div>
+                    {{ form_widget(form.tryonFullBodyPhotoFile, {'attr': {'class': 'w-full text-xs', 'accept': 'image/jpeg,image/png,image/webp'}}) }}
+                    <div class="mt-1 text-sm text-red-600">{{ form_errors(form.tryonFullBodyPhotoFile) }}</div>
+                </div>
+            </div>
+            <label class="mb-6 flex items-start gap-3 rounded-xl bg-indigo-50 p-4 text-sm text-indigo-950">
+                {{ form_widget(form.tryonPhotoConsent, {'attr': {'class': 'mt-0.5 h-4 w-4 rounded border-indigo-300'}}) }}
+                <span>{{ form.tryonPhotoConsent.vars.label }}. Фото используются только в личной ИИ-примерочной и доступны вам и членам семьи с правом управления профилем.</span>
+            </label>
+
             {# Личные данные #}
             <span class="{{ section }}">Личные данные</span>
             <div class="mb-6 grid gap-4 md:grid-cols-2">

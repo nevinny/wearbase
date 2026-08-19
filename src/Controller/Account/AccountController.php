@@ -11,16 +11,46 @@ use App\Form\Account\AddressFormType;
 use App\Form\Account\ProfileFormType;
 use App\Notification\EmailNotifier;
 use App\Repository\OrderRepository;
+use App\Repository\UserRepository;
+use App\Service\FamilyService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 #[Route('/account', name: 'account_')]
 class AccountController extends AbstractController
 {
+    #[Route('/profile/tryon-photo/{id}/{kind}', name: 'tryon_photo', requirements: ['id' => '\\d+', 'kind' => 'selfie|full-body'], methods: ['GET'])]
+    public function tryonPhoto(int $id, string $kind, UserRepository $users, FamilyService $family, #[Autowire('%kernel.project_dir%')] string $projectDir): Response
+    {
+        /** @var User $actor */
+        $actor = $this->getUser();
+        $owner = $users->find($id);
+        if (!$owner || !$family->canManage($actor, $owner)) {
+            throw $this->createNotFoundException();
+        }
+        $relative = $kind === 'selfie' ? $owner->getTryonSelfie() : $owner->getTryonFullBodyPhoto();
+        if (!$relative || str_contains($relative, '..')) {
+            throw $this->createNotFoundException();
+        }
+        $base = $projectDir.'/var/private/tryon/users/';
+        $file = $base.ltrim($relative, '/');
+        if (!is_file($file) || !str_starts_with((string) realpath($file), (string) realpath($base))) {
+            throw $this->createNotFoundException();
+        }
+
+        $response = new BinaryFileResponse($file);
+        $response->setPrivate();
+        $response->setMaxAge(3600);
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+        return $response;
+    }
+
     #[Route('', name: 'dashboard')]
     public function dashboard(OrderRepository $orderRepo): Response
     {
@@ -62,6 +92,14 @@ class AccountController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            $hasNewTryonPhoto = $form->get('tryonSelfieFile')->getData() !== null || $form->get('tryonFullBodyPhotoFile')->getData() !== null;
+            if ($hasNewTryonPhoto && !$form->get('tryonPhotoConsent')->getData()) {
+                $this->addFlash('error', 'Для сохранения фото подтвердите согласие на обработку изображений');
+                return $this->render('account/profile.html.twig', ['user' => $user, 'form' => $form]);
+            }
+            if ($hasNewTryonPhoto) {
+                $user->setTryonPhotoConsentAt(new \DateTimeImmutable());
+            }
             // Смена email — сброс верификации
             if ($form->get('email')->getData() !== $oldEmail) {
                 $token = bin2hex(random_bytes(32));
