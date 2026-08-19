@@ -56,6 +56,12 @@ class SitemapController extends AbstractController
             'priority' => '0.8',
         ];
 
+        $urls[] = [
+            'loc' => $this->generateUrl('landing_wardrobe_concierge', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'changefreq' => 'monthly',
+            'priority' => '0.7',
+        ];
+
         // Лендинг комиссий 301-ит на статью блога, как только она опубликована — тогда из sitemap он уходит
         if (!$articleRepo->findOnePublishedBySlug('komissii-marketpleysov-2026', 'ru')) {
             $urls[] = [

@@ -1,0 +1,264 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}Оцифровка гардероба с выездом — приватный concierge-сервис | WEARBASE{% endblock %}
+{% block meta_description %}Профессиональная оцифровка гардероба у вас дома: деликатная съёмка вещей, приватный цифровой архив, локации и работа со стилистом.{% endblock %}
+{% block meta_keywords %}оцифровка гардероба, цифровой гардероб, каталогизация одежды, выездной стилист, private wardrobe{% endblock %}
+{% block meta_robots %}<meta name="robots" content="index, follow">{% endblock %}
+{% block canonical_url %}{{ url('landing_wardrobe_concierge', {_locale: app.request.locale|default('ru')}) }}{% endblock %}
+{% block og_title %}Ваш гардероб — в безупречном цифровом архиве{% endblock %}
+{% block og_description %}Мы приезжаем к вам, бережно оцифровываем вещи и создаём приватную систему для владельца и стилиста.{% endblock %}
+{% block og_image %}{{ site_base_url }}/images/landing/wardrobe-private-archive.webp{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    <style>
+        .concierge-serif { font-family: "Iowan Old Style", "Palatino Linotype", Baskerville, Georgia, serif; }
+        .concierge-grain::after {
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E");
+            content: "";
+            opacity: .12;
+            pointer-events: none;
+        }
+        .concierge-reveal { animation: concierge-reveal .8s cubic-bezier(.2,.7,.2,1) both; }
+        .concierge-slide {
+            opacity: 0;
+            transform: scale(1.025);
+            transition: opacity 1.2s ease, transform 6s ease;
+        }
+        .concierge-slide.is-active {
+            opacity: .75;
+            transform: scale(1);
+        }
+        .concierge-slide-control[aria-current="true"] {
+            background: #f5f0e7;
+            border-color: #f5f0e7;
+            color: #211e1a;
+        }
+        @keyframes concierge-reveal {
+            from { opacity: 0; transform: translateY(22px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .concierge-reveal { animation: none; }
+            .concierge-slide { transition: none; }
+        }
+    </style>
+{% endblock %}
+
+{% block body %}
+<div class="bg-[#f1ede5] text-[#211e1a]">
+    <section id="concierge-hero" class="concierge-grain relative isolate min-h-[min(850px,calc(100vh-64px))] overflow-hidden bg-[#171512] text-[#f5f0e7]">
+        <div class="absolute inset-0" data-concierge-carousel>
+            {% set heroSlides = [
+                ['/images/landing/wardrobe-private-setup.webp', 'Выездная команда бережно готовит пространство для съёмки', 'Подготовка'],
+                ['/images/landing/wardrobe-private-archive.webp', 'Деликатная оцифровка вечернего платья в частной гардеробной', 'Оцифровка'],
+                ['/images/landing/wardrobe-private-handoff.webp', 'Стилист проверяет готовый цифровой архив на планшете', 'Передача архива']
+            ] %}
+            {% for slide in heroSlides %}
+                <img src="{{ slide[0] }}" alt="{{ slide[1] }}" width="1536" height="1024"
+                     {% if loop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}
+                     class="concierge-slide {{ loop.first ? 'is-active' }} absolute inset-0 h-full w-full object-cover object-[68%_center]"
+                     data-concierge-slide aria-hidden="{{ loop.first ? 'false' : 'true' }}">
+            {% endfor %}
+        </div>
+        <div class="absolute inset-0 bg-gradient-to-r from-[#171512] via-[#171512]/90 to-[#171512]/5" aria-hidden="true"></div>
+        <div class="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[#171512] to-transparent" aria-hidden="true"></div>
+
+        <div class="absolute right-5 top-5 z-20 flex gap-2 sm:right-8 sm:top-8 lg:bottom-8 lg:top-auto" aria-label="Этапы оцифровки">
+            {% for slide in heroSlides %}
+                <button type="button"
+                        class="concierge-slide-control min-h-11 min-w-11 border border-white/35 bg-black/20 px-3 text-[10px] font-bold tracking-[.16em] text-white backdrop-blur transition hover:border-white"
+                        data-concierge-slide-control data-slide-index="{{ loop.index0 }}"
+                        aria-current="{{ loop.first ? 'true' : 'false' }}"
+                        aria-label="Показать этап: {{ slide[2] }}">
+                    0{{ loop.index }}<span class="ml-2 hidden xl:inline">{{ slide[2]|upper }}</span>
+                </button>
+            {% endfor %}
+        </div>
+
+        <div class="relative mx-auto flex min-h-[min(850px,calc(100vh-64px))] max-w-7xl items-end px-5 py-16 sm:px-8 lg:items-center lg:py-24">
+            <div class="concierge-reveal max-w-2xl">
+                <p class="mb-7 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[.28em] text-[#d7b8a3]">
+                    <span class="h-px w-10 bg-[#8d2436]"></span>
+                    Private wardrobe service · Москва
+                </p>
+                <h1 class="concierge-serif text-5xl leading-[.98] tracking-[-.045em] sm:text-7xl lg:text-[6.6rem]">
+                    Гардероб,<br><em class="font-normal text-[#d7b8a3]">доступный</em><br>из любой точки мира
+                </h1>
+                <p class="mt-8 max-w-xl text-base leading-7 text-[#d8d0c5] sm:text-lg sm:leading-8">
+                    Выездная команда бережно оцифрует коллекцию у вас дома. Вы и ваш стилист получите приватный архив вещей, образов и локаций — без самостоятельной съёмки и рутины.
+                </p>
+                <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+                    <a href="https://t.me/wearbase_bot?start=concierge_wardrobe" target="_blank" rel="noopener"
+                       class="inline-flex min-h-14 items-center justify-center bg-[#8d2436] px-7 text-sm font-semibold uppercase tracking-[.12em] text-white transition hover:bg-[#a72d43] focus:outline-none focus:ring-2 focus:ring-[#d7b8a3] focus:ring-offset-2 focus:ring-offset-[#171512]">
+                        Обсудить приватный визит
+                    </a>
+                    <a href="#process" class="inline-flex min-h-14 items-center justify-center border border-white/30 px-7 text-sm font-semibold uppercase tracking-[.12em] text-white transition hover:border-white hover:bg-white/10">
+                        Как всё проходит
+                    </a>
+                </div>
+                <div class="mt-9 grid max-w-xl grid-cols-3 gap-4 border-t border-white/15 pt-6 text-xs text-[#bcb2a6]">
+                    <span>NDA и закрытый доступ</span>
+                    <span>Вещи остаются дома</span>
+                    <span>Персональный стилист</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="border-b border-[#d4cabc] bg-[#e7dfd2]">
+        <div class="mx-auto grid max-w-7xl divide-y divide-[#c9bdad] px-5 sm:px-8 md:grid-cols-3 md:divide-x md:divide-y-0">
+            {% for number, label in {'01':'Дом, апартаменты, яхта — каждая вещь привязана к своей локации','02':'Фото, детали и история состояния собраны в одной приватной карточке','03':'Стилист собирает капсулы и поездки, не приезжая к вашему шкафу'} %}
+                <div class="grid grid-cols-[42px_1fr] gap-4 py-7 md:px-7 lg:py-9">
+                    <span class="concierge-serif text-xl italic text-[#8d2436]">{{ number }}</span>
+                    <p class="text-sm leading-6 text-[#4f4941]">{{ label }}</p>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:py-32">
+        <div class="grid gap-12 lg:grid-cols-[.82fr_1.18fr] lg:gap-24">
+            <div>
+                <p class="text-[11px] font-bold uppercase tracking-[.25em] text-[#8d2436]">Не приложение. Сервис.</p>
+                <h2 class="concierge-serif mt-5 text-4xl leading-[1.05] tracking-[-.035em] sm:text-6xl">Мы берём на себя весь путь вещи в цифру</h2>
+            </div>
+            <div class="grid gap-px bg-[#cfc4b5] sm:grid-cols-2">
+                {% set services = [
+                    ['Выездная студия','Стилист и технический ассистент приезжают со светом, фоном и защитой для интерьера.'],
+                    ['Деликатная съёмка','Отпаривание, белые перчатки, общий план и макро деталей — без вывоза коллекции.'],
+                    ['Цифровой двойник','Чистое изображение, параметры, фактуры и 360°-представление для сложных предметов.'],
+                    ['Private archive','Доступ владельцу и доверенному стилисту, распределение по резиденциям и история ухода.']
+                ] %}
+                {% for service in services %}
+                    <article class="bg-[#f1ede5] p-7 sm:min-h-64 lg:p-9">
+                        <span class="concierge-serif text-3xl italic text-[#8d2436]">0{{ loop.index }}</span>
+                        <h3 class="mt-12 text-lg font-semibold uppercase tracking-[.08em]">{{ service[0] }}</h3>
+                        <p class="mt-4 text-sm leading-7 text-[#6b6259]">{{ service[1] }}</p>
+                    </article>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <section id="process" class="bg-[#211e1a] py-20 text-[#f5f0e7] lg:py-32">
+        <div class="mx-auto max-w-7xl px-5 sm:px-8">
+            <div class="grid gap-12 lg:grid-cols-[.7fr_1.3fr] lg:gap-24">
+                <div class="lg:sticky lg:top-28 lg:self-start">
+                    <p class="text-[11px] font-bold uppercase tracking-[.25em] text-[#d7b8a3]">White-glove process</p>
+                    <h2 class="concierge-serif mt-5 text-4xl leading-tight sm:text-5xl">Тихо, точно, в вашем ритме</h2>
+                    <p class="mt-6 max-w-sm leading-7 text-[#bdb4a9]">Маршрут команды, зона работы и уровень доступа согласуются заранее. Процесс не требует присутствия владельца.</p>
+                </div>
+                <ol class="border-t border-white/15">
+                    {% set steps = [
+                        ['Предварительный разговор','Определяем объём коллекции, локации, категории и задачи владельца или стилиста.'],
+                        ['Протокол приватности','Фиксируем список сотрудников, правила доступа, NDA и обращение с ценными предметами.'],
+                        ['Съёмка на месте','Разворачиваем мобильную студию в согласованной зоне и возвращаем каждую вещь на место.'],
+                        ['Сдача архива','Проверяем карточки вместе со стилистом и открываем персональный доступ к гардеробу.']
+                    ] %}
+                    {% for step in steps %}
+                        <li class="grid gap-4 border-b border-white/15 py-7 sm:grid-cols-[64px_180px_1fr] sm:items-baseline">
+                            <span class="concierge-serif text-2xl italic text-[#8d2436]">0{{ loop.index }}</span>
+                            <h3 class="font-semibold">{{ step[0] }}</h3>
+                            <p class="text-sm leading-7 text-[#bdb4a9]">{{ step[1] }}</p>
+                        </li>
+                    {% endfor %}
+                </ol>
+            </div>
+        </div>
+    </section>
+
+    <section class="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:py-32">
+        <div class="grid overflow-hidden border border-[#cfc4b5] lg:grid-cols-2">
+            <div class="p-8 sm:p-12 lg:p-16">
+                <p class="text-[11px] font-bold uppercase tracking-[.25em] text-[#8d2436]">Digital cabinet</p>
+                <h2 class="concierge-serif mt-5 text-4xl leading-tight sm:text-5xl">После визита начинается настоящая ценность</h2>
+                <ul class="mt-9 space-y-5 text-sm text-[#5f574e]">
+                    <li class="border-b border-[#d8cfc3] pb-5"><strong class="mr-3 text-[#211e1a]">01</strong> Собрать капсулу для поездки вместе со стилистом</li>
+                    <li class="border-b border-[#d8cfc3] pb-5"><strong class="mr-3 text-[#211e1a]">02</strong> Найти вещь в нужной резиденции за секунды</li>
+                    <li class="border-b border-[#d8cfc3] pb-5"><strong class="mr-3 text-[#211e1a]">03</strong> Передать предмет в химчистку или реставрацию</li>
+                    <li><strong class="mr-3 text-[#211e1a]">04</strong> Подготовить каталог коллекции для страхования</li>
+                </ul>
+            </div>
+            <div class="relative min-h-[420px] bg-[#8d2436] p-8 text-white sm:p-12 lg:p-16">
+                <div class="absolute right-0 top-0 h-56 w-56 rounded-full bg-white/10 blur-3xl" aria-hidden="true"></div>
+                <p class="relative text-[11px] font-bold uppercase tracking-[.25em] text-[#e8c9be]">Private preview</p>
+                <div class="relative mt-12 space-y-3">
+                    {% for location, count in {'Москва · Пентхаус':'184 предмета','Дубай · Резиденция':'72 предмета','В пути · Капсула № 04':'18 предметов'} %}
+                        <div class="flex items-center justify-between border border-white/20 bg-white/5 p-5 backdrop-blur">
+                            <span class="text-sm">{{ location }}</span><span class="text-xs text-[#e8c9be]">{{ count }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+                <a href="{{ path('account_wardrobe_app') }}" class="relative mt-8 inline-flex items-center gap-3 text-sm font-semibold underline decoration-white/40 underline-offset-8 hover:decoration-white">
+                    Уже пользуетесь? Открыть гардероб <span aria-hidden="true">↗</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="bg-[#8d2436] px-5 py-20 text-center text-white sm:px-8 lg:py-28">
+        <div class="mx-auto max-w-3xl">
+            <p class="text-[11px] font-bold uppercase tracking-[.25em] text-[#e8c9be]">Первая встреча конфиденциальна</p>
+            <h2 class="concierge-serif mt-6 text-4xl leading-tight sm:text-6xl">Расскажите, каким должен быть ваш идеальный гардероб</h2>
+            <p class="mx-auto mt-6 max-w-xl leading-7 text-[#f1dcd5]">Обсудим коллекцию, географию и формат работы. Без обязательств и передачи персональных данных на странице.</p>
+            <a href="https://t.me/wearbase_bot?start=concierge_wardrobe" target="_blank" rel="noopener"
+               class="mt-9 inline-flex min-h-14 items-center justify-center bg-[#f1ede5] px-8 text-sm font-semibold uppercase tracking-[.12em] text-[#5d1724] transition hover:bg-white">
+                Связаться лично
+            </a>
+        </div>
+    </section>
+</div>
+
+<script>
+(function () {
+    var hero = document.getElementById('concierge-hero');
+    if (!hero) return;
+
+    var slides = hero.querySelectorAll('[data-concierge-slide]');
+    var controls = hero.querySelectorAll('[data-concierge-slide-control]');
+    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var active = 0;
+    var timer = null;
+
+    function show(index) {
+        active = index;
+        slides.forEach(function (slide, slideIndex) {
+            var isActive = slideIndex === active;
+            slide.classList.toggle('is-active', isActive);
+            slide.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+        });
+        controls.forEach(function (control, controlIndex) {
+            control.setAttribute('aria-current', controlIndex === active ? 'true' : 'false');
+        });
+    }
+
+    function stop() {
+        if (timer) window.clearInterval(timer);
+        timer = null;
+    }
+
+    function start() {
+        stop();
+        if (!reduceMotion && !document.hidden) {
+            timer = window.setInterval(function () { show((active + 1) % slides.length); }, 6000);
+        }
+    }
+
+    controls.forEach(function (control) {
+        control.addEventListener('click', function () {
+            show(Number(control.dataset.slideIndex));
+            start();
+        });
+    });
+    hero.addEventListener('mouseenter', stop);
+    hero.addEventListener('mouseleave', start);
+    hero.addEventListener('focusin', stop);
+    hero.addEventListener('focusout', start);
+    document.addEventListener('visibilitychange', start);
+    start();
+})();
+</script>
+{% endblock %}
