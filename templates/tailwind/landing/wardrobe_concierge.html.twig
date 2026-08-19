@@ -22,25 +22,61 @@
             pointer-events: none;
         }
         .concierge-reveal { animation: concierge-reveal .8s cubic-bezier(.2,.7,.2,1) both; }
+        .concierge-slide {
+            opacity: 0;
+            transform: scale(1.025);
+            transition: opacity 1.2s ease, transform 6s ease;
+        }
+        .concierge-slide.is-active {
+            opacity: .75;
+            transform: scale(1);
+        }
+        .concierge-slide-control[aria-current="true"] {
+            background: #f5f0e7;
+            border-color: #f5f0e7;
+            color: #211e1a;
+        }
         @keyframes concierge-reveal {
             from { opacity: 0; transform: translateY(22px); }
             to { opacity: 1; transform: translateY(0); }
         }
         @media (prefers-reduced-motion: reduce) {
             .concierge-reveal { animation: none; }
+            .concierge-slide { transition: none; }
         }
     </style>
 {% endblock %}
 
 {% block body %}
 <div class="bg-[#f1ede5] text-[#211e1a]">
-    <section class="concierge-grain relative isolate min-h-[min(850px,calc(100vh-64px))] overflow-hidden bg-[#171512] text-[#f5f0e7]">
-        <img src="/images/landing/wardrobe-private-archive.webp"
-             alt="Деликатная оцифровка вечернего платья в частной гардеробной"
-             width="1536" height="1024" fetchpriority="high"
-             class="absolute inset-0 h-full w-full object-cover object-[68%_center] opacity-75">
+    <section id="concierge-hero" class="concierge-grain relative isolate min-h-[min(850px,calc(100vh-64px))] overflow-hidden bg-[#171512] text-[#f5f0e7]">
+        <div class="absolute inset-0" data-concierge-carousel>
+            {% set heroSlides = [
+                ['/images/landing/wardrobe-private-setup.webp', 'Выездная команда бережно готовит пространство для съёмки', 'Подготовка'],
+                ['/images/landing/wardrobe-private-archive.webp', 'Деликатная оцифровка вечернего платья в частной гардеробной', 'Оцифровка'],
+                ['/images/landing/wardrobe-private-handoff.webp', 'Стилист проверяет готовый цифровой архив на планшете', 'Передача архива']
+            ] %}
+            {% for slide in heroSlides %}
+                <img src="{{ slide[0] }}" alt="{{ slide[1] }}" width="1536" height="1024"
+                     {% if loop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}
+                     class="concierge-slide {{ loop.first ? 'is-active' }} absolute inset-0 h-full w-full object-cover object-[68%_center]"
+                     data-concierge-slide aria-hidden="{{ loop.first ? 'false' : 'true' }}">
+            {% endfor %}
+        </div>
         <div class="absolute inset-0 bg-gradient-to-r from-[#171512] via-[#171512]/90 to-[#171512]/5" aria-hidden="true"></div>
         <div class="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-[#171512] to-transparent" aria-hidden="true"></div>
+
+        <div class="absolute right-5 top-5 z-20 flex gap-2 sm:right-8 sm:top-8 lg:bottom-8 lg:top-auto" aria-label="Этапы оцифровки">
+            {% for slide in heroSlides %}
+                <button type="button"
+                        class="concierge-slide-control min-h-11 min-w-11 border border-white/35 bg-black/20 px-3 text-[10px] font-bold tracking-[.16em] text-white backdrop-blur transition hover:border-white"
+                        data-concierge-slide-control data-slide-index="{{ loop.index0 }}"
+                        aria-current="{{ loop.first ? 'true' : 'false' }}"
+                        aria-label="Показать этап: {{ slide[2] }}">
+                    0{{ loop.index }}<span class="ml-2 hidden xl:inline">{{ slide[2]|upper }}</span>
+                </button>
+            {% endfor %}
+        </div>
 
         <div class="relative mx-auto flex min-h-[min(850px,calc(100vh-64px))] max-w-7xl items-end px-5 py-16 sm:px-8 lg:items-center lg:py-24">
             <div class="concierge-reveal max-w-2xl">
@@ -175,4 +211,54 @@
         </div>
     </section>
 </div>
+
+<script>
+(function () {
+    var hero = document.getElementById('concierge-hero');
+    if (!hero) return;
+
+    var slides = hero.querySelectorAll('[data-concierge-slide]');
+    var controls = hero.querySelectorAll('[data-concierge-slide-control]');
+    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var active = 0;
+    var timer = null;
+
+    function show(index) {
+        active = index;
+        slides.forEach(function (slide, slideIndex) {
+            var isActive = slideIndex === active;
+            slide.classList.toggle('is-active', isActive);
+            slide.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+        });
+        controls.forEach(function (control, controlIndex) {
+            control.setAttribute('aria-current', controlIndex === active ? 'true' : 'false');
+        });
+    }
+
+    function stop() {
+        if (timer) window.clearInterval(timer);
+        timer = null;
+    }
+
+    function start() {
+        stop();
+        if (!reduceMotion && !document.hidden) {
+            timer = window.setInterval(function () { show((active + 1) % slides.length); }, 6000);
+        }
+    }
+
+    controls.forEach(function (control) {
+        control.addEventListener('click', function () {
+            show(Number(control.dataset.slideIndex));
+            start();
+        });
+    });
+    hero.addEventListener('mouseenter', stop);
+    hero.addEventListener('mouseleave', start);
+    hero.addEventListener('focusin', stop);
+    hero.addEventListener('focusout', start);
+    document.addEventListener('visibilitychange', start);
+    start();
+})();
+</script>
 {% endblock %}

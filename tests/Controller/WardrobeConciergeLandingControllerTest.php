@@ -21,5 +21,7 @@ class WardrobeConciergeLandingControllerTest extends WebTestCase
         self::assertSelectorExists('meta[property="og:image"][content$="/images/landing/wardrobe-private-archive.webp"]');
         self::assertGreaterThanOrEqual(2, $crawler->filter('a[href*="t.me/wearbase_bot"]')->count());
         self::assertSelectorExists('a[href="/account/wardrobe-app"]');
+        self::assertCount(3, $crawler->filter('[data-concierge-slide]'));
+        self::assertCount(3, $crawler->filter('[data-concierge-slide-control]'));
     }
 }
