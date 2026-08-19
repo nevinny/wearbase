@@ -10,6 +10,11 @@
     <a href="{{ path('account_wardrobe_index', {member: member.id}) }}" class="text-sm font-semibold text-gray-600">← К вещам</a>
 </div>
 
+<div class="mb-4 flex rounded-xl bg-slate-100 p-1 text-sm font-semibold">
+    <a href="{{ path('account_wardrobe_manual_outfit_index', {member: member.id}) }}" class="flex-1 px-3 py-2 text-center text-slate-500">Собрать самой</a>
+    <span class="flex-1 rounded-lg bg-white px-3 py-2 text-center shadow-sm">Подобрать с AI</span>
+</div>
+
 <form method="post" class="mb-6 rounded-2xl bg-white p-5 shadow-sm">
     <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_outfits') }}">
     <label for="outfit-prompt" class="mb-2 block text-sm font-semibold">Куда и какой образ нужен?</label>

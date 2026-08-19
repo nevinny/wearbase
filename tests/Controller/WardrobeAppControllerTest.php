@@ -41,7 +41,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorTextContains('h1', 'Что хотите сделать?');
         $this->assertSelectorTextContains('body', 'Мой гардероб');
         $this->assertSelectorExists('a[href="/account/wardrobe/new"]');
-        $this->assertSelectorExists('a[href="/account/wardrobe/outfits"]');
+        $this->assertSelectorExists('a[href="/account/wardrobe/outfits/manual"]');
         $this->assertSelectorExists('a[href="/account/wardrobe/statistics"]');
         $this->assertSelectorTextContains('body', 'Состав семьи');
         $this->assertSelectorExists('a[href="/account/family/add"]');

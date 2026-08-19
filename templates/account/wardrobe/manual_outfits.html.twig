@@ -1,0 +1,91 @@
+{% extends 'account/family_wardrobe/layout.html.twig' %}
+{% block title %}Конструктор образа — WEARBASE{% endblock %}
+
+{% block family_mobile_content %}
+{% set selectedLayout = editingOutfit ? editingOutfit.layout : [] %}
+<div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div><h1 class="text-lg font-bold">Конструктор образа</h1><p class="mt-1 text-sm text-slate-500">Соберите коллаж из вещей гардероба {{ member.fullName }}</p></div>
+    <a href="{{ path('account_wardrobe_outfits', {member: member.id}) }}" class="text-sm font-semibold text-slate-600">AI-стилист →</a>
+</div>
+
+<div class="mb-4 flex rounded-xl bg-slate-100 p-1 text-sm font-semibold">
+    <span class="flex-1 rounded-lg bg-white px-3 py-2 text-center shadow-sm">Собрать самой</span>
+    <a href="{{ path('account_wardrobe_outfits', {member: member.id}) }}" class="flex-1 px-3 py-2 text-center text-slate-500">Подобрать с AI</a>
+</div>
+
+<form method="post" action="{{ path('account_wardrobe_manual_outfit_save') }}" id="outfit-builder-form">
+    <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_manual_outfit') }}">
+    <input type="hidden" name="member" value="{{ member.id }}">
+    <input type="hidden" name="id" value="{{ editingOutfit ? editingOutfit.id : '' }}">
+    <input type="hidden" name="layout" id="outfit-layout" value="">
+    <div class="mb-4 flex gap-2">
+        <input name="title" maxlength="100" value="{{ editingOutfit ? editingOutfit.title : '' }}" placeholder="Название образа"
+               class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500">
+        <button class="rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white">Сохранить</button>
+    </div>
+
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <section class="rounded-2xl bg-white p-3 shadow-sm">
+            <div id="outfit-canvas" class="relative mx-auto aspect-[4/5] w-full max-w-[560px] overflow-hidden rounded-xl bg-[#f6f2ec] touch-none" aria-label="Холст образа">
+                <div id="canvas-empty" class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center text-slate-400">
+                    <span class="text-4xl">＋</span><span class="mt-2 text-sm font-semibold">Добавьте минимум две вещи</span>
+                </div>
+            </div>
+            <div id="outfit-tools" class="mt-3 hidden flex-wrap items-center justify-center gap-2">
+                <button type="button" data-action="smaller" class="rounded-lg border px-3 py-2 text-xs">− Размер</button>
+                <button type="button" data-action="larger" class="rounded-lg border px-3 py-2 text-xs">+ Размер</button>
+                <button type="button" data-action="rotate-left" class="rounded-lg border px-3 py-2 text-xs">↶</button>
+                <button type="button" data-action="rotate-right" class="rounded-lg border px-3 py-2 text-xs">↷</button>
+                <button type="button" data-action="back" class="rounded-lg border px-3 py-2 text-xs">На задний план</button>
+                <button type="button" data-action="front" class="rounded-lg border px-3 py-2 text-xs">На передний план</button>
+                <button type="button" data-action="remove" class="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600">Убрать</button>
+            </div>
+        </section>
+
+        <aside class="rounded-2xl bg-white p-4 shadow-sm">
+            <div class="mb-3 flex items-center justify-between"><h2 class="text-sm font-bold">Мои вещи</h2><span id="selected-count" class="text-xs text-slate-400">0 выбрано</span></div>
+            <input id="item-search" type="search" placeholder="Найти вещь" class="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <select id="item-category" class="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <option value="">Все категории</option>
+                {% set categories = [] %}{% for item in wardrobeItems %}{% if item.category and item.category not in categories %}{% set categories = categories|merge([item.category]) %}{% endif %}{% endfor %}
+                {% for category in categories|sort %}<option>{{ category }}</option>{% endfor %}
+            </select>
+            <div id="wardrobe-palette" class="grid max-h-[34rem] grid-cols-3 gap-2 overflow-y-auto lg:grid-cols-2">
+                {% for item in wardrobeItems %}
+                    {% set photoUrl = item.coverPhoto ? vich_uploader_asset(item.coverPhoto, 'file') : (item.photo ? vich_uploader_asset(item, 'photoFile') : '') %}
+                    <button type="button" class="palette-item overflow-hidden rounded-xl border border-slate-100 bg-white text-left hover:border-indigo-400"
+                            data-id="{{ item.id }}" data-name="{{ (item.name ?: 'Без названия')|lower }}" data-category="{{ item.category }}" data-photo="{{ photoUrl }}">
+                        <div class="aspect-square bg-slate-50">{% if photoUrl %}<img src="{{ photoUrl }}" class="h-full w-full object-contain" alt="">{% else %}<div class="flex h-full items-center justify-center text-2xl opacity-20">👕</div>{% endif %}</div>
+                        <div class="truncate p-2 text-[11px] font-semibold">{{ item.name ?: item.displayNumber }}</div>
+                    </button>
+                {% endfor %}
+            </div>
+        </aside>
+    </div>
+</form>
+
+{% if savedOutfits %}
+<section class="mt-7"><h2 class="mb-3 text-sm font-bold">Сохранённые образы</h2><div class="grid gap-3 sm:grid-cols-2">
+{% for outfit in savedOutfits %}
+    <div class="flex items-center justify-between rounded-xl bg-white p-4 shadow-sm"><a href="{{ path('account_wardrobe_manual_outfit_index', {member: member.id, edit: outfit.id}) }}" class="min-w-0"><div class="truncate font-semibold">{{ outfit.title }}</div><div class="text-xs text-slate-400">{{ outfit.items|length }} вещей · {{ outfit.createdAt|date('d.m.Y') }}</div></a>
+    <form method="post" action="{{ path('account_wardrobe_manual_outfit_delete', {id: outfit.id, member: member.id}) }}"><input type="hidden" name="_token" value="{{ csrf_token('delete_manual_outfit_' ~ outfit.id) }}"><button class="p-2 text-sm text-red-500" aria-label="Удалить образ">×</button></form></div>
+{% endfor %}</div></section>
+{% endif %}
+
+<script>
+(() => {
+ const canvas=document.getElementById('outfit-canvas'), layoutInput=document.getElementById('outfit-layout'), tools=document.getElementById('outfit-tools'), empty=document.getElementById('canvas-empty'), count=document.getElementById('selected-count');
+ const catalog={}; document.querySelectorAll('.palette-item').forEach(b=>catalog[b.dataset.id]={id:+b.dataset.id,photo:b.dataset.photo,name:b.dataset.name});
+ let state={{ selectedLayout|json_encode|raw }}, selected=null, drag=null;
+ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+ function sync(){ layoutInput.value=JSON.stringify(state); empty.classList.toggle('hidden',state.length>0); count.textContent=state.length+' выбрано'; tools.classList.toggle('hidden',!selected); document.querySelectorAll('.palette-item').forEach(b=>b.classList.toggle('ring-2',state.some(x=>x.itemId===+b.dataset.id))); }
+ function render(){ canvas.querySelectorAll('.outfit-piece').forEach(e=>e.remove()); state.sort((a,b)=>a.z-b.z).forEach(p=>{const c=catalog[p.itemId];if(!c)return;const e=document.createElement('button');e.type='button';e.className='outfit-piece absolute touch-none select-none rounded-lg '+(selected===p.itemId?'ring-2 ring-indigo-500 ring-offset-2':'');e.dataset.id=p.itemId;e.style.cssText=`left:${p.x}%;top:${p.y}%;width:${p.width}%;z-index:${p.z};transform:rotate(${p.rotation}deg);`;if(c.photo){const img=document.createElement('img');img.src=c.photo;img.draggable=false;img.className='pointer-events-none w-full object-contain drop-shadow-md';e.appendChild(img)}else{const label=document.createElement('span');label.className='block rounded bg-white p-3 text-xs';label.textContent=c.name;e.appendChild(label)}e.addEventListener('pointerdown',startDrag);e.addEventListener('click',()=>{selected=p.itemId;render()});canvas.appendChild(e)});sync()}
+ function startDrag(ev){ev.preventDefault();selected=+ev.currentTarget.dataset.id;document.querySelectorAll('.outfit-piece').forEach(e=>e.classList.toggle('ring-2',+e.dataset.id===selected));tools.classList.remove('hidden');const p=state.find(x=>x.itemId===selected),r=canvas.getBoundingClientRect(),el=ev.currentTarget;drag={dx:ev.clientX-r.left-r.width*p.x/100,dy:ev.clientY-r.top-r.height*p.y/100,el};el.setPointerCapture(ev.pointerId);el.onpointermove=move;el.onpointerup=()=>{drag=null;render()}}
+ function move(ev){if(!drag)return;const p=state.find(x=>x.itemId===selected),r=canvas.getBoundingClientRect();p.x=clamp((ev.clientX-r.left-drag.dx)/r.width*100,0,100-p.width);p.y=clamp((ev.clientY-r.top-drag.dy)/r.height*100,0,92);drag.el.style.left=p.x+'%';drag.el.style.top=p.y+'%';sync()}
+ document.querySelectorAll('.palette-item').forEach(b=>b.addEventListener('click',()=>{const id=+b.dataset.id;if(state.some(x=>x.itemId===id)){selected=id;render();return}if(state.length>=12)return;state.push({itemId:id,x:30+(state.length%3)*5,y:15+(state.length%5)*10,width:38,rotation:0,z:state.length+1});selected=id;render()}));
+ tools.addEventListener('click',ev=>{const a=ev.target.closest('[data-action]');if(!a||!selected)return;const p=state.find(x=>x.itemId===selected);if(!p)return;({smaller:()=>p.width=clamp(p.width-5,12,90),larger:()=>p.width=clamp(p.width+5,12,90),'rotate-left':()=>p.rotation-=5,'rotate-right':()=>p.rotation+=5,back:()=>p.z=0,front:()=>p.z=Math.max(...state.map(x=>x.z))+1,remove:()=>{state=state.filter(x=>x.itemId!==selected);selected=null}}[a.dataset.action])();state.sort((x,y)=>x.z-y.z).forEach((x,i)=>x.z=i+1);render()});
+ const filter=()=>{const q=document.getElementById('item-search').value.toLowerCase(),cat=document.getElementById('item-category').value;document.querySelectorAll('.palette-item').forEach(b=>b.classList.toggle('hidden',!b.dataset.name.includes(q)||(cat&&b.dataset.category!==cat)))};document.getElementById('item-search').addEventListener('input',filter);document.getElementById('item-category').addEventListener('change',filter);
+ document.getElementById('outfit-builder-form').addEventListener('submit',ev=>{sync();if(state.length<2){ev.preventDefault();alert('Добавьте минимум две вещи')}});render();
+})();
+</script>
+{% endblock %}
