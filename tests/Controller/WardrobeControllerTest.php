@@ -80,6 +80,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorExists('#wardrobe_item_form_categoryRef');
         $this->assertSelectorExists('#wardrobe_item_form_galleryPhotos');
         $this->assertSelectorExists('select[name="wardrobe_item_form[loveAtFirstSight]"]');
+        $this->assertSelectorExists('#wardrobe-form-actions.flex.flex-wrap');
 
         $form = $crawler->selectButton('Сохранить')->form([
             'wardrobe_item_form[size]'       => 'M',

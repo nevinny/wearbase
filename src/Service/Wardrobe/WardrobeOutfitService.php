@@ -19,23 +19,21 @@ class WardrobeOutfitService
         private readonly LlmService $llm,
         private readonly WardrobeAiMeter $meter,
         private readonly AiUsageTracker $usageTracker,
-        private readonly string $model,
+        private readonly string $remoteModel,
+        private readonly string $localModel,
+        private readonly bool $localFirst,
     ) {}
 
     /**
      * @param WardrobeItem[] $items
      * @return array<int, array{title:string, explanation:string, items:WardrobeItem[]}>
      */
-    public function suggest(User $user, array $items, string $request): array
+    public function suggest(User $user, array $items, string $request, string $preferenceContext = ''): array
     {
         $items = array_slice($items, 0, self::MAX_ITEMS);
         if (count($items) < 2) {
             throw new \DomainException('Добавьте хотя бы две активные вещи, чтобы собрать образ');
         }
-        if (!$this->meter->allowed()) {
-            throw new WardrobeAiException('Дневной лимит AI-подборов исчерпан, попробуйте завтра');
-        }
-
         $catalog = array_map(static fn (WardrobeItem $item): array => [
             'id' => $item->getId(),
             'name' => $item->getName() ?: 'Без названия',
@@ -54,6 +52,7 @@ class WardrobeOutfitService
 В каждом образе должно быть от 2 до 5 вещей с разными функциональными ролями.
 
 Запрос пользователя: {$request}
+{$preferenceContext}
 
 Каталог JSON:
 {$catalogJson}
@@ -62,8 +61,33 @@ class WardrobeOutfitService
 {"outfits":[{"title":"короткое название","explanation":"почему вещи сочетаются и куда так пойти","item_ids":[1,2]}]}
 PROMPT;
 
+        if ($this->localFirst) {
+            try {
+                $response = $this->llm->generate(
+                    $prompt,
+                    model: $this->localModel,
+                    timeout: 60,
+                    local: true,
+                    think: false,
+                    temperature: 0.4,
+                    fastFail: true,
+                );
+                $result = $this->normalize($response, $items);
+            } catch (\Throwable) {
+                // Локальный риг выключен или вернул плохой JSON — прозрачно пробуем remote.
+            }
+            if (isset($result)) {
+                $this->usageTracker->recordLocal($user, AiUsageLog::FEATURE_WARDROBE_OUTFIT, $this->localModel);
+
+                return $result;
+            }
+        }
+
+        if (!$this->meter->allowed()) {
+            throw new WardrobeAiException('Дневной лимит AI-подборов исчерпан, попробуйте завтра');
+        }
         $this->meter->record();
-        $response = $this->llm->generate($prompt, model: $this->model, timeout: 45, maxTokens: 1200, temperature: 0.4);
+        $response = $this->llm->generate($prompt, model: $this->remoteModel, timeout: 45, maxTokens: 1200, temperature: 0.4);
         $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_OUTFIT);
 
         return $this->normalize($response, $items);

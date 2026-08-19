@@ -14,6 +14,14 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->skipIfNoDatabase();
     }
 
+    public function testLoginStaysInsideStandaloneAppScope(): void
+    {
+        $manifest = json_decode((string) file_get_contents(dirname(__DIR__, 2).'/public_html/manifest.webmanifest'), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame('/', $manifest['scope']);
+        self::assertStringContainsString("scope: '/'", (string) file_get_contents(dirname(__DIR__, 2).'/public_html/pwa-register.js'));
+    }
+
     public function testGuestIsRedirectedToLogin(): void
     {
         $client = static::createClient();
@@ -38,6 +46,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorTextContains('body', 'Состав семьи');
         $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="child"]');
         $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="parent"]');
+        $this->assertSelectorExists('#family-main.family-safe-content.pt-5:not(.py-5)');
     }
 
     public function testParentSeesChildWardrobe(): void

@@ -16,6 +16,8 @@ parameters:
     # Гардероб авто-ингест: 0=remote vision (WARDROBE_VISION_MODEL, работает на проде),
     # 1=local vision на LLM-сервере (dev/.env.local, где достаётся риг — бесплатно).
     env(WARDROBE_VISION_LOCAL): '0'
+    env(WARDROBE_OUTFIT_LOCAL): '0'
+    env(WARDROBE_OUTFIT_LOCAL_MODEL): 'gemma4:26b'
     # Соц-автоматизация: дрип-рамп (предохранитель)
     env(SOCIAL_LAUNCH_DATE): ''
     env(SOCIAL_START_RATE): '3'
@@ -158,7 +160,9 @@ services:
 
     App\Service\Wardrobe\WardrobeOutfitService:
         arguments:
-            $model: '%env(OPENROUTER_MODEL)%'
+            $remoteModel: '%env(OPENROUTER_MODEL)%'
+            $localModel: '%env(WARDROBE_OUTFIT_LOCAL_MODEL)%'
+            $localFirst: '%env(bool:WARDROBE_OUTFIT_LOCAL)%'
 
     App\Service\YandexSearchClient:
         arguments:

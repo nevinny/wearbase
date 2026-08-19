@@ -11,9 +11,10 @@
 {% import _self as f %}
 {% set tw_label = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1' %}
 {% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
+{% set memberParam = currentMember.id == app.user.id ? {} : {member: currentMember.id} %}
 
 <div class="mb-5 flex items-center gap-3">
-    <a href="{{ path('account_wardrobe_index') }}"
+    <a href="{{ path('account_wardrobe_index', memberParam) }}"
        class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
     <h1 class="text-lg font-bold">{{ item.id ? 'Редактировать вещь' : 'Новая вещь' }}</h1>
 </div>
@@ -170,12 +171,12 @@
     </div>
 </div>
 
-<div class="mt-6 flex gap-2">
+<div id="wardrobe-form-actions" class="mt-6 flex flex-wrap gap-2">
     <button type="submit" class="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить</button>
     {% if not item.id %}
         <button type="submit" name="save_and_add" value="1" class="rounded-xl border border-gray-900 px-5 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 transition">Сохранить и добавить следующую</button>
     {% endif %}
-    <a href="{{ path('account_wardrobe_index') }}"
+    <a href="{{ path('account_wardrobe_index', memberParam) }}"
        class="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Отмена</a>
 </div>
 

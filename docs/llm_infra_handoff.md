@@ -2,7 +2,8 @@
 
 > Единый локальный AI-сервер (ollama + Qdrant + SearXNG) на майнинг-риге. Этот документ —
 > для переноса в другой проект, который будет собирать **свои коллекции на той же инфре**.
-> Снято вживую 2026-07-15. Все сервисы слушают `0.0.0.0` → доступны из LAN.
+> Snapshot снят вживую 2026-07-15. На 2026-08-08 сервер выключен: модели, IP, порты и
+> сервисы перепроверить после включения. Все сервисы в snapshot слушали `0.0.0.0`.
 
 ## 1. Доступ
 
@@ -10,8 +11,8 @@
 - ⚠️ **IP непостоянен** (DHCP/переезды сети — был `.2.43`, `.0.119`, сейчас `.0.111`). При
   недоступности: сканировать подсеть на порт `11434`, обновить `~/.ssh/config` + все env-URL.
   «Host key verification failed» после смены IP → `ssh-keygen -R <ip>`.
-- Только LAN. Наружу (прод в облаке и т.п.) риг **не виден** — если потребитель работает вне
-  LAN, нужен туннель (Tailscale / CF-proxy). Для проектов на этой же машине/LAN — прямой доступ.
+- Только LAN. Для локальной разработки вне LAN используется pull-relay `llmq.php`, описанный в
+  [llm_relay_handoff.md](llm_relay_handoff.md). Production получит отдельный endpoint (TBD).
 
 ## 2. Железо (и его пределы)
 
@@ -69,13 +70,15 @@
 
 ## 4. Модели ollama
 
-Список: `ssh llm 'ollama list'`. Загруженное сейчас: `ssh llm 'ollama ps'`.
+Список после включения: `ssh llm 'ollama list'`; загруженное: `ssh llm 'ollama ps'`.
+Таблица ниже — состояние snapshot 2026-07-15, не гарантия текущей установки.
 
 | Модель | Роль | Примечание |
 |---|---|---|
-| **`gemma4:26b`** | генерация текста (осн.) | 26 GB, **vision-capable** (подтверждено), ctx 32k, сейчас keep-alive Forever |
+| **`gemma4:26b`** | генерация текста (осн.) | 26 GB, vision-capable в snapshot, ctx 32k |
 | `qwen3.5:27b`, `qwen3.6:27b` | альт. генерация | тоже `vision` в capabilities |
 | **`qwen3-embedding:0.6b`** | эмбеддинги | 639 MB, **выход 1024-dim** |
+| `WARDROBE_VISION_MODEL` (TBD) | распознавание вещей | будет поднята на том же сервере после включения |
 
 Проверить capability: `ssh llm 'ollama show <model>'` (секция Capabilities: completion/vision/tools/thinking).
 
@@ -97,8 +100,8 @@ Vision — добавить в message: `"images":["<base64-без-префик�
 
 ## 5. Qdrant: существующие коллекции
 
-- URL: `http://<ip>:6333` · **api-key обязателен** (header `api-key: <KEY>`).
-- Ключ (shared secret этой инфры): `4da86c7a943d07a888a8c86920579b2a5a8129b185c52a55`.
+- URL: `http://<ip>:6333` · **api-key обязателен** (header `api-key: <QDRANT_API_KEY>`).
+- Ключ хранится только в env/secret store; значение из истории Git подлежит ротации.
 - **Все коллекции: 1024-dim, distance `Cosine`** (совпадает с выходом эмбеддера).
 
 | Коллекция | Точек | Payload-поля | Чей проект |
@@ -110,7 +113,7 @@ Vision — добавить в message: `"images":["<base64-без-префик�
 
 Список/детали:
 ```bash
-KEY=4da86c7a943d07a888a8c86920579b2a5a8129b185c52a55
+KEY=<QDRANT_API_KEY>
 curl -s -H "api-key: $KEY" http://<ip>:6333/collections
 curl -s -H "api-key: $KEY" http://<ip>:6333/collections/brand_chunks   # config + points_count
 ```
@@ -169,7 +172,7 @@ LOCAL_LLM_MODEL=gemma4:26b
 LOCAL_EMBED_URL=http://<ip>:11434/api/embed
 LOCAL_EMBED_MODEL=qwen3-embedding:0.6b
 QDRANT_URL=http://<ip>:6333
-QDRANT_API_KEY=4da86c7a943d07a888a8c86920579b2a5a8129b185c52a55
+QDRANT_API_KEY=<QDRANT_API_KEY>
 QDRANT_COLLECTION=myproject_chunks
 SEARXNG_URL=http://<ip>:8080
 ```

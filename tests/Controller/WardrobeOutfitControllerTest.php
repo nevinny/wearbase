@@ -61,6 +61,7 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
                     return in_array('Белая рубашка', $names, true) && in_array('Синие брюки', $names, true);
                 }),
                 'В офис',
+                '',
             )
             ->willReturn([[
                 'title' => 'Спокойный офис',
@@ -71,11 +72,16 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
 
         $crawler = $client->request('GET', '/account/wardrobe/outfits');
         $token = (string) $crawler->filter('input[name="_token"]')->attr('value');
-        $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'В офис']);
+        $crawler = $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'В офис']);
 
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h2', 'Спокойный офис');
         self::assertSelectorTextContains('body', 'Белая рубашка');
         self::assertSelectorTextContains('body', 'Синие брюки');
+
+        $client->submit($crawler->selectButton('❤️ Нравится')->form());
+        self::assertResponseRedirects('/account/wardrobe/outfits');
+        $saved = $em->getRepository(\App\Entity\WardrobeOutfit::class)->findOneBy(['user' => $user], ['id' => 'DESC']);
+        self::assertSame('like', $saved?->getReaction());
     }
 }

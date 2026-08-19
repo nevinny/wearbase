@@ -2,28 +2,30 @@
 
 > Дополнение к [`llm_infra_handoff.md`](llm_infra_handoff.md). Тот документ описывает
 > сам локальный AI-сервер (риг: ollama/gemma4:26b/Qdrant, только LAN). Этот — как
-> **потреблять его из облака/прода**, когда потребитель не в LAN.
-> Снято вживую 2026-07-18. Токен/пути реальные, актуализируйте при изменениях.
+> **потреблять его при локальном тестировании вне LAN**. Production получит отдельный endpoint
+> и секреты; этот relay не считать production-контрактом. Snapshot снят 2026-07-18.
 
 ## TL;DR для нового потребителя
 
 Локальная ollama доступна как **OpenAI-совместимый эндпоинт** через HTTP-relay:
 
 ```
-POST https://forgetborders.com/llmq.php?action=submit&token=<TOKEN>
+POST https://forgetborders.com/llmq.php?action=submit
+Authorization: Bearer <TOKEN>
 Content-Type: application/json
 {"model":"gemma4:26b","max_tokens":64,"messages":[{"role":"user","content":"..."}]}
 → 200 {"choices":[{"message":{"content":"..."}}],"usage":{...}}   (OpenAI-формат, синхронно)
 ```
 
-- `TOKEN` = `afbef1952cdeaa95d3756aa8d09af86f2b68dbcc15c0e971` (общий секрет этой инфры).
+- `TOKEN` хранится только в `.env.local`/secret store; раскрытое в истории Git значение ротировать.
 - Модель фактически всегда `gemma4:26b` (воркер игнорирует присланный `model`).
 - Латентность ~5с/вызов, **GPU concurrency ≈ 1** — не долбите параллельно, сериализуйте.
 - Синхронный long-poll: submit держит соединение до ~25с и отдаёт ответ. Клиентский
   HTTP-таймаут ставьте **≥ 40с**.
 - Ответ gemma приходит уже с **снятыми ```` ```json ````-фенсами** (воркер чистит).
 
-Всё. Для интеграции достаточно указать этот URL как OpenAI chat-эндпоинт.
+Для интеграции достаточно указать URL только OpenAI-совместимому remote-клиенту. Нативный
+Ollama-путь `LOCAL_LLM_URL` с этим relay несовместим — см. раздел для разработчика ниже.
 
 ## Зачем relay, а не туннель (тупики — не повторять)
 
@@ -74,7 +76,7 @@ Content-Type: application/json
 **Риг** (`ssh llm`, systemd **--user**, нужен `export XDG_RUNTIME_DIR=/run/user/$(id -u)`):
 - `~/llm-shim/llm_worker.php`.
 - Сервис `llm-worker.service` (enabled, linger включён — переживает логаут). Env в юните:
-  `LLMQ_URL=https://forgetborders.com/llmq.php`, `TG_PROXY_TOKEN=…`,
+  `LLMQ_URL=https://forgetborders.com/llmq.php`, `TG_PROXY_TOKEN=<TOKEN>`,
   `OLLAMA_URL=http://127.0.0.1:11434/api/chat`, `OLLAMA_MODEL=gemma4:26b`, `IDLE_SLEEP_MS=1500`.
 - Управление: `systemctl --user status|restart|stop llm-worker`, логи `journalctl --user -u llm-worker`.
 - Служебное: `~/bin/cloudflared` установлен, но НЕ используется (туннель не живёт); юниты `cf-quick`, `llm-shim` — отключены.
@@ -90,7 +92,8 @@ Content-Type: application/json
 
 Код-потребитель шлёт обычный OpenAI-запрос, меняется только URL:
 ```dotenv
-LLM_API_URL="https://forgetborders.com/llmq.php?action=submit&token=afbef1952cdeaa95d3756aa8d09af86f2b68dbcc15c0e971"
+LLM_API_URL="https://forgetborders.com/llmq.php?action=submit"
+LLM_API_TOKEN=<TOKEN>
 LLM_MODEL=gemma4:26b
 ```
 Клиентский таймаут в коде поднять до ≥40с. Всё остальное (think:false, fence-strip,
@@ -98,8 +101,8 @@ LLM_MODEL=gemma4:26b
 
 ## Диагностика
 
-- `curl "https://forgetborders.com/llmq.php?action=stats&token=<TOKEN>"` → живость очереди.
-- `curl -X POST ".../llmq.php?action=submit&token=<TOKEN>" -d '{"model":"gemma4:26b","max_tokens":16,"messages":[{"role":"user","content":"ping, reply {\"ok\":1}"}]}'` → сквозной тест.
+- `curl -H "Authorization: Bearer <TOKEN>" "https://forgetborders.com/llmq.php?action=stats"` → живость очереди.
+- `curl -X POST -H "Authorization: Bearer <TOKEN>" ".../llmq.php?action=submit" -d '{"model":"gemma4:26b","max_tokens":16,"messages":[{"role":"user","content":"ping, reply {\"ok\":1}"}]}'` → сквозной тест.
 - Воркер молчит / `claim http 500` первые секунды после деплоя — транзиент (создание директорий), проходит.
 - IP рига скачет (DHCP) — воркер ходит на forgetborders (стабильный домен), так что смена IP рига relay НЕ ломает. Ломается только прямой доступ из LAN (`llm_infra_handoff.md` §1).
 
@@ -107,7 +110,7 @@ LLM_MODEL=gemma4:26b
 
 - Один воркер, GPU concurrency ≈ 1 → пропускная способность ~1 запрос за раз (~5с). Для
   батчей — сериализовать; несколько проектов делят один риг.
-- Риг должен быть включён и с интернетом; ollama держит `gemma4:26b` в VRAM (keep-alive Forever).
+- Для обработки риг должен быть включён и с интернетом; состояние моделей проверить после запуска.
 - Токен общий — при ротации менять в трёх местах: `llmq.php` ($FALLBACK_TOKEN на forgetborders),
   юнит `llm-worker` на риге, `LLM_API_URL` у каждого потребителя.
 
