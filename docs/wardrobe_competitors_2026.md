@@ -451,7 +451,7 @@ Clienteling-софт (Endear, Salesfloor, BSPK, Clientbook) хранит: еди
 **Клиенты**
 - PWA: `manifest.webmanifest` + service worker (scope только `/account/`, приватный HTML/JSON не кешируется), mobile-shell, дашборд с быстрыми действиями и составом семьи.
 - Read-only JSON API: `GET /api/v1/wardrobe-app/bootstrap` и `/items` (session-auth, `no-store, private`).
-- Публичный лендинг `/{ru|en}/wardrobe` в sitemap.
+- Публичные лендинги в sitemap: `/{ru|en}/wardrobe` (семейный) и `/{ru|en}/wardrobe/concierge` — разделены в PR #99/#100 от 2026-08-20, то есть позиционирование «семья + консьерж» уже вынесено в маркетинг, и этот документ описывает, чем его наполнить.
 
 **Тесты:** ~4000 строк PHPUnit по гардеробу (контроллеры, сервисы, сущности, команды, TG-шаблон). Playwright-спеков по гардеробу нет.
 
