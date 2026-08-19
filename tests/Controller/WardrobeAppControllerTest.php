@@ -46,6 +46,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorTextContains('body', 'Состав семьи');
         $this->assertSelectorExists('a[href="/account/family/add"]');
         $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="parent"]');
+        $this->assertSelectorExists('#family-main.family-safe-content.pt-5:not(.py-5)');
     }
 
     public function testParentSeesChildWardrobe(): void
