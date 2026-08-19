@@ -52,14 +52,14 @@
     <section id="concierge-hero" class="concierge-grain relative isolate min-h-[min(850px,calc(100vh-64px))] overflow-hidden bg-[#171512] text-[#f5f0e7]">
         <div class="absolute inset-0" data-concierge-carousel>
             {% set heroSlides = [
-                ['/images/landing/wardrobe-private-setup.webp', 'Выездная команда бережно готовит пространство для съёмки', 'Подготовка'],
+                ['/images/landing/wardrobe-private-setup.webp', 'Установленная мобильная студия с подиумом, светом и камерой на круговой рельсе', 'Съёмочный сетап'],
                 ['/images/landing/wardrobe-private-archive.webp', 'Деликатная оцифровка вечернего платья в частной гардеробной', 'Оцифровка'],
                 ['/images/landing/wardrobe-private-handoff.webp', 'Стилист проверяет готовый цифровой архив на планшете', 'Передача архива']
             ] %}
             {% for slide in heroSlides %}
                 <img src="{{ slide[0] }}" alt="{{ slide[1] }}" width="1536" height="1024"
                      {% if loop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}
-                     class="concierge-slide {{ loop.first ? 'is-active' }} absolute inset-0 h-full w-full object-cover object-[68%_center]"
+                     class="concierge-slide {{ loop.first ? 'is-active object-[82%_center]' : 'object-[68%_center]' }} absolute inset-0 h-full w-full object-cover"
                      data-concierge-slide aria-hidden="{{ loop.first ? 'false' : 'true' }}">
             {% endfor %}
         </div>
