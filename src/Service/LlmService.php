@@ -11,6 +11,15 @@ class LlmService
     private const DEFAULT_MAX_TOKENS = 1024;
 
     /**
+     * Пол таймаута local-генерации. Холодный вызов грузит ~16 ГБ gemma4:26b в VRAM
+     * (ollama выгружает модель по keep_alive за 5 мин простоя), и загрузка идёт дольше
+     * самой генерации — поэтому все фоновые вызовы ждут щедро, сколько бы ни просили.
+     * Опустить пол можно только явным $fastFail (интерактивный запрос, где нужен
+     * быстрый отказ и фолбэк на remote).
+     */
+    private const LOCAL_TIMEOUT_FLOOR = 600;
+
+    /**
      * Дефолтная температура local-генерации, когда вызывающий её не передал.
      * Модель gemma4:26b (кастомный мердж, Q4_K_M) без явных options использует
      * свой Modelfile-дефолт temperature=1.0/top_p=0.95 — это ГОРЯЧЕ, чем 0.7,
@@ -45,7 +54,7 @@ class LlmService
      *
      * @param int|null $maxTokens переопределить лимит токенов (null = DEFAULT_MAX_TOKENS)
      */
-    public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null, int $timeout = 120, ?int $maxTokens = null, bool $local = false, bool $think = true, ?float $temperature = null): string
+    public function generate(string $prompt, ?string $systemPrompt = null, ?string $model = null, int $timeout = 120, ?int $maxTokens = null, bool $local = false, bool $think = true, ?float $temperature = null, bool $fastFail = false): string
     {
         $this->lastUsage = null;
 
@@ -56,7 +65,7 @@ class LlmService
         $messages[] = ['role' => 'user', 'content' => $prompt];
 
         return $local
-            ? $this->generateLocal($messages, $model ?? $this->localModel, $timeout, $think, $temperature)
+            ? $this->generateLocal($messages, $model ?? $this->localModel, $timeout, $think, $temperature, $fastFail)
             : $this->generateRemote($messages, $model ?? $this->model, $timeout, $maxTokens);
     }
 
@@ -65,8 +74,10 @@ class LlmService
      * $think=true (описания): num_predict безлимитный, размышления не обрезают ответ,
      * reasoning в message.thinking, чистый текст в message.content; вызов идёт минуты.
      * $think=false (meta — просто JSON): размышления не нужны, ответ за секунды.
+     * $fastFail=true снимает LOCAL_TIMEOUT_FLOOR: вызывающий готов получить отказ по
+     * таймауту и уйти на remote, вместо того чтобы держать пользователя 10 минут.
      */
-    private function generateLocal(array $messages, string $model, int $timeout, bool $think = true, ?float $temperature = null): string
+    private function generateLocal(array $messages, string $model, int $timeout, bool $think = true, ?float $temperature = null, bool $fastFail = false): string
     {
         $payload = [
             'model'    => $model,
@@ -82,7 +93,7 @@ class LlmService
             $response = $this->httpClient->request('POST', $this->localUrl, [
                 'headers' => ['Content-Type' => 'application/json'],
                 'json'    => $payload,
-                'timeout' => $think ? max($timeout, 600) : $timeout,
+                'timeout' => $fastFail ? $timeout : max($timeout, self::LOCAL_TIMEOUT_FLOOR),
             ]);
 
             return $response->toArray()['message']['content'] ?? '';

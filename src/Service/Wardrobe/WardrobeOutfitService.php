@@ -70,6 +70,7 @@ PROMPT;
                     local: true,
                     think: false,
                     temperature: 0.4,
+                    fastFail: true,
                 );
                 $result = $this->normalize($response, $items);
             } catch (\Throwable) {
