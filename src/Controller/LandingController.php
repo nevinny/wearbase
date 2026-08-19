@@ -28,6 +28,12 @@ class LandingController extends AbstractController
         return $this->render('tailwind/landing/wardrobe.html.twig');
     }
 
+    #[Route('/{_locale}/wardrobe/concierge', name: 'landing_wardrobe_concierge', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'], methods: ['GET'])]
+    public function wardrobeConcierge(): Response
+    {
+        return $this->render('tailwind/landing/wardrobe_concierge.html.twig');
+    }
+
     #[Route('/{_locale}/without-marketplaces', name: 'landing_no_marketplace', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'])]
     public function noMarketplace(BrandRepository $repo): Response
     {
