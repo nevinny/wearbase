@@ -21,6 +21,7 @@
 | [competitors_seo_audit.md](competitors_seo_audit.md) | SEO-аудит 6 конкурентов + план захвата трафика по одежде (4 слоя intent, приоритет 1-6). От 2026-06-17 |
 | [competitors_global.md](competitors_global.md) | Реестр конкурентов и аналогов по регионам (РФ/Европа/СевАм/Латам/Азия): URL, тип модели, релевантность. От 2026-06-23 |
 | [competitors_ru.md](competitors_ru.md) | **Российский ландшафт целиком**: нишевые маркетплейсы (комиссия 30–67%), директории-аналоги (localbrands.pro), концепт-сторы, мейнстрим, рейтинги (РБК Fashion 500). Стратегические зазоры. От 2026-06-23 |
+| [competitor_provybor.md](competitor_provybor.md) | **Глубокий разбор ProVybor** — ближайший по модели конкурент (подписка 990 ₽/мес, 0% комиссии): цифры, тарифы, changelog, SEO-дырки, Similarweb-сравнение, чего у нас нет. Срез 2026-08-20 |
 | [marketing_reality_check.md](marketing_reality_check.md) | Калибровка допущений стратегии об реальность (БД + рынок + конкуренты): willingness-to-pay, free-каталоги, honest moat. От 2026-06-17 |
 | [big_player_roadmap.md](big_player_roadmap.md) | Быть и вести себя как большой игрок: стратегия (быть/вести себя) → роадмап фазами → измеримые действия с KPI. От 2026-06-19 |
 | [monetization_economics.md](monetization_economics.md) | Юнит-экономика: себестоимость ≈0, маржа, сколько брендов до MRR, конверсия как связывающее ограничение; услуга 5000₽ vs подписка. От 2026-06-22 |
