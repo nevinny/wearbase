@@ -47,6 +47,7 @@ parameters:
     # контейнер собирался и app:health:env работал без записей в .env
     env(WORDSTAT_API_KEY): ''
     env(LOCAL_LLM_URL): ''
+    env(LOCAL_LLM_JUDGE_URL): ''
     env(QDRANT_URL): ''
     env(QDRANT_API_KEY): ''
     env(SEARXNG_URL): ''
