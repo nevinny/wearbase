@@ -81,6 +81,7 @@
 |---|---|
 | [onboarding.md](onboarding.md) | **Локальный запуск с нуля для нового разработчика**: `.env.local.example` → `.env.local`, MySQL (не SQLite), миграции; что LAN-only (LLM-сервер/RAG) и не нужно для разработки. От 2026-07-22 |
 | [production.md](production.md) | Прод-окружение (reg.ru): env-карта, деплой, известные проблемы |
+| [hosting-choice.md](hosting-choice.md) | **Выбор хостинга: уход с reg.ru shared на VPS** — упёрлись в 7 сайтов и 116k/150k inode; сравнение Selectel/Beget/Timeweb Cloud с ценами, санкционный риск Aeza (OFAC, ни tier-1, ни почта туда), рекомендованная схема (Selectel VDS 2-4-50 + FASTPANEL, TG-egress проверять до покупки прокси, Cloudflare Tunnel вместо прокси для домашней LLM), чек-лист миграции (MySQL 9.1 → 8.4 LTS, cron с Mac на VPS). От 2026-08-20 |
 | [commands.md](commands.md) | Справочник всех console-команд (зачем/как часто/где + cron) |
 | [llm_infra_handoff.md](llm_infra_handoff.md) | Домашний AI-сервер: snapshot железа, Gemma, vision TBD, embedder, Qdrant и LAN-доступ |
 | [llm_relay_handoff.md](llm_relay_handoff.md) | Pull-relay `llmq.php` для локального тестирования вне LAN; production endpoint отдельно |
