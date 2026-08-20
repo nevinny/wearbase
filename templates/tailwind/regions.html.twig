@@ -1,0 +1,66 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+
+{% block title %}Бренды одежды по регионам России — производители по областям и краям | WEARBASE{% endblock %}
+
+{% block meta_description %}Российские бренды и производители одежды по регионам: {{ totalBrands }}+ марок из {{ regions|length }} регионов — Москва, Подмосковье, Ивановская, Ярославская области и другие. Контакты напрямую, без комиссии маркетплейсов.{% endblock %}
+
+{% block meta_keywords %}бренды одежды по регионам, производители одежды регионы россии, поставщики одежды регион, швейные производства россии, местные бренды одежды{% endblock %}
+
+{% block og_title %}Бренды одежды по регионам России | WEARBASE{% endblock %}
+
+{% block og_description %}{{ totalBrands }}+ брендов и производителей одежды из {{ regions|length }} регионов России — с контактами и сайтами.{% endblock %}
+
+{% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
+
+{% block body %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": "{{ url('brand_regions', {_locale: page_locale}) }}#webpage",
+                "url": "{{ url('brand_regions', {_locale: page_locale}) }}",
+                "name": "Бренды одежды по регионам России | WEARBASE",
+                "breadcrumb": {"@id": "{{ url('brand_regions', {_locale: page_locale}) }}#breadcrumb"}
+            },
+            {
+                "@type": "BreadcrumbList",
+                "@id": "{{ url('brand_regions', {_locale: page_locale}) }}#breadcrumb",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 2, "name": "Регионы", "item": "{{ url('brand_regions', {_locale: page_locale}) }}"}
+                ]
+            }
+        ]
+    }
+    </script>
+
+    <div class="container mx-auto px-4 py-10">
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">Регионы</span>
+        </nav>
+
+        <h1 class="text-3xl md:text-4xl font-bold mb-3">Бренды одежды по регионам России</h1>
+        <p class="text-gray-600 max-w-2xl mb-10">{{ totalBrands }}+ брендов и швейных производств из {{ regions|length }} регионов. Регион удобнее города, когда производство стоит не в областном центре: Ярославская область — это и Ярославль, и Ростов Великий, и Рыбинск. Выбирайте регион и покупайте у производителя напрямую, без комиссии маркетплейсов.</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for region in regions %}
+                <a href="{{ path('brand_region', {_locale: page_locale, slug: region.slug}) }}"
+                   class="flex items-center justify-between bg-white rounded-2xl shadow-sm hover:shadow-md transition px-5 py-4">
+                    <span class="font-medium text-gray-900">{{ region.region }}</span>
+                    <span class="text-sm text-gray-400">{{ region.cnt }}</span>
+                </a>
+            {% endfor %}
+        </div>
+
+        <div class="mt-8 flex gap-4 text-sm">
+            <a href="{{ path('brand_cities', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Бренды по городам</a>
+            <a href="{{ path('brand_index', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Все бренды</a>
+        </div>
+    </div>
+{% endblock %}

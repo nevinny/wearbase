@@ -580,7 +580,7 @@ class BrandsController extends AbstractController
     }
 
     #[Route('/{_locale}/cities/{slug}', name: 'brand_city', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
-    public function cityShow(string $slug, BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger, \App\Repository\CityHubRepository $cityHubRepo): Response
+    public function cityShow(string $slug, BrandRepository $repo, Request $request, \App\Service\CitySlugger $slugger, \App\Repository\CityHubRepository $cityHubRepo, \App\Service\RegionMap $regionMap): Response
     {
         $allCitiesQb = $repo->createQueryBuilder('b')
             ->select('DISTINCT b.city')
@@ -628,9 +628,14 @@ class BrandsController extends AbstractController
             $topStyles = $topStylesQb->getQuery()->getResult();
         }
 
+        // Ссылка вверх на регион: тонкий город (noindex) так отдаёт вес индексируемому хабу области.
+        $region = $regionMap->regionOf($city);
+
         return $this->render('tailwind/city.html.twig', [
             'city' => $city,
             'slug' => $slug,
+            'region' => $region,
+            'regionSlug' => $region !== null ? $regionMap->slugOf($region) : null,
             'brands' => $brands,
             // Кураторский SEO-контент (Москва-плацдарм и т.п.); null → формульная мета
             'hub' => $hub,
@@ -638,6 +643,111 @@ class BrandsController extends AbstractController
             'topStyles' => $topStyles,
             'locale' => $request->getLocale(),
         ]);
+    }
+
+    #[Route('/{_locale}/regions', name: 'brand_regions', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
+    public function regions(BrandRepository $repo, Request $request, \App\Service\RegionMap $regionMap): Response
+    {
+        $regions = [];
+        foreach ($this->cityCounts($repo) as $city => $cnt) {
+            $region = $regionMap->regionOf($city);
+            if ($region === null) {
+                continue; // fail-closed: город не в карте (зарубежный/мусорный) → в хабы не идёт
+            }
+            $regions[$region] = ($regions[$region] ?? 0) + $cnt;
+        }
+        arsort($regions);
+
+        $rows = [];
+        foreach ($regions as $name => $cnt) {
+            $rows[] = ['region' => $name, 'cnt' => $cnt, 'slug' => $regionMap->slugOf($name)];
+        }
+
+        return $this->render('tailwind/regions.html.twig', [
+            'regions'     => $rows,
+            'totalBrands' => array_sum($regions),
+            'locale'      => $request->getLocale(),
+        ]);
+    }
+
+    #[Route('/{_locale}/regions/{slug}', name: 'brand_region', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
+    public function regionShow(
+        string $slug,
+        BrandRepository $repo,
+        Request $request,
+        \App\Service\RegionMap $regionMap,
+        \App\Service\CitySlugger $citySlugger,
+    ): Response {
+        $region = $regionMap->resolveSlug($slug);
+        if ($region === null) {
+            throw $this->createNotFoundException('Регион не найден');
+        }
+
+        // В `brand.city` лежат варианты написания («спб», «Нижний-Новгород»), поэтому сначала
+        // собираем сырые значения, которые канонизируются в города этого региона.
+        $counts    = $this->cityCounts($repo);
+        $rawCities = [];
+        $cityRows  = [];
+        foreach ($counts as $city => $cnt) {
+            if ($regionMap->regionOf($city) !== $region) {
+                continue;
+            }
+            $rawCities[] = $city;
+            $canonical   = $regionMap->canonicalCity($city) ?? $city;
+            $cityRows[$canonical] = ($cityRows[$canonical] ?? 0) + $cnt;
+        }
+
+        if ($rawCities === []) {
+            throw $this->createNotFoundException('В регионе нет брендов');
+        }
+
+        $brandsQb = $repo->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->andWhere('b.city IN (:cities)')
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('cities', $rawCities)
+            ->orderBy('b.title', 'ASC');
+        $repo->excludeForeignOrigin($brandsQb);
+        $brands = $brandsQb->getQuery()->getResult();
+
+        arsort($cityRows);
+        $cities = [];
+        foreach ($cityRows as $name => $cnt) {
+            $cities[] = ['city' => $name, 'cnt' => $cnt, 'slug' => $citySlugger->slugify($name)];
+        }
+
+        return $this->render('tailwind/region.html.twig', [
+            'region'    => $region,
+            'slug'      => $slug,
+            'brands'    => $brands,
+            'cities'    => $cities,
+            'indexable' => count($brands) >= self::MIN_INDEXABLE_BRANDS,
+            'locale'    => $request->getLocale(),
+        ]);
+    }
+
+    /**
+     * Сырой город → число активных брендов (без foreign-origin).
+     *
+     * @return array<string,int>
+     */
+    private function cityCounts(BrandRepository $repo): array
+    {
+        $qb = $repo->createQueryBuilder('b')
+            ->select('b.city, COUNT(b.id) as cnt')
+            ->where('b.status = :status')
+            ->andWhere('b.city IS NOT NULL')
+            ->andWhere('b.city != \'\'')
+            ->setParameter('status', Statuses::Active)
+            ->groupBy('b.city');
+        $repo->excludeForeignOrigin($qb);
+
+        $out = [];
+        foreach ($qb->getQuery()->getResult() as $row) {
+            $out[$row['city']] = (int) $row['cnt'];
+        }
+
+        return $out;
     }
 
     #[Route('/{_locale}/styles', name: 'brand_styles', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'], defaults: ['_locale' => 'ru'])]
