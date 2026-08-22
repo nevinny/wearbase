@@ -47,7 +47,7 @@ YAML;
         self::assertSame('Вместо Zara?', $script->hookA);
         self::assertSame('Но не копия.', $script->hookB);
         self::assertSame(['Маркетплейс — 30–67%.', 'Мы — 0%.'], $script->bits);
-        self::assertSame('h1.departed|b.det2|c.save', $script->scriptKey);
+        self::assertSame('h1.departed|b.det2|c.send', $script->scriptKey);
     }
 
     /** Имя ушедшего не влезает в плашку → H1 пропускается, дальше — бинарная ветка F1/F2. */
@@ -103,6 +103,22 @@ YAML;
 
         self::assertStringStartsWith('f2.fee|', $script->scriptKey);
         self::assertSame([], $script->bits);
+    }
+
+    // --- Ротация финальной просьбы (FINALE_ASKS) ----------------------------------------------
+
+    /** Две финальные просьбы ротируются по чётности crc32('ask'.slug), независимо от хука. */
+    public function testFinaleAskRotatesBySlug(): void
+    {
+        // crc32('askbrand-4') % 2 === 0 → «Сохрани…»
+        $save = $this->composer()->compose($this->brand(slug: 'brand-4'), totalSlides: 4);
+        self::assertSame('Сохрани, чтобы не искать.', $save->finaleAsk);
+        self::assertStringEndsWith('c.save', $save->scriptKey);
+
+        // crc32('askour-brand') % 2 === 1 → «Отправь…»
+        $send = $this->composer()->compose($this->brand(slug: 'our-brand'), totalSlides: 4);
+        self::assertSame('Отправь тому, кто ищет.', $send->finaleAsk);
+        self::assertStringEndsWith('c.send', $send->scriptKey);
     }
 
     /**

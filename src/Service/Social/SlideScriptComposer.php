@@ -64,17 +64,37 @@ class SlideScriptComposer
     private const FEE_HOOK_B = 'У этого бренда — 0%.';
 
     /**
-     * F2-альтернатива (H8 плейбука «позиционный тезис»): слайды собраны из РЕАЛЬНЫХ фото
-     * brand_image — тезис проверяем и грунтован без единого слова о бренде. Ротация с
-     * комиссионным хуком по чётности slug убивает главное слабое место F2: раньше все бренды
-     * без RAG-фактов получали ОДИН И ТОТ ЖЕ хук «Маркетплейс: до 67%.» (~28% генераций),
-     * и лента выглядела как заезженная пластинка. Обе ветки детерминированы содержанием
-     * (slug стабилен, повторный generate не меняет ветку) — канон v4 «нет рандома» соблюдён;
+     * F2-альтернатива (H8 плейбука «позиционный тезис») — СТРАХОВОЧНЫЙ константный хук на случай,
+     * когда LLM не дал ни одной валидной пары: слайды собраны из РЕАЛЬНЫХ фото brand_image,
+     * тезис грунтован без единого слова о бренде. Ротация с комиссионным f2.fee по чётности slug;
      * scriptKey 'f2.real|' vs 'f2.fee|' режет closed-loop в app:social:evaluate.
      */
     private const REAL_HOOK_A = 'Это не нейронка.';
     private const REAL_HOOK_B = 'Фото сняли они.';
-    private const FINALE_ASK = 'Сохрани, чтобы не искать.';
+
+    /**
+     * Финальная просьба — ротация двух CTA-типов вместо одного и того же «Сохрани…» на каждом
+     * посте: сохранить в коллекцию / отправить знакомому. Индекс по чётности crc32('ask'.slug),
+     * salt развязывает её от ротации хука f2.fee/real (иначе ветки closed-loop слипались бы
+     * попарно). Сегмент script_key c.save/c.send режет разбор в app:social:evaluate.
+     */
+    private const FINALE_ASKS = [
+        'Сохрани, чтобы не искать.',
+        'Отправь тому, кто ищет.',
+    ];
+    private const FINALE_ASK_TAGS = ['c.save', 'c.send'];
+
+    /**
+     * Платформенные факты для LLM-хуков F2 — закрытый набор, те же проверенные числа, что в
+     * PillarCaptionSource::PILLARS['calculator']. Заземление кандидатов идёт на этот текст,
+     * поэтому модель физически не может назвать другую комиссию или придумать цену.
+     */
+    private const PLATFORM_FACTS = 'Маркетплейсы удерживают с бренда 30–67% с каждой продажи. '
+        . 'На WEARBASE комиссии с продаж нет — 0%, только фиксированная подписка около 3000 ₽ в месяц.';
+
+    private const HOOK_SYSTEM_PROMPT = 'Ты пишешь пары коротких надписей для первых кадров вертикальных видео '
+        . 'о брендах одежды. Только по-русски. Каждая пара с новой строки в формате: первая надпись | вторая надпись. '
+        . 'Без нумерации, кавычек и пояснений.';
 
     /**
      * H1-фолбэк (см. composeBits()/deterministicBits() doc) — платформенный факт (проверяемый,
@@ -216,6 +236,7 @@ class SlideScriptComposer
         $usedKeys = [$this->dedupKey($hookA) => true, $this->dedupKey($hookB) => true];
 
         ['bits' => $bits, 'ragCount' => $ragCount, 'detCount' => $detCount] = $this->composeBits($brand, $budget, $usedKeys);
+        [$ask, $askTag] = $this->finale($brand);
 
         return new SlideScript(
             hookA: $hookA,
@@ -223,8 +244,8 @@ class SlideScriptComposer
             bits: $bits,
             finaleTitle: trim((string) $brand->getTitle()),
             finaleMeta: $this->finaleMeta($brand),
-            finaleAsk: self::FINALE_ASK,
-            scriptKey: sprintf('h1.departed|b.%s|c.save', $this->bitsSourceKey($ragCount, $detCount, count($bits))),
+            finaleAsk: $ask,
+            scriptKey: sprintf('h1.departed|b.%s|%s', $this->bitsSourceKey($ragCount, $detCount, count($bits)), $askTag),
             durationsProfile: $durationsProfile,
         );
     }
@@ -277,16 +298,15 @@ class SlideScriptComposer
                 break;
             }
         }
-
         if ($hookIndex === null) {
             return $this->useRealHook($brand)
                 ? $this->composeRealFallback($brand, $budget, $durationsProfile)
                 : $this->composeFeeFallback($brand, $budget, $durationsProfile);
         }
-
         $hookA = $candidates[$hookIndex];
         unset($candidates[$hookIndex]);
         $bits = array_slice(array_values($candidates), 0, min(2, $budget));
+        [$ask, $askTag] = $this->finale($brand);
 
         return new SlideScript(
             hookA: $hookA,
@@ -294,8 +314,8 @@ class SlideScriptComposer
             bits: $bits,
             finaleTitle: trim((string) $brand->getTitle()),
             finaleMeta: $this->finaleMeta($brand),
-            finaleAsk: self::FINALE_ASK,
-            scriptKey: sprintf('f1.rag|b.%s|c.save', $this->bitsSourceKey(count($bits), 0, count($bits))),
+            finaleAsk: $ask,
+            scriptKey: sprintf('f1.rag|b.%s|%s', $this->bitsSourceKey(count($bits), 0, count($bits)), $askTag),
             durationsProfile: $durationsProfile,
         );
     }
@@ -308,28 +328,32 @@ class SlideScriptComposer
         $hookB = self::FEE_HOOK_B;
         $usedKeys = [$this->dedupKey($hookA) => true, $this->dedupKey($hookB) => true];
         ['bits' => $bits, 'count' => $detCount] = $this->deterministicBits($brand, $budget, $usedKeys);
-
+        [$ask, $askTag] = $this->finale($brand);
         return new SlideScript(
             hookA: $hookA,
             hookB: $hookB,
             bits: $bits,
             finaleTitle: trim((string) $brand->getTitle()),
             finaleMeta: $this->finaleMeta($brand),
-            finaleAsk: self::FINALE_ASK,
-            scriptKey: sprintf('f2.fee|b.%s|c.save', $this->bitsSourceKey(0, $detCount, count($bits))),
+            finaleAsk: $ask,
+            scriptKey: sprintf('f2.fee|b.%s|%s', $this->bitsSourceKey(0, $detCount, count($bits)), $askTag),
             durationsProfile: $durationsProfile,
         );
     }
 
-    /**
-     * F2-ветка «позиционный тезис»: хук — факт о формате (фото реальные, не генерация),
-     * биты — тот же детерминированный добор, что у f2.fee. Собирается всегда, поэтому годится
-     * как второй постоянный хук слабо-документированных брендов.
-     */
+    /** Ротация финальной просьбы (FINALE_ASKS): salt 'ask' развязывает её от ротации хука. */
+    private function finale(Brand $brand): array
+    {
+        $i = crc32('ask' . trim((string) $brand->getSlug())) % 2;
+
+        return [self::FINALE_ASKS[$i], self::FINALE_ASK_TAGS[$i]];
+    }
+
     private function composeRealFallback(Brand $brand, int $budget, string $durationsProfile): SlideScript
     {
         $usedKeys = [$this->dedupKey(self::REAL_HOOK_A) => true, $this->dedupKey(self::REAL_HOOK_B) => true];
         ['bits' => $bits, 'count' => $detCount] = $this->deterministicBits($brand, $budget, $usedKeys);
+        [$ask, $askTag] = $this->finale($brand);
 
         return new SlideScript(
             hookA: self::REAL_HOOK_A,
@@ -337,8 +361,8 @@ class SlideScriptComposer
             bits: $bits,
             finaleTitle: trim((string) $brand->getTitle()),
             finaleMeta: $this->finaleMeta($brand),
-            finaleAsk: self::FINALE_ASK,
-            scriptKey: sprintf('f2.real|b.%s|c.save', $this->bitsSourceKey(0, $detCount, count($bits))),
+            finaleAsk: $ask,
+            scriptKey: sprintf('f2.real|b.%s|%s', $this->bitsSourceKey(0, $detCount, count($bits)), $askTag),
             durationsProfile: $durationsProfile,
         );
     }
