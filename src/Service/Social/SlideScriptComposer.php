@@ -26,10 +26,13 @@ use Symfony\Component\Yaml\Yaml;
  *      для хука (isHookAEligible) — hookA = лучший по скору такой факт, hookB фиксирован
  *      («Чей — в конце.» — держит связку с развязкой: имя закрывает вопрос «чей»), биты —
  *      следующие 1-2 факта по скору;
- *  F2 «fee»  — фактов нет (или ни один не тянет на хук) — hookA/hookB фиксированы (платформенный
- *      факт про комиссию маркетплейса), биты — только детерминированный добор год→категории→
- *      материал, БЕЗ пары про маркетплейс на слайдах (комиссия уже сказана в хуке — повторять её
- *      битом означает дублировать смысл на соседних кадрах).
+ *  F2 «fee»/«real» — фактов нет (или ни один не тянет на хук) — хук фиксированный, биты —
+ *      только детерминированный добор год→категории→материал, БЕЗ пары про маркетплейс на
+ *      слайдах (комиссия уже сказана в хуке). Два взаимозаменяемых хука, ротация по чётности
+ *      slug (useRealHook()): f2.fee — платформенный факт про комиссию маркетплейса; f2.real —
+ *      позиционный тезис «фото реальные, не нейронка» (H8 плейбука). Ротация убирает
+ *      однообразие ленты: раньше КАЖДЫЙ слабо-документированный бренд получал один и тот же
+ *      комиссионный хук.
  *
  * БИТЫ. F1 — только grounded (LLM на выдержках BrandRagService, тот же гейт качества, что у
  * FounderStoryCaptionSource). F2/H1-добор — детерминированный: год основания → категории →
@@ -60,6 +63,17 @@ class SlideScriptComposer
     private const FEE_HOOK_A_SHORT = 'Маркетплейс: до 67%.';
     private const FEE_HOOK_B = 'У этого бренда — 0%.';
 
+    /**
+     * F2-альтернатива (H8 плейбука «позиционный тезис»): слайды собраны из РЕАЛЬНЫХ фото
+     * brand_image — тезис проверяем и грунтован без единого слова о бренде. Ротация с
+     * комиссионным хуком по чётности slug убивает главное слабое место F2: раньше все бренды
+     * без RAG-фактов получали ОДИН И ТОТ ЖЕ хук «Маркетплейс: до 67%.» (~28% генераций),
+     * и лента выглядела как заезженная пластинка. Обе ветки детерминированы содержанием
+     * (slug стабилен, повторный generate не меняет ветку) — канон v4 «нет рандома» соблюдён;
+     * scriptKey 'f2.real|' vs 'f2.fee|' режет closed-loop в app:social:evaluate.
+     */
+    private const REAL_HOOK_A = 'Это не нейронка.';
+    private const REAL_HOOK_B = 'Фото сняли они.';
     private const FINALE_ASK = 'Сохрани, чтобы не искать.';
 
     /**
@@ -265,7 +279,9 @@ class SlideScriptComposer
         }
 
         if ($hookIndex === null) {
-            return $this->composeFeeFallback($brand, $budget, $durationsProfile);
+            return $this->useRealHook($brand)
+                ? $this->composeRealFallback($brand, $budget, $durationsProfile)
+                : $this->composeFeeFallback($brand, $budget, $durationsProfile);
         }
 
         $hookA = $candidates[$hookIndex];
@@ -303,6 +319,38 @@ class SlideScriptComposer
             scriptKey: sprintf('f2.fee|b.%s|c.save', $this->bitsSourceKey(0, $detCount, count($bits))),
             durationsProfile: $durationsProfile,
         );
+    }
+
+    /**
+     * F2-ветка «позиционный тезис»: хук — факт о формате (фото реальные, не генерация),
+     * биты — тот же детерминированный добор, что у f2.fee. Собирается всегда, поэтому годится
+     * как второй постоянный хук слабо-документированных брендов.
+     */
+    private function composeRealFallback(Brand $brand, int $budget, string $durationsProfile): SlideScript
+    {
+        $usedKeys = [$this->dedupKey(self::REAL_HOOK_A) => true, $this->dedupKey(self::REAL_HOOK_B) => true];
+        ['bits' => $bits, 'count' => $detCount] = $this->deterministicBits($brand, $budget, $usedKeys);
+
+        return new SlideScript(
+            hookA: self::REAL_HOOK_A,
+            hookB: self::REAL_HOOK_B,
+            bits: $bits,
+            finaleTitle: trim((string) $brand->getTitle()),
+            finaleMeta: $this->finaleMeta($brand),
+            finaleAsk: self::FINALE_ASK,
+            scriptKey: sprintf('f2.real|b.%s|c.save', $this->bitsSourceKey(0, $detCount, count($bits))),
+            durationsProfile: $durationsProfile,
+        );
+    }
+
+    /**
+     * Ротация двух F2-хуков по чётности slug: контент-детерминированный «полуслучай» без
+     * рандома (повторный generate даёт ту же ветку) и без завязки на id (он плавает между
+     * окружениями, slug — стабильная идентичность бренда, как и в departedMatch()).
+     */
+    private function useRealHook(Brand $brand): bool
+    {
+        return crc32(trim((string) $brand->getSlug())) % 2 === 1;
     }
 
     /**
