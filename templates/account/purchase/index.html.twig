@@ -21,13 +21,15 @@
         draft: 'Черновик',
         pending: 'Ждёт решения',
         approved: 'Одобрено',
-        rejected: 'Отклонено'
+        rejected: 'Отклонено',
+        partial: 'Частично'
     } %}
     {% set statusClasses = {
         draft: 'bg-slate-100 text-slate-600',
         pending: 'bg-amber-100 text-amber-800',
         approved: 'bg-emerald-100 text-emerald-800',
-        rejected: 'bg-rose-100 text-rose-800'
+        rejected: 'bg-rose-100 text-rose-800',
+        partial: 'bg-violet-100 text-violet-800'
     } %}
 
     <section aria-labelledby="purchase-list-title">
@@ -76,7 +78,7 @@
                             {{ statusLabels[purchaseRequest.status]|default(purchaseRequest.status) }}
                         </span>
                     </div>
-                    <p class="mt-3 truncate text-sm text-indigo-700">{{ purchaseRequest.productUrl }}</p>
+                    <p class="mt-3 truncate text-sm text-indigo-700">{{ purchaseRequest.items|length }} {{ purchaseRequest.items|length == 1 ? 'вещь' : 'вещи' }} · {{ purchaseRequest.productUrl }}</p>
                     {% if purchaseRequest.estimatedPrice %}
                         <p class="mt-2 text-lg font-black text-slate-900">{{ purchaseRequest.estimatedPrice|number_format(2, ',', ' ') }} ₽</p>
                     {% endif %}

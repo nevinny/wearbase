@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Entity\PurchaseRequest;
 use App\Entity\PurchaseRequestEvent;
+use App\Entity\PurchaseRequestItem;
 use App\Entity\Notification;
 use App\Entity\User;
 use App\Service\FamilyBudgetService;
@@ -67,6 +68,93 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $client->submit($crawler->filter('form')->form([
             'purchase_request_form[subject]' => '0',
             'purchase_request_form[productUrl]' => 'http://shop.example.test/product/42',
+        ]));
+
+        $this->assertResponseStatusCodeSame(422);
+        $this->assertSame(0, $this->em()->getRepository(PurchaseRequest::class)->count(['subject' => $child]));
+    }
+
+    public function testChildCreatesMultiItemRequestAndParentDecidesEachItem(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('multi-parent'));
+        $child = $this->families()->createChild($parent, 'Аня');
+        $client->loginUser($child);
+
+        $crawler = $client->request('GET', '/account/purchases/new');
+        $client->submit($crawler->filter('form')->form([
+            'purchase_request_form[subject]' => '0',
+            'purchase_request_form[productUrl]' => 'https://one.example.test/item/1',
+            'purchase_request_form[additionalUrls]' => "https://two.example.test/item/2\nhttps://three.example.test/item/3",
+            'purchase_request_form[estimatedPrice]' => '1000',
+        ]));
+
+        /** @var PurchaseRequest $purchaseRequest */
+        $purchaseRequest = $this->em()->getRepository(PurchaseRequest::class)->findOneBy(['subject' => $child]);
+        $this->assertNotNull($purchaseRequest);
+        $this->assertCount(3, $purchaseRequest->getItems());
+        $items = $purchaseRequest->getItems()->toArray();
+
+        $client->loginUser($parent);
+        $crawler = $client->request('GET', '/account/purchases/'.$purchaseRequest->getId());
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorCount(3, '[data-purchase-item]');
+
+        $approveToken = (string) $crawler->filter(sprintf('[data-purchase-item="%d"] input[name="_token"]', $items[0]->getId()))->first()->attr('value');
+        $client->request('POST', sprintf('/account/purchases/%d/items/%d/decide', $purchaseRequest->getId(), $items[0]->getId()), [
+            '_token' => $approveToken,
+            'decision' => PurchaseRequest::STATUS_APPROVED,
+        ]);
+        $this->assertResponseRedirects('/account/purchases/'.$purchaseRequest->getId());
+
+        $crawler = $client->request('GET', '/account/purchases/'.$purchaseRequest->getId());
+        $rejectToken = (string) $crawler->filter(sprintf('[data-purchase-item="%d"] input[name="_token"]', $items[1]->getId()))->first()->attr('value');
+        $client->request('POST', sprintf('/account/purchases/%d/items/%d/decide', $purchaseRequest->getId(), $items[1]->getId()), [
+            '_token' => $rejectToken,
+            'decision' => PurchaseRequest::STATUS_REJECTED,
+            'decisionComment' => 'Уже есть похожая вещь',
+        ]);
+        $this->assertResponseRedirects('/account/purchases/'.$purchaseRequest->getId());
+
+        $purchaseRequest = $this->em()->getRepository(PurchaseRequest::class)->find($purchaseRequest->getId());
+        $items = $purchaseRequest->getItems()->toArray();
+        $parent = $this->em()->getRepository(User::class)->find($parent->getId());
+        $this->assertSame(PurchaseRequest::STATUS_PENDING, $purchaseRequest->getStatus());
+        $this->purchaseRequests()->decideItem($parent, $purchaseRequest, $items[2], PurchaseRequest::STATUS_REJECTED, 'Не подходит');
+        $this->assertSame(PurchaseRequest::STATUS_PARTIAL, $purchaseRequest->getStatus());
+        $this->assertSame(PurchaseRequestItem::STATUS_APPROVED, $items[0]->getStatus());
+        $this->assertSame(PurchaseRequestItem::STATUS_REJECTED, $items[1]->getStatus());
+    }
+
+    public function testItemDecisionRejectsItemFromAnotherRequest(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('nested-parent'));
+        $child = $this->families()->createChild($parent, 'Лиза');
+        $first = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/first', null);
+        $second = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/second', null);
+
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AccessDeniedException::class);
+        $this->purchaseRequests()->decideItem(
+            $parent,
+            $first,
+            $second->getItems()->first(),
+            PurchaseRequest::STATUS_APPROVED,
+        );
+    }
+
+    public function testFormRejectsMoreThanTenItems(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('limit-parent'));
+        $child = $this->families()->createChild($parent, 'Лиза');
+        $client->loginUser($child);
+        $urls = implode("\n", array_map(static fn (int $id): string => 'https://shop.example.test/item/'.$id, range(2, 11)));
+
+        $crawler = $client->request('GET', '/account/purchases/new');
+        $client->submit($crawler->filter('form')->form([
+            'purchase_request_form[subject]' => '0',
+            'purchase_request_form[productUrl]' => 'https://shop.example.test/item/1',
+            'purchase_request_form[additionalUrls]' => $urls,
         ]));
 
         $this->assertResponseStatusCodeSame(422);

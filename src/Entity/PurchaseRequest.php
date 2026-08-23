@@ -19,6 +19,7 @@ class PurchaseRequest
     public const STATUS_PENDING = 'pending';
     public const STATUS_APPROVED = 'approved';
     public const STATUS_REJECTED = 'rejected';
+    public const STATUS_PARTIAL = 'partial';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -66,10 +67,16 @@ class PurchaseRequest
     #[ORM\OrderBy(['createdAt' => 'ASC', 'id' => 'ASC'])]
     private Collection $events;
 
+    /** @var Collection<int, PurchaseRequestItem> */
+    #[ORM\OneToMany(mappedBy: 'purchaseRequest', targetEntity: PurchaseRequestItem::class, cascade: ['persist'], orphanRemoval: true)]
+    #[ORM\OrderBy(['createdAt' => 'ASC', 'id' => 'ASC'])]
+    private Collection $items;
+
     public function __construct()
     {
         $this->createdAt = new \DateTimeImmutable();
         $this->events = new ArrayCollection();
+        $this->items = new ArrayCollection();
     }
 
     public function getId(): ?int { return $this->id; }
@@ -83,6 +90,13 @@ class PurchaseRequest
     public function getProductUrl(): string { return $this->productUrl; }
     public function setProductUrl(string $productUrl): static
     {
+        self::assertSafeProductUrl($productUrl);
+        $this->productUrl = $productUrl;
+        return $this;
+    }
+
+    public static function assertSafeProductUrl(string $productUrl): void
+    {
         $parts = parse_url($productUrl);
         if (strlen($productUrl) > 2048
             || $parts === false
@@ -93,9 +107,6 @@ class PurchaseRequest
         ) {
             throw new \InvalidArgumentException('Допустима только безопасная HTTPS-ссылка');
         }
-
-        $this->productUrl = $productUrl;
-        return $this;
     }
     public function getComment(): ?string { return $this->comment; }
     public function setComment(?string $comment): static
@@ -118,6 +129,37 @@ class PurchaseRequest
     public function getDecidedAt(): ?\DateTimeImmutable { return $this->decidedAt; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
     public function getEvents(): Collection { return $this->events; }
+    /** @return Collection<int, PurchaseRequestItem> */
+    public function getItems(): Collection { return $this->items; }
+
+    public function addItem(PurchaseRequestItem $item): void
+    {
+        if (!$this->items->contains($item)) {
+            $this->items->add($item);
+            $item->setPurchaseRequest($this);
+        }
+    }
+
+    public function refreshDecisionFromItems(): void
+    {
+        if ($this->items->isEmpty()) {
+            return;
+        }
+        $statuses = array_unique($this->items->map(
+            static fn (PurchaseRequestItem $item): string => $item->getStatus(),
+        )->toArray());
+        if (in_array(PurchaseRequestItem::STATUS_PENDING, $statuses, true)) {
+            $this->status = self::STATUS_PENDING;
+            return;
+        }
+        $this->status = count($statuses) === 1
+            ? ($statuses[0] === PurchaseRequestItem::STATUS_APPROVED ? self::STATUS_APPROVED : self::STATUS_REJECTED)
+            : self::STATUS_PARTIAL;
+        $last = $this->items->last();
+        $this->decidedBy = $last->getDecidedBy();
+        $this->decisionComment = $last->getDecisionComment();
+        $this->decidedAt = $last->getDecidedAt();
+    }
 
     public function decide(string $status, User $actor, ?string $comment = null): void
     {

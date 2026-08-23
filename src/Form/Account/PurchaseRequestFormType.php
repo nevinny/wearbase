@@ -16,6 +16,8 @@ use Symfony\Component\Validator\Constraints\Length;
 use Symfony\Component\Validator\Constraints\GreaterThanOrEqual;
 use Symfony\Component\Validator\Constraints\NotBlank;
 use Symfony\Component\Validator\Constraints\Url;
+use Symfony\Component\Validator\Constraints\Callback;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 class PurchaseRequestFormType extends AbstractType
 {
@@ -32,11 +34,35 @@ class PurchaseRequestFormType extends AbstractType
                 'choices' => $choices,
             ])
             ->add('productUrl', UrlType::class, [
-                'label' => 'Ссылка на товар или подборку',
+                'label' => 'Первая ссылка на товар',
                 'constraints' => [
                     new NotBlank(['message' => 'Вставьте ссылку']),
                     new Length(['max' => 2048]),
                     new Url(['protocols' => ['https'], 'message' => 'Используйте безопасную HTTPS-ссылку']),
+                ],
+            ])
+            ->add('additionalUrls', TextareaType::class, [
+                'label' => 'Ещё ссылки',
+                'required' => false,
+                'help' => 'Каждая ссылка с новой строки. Всего можно добавить до 10 вещей.',
+                'attr' => ['rows' => 4, 'placeholder' => "https://shop.example/item-2\nhttps://shop.example/item-3"],
+                'constraints' => [
+                    new Length(['max' => 18432]),
+                    new Callback(static function (?string $value, ExecutionContextInterface $context): void {
+                        $urls = array_values(array_filter(array_map('trim', preg_split('/\R/', (string) $value) ?: [])));
+                        if (count($urls) > 9) {
+                            $context->buildViolation('В одном запросе можно до 10 вещей.')->addViolation();
+                            return;
+                        }
+                        foreach ($urls as $url) {
+                            try {
+                                \App\Entity\PurchaseRequest::assertSafeProductUrl($url);
+                            } catch (\InvalidArgumentException) {
+                                $context->buildViolation('Каждая строка должна содержать безопасную HTTPS-ссылку.')->addViolation();
+                                return;
+                            }
+                        }
+                    }),
                 ],
             ])
             ->add('estimatedPrice', MoneyType::class, [

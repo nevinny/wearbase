@@ -9,13 +9,15 @@
         draft: 'Черновик',
         pending: 'Ждёт решения',
         approved: 'Одобрено',
-        rejected: 'Отклонено'
+        rejected: 'Отклонено',
+        partial: 'Частично одобрено'
     } %}
     {% set statusClasses = {
         draft: 'bg-slate-100 text-slate-700',
         pending: 'bg-amber-100 text-amber-800',
         approved: 'bg-emerald-100 text-emerald-800',
-        rejected: 'bg-rose-100 text-rose-800'
+        rejected: 'bg-rose-100 text-rose-800',
+        partial: 'bg-violet-100 text-violet-800'
     } %}
 
     <div class="flex items-center justify-between gap-3">
@@ -40,15 +42,15 @@
         <p class="mt-2 text-xs text-slate-500">
             {{ purchaseRequest.createdBy.fullName }} · {{ purchaseRequest.createdAt|date('d.m.Y, H:i') }}
         </p>
-        {% if purchaseRequest.estimatedPrice %}
+        {% if purchaseRequest.items|length == 1 and purchaseRequest.estimatedPrice %}
             <p class="mt-4 text-3xl font-black text-slate-950">{{ purchaseRequest.estimatedPrice|number_format(2, ',', ' ') }} ₽</p>
         {% endif %}
 
-        <a href="{{ purchaseRequest.productUrl }}" target="_blank" rel="noopener noreferrer"
+        {% if purchaseRequest.items|length == 1 %}<a href="{{ purchaseRequest.productUrl }}" target="_blank" rel="noopener noreferrer"
            class="mt-5 flex min-h-14 items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800 transition hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
             <span class="min-w-0 break-all">Открыть товар в магазине</span>
             <span class="shrink-0 text-lg" aria-hidden="true">↗</span>
-        </a>
+        </a>{% endif %}
 
         {% if purchaseRequest.comment %}
             <div class="mt-5">
@@ -58,7 +60,41 @@
         {% endif %}
     </section>
 
-    {% if purchaseRequest.decisionComment %}
+    {% if purchaseRequest.items|length > 1 %}
+        <section class="mt-5 space-y-4" aria-labelledby="purchase-items-title">
+            <h2 id="purchase-items-title" class="text-lg font-black text-slate-950">Вещи в запросе <span class="text-slate-400">{{ purchaseRequest.items|length }}</span></h2>
+            {% for item in purchaseRequest.items %}
+                {% set itemBudget = itemBudgetSummaries[item.id]|default(null) %}
+                <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-purchase-item="{{ item.id }}">
+                    <div class="flex items-start justify-between gap-3">
+                        <span class="text-sm font-bold text-slate-900">Позиция {{ loop.index }}</span>
+                        <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ statusClasses[item.status]|default('bg-slate-100 text-slate-700') }}">{{ statusLabels[item.status]|default(item.status) }}</span>
+                    </div>
+                    {% if item.estimatedPrice %}<p class="mt-3 text-2xl font-black text-slate-950">{{ item.estimatedPrice|number_format(2, ',', ' ') }} ₽</p>{% endif %}
+                    <a href="{{ item.sourceUrl }}" target="_blank" rel="noopener noreferrer" class="mt-3 flex min-h-12 items-center justify-between gap-3 rounded-xl bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800">
+                        <span class="min-w-0 break-all">Открыть товар</span><span aria-hidden="true">↗</span>
+                    </a>
+                    {% if item.decisionComment %}<p class="mt-3 rounded-xl {{ item.status == 'approved' ? 'bg-emerald-50 text-emerald-900' : 'bg-rose-50 text-rose-900' }} p-3 text-sm"><strong>Комментарий родителя:</strong> {{ item.decisionComment }}</p>{% endif %}
+                    {% if isParent and item.status == 'pending' %}
+                        {% if itemBudget %}<p class="mt-3 rounded-xl {{ itemBudget.exceeded ? 'bg-amber-50 text-amber-900' : 'bg-indigo-50 text-indigo-900' }} p-3 text-xs">Осталось {{ itemBudget.remaining|number_format(2, ',', ' ') }} ₽ из {{ itemBudget.limit|number_format(2, ',', ' ') }} ₽.{% if item.estimatedPrice is null %} <strong>Цена не указана.</strong>{% endif %}</p>{% endif %}
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                            {% for decision, label in {approved: 'Одобрить', rejected: 'Отклонить'} %}
+                                <form method="post" action="{{ path('account_purchase_decide_item', {requestId: purchaseRequest.id, itemId: item.id}) }}" class="rounded-xl border {{ decision == 'approved' ? 'border-emerald-200' : 'border-rose-200' }} p-3">
+                                    <input type="hidden" name="_token" value="{{ csrf_token('purchase_item_decide_' ~ item.id) }}"><input type="hidden" name="decision" value="{{ decision }}">
+                                    <label class="block text-xs font-bold text-slate-700" for="item-comment-{{ item.id }}-{{ decision }}">{{ decision == 'approved' ? 'Комментарий' : 'Причина отказа' }}</label>
+                                    <textarea id="item-comment-{{ item.id }}-{{ decision }}" name="decisionComment" rows="2" {{ decision == 'rejected' ? 'required' : '' }} class="mt-2 w-full rounded-xl border border-slate-300 p-3 text-base"></textarea>
+                                    {% if decision == 'approved' and itemBudget and (itemBudget.exceeded or item.estimatedPrice is null) %}<label class="mt-2 flex min-h-11 items-center gap-2 text-xs text-amber-900"><input type="checkbox" name="allowOverBudget" value="1" class="h-5 w-5">{{ item.estimatedPrice is null ? 'Одобрить без цены' : 'Разрешить перерасход' }}</label>{% endif %}
+                                    <button class="mt-2 min-h-11 w-full rounded-xl {{ decision == 'approved' ? 'bg-emerald-600 text-white' : 'border border-rose-300 text-rose-700' }} px-3 py-2 font-bold">{{ label }}</button>
+                                </form>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </article>
+            {% endfor %}
+        </section>
+    {% endif %}
+
+    {% if purchaseRequest.items|length == 1 and purchaseRequest.decisionComment %}
         <section class="mt-4 rounded-2xl border {{ purchaseRequest.status == 'approved' ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50' }} p-5">
             <h2 class="text-sm font-bold {{ purchaseRequest.status == 'approved' ? 'text-emerald-900' : 'text-rose-900' }}">Комментарий родителя</h2>
             <p class="mt-2 whitespace-pre-line text-sm leading-6 {{ purchaseRequest.status == 'approved' ? 'text-emerald-800' : 'text-rose-800' }}">{{ purchaseRequest.decisionComment }}</p>
@@ -68,7 +104,7 @@
         </section>
     {% endif %}
 
-    {% if isParent and isPending %}
+    {% if purchaseRequest.items|length == 1 and isParent and isPending %}
         <section class="mt-5" aria-labelledby="parent-decision-title">
             <h2 id="parent-decision-title" class="text-lg font-black text-slate-950">Ваше решение</h2>
             <p class="mt-1 text-sm text-slate-500">Комментарий поможет объяснить решение ребёнку.</p>
@@ -115,7 +151,7 @@
                 </form>
             </div>
         </section>
-    {% elseif not isParent and isPending %}
+    {% elseif purchaseRequest.items|length == 1 and not isParent and isPending %}
         <div class="mt-5 rounded-2xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">
             Запрос отправлен родителю. Здесь появится решение и комментарий.
         </div>
