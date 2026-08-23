@@ -25,7 +25,7 @@ async function login(page: Page, actor: Actor): Promise<void> {
 }
 
 async function loggedPage(browser: Browser, actor: Actor): Promise<Page> {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ serviceWorkers: 'block' });
   await context.addInitScript(() => localStorage.setItem('cookieConsent', '1'));
   const page = await context.newPage();
   await login(page, actor);

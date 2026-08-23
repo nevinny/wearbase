@@ -5,7 +5,7 @@ const databaseUrl = 'sqlite:///'+path.resolve(__dirname, 'var/e2e-family.db');
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: '11-family-purchase-flow.spec.ts',
+  testMatch: ['11-family-purchase-flow.spec.ts', '12-family-wardrobe-members.spec.ts'],
   fullyParallel: false,
   workers: 1,
   retries: 0,

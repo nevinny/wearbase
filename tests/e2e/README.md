@@ -50,6 +50,7 @@ npx playwright show-report
 | `04-checkout-shipping.spec.ts`| API доставки по странам, форма чекаута       |
 | `05-brands-catalog.spec.ts`   | Каталог брендов, мультиязычные маршруты      |
 | `11-family-purchase-flow.spec.ts` | 8 сценариев: инвайт, анкета, запросы, уведомления, решения, бюджет и IDOR |
+| `12-family-wardrobe-members.spec.ts` | 7 сценариев: CRUD вещи, приглашения ребёнка/супруга и чтение уведомлений |
 
 ## Структура
 
