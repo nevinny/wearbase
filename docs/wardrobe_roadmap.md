@@ -47,6 +47,12 @@ activation-петли: выбрать свой или доступный дет�
 family-aware `/account/wardrobe/media/*` с `private, no-store`; старые файлы читаются контроллером
 в переходный период, прямой Apache-доступ к legacy-каталогам закрыт.
 
+**Надёжность v2.1:** повторная загрузка тех же байтов определяется по SHA-256 до создания draft;
+на пользователя действует отдельный upload rate limit. Worker атомарно забирает записи через
+DB lease (`processing`, `workerId`, `leaseUntil`, `attempts`), возвращает временные сбои в очередь
+и после трёх попыток показывает управляемую ошибку. В `ai_raw` сохраняется только минимальная
+диагностика модели/confidence, без полного ответа vision-провайдера.
+
 **Реализовано (v1):** сущность-staging `WardrobeItemDraft` (отдельная таблица, не трогает
 `WardrobeItem`), multi-upload `/account/wardrobe/ingest/upload` (dropzone) → pending-черновики →
 фоновая команда `app:wardrobe:ingest-drafts` (в `scheduled_command`, каждые 2 мин, распознаёт

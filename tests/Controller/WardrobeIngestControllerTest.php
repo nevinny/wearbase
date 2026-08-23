@@ -179,6 +179,35 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $this->assertArrayNotHasKey('reviewUrl', $data);
     }
 
+    public function testRepeatedPhotoUploadReturnsExistingDraftWithoutDuplicate(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $countBefore = $em->getRepository(WardrobeItemDraft::class)->count(['user' => $user]);
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+        $firstPath = $this->makeTempImage();
+        $retryPath = sys_get_temp_dir().'/wardrobe_ingest_retry_'.uniqid().'.png';
+        copy($firstPath, $retryPath);
+        $this->tmpFiles[] = $retryPath;
+
+        $client->request('POST', '/account/wardrobe/ingest/upload', [], [
+            'photos' => [new UploadedFile($firstPath, 'same.png', 'image/png', null, true)],
+        ], ['HTTP_X_CSRF_TOKEN' => $token]);
+        $this->assertResponseIsSuccessful();
+
+        $client->request('POST', '/account/wardrobe/ingest/upload', [], [
+            'photos' => [new UploadedFile($retryPath, 'same-retry.png', 'image/png', null, true)],
+        ], ['HTTP_X_CSRF_TOKEN' => $token]);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame(0, $data['uploaded']);
+        $this->assertCount(1, $data['duplicates']);
+        $this->assertSame($countBefore + 1, $em->getRepository(WardrobeItemDraft::class)->count(['user' => $user]));
+    }
+
     public function testStatusEndpointReturnsCounts(): void
     {
         $client = static::createClient();
@@ -491,6 +520,8 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
     {
         $path = sys_get_temp_dir() . '/wardrobe_ingest_test_' . uniqid() . '.png';
         $im   = imagecreatetruecolor(4, 4);
+        $color = imagecolorallocate($im, random_int(1, 255), random_int(1, 255), random_int(1, 255));
+        imagefill($im, 0, 0, $color);
         imagepng($im, $path);
         imagedestroy($im);
         $this->tmpFiles[] = $path;

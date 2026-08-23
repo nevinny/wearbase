@@ -2031,8 +2031,9 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [x] Перенести новые wardrobe/draft photos из web-root и выдавать через авторизованный media
   controller с `private, no-store`, `nosniff` и family scope.
 - [x] Связать завершение onboarding с реакцией на первый образ и проверить owner контекст образа.
-- [ ] Добавить file hash + client idempotency key для повторной multipart-загрузки одной фотографии.
-- [ ] Добавить worker lease/retry (`processing`, `leaseUntil`, `attempts`) для multi-host и починить
+- [x] Добавить SHA-256 content hash и идемпотентный ответ для повторной multipart-загрузки фото;
+  дубликат не создаёт новый draft и не расходует vision.
+- [x] Добавить worker lease/retry (`processing`, `leaseUntil`, `attempts`) для multi-host и починить
   batch-filter-before-limit в фоновой команде.
 - [ ] Добавить consent/retention: очистка abandoned drafts и диагностического `ai_raw`, EXIF strip,
   лимит хранилища и rate limit стоимости vision.

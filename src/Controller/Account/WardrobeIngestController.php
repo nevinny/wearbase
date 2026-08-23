@@ -10,6 +10,7 @@ use App\Repository\WardrobeItemDraftRepository;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeDraftPromotionService;
 use App\Service\Wardrobe\WardrobeOnboardingService;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -18,6 +19,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Uid\Uuid;
 use Symfony\Component\Validator\Constraints\Image;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -42,6 +44,8 @@ class WardrobeIngestController extends AbstractController
         Request $request,
         EntityManagerInterface $em,
         ValidatorInterface $validator,
+        WardrobeItemDraftRepository $drafts,
+        RateLimiterFactory $wardrobeIngestLimiter,
     ): JsonResponse {
         if ($fail = $this->csrfOrFail($request)) {
             return $fail;
@@ -49,6 +53,9 @@ class WardrobeIngestController extends AbstractController
 
         /** @var User $actor */
         $actor = $this->getUser();
+        if (!$wardrobeIngestLimiter->create((string) $actor->getId())->consume()->isAccepted()) {
+            return $this->json(['ok' => false, 'error' => 'Слишком много загрузок — попробуйте позже'], 429);
+        }
         $memberId = $request->request->getInt('member') ?: $request->query->getInt('member');
         $subject = $this->familyService->resolveMember($actor, $memberId > 0 ? $memberId : null);
 
@@ -67,7 +74,9 @@ class WardrobeIngestController extends AbstractController
         ]);
 
         $acceptedFiles = [];
+        $duplicates = [];
         $rejected = [];
+        $seenHashes = [];
 
         foreach ($files as $file) {
             if (!$file) {
@@ -81,10 +90,29 @@ class WardrobeIngestController extends AbstractController
                 continue;
             }
 
-            $acceptedFiles[] = $file;
+            $hash = hash_file('sha256', $file->getPathname());
+            $duplicate = is_string($hash) ? $drafts->findDuplicate($subject, $hash) : null;
+            if (!is_string($hash) || isset($seenHashes[$hash]) || $duplicate !== null) {
+                $duplicates[] = ['name' => $name, 'draftId' => $duplicate?->getId()];
+                continue;
+            }
+
+            $seenHashes[$hash] = true;
+            $acceptedFiles[] = ['file' => $file, 'hash' => $hash];
         }
 
         if ($acceptedFiles === []) {
+            if ($duplicates !== []) {
+                return $this->json([
+                    'ok' => true,
+                    'uploaded' => 0,
+                    'duplicates' => $duplicates,
+                    'rejected' => $rejected,
+                    'reviewUrl' => $this->generateUrl('account_wardrobe_index', $subject->getId() === $actor->getId()
+                        ? []
+                        : ['member' => $subject->getId()]),
+                ]);
+            }
             return $this->json([
                 'ok' => false,
                 'error' => $rejected === [] ? 'Выберите хотя бы одну фотографию' : 'Не удалось принять ни одной фотографии',
@@ -95,20 +123,41 @@ class WardrobeIngestController extends AbstractController
 
         $onboarding = $this->onboardingService->startOrResumeBatch($actor, $subject, Uuid::v4()->toRfc4122());
         $batchId = $onboarding->getActiveBatchId();
-        foreach ($acceptedFiles as $file) {
-            $draft = (new WardrobeItemDraft())
-                ->setProfileSubject($subject)
-                ->setActor($actor)
-                ->setBatchId($batchId);
-            $draft->setPhotoFile($file);
-            $em->persist($draft);
-        }
-        $em->flush();
+        $uploaded = $em->wrapInTransaction(function (EntityManagerInterface $em) use (
+            $acceptedFiles,
+            $actor,
+            $subject,
+            $batchId,
+            $drafts,
+            &$duplicates,
+        ): int {
+            $em->lock($subject, LockMode::PESSIMISTIC_WRITE);
+            $created = 0;
+            foreach ($acceptedFiles as $acceptedFile) {
+                $duplicate = $drafts->findDuplicate($subject, $acceptedFile['hash']);
+                if ($duplicate !== null) {
+                    $duplicates[] = ['name' => $acceptedFile['file']->getClientOriginalName(), 'draftId' => $duplicate->getId()];
+                    continue;
+                }
+                $draft = (new WardrobeItemDraft())
+                    ->setProfileSubject($subject)
+                    ->setActor($actor)
+                    ->setBatchId($batchId)
+                    ->setContentHash($acceptedFile['hash']);
+                $draft->setPhotoFile($acceptedFile['file']);
+                $em->persist($draft);
+                $created++;
+            }
+            $em->flush();
+
+            return $created;
+        });
 
         return $this->json([
             'ok' => true,
             'batch' => $batchId,
-            'uploaded' => count($acceptedFiles),
+            'uploaded' => $uploaded,
+            'duplicates' => $duplicates,
             'rejected' => $rejected,
             'reviewUrl' => $this->generateUrl('account_wardrobe_ingest_review', [
                 'batch' => $batchId,
