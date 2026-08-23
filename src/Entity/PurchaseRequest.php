@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\PurchaseRequestRepository;
+use App\ValueObject\MoneyAmount;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
@@ -41,6 +42,9 @@ class PurchaseRequest
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $comment = null;
+
+    #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
+    private ?string $estimatedPrice = null;
 
     #[ORM\Column(length: 12)]
     private string $status = self::STATUS_PENDING;
@@ -94,7 +98,20 @@ class PurchaseRequest
         return $this;
     }
     public function getComment(): ?string { return $this->comment; }
-    public function setComment(?string $comment): static { $this->comment = $comment; return $this; }
+    public function setComment(?string $comment): static
+    {
+        if ($comment !== null && mb_strlen($comment) > 2000) {
+            throw new \InvalidArgumentException('Комментарий не должен превышать 2000 символов');
+        }
+        $this->comment = $comment;
+        return $this;
+    }
+    public function getEstimatedPrice(): ?string { return $this->estimatedPrice; }
+    public function setEstimatedPrice(?string $estimatedPrice): static
+    {
+        $this->estimatedPrice = $estimatedPrice === null ? null : MoneyAmount::normalize($estimatedPrice);
+        return $this;
+    }
     public function getStatus(): string { return $this->status; }
     public function getDecidedBy(): ?User { return $this->decidedBy; }
     public function getDecisionComment(): ?string { return $this->decisionComment; }
@@ -112,6 +129,9 @@ class PurchaseRequest
         }
         if ($status === self::STATUS_REJECTED && trim((string) $comment) === '') {
             throw new \DomainException('Укажите причину отказа');
+        }
+        if ($comment !== null && mb_strlen($comment) > 2000) {
+            throw new \InvalidArgumentException('Комментарий не должен превышать 2000 символов');
         }
 
         $this->status = $status;

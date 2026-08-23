@@ -24,6 +24,8 @@ class NotificationController extends AbstractController
         Notification::TYPE_ORDER_SHIPPED => 'Заказ отправлен',
         Notification::TYPE_ORDER_DELIVERED => 'Заказ доставлен',
         Notification::TYPE_SYSTEM => 'Системные',
+        Notification::TYPE_PURCHASE_REQUEST_NEW => 'Новый запрос на покупку',
+        Notification::TYPE_PURCHASE_REQUEST_DECIDED => 'Решение по покупке',
     ];
 
     private const CHANNELS = ['channelEmail', 'channelInapp'];
@@ -89,15 +91,20 @@ class NotificationController extends AbstractController
         ]);
     }
 
-    #[Route('/mark-read/{id}', name: 'mark_read')]
+    #[Route('/mark-read/{id}', name: 'mark_read', requirements: ['id' => '\d+'], methods: ['POST'])]
     public function markRead(
         int $id,
+        Request $request,
         NotificationRepository $repo,
         EntityManagerInterface $em,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
         $notification = $repo->find($id);
+
+        if (!$this->isCsrfTokenValid('notification_mark_read_'.$id, $request->request->getString('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный CSRF-токен');
+        }
 
         if ($notification && $notification->getRecipient() === $user) {
             $notification->markAsRead();
@@ -111,9 +118,14 @@ class NotificationController extends AbstractController
     public function markAllRead(
         NotificationRepository $repo,
         EntityManagerInterface $em,
+        Request $request,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
+
+        if (!$this->isCsrfTokenValid('notification_mark_all_read', $request->request->getString('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный CSRF-токен');
+        }
 
         foreach ($repo->findForUser($user) as $notification) {
             if (!$notification->isRead()) {

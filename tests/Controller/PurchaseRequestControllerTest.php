@@ -6,6 +6,9 @@ namespace App\Tests\Controller;
 
 use App\Entity\PurchaseRequest;
 use App\Entity\PurchaseRequestEvent;
+use App\Entity\Notification;
+use App\Entity\User;
+use App\Service\FamilyBudgetService;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -155,6 +158,268 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->purchaseRequests()->decide($parent, $purchaseRequest, PurchaseRequest::STATUS_REJECTED, 'Обсудим позже');
         $this->expectException(\DomainException::class);
         $this->purchaseRequests()->decide($parent, $purchaseRequest, PurchaseRequest::STATUS_APPROVED);
+    }
+
+    public function testRequestNotifiesParentAndDecisionNotifiesChild(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('notify-parent'));
+        $child = $this->families()->createChild($parent, 'Алиса');
+
+        $purchaseRequest = $this->purchaseRequests()->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/notice',
+            'Можно купить?',
+            '2500',
+        );
+
+        $parentNotification = $this->em()->getRepository(Notification::class)->findOneBy([
+            'recipient' => $parent,
+            'type' => Notification::TYPE_PURCHASE_REQUEST_NEW,
+        ]);
+        $this->assertNotNull($parentNotification);
+        $this->assertSame('/account/purchases/'.$purchaseRequest->getId(), $parentNotification->getData()['url']);
+
+        $this->purchaseRequests()->decide(
+            $parent,
+            $purchaseRequest,
+            PurchaseRequest::STATUS_APPROVED,
+            'Закажем',
+        );
+
+        $childNotification = $this->em()->getRepository(Notification::class)->findOneBy([
+            'recipient' => $child,
+            'type' => Notification::TYPE_PURCHASE_REQUEST_DECIDED,
+        ]);
+        $this->assertNotNull($childNotification);
+        $this->assertSame('Покупка одобрена', $childNotification->getTitle());
+    }
+
+    public function testRequestNotifiesBothParentsButNotCreatingActor(): void
+    {
+        $firstParent = UserFactory::withEmail(static::getContainer(), $this->email('notify-first-parent'));
+        $secondParent = UserFactory::withEmail(static::getContainer(), $this->email('notify-second-parent'));
+        $invite = $this->families()->createInvite($firstParent, User::FAMILY_ROLE_PARENT);
+        $this->families()->acceptInvite($secondParent, $invite);
+        $child = $this->families()->createChild($firstParent, 'Мила');
+
+        $this->purchaseRequests()->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/two-parents',
+            'Посмотрите вместе',
+            '1200',
+        );
+        $notifications = $this->em()->getRepository(Notification::class)->findBy([
+            'type' => Notification::TYPE_PURCHASE_REQUEST_NEW,
+        ]);
+        $recipientIds = array_map(
+            static fn (Notification $notification): ?int => $notification->getRecipient()?->getId(),
+            $notifications,
+        );
+        $this->assertContains($firstParent->getId(), $recipientIds);
+        $this->assertContains($secondParent->getId(), $recipientIds);
+        $this->assertNotContains($child->getId(), $recipientIds);
+
+        $this->purchaseRequests()->create(
+            $firstParent,
+            $child,
+            'https://shop.example.test/item/created-by-parent',
+            null,
+            '800',
+        );
+        $actorNotifications = $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $firstParent,
+            'type' => Notification::TYPE_PURCHASE_REQUEST_NEW,
+        ]);
+        $secondParentNotifications = $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $secondParent,
+            'type' => Notification::TYPE_PURCHASE_REQUEST_NEW,
+        ]);
+        $this->assertCount(1, $actorNotifications);
+        $this->assertCount(2, $secondParentNotifications);
+    }
+
+    public function testMonthlyBudgetRequiresExplicitOverspendApproval(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('budget-parent'));
+        $child = $this->families()->createChild($parent, 'Маша');
+        static::getContainer()->get(FamilyBudgetService::class)->setMonthlyLimit($parent, $child, '3000');
+        $purchaseRequest = $this->purchaseRequests()->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/expensive',
+            null,
+            '4500',
+        );
+
+        try {
+            $this->purchaseRequests()->decide(
+                $parent,
+                $purchaseRequest,
+                PurchaseRequest::STATUS_APPROVED,
+            );
+            $this->fail('Overspend must require explicit confirmation');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('превышает', $e->getMessage());
+        }
+        $this->assertSame(PurchaseRequest::STATUS_PENDING, $purchaseRequest->getStatus());
+
+        $this->purchaseRequests()->decide(
+            $parent,
+            $purchaseRequest,
+            PurchaseRequest::STATUS_APPROVED,
+            'Разрешаю исключение',
+            true,
+        );
+
+        $summary = static::getContainer()->get(FamilyBudgetService::class)->summary($child);
+        $this->assertSame('3000.00', $summary['limit']);
+        $this->assertSame('4500.00', $summary['approved']);
+        $this->assertSame('-1500.00', $summary['remaining']);
+        $event = $purchaseRequest->getEvents()->last();
+        $this->assertSame(PurchaseRequestEvent::TYPE_APPROVED_OVER_BUDGET, $event->getType());
+        $this->assertTrue($event->getMetadata()['override']);
+    }
+
+    public function testOnlyParentCanOpenBudgetScreen(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('budget-screen-parent'));
+        $child = $this->families()->createChild($parent, 'Лиза');
+
+        $client->loginUser($parent);
+        $client->request('GET', '/account/purchases/budget/manage');
+        $this->assertResponseIsSuccessful();
+
+        $client->loginUser($child);
+        $client->request('GET', '/account/purchases/budget/manage');
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    public function testParentCanSaveMonthlyBudgetThroughForm(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('budget-form-parent'));
+        $child = $this->families()->createChild($parent, 'Саша');
+        $client->loginUser($parent);
+
+        $crawler = $client->request('GET', '/account/purchases/budget/manage');
+        $form = $crawler->selectButton('Сохранить бюджет')->form([
+            'family_budget_form[subject]' => '0',
+            'family_budget_form[monthlyLimit]' => '12000',
+        ]);
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/purchases');
+        $summary = static::getContainer()->get(FamilyBudgetService::class)->summary($child);
+        $this->assertSame('12000.00', $summary['limit']);
+        $this->assertSame('12000.00', $summary['remaining']);
+    }
+
+    public function testBudgetRequiresExplicitApprovalWhenPriceIsUnknown(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('unknown-price-parent'));
+        $child = $this->families()->createChild($parent, 'Даша');
+        static::getContainer()->get(FamilyBudgetService::class)->setMonthlyLimit($parent, $child, '5000');
+        $purchaseRequest = $this->purchaseRequests()->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/unknown-price',
+            null,
+        );
+
+        try {
+            $this->purchaseRequests()->decide($parent, $purchaseRequest, PurchaseRequest::STATUS_APPROVED);
+            $this->fail('Unknown price must require explicit confirmation');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('Укажите цену', $exception->getMessage());
+        }
+
+        $this->purchaseRequests()->decide(
+            $parent,
+            $purchaseRequest,
+            PurchaseRequest::STATUS_APPROVED,
+            'Цена появится при оформлении',
+            true,
+        );
+        $event = $purchaseRequest->getEvents()->last();
+        $this->assertSame(PurchaseRequestEvent::TYPE_APPROVED_NO_PRICE, $event->getType());
+        $this->assertSame('unknown_price', $event->getMetadata()['reason']);
+        $this->assertTrue($event->getMetadata()['override']);
+    }
+
+    public function testBudgetUsesExactKopecks(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('exact-budget-parent'));
+        $child = $this->families()->createChild($parent, 'Лида');
+        static::getContainer()->get(FamilyBudgetService::class)->setMonthlyLimit($parent, $child, '1.00');
+        foreach (['0.01', '0.02'] as $index => $price) {
+            $request = $this->purchaseRequests()->create(
+                $child,
+                $child,
+                'https://shop.example.test/item/kopeck-'.$index,
+                null,
+                $price,
+            );
+            $this->purchaseRequests()->decide($parent, $request, PurchaseRequest::STATUS_APPROVED);
+        }
+
+        $summary = static::getContainer()->get(FamilyBudgetService::class)->summary($child);
+        $this->assertSame('0.03', $summary['approved']);
+        $this->assertSame('0.97', $summary['remaining']);
+    }
+
+    public function testNotificationRendersSafeRequestLink(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('notification-link-parent'));
+        $child = $this->families()->createChild($parent, 'Вера');
+        $purchaseRequest = $this->purchaseRequests()->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/notification-link',
+            null,
+            '1900',
+        );
+        $client->loginUser($parent);
+
+        $client->request('GET', '/account/notifications');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists(sprintf(
+            'a[href="/account/purchases/%d"]',
+            $purchaseRequest->getId(),
+        ));
+    }
+
+    public function testFormerFamilyCannotReadOrDecideAfterChildMovesFamily(): void
+    {
+        $client = static::createClient();
+        $oldParent = UserFactory::withEmail(static::getContainer(), $this->email('old-parent'));
+        $child = $this->families()->createChild($oldParent, 'Нина');
+        $purchaseRequest = $this->purchaseRequests()->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/old-family',
+            null,
+            '1000',
+        );
+        $newParent = UserFactory::withEmail(static::getContainer(), $this->email('new-parent'));
+        $newFamilyChild = $this->families()->createChild($newParent, 'Временный профиль');
+        $child->setFamily($newFamilyChild->getFamily());
+        $this->em()->flush();
+
+        $client->loginUser($oldParent);
+        $client->request('GET', '/account/purchases/'.$purchaseRequest->getId());
+        $this->assertResponseStatusCodeSame(403);
+
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AccessDeniedException::class);
+        $this->purchaseRequests()->decide(
+            $oldParent,
+            $purchaseRequest,
+            PurchaseRequest::STATUS_APPROVED,
+        );
     }
 
     private function families(): FamilyService
