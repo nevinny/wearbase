@@ -1,0 +1,40 @@
+{% set canFit = actor.id == purchaseRequest.subject.id or actor.familyParent %}
+{% if item.status == 'approved' and actor.familyParent %}
+    <form method="post" action="{{ path('account_purchase_fulfillment', {requestId: purchaseRequest.id, itemId: item.id}) }}" class="mt-4 rounded-xl bg-sky-50 p-3">
+        <input type="hidden" name="_token" value="{{ csrf_token('purchase_fulfillment_' ~ item.id) }}"><input type="hidden" name="action" value="ordered">
+        <label class="block text-sm font-bold text-sky-950" for="actual-price-{{ item.id }}">Фактическая цена <span class="font-normal">(необязательно)</span></label>
+        <input id="actual-price-{{ item.id }}" name="actualPrice" type="number" min="0" step="0.01" inputmode="decimal" value="{{ item.estimatedPrice }}" class="mt-2 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-base">
+        <button class="mt-2 min-h-11 w-full rounded-xl bg-sky-600 px-3 font-bold text-white">Отметить «Заказано»</button>
+    </form>
+{% elseif item.status == 'ordered' and actor.familyParent %}
+    <form method="post" action="{{ path('account_purchase_fulfillment', {requestId: purchaseRequest.id, itemId: item.id}) }}" class="mt-4">
+        <input type="hidden" name="_token" value="{{ csrf_token('purchase_fulfillment_' ~ item.id) }}"><input type="hidden" name="action" value="delivered">
+        <button class="min-h-11 w-full rounded-xl bg-violet-600 px-3 font-bold text-white">Получено, можно примерить</button>
+    </form>
+{% elseif item.status == 'delivered' and canFit %}
+    <form method="post" action="{{ path('account_purchase_fulfillment', {requestId: purchaseRequest.id, itemId: item.id}) }}" class="mt-4 rounded-xl bg-violet-50 p-3">
+        <input type="hidden" name="_token" value="{{ csrf_token('purchase_fulfillment_' ~ item.id) }}"><input type="hidden" name="action" value="fitting">
+        <p class="text-sm font-bold text-violet-950">Как прошла примерка?</p>
+        <select name="outcome" required class="mt-2 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 text-base">
+            <option value="bought">Выкупили</option><option value="refused">Отказались</option><option value="different_size">Нужен другой размер</option><option value="pending">Нужно подумать</option>
+        </select>
+        <div class="mt-2 grid grid-cols-2 gap-2">
+            <input name="triedSize" maxlength="50" placeholder="Примеренный размер" class="min-h-11 rounded-xl border border-violet-200 px-3 text-base">
+            <select name="sizing" class="min-h-11 rounded-xl border border-violet-200 bg-white px-3 text-base"><option value="">Размерность</option><option value="small">Маломерит</option><option value="true_to_size">В размер</option><option value="large">Большемерит</option></select>
+        </div>
+        <details class="mt-2 rounded-xl bg-white p-3"><summary class="cursor-pointer text-sm font-semibold text-violet-900">Что не подошло</summary><div class="mt-2 grid grid-cols-2 gap-2 text-sm">{% for value, label in {shoulders: 'Плечи', chest: 'Грудь', waist: 'Талия', hips: 'Бёдра', sleeves: 'Рукава', length: 'Длина', shoe_last: 'Колодка'} %}<label class="flex min-h-11 items-center gap-2"><input type="checkbox" name="fitIssues[]" value="{{ value }}" class="h-5 w-5">{{ label }}</label>{% endfor %}</div></details>
+        <textarea name="comment" maxlength="2000" rows="2" placeholder="Как села, материал, цвет вживую" class="mt-2 w-full rounded-xl border border-violet-200 p-3 text-base"></textarea>
+        <button class="mt-2 min-h-11 w-full rounded-xl bg-violet-600 px-3 font-bold text-white">Сохранить примерку</button>
+    </form>
+{% elseif item.status == 'bought' and actor.familyParent %}
+    <form method="post" action="{{ path('account_purchase_fulfillment', {requestId: purchaseRequest.id, itemId: item.id}) }}" class="mt-4">
+        <input type="hidden" name="_token" value="{{ csrf_token('purchase_fulfillment_' ~ item.id) }}"><input type="hidden" name="action" value="returned">
+        <button class="min-h-11 w-full rounded-xl border border-amber-300 px-3 font-bold text-amber-800">Отметить возврат</button>
+    </form>
+{% endif %}
+
+{% if item.fittingFeedback %}
+    <div class="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+        <strong>Примерка:</strong> {{ item.fittingFeedback.outcome }}{% if item.fittingFeedback.triedSize %} · размер {{ item.fittingFeedback.triedSize }}{% endif %}{% if item.fittingFeedback.comment %}<p class="mt-1">{{ item.fittingFeedback.comment }}</p>{% endif %}
+    </div>
+{% endif %}
