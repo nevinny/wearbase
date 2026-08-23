@@ -10,10 +10,12 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeTransfer;
+use App\Entity\WardrobeItemLifecycleEvent;
 use App\Repository\WardrobeItemRepository;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
+use App\Service\Wardrobe\WardrobeItemLifecycleService;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -1597,6 +1599,66 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         /** @var WardrobeItem $reloadedItem */
         $reloadedItem = $em->getRepository(WardrobeItem::class)->find($itemId);
         $this->assertSame(WardrobeItem::WEAR_GIVEN_AWAY, $reloadedItem->getWearStatus());
+    }
+
+    #[DataProvider('careTypeProvider')]
+    public function testCareAndRepairLifecycle(string $type): void
+    {
+        $user = UserFactory::withEmail(static::getContainer(), 'harness-care-'.str_replace('_', '-', $type).'@test.local');
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $item = (new WardrobeItem())->setUser($user)->setOriginalOwner($user)->setItemNo(1)->setName('Вещь для ухода');
+        $em->persist($item);
+        $em->flush();
+        /** @var WardrobeItemLifecycleService $service */
+        $service = static::getContainer()->get(WardrobeItemLifecycleService::class);
+
+        $event = $service->sendToCare($user, $user, $item, $type, 'Мастерская', '750', 'Проверить качество');
+        $this->assertSame(WardrobeItem::ITEM_REPAIR, $item->getItemStatus());
+        $this->assertSame(WardrobeItemLifecycleEvent::STATUS_OPEN, $event->getStatus());
+        $this->assertSame('750.00', $event->getCost());
+
+        $service->completeCare($user, $user, $event);
+        $this->assertSame(WardrobeItemLifecycleEvent::STATUS_COMPLETED, $event->getStatus());
+        $this->assertSame(WardrobeItem::ITEM_ACTIVE, $item->getItemStatus());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function careTypeProvider(): iterable
+    {
+        yield 'dry cleaning' => [WardrobeItemLifecycleEvent::TYPE_DRY_CLEANING];
+        yield 'hemming' => [WardrobeItemLifecycleEvent::TYPE_REPAIR_HEM];
+        yield 'zipper' => [WardrobeItemLifecycleEvent::TYPE_REPAIR_ZIPPER];
+        yield 'sole' => [WardrobeItemLifecycleEvent::TYPE_REPAIR_SOLE];
+    }
+
+    public function testParentTransfersChildItemOutsideFamilyAndChildCannot(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-external-parent@test.local');
+        /** @var FamilyService $families */
+        $families = static::getContainer()->get(FamilyService::class);
+        $child = $families->createChild($parent, 'Лера');
+        $item = (new WardrobeItem())->setUser($child)->setOriginalOwner($child)->setItemNo(1)->setName('Куртка');
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $em->persist($item);
+        $em->flush();
+        /** @var WardrobeItemLifecycleService $service */
+        $service = static::getContainer()->get(WardrobeItemLifecycleService::class);
+
+        try {
+            $service->transferOutside($child, $child, $item, 'Благотворительный фонд', null);
+            $this->fail('Minor must not transfer outside without parent');
+        } catch (\Symfony\Component\Security\Core\Exception\AccessDeniedException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $event = $service->transferOutside($parent, $child, $item, 'Благотворительный фонд', 'В хорошем состоянии');
+        $this->assertSame(WardrobeItem::ITEM_DONATED, $item->getItemStatus());
+        $this->assertSame(WardrobeItem::WEAR_GIVEN_AWAY, $item->getWearStatus());
+        $this->assertSame(WardrobeItemLifecycleEvent::STATUS_COMPLETED, $event->getStatus());
+        $this->assertSame($parent->getId(), $event->getActor()->getId());
+        $this->assertSame($child->getId(), $event->getProfileSubject()->getId());
     }
 
     // ── AI-подсказки по фото: перезапрос по item_id (уже сохранённая вещь) ────
