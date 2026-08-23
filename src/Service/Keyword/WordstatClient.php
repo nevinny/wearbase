@@ -22,6 +22,7 @@ class WordstatClient implements KeywordProviderInterface
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly string $apiKey,
+        private readonly ?\App\Service\WordstatMeter $meter = null,
     ) {
     }
 
@@ -72,6 +73,10 @@ class WordstatClient implements KeywordProviderInterface
             if ($status >= 400) {
                 return [];
             }
+            // Учёт расхода: считаем только состоявшийся запрос. Отбитые по квоте (429) и по
+            // ключу (401/403) выше уже вышли исключением и не тарифицируются; прочие 4xx
+            // намеренно не считаем — лучше недоучесть, чем завысить.
+            $this->meter?->record();
             $data = json_decode($body, true) ?: [];
         } catch (HttpExceptionInterface) {
             return [];
