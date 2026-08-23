@@ -208,6 +208,38 @@
         </div>
         {% endif %}
 
+        {# ── Уход и ремонт ── #}
+        {% if mayManage and item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE') %}
+        <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+            <h2 class="mb-2 text-sm font-bold">Уход и ремонт</h2>
+            <p class="mb-4 text-xs text-gray-500">Химчистка, подшив, молния или подошва останутся в истории вещи.</p>
+            <form method="post" action="{{ path('account_wardrobe_lifecycle_create', {id: item.id}|merge(memberParam)) }}" class="grid grid-cols-12 gap-3">
+                <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_lifecycle_' ~ item.id) }}">
+                <select name="type" required class="col-span-12 min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm md:col-span-6">
+                    <option value="dry_cleaning">Химчистка</option><option value="cleaning">Чистка/стирка</option><option value="repair_hem">Подшив</option><option value="repair_zipper">Ремонт молнии</option><option value="repair_sole">Ремонт подошвы</option><option value="repair_other">Другой ремонт</option>
+                </select>
+                <input name="provider" maxlength="255" placeholder="Ателье или химчистка" class="col-span-12 min-h-11 rounded-xl border border-gray-200 px-3 text-sm md:col-span-6">
+                <input name="cost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Стоимость" class="col-span-5 min-h-11 rounded-xl border border-gray-200 px-3 text-sm">
+                <input name="note" maxlength="2000" placeholder="Что нужно сделать" class="col-span-7 min-h-11 rounded-xl border border-gray-200 px-3 text-sm">
+                <button class="col-span-12 min-h-11 rounded-xl bg-gray-900 px-4 font-semibold text-white">Отправить</button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if lifecycleEvents is defined and lifecycleEvents|length > 0 %}
+        {% set lifecycleLabels = {dry_cleaning: 'Химчистка', cleaning: 'Чистка', repair_hem: 'Подшив', repair_zipper: 'Молния', repair_sole: 'Подошва', repair_other: 'Ремонт', transfer_external: 'Передача вне семьи'} %}
+        <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+            <h2 class="mb-4 text-sm font-bold">История ухода</h2>
+            <div class="space-y-3">
+                {% for event in lifecycleEvents %}<div class="rounded-xl bg-gray-50 p-3 text-sm">
+                    <div class="flex justify-between gap-3"><strong>{{ lifecycleLabels[event.type]|default(event.type) }}</strong><span class="text-gray-400">{{ event.createdAt|date('d.m.Y') }}</span></div>
+                    {% if event.provider %}<p class="mt-1 text-gray-600">{{ event.provider }}</p>{% endif %}{% if event.note %}<p class="mt-1 text-gray-500">{{ event.note }}</p>{% endif %}
+                    {% if event.status == 'open' %}<form method="post" action="{{ path('account_wardrobe_lifecycle_complete', {id: item.id, eventId: event.id}|merge(memberParam)) }}" class="mt-2"><input type="hidden" name="_token" value="{{ csrf_token('wardrobe_lifecycle_complete_' ~ event.id) }}"><button class="min-h-11 rounded-xl bg-emerald-600 px-4 font-semibold text-white">Готово, вернуть в гардероб</button></form>{% endif %}
+                </div>{% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         {# ── Передать вещь ── #}
         {% if transferTargets is defined and transferTargets|length > 0 %}
         <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
@@ -234,6 +266,17 @@
                     <button type="submit"
                             class="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Передать</button>
                 </div>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if mayManage and (currentMember.familyRole != constant('App\\Entity\\User::FAMILY_ROLE_CHILD') or app.user.familyParent) %}
+        <div class="mb-4 rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
+            <h2 class="mb-2 text-sm font-bold">Передать вне семьи</h2>
+            <form method="post" action="{{ path('account_wardrobe_lifecycle_create', {id: item.id}|merge(memberParam)) }}" onsubmit="return confirm('Вещь исчезнет из активного гардероба. Продолжить?')" class="grid gap-3 md:grid-cols-2">
+                <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_lifecycle_' ~ item.id) }}"><input type="hidden" name="type" value="transfer_external">
+                <input name="provider" maxlength="255" placeholder="Кому или куда" class="min-h-11 rounded-xl border border-gray-200 px-3 text-sm"><input name="note" maxlength="2000" placeholder="Заметка" class="min-h-11 rounded-xl border border-gray-200 px-3 text-sm">
+                <button class="min-h-11 rounded-xl border border-amber-300 px-4 font-semibold text-amber-800 md:col-span-2">Передать наружу</button>
             </form>
         </div>
         {% endif %}

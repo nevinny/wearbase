@@ -13,6 +13,7 @@ use App\Entity\WardrobeTransfer;
 use App\Form\Account\WardrobeItemFormType;
 use App\Repository\WardrobeItemRepository;
 use App\Repository\WardrobeTransferRepository;
+use App\Repository\WardrobeItemLifecycleEventRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
@@ -435,6 +436,7 @@ class WardrobeController extends AbstractController
         Request $request,
         WardrobeItemRepository $repo,
         WardrobeTransferRepository $transferRepo,
+        WardrobeItemLifecycleEventRepository $lifecycleEvents,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
@@ -458,6 +460,7 @@ class WardrobeController extends AbstractController
         return $this->render('account/wardrobe/show.html.twig', [
             'item'            => $item,
             'transfers'       => $transferRepo->findForItem($item),
+            'lifecycleEvents' => $lifecycleEvents->findForItem($item),
             'transferTargets' => $transferTargets,
             'canManage'       => $this->familyService->canManage($user, $currentMember),
             'currentMember'   => $currentMember,
