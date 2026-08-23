@@ -35,4 +35,38 @@ class PurchaseRequestRepository extends ServiceEntityRepository
 
         return $qb->getQuery()->getResult();
     }
+
+    public function approvedAmountForMonth(User $subject, \DateTimeImmutable $month): string
+    {
+        $from = $month->modify('first day of this month')->setTime(0, 0);
+        $to = $from->modify('first day of next month');
+
+        return (string) $this->createQueryBuilder('request')
+            ->select('COALESCE(SUM(request.estimatedPrice), 0)')
+            ->andWhere('request.subject = :subject')
+            ->andWhere('request.status = :status')
+            ->andWhere('request.decidedAt >= :from AND request.decidedAt < :to')
+            ->setParameter('subject', $subject)
+            ->setParameter('status', PurchaseRequest::STATUS_APPROVED)
+            ->setParameter('from', $from)
+            ->setParameter('to', $to)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    public function countPendingVisibleTo(User $actor): int
+    {
+        $qb = $this->createQueryBuilder('request')
+            ->select('COUNT(request.id)')
+            ->andWhere('request.status = :status')
+            ->setParameter('status', PurchaseRequest::STATUS_PENDING);
+
+        if ($actor->isFamilyParent() && $actor->getFamily() !== null) {
+            $qb->andWhere('request.family = :family')->setParameter('family', $actor->getFamily());
+        } else {
+            $qb->andWhere('request.subject = :actor')->setParameter('actor', $actor);
+        }
+
+        return (int) $qb->getQuery()->getSingleScalarResult();
+    }
 }

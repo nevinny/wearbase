@@ -7,7 +7,9 @@ namespace App\Controller\Account;
 use App\Entity\PurchaseRequest;
 use App\Entity\User;
 use App\Form\Account\PurchaseRequestFormType;
+use App\Form\Account\FamilyBudgetFormType;
 use App\Repository\PurchaseRequestRepository;
+use App\Service\FamilyBudgetService;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -19,14 +21,29 @@ use Symfony\Component\Routing\Attribute\Route;
 class PurchaseRequestController extends AbstractController
 {
     #[Route('', name: 'index', methods: ['GET'])]
-    public function index(PurchaseRequestRepository $requests): Response
+    public function index(
+        PurchaseRequestRepository $requests,
+        FamilyBudgetService $budgets,
+        FamilyService $families,
+    ): Response
     {
         /** @var User $user */
         $user = $this->getUser();
 
+        $budgetSummaries = [];
+        if ($user->isFamilyParent()) {
+            foreach ($this->childSubjects($user, $families) as $subject) {
+                $budgetSummaries[] = [
+                    'subject' => $subject,
+                    'summary' => $budgets->summary($subject),
+                ];
+            }
+        }
+
         return $this->privateResponse($this->render('account/purchase/index.html.twig', [
             'requests' => $requests->findVisibleTo($user),
             'actor' => $user,
+            'budgetSummaries' => $budgetSummaries,
             'activeSection' => 'purchases',
         ]));
     }
@@ -39,11 +56,7 @@ class PurchaseRequestController extends AbstractController
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
-        $subjects = array_values(array_filter(
-            $families->membersFor($user),
-            static fn (User $member): bool => $member->getFamilyRole() === User::FAMILY_ROLE_CHILD
-                && ($user->isFamilyParent() || $member->getId() === $user->getId()),
-        ));
+        $subjects = $this->childSubjects($user, $families);
         if ($subjects === []) {
             throw $this->createAccessDeniedException('Сначала добавьте ребёнка в семью');
         }
@@ -57,6 +70,7 @@ class PurchaseRequestController extends AbstractController
                 $data['subject'],
                 $data['productUrl'],
                 $data['comment'],
+                $data['estimatedPrice'] !== null ? (string) $data['estimatedPrice'] : null,
             );
 
             return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $purchaseRequest->getId()]));
@@ -68,8 +82,12 @@ class PurchaseRequestController extends AbstractController
         ]));
     }
 
-    #[Route('/{id}', name: 'show', methods: ['GET'])]
-    public function show(PurchaseRequest $purchaseRequest, PurchaseRequestService $service): Response
+    #[Route('/{id}', name: 'show', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function show(
+        PurchaseRequest $purchaseRequest,
+        PurchaseRequestService $service,
+        FamilyBudgetService $budgets,
+    ): Response
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -78,11 +96,16 @@ class PurchaseRequestController extends AbstractController
         return $this->privateResponse($this->render('account/purchase/show.html.twig', [
             'purchaseRequest' => $purchaseRequest,
             'actor' => $user,
+            'budgetSummary' => $budgets->summary(
+                $purchaseRequest->getSubject(),
+                $purchaseRequest->getEstimatedPrice(),
+            ),
+            'budgetPriceUnknown' => $purchaseRequest->getEstimatedPrice() === null,
             'activeSection' => 'purchases',
         ]));
     }
 
-    #[Route('/{id}/decide', name: 'decide', methods: ['POST'])]
+    #[Route('/{id}/decide', name: 'decide', requirements: ['id' => '\d+'], methods: ['POST'])]
     public function decide(
         PurchaseRequest $purchaseRequest,
         Request $request,
@@ -103,14 +126,71 @@ class PurchaseRequestController extends AbstractController
             $this->addFlash('error', 'Укажите причину отказа');
             return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $purchaseRequest->getId()]));
         }
-        $service->decide($user, $purchaseRequest, $decision, $decisionComment);
+        try {
+            $service->decide(
+                $user,
+                $purchaseRequest,
+                $decision,
+                $decisionComment,
+                $request->request->getBoolean('allowOverBudget'),
+            );
+        } catch (\DomainException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
 
         return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $purchaseRequest->getId()]));
+    }
+
+    #[Route('/budget/manage', name: 'budget', methods: ['GET', 'POST'])]
+    public function budget(
+        Request $request,
+        FamilyService $families,
+        FamilyBudgetService $budgets,
+    ): Response {
+        /** @var User $user */
+        $user = $this->getUser();
+        if (!$user->isFamilyParent()) {
+            throw $this->createAccessDeniedException('Бюджет доступен только родителю');
+        }
+
+        $subjects = $this->childSubjects($user, $families);
+        $form = $this->createForm(FamilyBudgetFormType::class, null, ['subjects' => $subjects]);
+        $form->handleRequest($request);
+        if ($form->isSubmitted() && $form->isValid()) {
+            $data = $form->getData();
+            $budgets->setMonthlyLimit($user, $data['subject'], (string) $data['monthlyLimit']);
+            $this->addFlash('success', 'Месячный бюджет сохранён');
+
+            return $this->privateResponse($this->redirectToRoute('account_purchase_index'));
+        }
+
+        $summaries = [];
+        foreach ($subjects as $subject) {
+            $summaries[] = ['subject' => $subject, 'summary' => $budgets->summary($subject)];
+        }
+
+        return $this->privateResponse($this->render('account/purchase/budget.html.twig', [
+            'form' => $form,
+            'summaries' => $summaries,
+            'activeSection' => 'purchases',
+        ]));
     }
 
     private function privateResponse(Response $response): Response
     {
         $response->headers->set('Cache-Control', 'no-store, private');
         return $response;
+    }
+
+    /**
+     * @return User[]
+     */
+    private function childSubjects(User $actor, FamilyService $families): array
+    {
+        return array_values(array_filter(
+            $families->membersFor($actor),
+            static fn (User $member): bool => $member->getFamilyRole() === User::FAMILY_ROLE_CHILD
+                && ($actor->isFamilyParent() || $member->getId() === $actor->getId()),
+        ));
     }
 }
