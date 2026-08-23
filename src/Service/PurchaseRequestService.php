@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\PurchaseRequest;
 use App\Entity\PurchaseRequestEvent;
+use App\Entity\PurchaseRequestItem;
 use App\Entity\Notification;
 use App\Entity\User;
 use App\Notification\NotificationDispatcher;
@@ -28,11 +29,16 @@ class PurchaseRequestService
         string $productUrl,
         ?string $comment,
         ?string $estimatedPrice = null,
+        array $additionalUrls = [],
     ): PurchaseRequest
     {
         $this->assertCanCreate($actor, $subject);
 
-        return $this->transactional(function () use ($actor, $subject, $productUrl, $comment, $estimatedPrice): PurchaseRequest {
+        if (count($additionalUrls) > 9) {
+            throw new \InvalidArgumentException('В одном запросе можно до 10 вещей');
+        }
+
+        return $this->transactional(function () use ($actor, $subject, $productUrl, $comment, $estimatedPrice, $additionalUrls): PurchaseRequest {
             $request = (new PurchaseRequest())
                 ->setFamily($subject->getFamily())
                 ->setSubject($subject)
@@ -40,6 +46,10 @@ class PurchaseRequestService
                 ->setProductUrl($productUrl)
                 ->setEstimatedPrice($estimatedPrice)
                 ->setComment($comment !== null && trim($comment) !== '' ? trim($comment) : null);
+            $request->addItem(new PurchaseRequestItem($productUrl, $estimatedPrice));
+            foreach ($additionalUrls as $url) {
+                $request->addItem(new PurchaseRequestItem($url));
+            }
             $request->addEvent(new PurchaseRequestEvent($actor, PurchaseRequestEvent::TYPE_CREATED));
 
             $this->em->persist($request);
@@ -84,6 +94,21 @@ class PurchaseRequestService
         bool $allowOverBudget = false,
     ): void
     {
+        $item = $request->getItems()->first();
+        if (!$item instanceof PurchaseRequestItem) {
+            throw new \DomainException('В запросе нет позиции');
+        }
+        $this->decideItem($actor, $request, $item, $decision, $comment, $allowOverBudget);
+    }
+
+    public function decideItem(
+        User $actor,
+        PurchaseRequest $request,
+        PurchaseRequestItem $item,
+        string $decision,
+        ?string $comment = null,
+        bool $allowOverBudget = false,
+    ): void {
         $subject = $request->getSubject();
         if ($subject === null
             || !$actor->isFamilyParent()
@@ -95,18 +120,26 @@ class PurchaseRequestService
             throw new AccessDeniedException('Решение может принять только родитель этой семьи');
         }
 
-        $this->transactional(function () use ($actor, $request, $decision, $comment, $allowOverBudget): void {
+        if ($item->getPurchaseRequest()?->getId() !== $request->getId()) {
+            throw new AccessDeniedException('Позиция не принадлежит запросу');
+        }
+
+        $this->transactional(function () use ($actor, $request, $item, $decision, $comment, $allowOverBudget): void {
             $this->em->refresh($request, LockMode::PESSIMISTIC_WRITE);
+            foreach ($request->getItems() as $requestItem) {
+                $this->em->refresh($requestItem, $requestItem === $item ? LockMode::PESSIMISTIC_WRITE : null);
+            }
             $subject = $request->getSubject();
             \assert($subject instanceof User);
 
             $budget = $decision === PurchaseRequest::STATUS_APPROVED
-                ? $this->budgets->checkApproval($subject, $request->getEstimatedPrice(), $allowOverBudget)
+                ? $this->budgets->checkApproval($subject, $item->getEstimatedPrice(), $allowOverBudget)
                 : null;
-            $request->decide($decision, $actor, $comment);
+            $item->decide($decision, $actor, $comment);
+            $request->refreshDecisionFromItems();
             $overBudget = $budget !== null && $budget['exceeded'];
             $priceOverride = $decision === PurchaseRequest::STATUS_APPROVED
-                && $request->getEstimatedPrice() === null
+                && $item->getEstimatedPrice() === null
                 && $budget !== null
                 && $allowOverBudget;
             $eventType = $overBudget
@@ -120,11 +153,12 @@ class PurchaseRequestService
                 'limit' => (string) $budget['limit'],
                 'approvedBefore' => (string) $budget['approved'],
                 'remainingBefore' => (string) $budget['remaining'],
-                'requested' => $request->getEstimatedPrice() ?? 'unknown',
+                'requested' => $item->getEstimatedPrice() ?? 'unknown',
                 'override' => true,
                 'reason' => $priceOverride ? 'unknown_price' : 'over_budget',
             ] : null;
-            $request->addEvent(new PurchaseRequestEvent($actor, $eventType, $metadata));
+            $event = (new PurchaseRequestEvent($actor, $eventType, $metadata))->setItem($item);
+            $request->addEvent($event);
             $this->notifications->dispatchInApp(
                 $subject,
                 Notification::TYPE_PURCHASE_REQUEST_DECIDED,

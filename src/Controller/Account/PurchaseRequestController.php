@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Controller\Account;
 
 use App\Entity\PurchaseRequest;
+use App\Entity\PurchaseRequestItem;
 use App\Entity\User;
 use App\Form\Account\PurchaseRequestFormType;
 use App\Form\Account\FamilyBudgetFormType;
 use App\Repository\PurchaseRequestRepository;
+use App\Repository\PurchaseRequestItemRepository;
 use App\Service\FamilyBudgetService;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
@@ -71,6 +73,7 @@ class PurchaseRequestController extends AbstractController
                 $data['productUrl'],
                 $data['comment'],
                 $data['estimatedPrice'] !== null ? (string) $data['estimatedPrice'] : null,
+                array_values(array_filter(array_map('trim', preg_split('/\R/', (string) ($data['additionalUrls'] ?? '')) ?: []))),
             );
 
             return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $purchaseRequest->getId()]));
@@ -93,6 +96,14 @@ class PurchaseRequestController extends AbstractController
         $user = $this->getUser();
         $service->assertCanRead($user, $purchaseRequest);
 
+        $itemBudgetSummaries = [];
+        foreach ($purchaseRequest->getItems() as $item) {
+            $itemBudgetSummaries[$item->getId()] = $budgets->summary(
+                $purchaseRequest->getSubject(),
+                $item->getEstimatedPrice(),
+            );
+        }
+
         return $this->privateResponse($this->render('account/purchase/show.html.twig', [
             'purchaseRequest' => $purchaseRequest,
             'actor' => $user,
@@ -101,8 +112,46 @@ class PurchaseRequestController extends AbstractController
                 $purchaseRequest->getEstimatedPrice(),
             ),
             'budgetPriceUnknown' => $purchaseRequest->getEstimatedPrice() === null,
+            'itemBudgetSummaries' => $itemBudgetSummaries,
             'activeSection' => 'purchases',
         ]));
+    }
+
+    #[Route('/{requestId}/items/{itemId}/decide', name: 'decide_item', requirements: ['requestId' => '\d+', 'itemId' => '\d+'], methods: ['POST'])]
+    public function decideItem(
+        int $requestId,
+        int $itemId,
+        Request $request,
+        PurchaseRequestRepository $requests,
+        PurchaseRequestItemRepository $items,
+        PurchaseRequestService $service,
+    ): Response {
+        $purchaseRequest = $requests->find($requestId);
+        $item = $items->find($itemId);
+        if (!$purchaseRequest instanceof PurchaseRequest || !$item instanceof PurchaseRequestItem) {
+            throw $this->createNotFoundException();
+        }
+        if (!$this->isCsrfTokenValid('purchase_item_decide_'.$itemId, $request->request->getString('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный CSRF-токен');
+        }
+        $decision = $request->request->getString('decision');
+        if (!in_array($decision, [PurchaseRequest::STATUS_APPROVED, PurchaseRequest::STATUS_REJECTED], true)) {
+            throw $this->createNotFoundException('Недопустимое решение');
+        }
+        $comment = $request->request->getString('decisionComment');
+        if ($decision === PurchaseRequest::STATUS_REJECTED && trim($comment) === '') {
+            $this->addFlash('error', 'Укажите причину отказа');
+            return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $requestId]));
+        }
+        try {
+            /** @var User $user */
+            $user = $this->getUser();
+            $service->decideItem($user, $purchaseRequest, $item, $decision, $comment, $request->request->getBoolean('allowOverBudget'));
+        } catch (\DomainException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $requestId]));
     }
 
     #[Route('/{id}/decide', name: 'decide', requirements: ['id' => '\d+'], methods: ['POST'])]

@@ -27,6 +27,10 @@ class PurchaseRequestEvent
     private ?PurchaseRequest $purchaseRequest = null;
 
     #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
+    private ?PurchaseRequestItem $item = null;
+
+    #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false)]
     private ?User $actor = null;
 
@@ -55,6 +59,8 @@ class PurchaseRequestEvent
     public function getPurchaseRequest(): ?PurchaseRequest { return $this->purchaseRequest; }
     public function setPurchaseRequest(PurchaseRequest $purchaseRequest): static { $this->purchaseRequest = $purchaseRequest; return $this; }
     public function getActor(): ?User { return $this->actor; }
+    public function getItem(): ?PurchaseRequestItem { return $this->item; }
+    public function setItem(?PurchaseRequestItem $item): static { $this->item = $item; return $this; }
     public function getType(): string { return $this->type; }
     /** @return array<string, string|bool>|null */
     public function getMetadata(): ?array { return $this->metadata; }

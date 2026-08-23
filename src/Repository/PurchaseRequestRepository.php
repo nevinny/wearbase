@@ -42,10 +42,11 @@ class PurchaseRequestRepository extends ServiceEntityRepository
         $to = $from->modify('first day of next month');
 
         return (string) $this->createQueryBuilder('request')
-            ->select('COALESCE(SUM(request.estimatedPrice), 0)')
+            ->select('COALESCE(SUM(item.estimatedPrice), 0)')
+            ->join('request.items', 'item')
             ->andWhere('request.subject = :subject')
-            ->andWhere('request.status = :status')
-            ->andWhere('request.decidedAt >= :from AND request.decidedAt < :to')
+            ->andWhere('item.status = :status')
+            ->andWhere('item.decidedAt >= :from AND item.decidedAt < :to')
             ->setParameter('subject', $subject)
             ->setParameter('status', PurchaseRequest::STATUS_APPROVED)
             ->setParameter('from', $from)
