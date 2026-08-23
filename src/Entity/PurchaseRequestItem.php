@@ -17,6 +17,11 @@ class PurchaseRequestItem
     public const STATUS_PENDING = 'pending';
     public const STATUS_APPROVED = 'approved';
     public const STATUS_REJECTED = 'rejected';
+    public const STATUS_ORDERED = 'ordered';
+    public const STATUS_DELIVERED = 'delivered';
+    public const STATUS_BOUGHT = 'bought';
+    public const STATUS_REFUSED = 'refused';
+    public const STATUS_RETURNED = 'returned';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -33,6 +38,9 @@ class PurchaseRequestItem
     #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
     private ?string $estimatedPrice = null;
 
+    #[ORM\Column(type: Types::DECIMAL, precision: 12, scale: 2, nullable: true)]
+    private ?string $actualPrice = null;
+
     #[ORM\Column(length: 12)]
     private string $status = self::STATUS_PENDING;
 
@@ -44,6 +52,15 @@ class PurchaseRequestItem
 
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $decidedAt = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $orderedAt = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $deliveredAt = null;
+
+    #[ORM\OneToOne(mappedBy: 'item', targetEntity: FittingFeedback::class, cascade: ['persist'], orphanRemoval: true)]
+    private ?FittingFeedback $fittingFeedback = null;
 
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
@@ -72,6 +89,10 @@ class PurchaseRequestItem
         return $this;
     }
     public function getStatus(): string { return $this->status; }
+    public function getActualPrice(): ?string { return $this->actualPrice; }
+    public function getOrderedAt(): ?\DateTimeImmutable { return $this->orderedAt; }
+    public function getDeliveredAt(): ?\DateTimeImmutable { return $this->deliveredAt; }
+    public function getFittingFeedback(): ?FittingFeedback { return $this->fittingFeedback; }
     public function getDecidedBy(): ?User { return $this->decidedBy; }
     public function getDecisionComment(): ?string { return $this->decisionComment; }
     public function getDecidedAt(): ?\DateTimeImmutable { return $this->decidedAt; }
@@ -97,5 +118,47 @@ class PurchaseRequestItem
         $this->decidedBy = $actor;
         $this->decisionComment = $comment;
         $this->decidedAt = new \DateTimeImmutable();
+    }
+
+    public function markOrdered(?string $actualPrice = null): void
+    {
+        $this->assertStatus(self::STATUS_APPROVED);
+        $this->actualPrice = $actualPrice === null ? $this->estimatedPrice : MoneyAmount::normalize($actualPrice);
+        $this->status = self::STATUS_ORDERED;
+        $this->orderedAt = new \DateTimeImmutable();
+    }
+
+    public function markDelivered(): void
+    {
+        $this->assertStatus(self::STATUS_ORDERED);
+        $this->status = self::STATUS_DELIVERED;
+        $this->deliveredAt = new \DateTimeImmutable();
+    }
+
+    public function recordFitting(FittingFeedback $feedback): void
+    {
+        if (!in_array($this->status, [self::STATUS_DELIVERED, self::STATUS_BOUGHT], true)) {
+            throw new \DomainException('Примерка доступна только после получения вещи');
+        }
+        $feedback->setItem($this);
+        $this->fittingFeedback = $feedback;
+        $this->status = match ($feedback->getOutcome()) {
+            FittingFeedback::OUTCOME_BOUGHT => self::STATUS_BOUGHT,
+            FittingFeedback::OUTCOME_REFUSED, FittingFeedback::OUTCOME_DIFFERENT_SIZE => self::STATUS_REFUSED,
+            default => self::STATUS_DELIVERED,
+        };
+    }
+
+    public function markReturned(): void
+    {
+        $this->assertStatus(self::STATUS_BOUGHT);
+        $this->status = self::STATUS_RETURNED;
+    }
+
+    private function assertStatus(string $expected): void
+    {
+        if ($this->status !== $expected) {
+            throw new \DomainException('Недопустимый переход статуса позиции');
+        }
     }
 }

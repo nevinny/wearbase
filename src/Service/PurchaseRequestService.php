@@ -8,6 +8,7 @@ use App\Entity\PurchaseRequest;
 use App\Entity\PurchaseRequestEvent;
 use App\Entity\PurchaseRequestItem;
 use App\Entity\Notification;
+use App\Entity\FittingFeedback;
 use App\Entity\User;
 use App\Notification\NotificationDispatcher;
 use Doctrine\ORM\EntityManagerInterface;
@@ -169,6 +170,47 @@ class PurchaseRequestService
         });
     }
 
+    public function markOrdered(User $actor, PurchaseRequest $request, PurchaseRequestItem $item, ?string $actualPrice): void
+    {
+        $this->assertParentCanManageItem($actor, $request, $item);
+        $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_ORDERED, function (PurchaseRequestItem $locked) use ($actualPrice): void {
+            $locked->markOrdered($actualPrice);
+        });
+    }
+
+    public function markDelivered(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): void
+    {
+        $this->assertParentCanManageItem($actor, $request, $item);
+        $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_DELIVERED, static function (PurchaseRequestItem $locked): void {
+            $locked->markDelivered();
+        });
+    }
+
+    /** @param string[] $fitIssues */
+    public function recordFitting(
+        User $actor,
+        PurchaseRequest $request,
+        PurchaseRequestItem $item,
+        string $outcome,
+        ?string $triedSize,
+        ?string $sizing,
+        array $fitIssues,
+        ?string $comment,
+    ): void {
+        $this->assertCanRecordFitting($actor, $request, $item);
+        $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_FITTING, static function (PurchaseRequestItem $locked) use ($actor, $outcome, $triedSize, $sizing, $fitIssues, $comment): void {
+            $locked->recordFitting(new FittingFeedback($actor, $outcome, $triedSize, $sizing, $fitIssues, $comment));
+        });
+    }
+
+    public function markReturned(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): void
+    {
+        $this->assertParentCanManageItem($actor, $request, $item);
+        $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_RETURNED, static function (PurchaseRequestItem $locked): void {
+            $locked->markReturned();
+        });
+    }
+
     /**
      * Keeps the EntityManager usable after an expected domain rejection.
      *
@@ -211,5 +253,49 @@ class PurchaseRequestService
         }
 
         throw new AccessDeniedException('Запрос можно создать только для ребёнка своей семьи');
+    }
+
+    private function assertParentCanManageItem(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): void
+    {
+        $subject = $request->getSubject();
+        if (!$actor->isFamilyParent()
+            || $subject === null
+            || $actor->getFamily()?->getId() !== $request->getFamily()?->getId()
+            || $subject->getFamily()?->getId() !== $request->getFamily()?->getId()
+            || $item->getPurchaseRequest()?->getId() !== $request->getId()
+        ) {
+            throw new AccessDeniedException('Нет доступа к позиции');
+        }
+    }
+
+    private function assertCanRecordFitting(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): void
+    {
+        if ($actor->getId() === $request->getSubject()?->getId()
+            && $item->getPurchaseRequest()?->getId() === $request->getId()
+        ) {
+            return;
+        }
+        $this->assertParentCanManageItem($actor, $request, $item);
+    }
+
+    /** @param callable(PurchaseRequestItem): void $mutation */
+    private function mutateItem(User $actor, PurchaseRequest $request, PurchaseRequestItem $item, string $eventType, callable $mutation): void
+    {
+        $this->transactional(function () use ($actor, $request, $item, $eventType, $mutation): void {
+            $this->em->refresh($item, LockMode::PESSIMISTIC_WRITE);
+            $mutation($item);
+            $request->addEvent((new PurchaseRequestEvent($actor, $eventType))->setItem($item));
+            $subject = $request->getSubject();
+            \assert($subject instanceof User);
+            if ($actor->getId() !== $subject->getId()) {
+                $this->notifications->dispatchInApp(
+                    $subject,
+                    Notification::TYPE_PURCHASE_REQUEST_DECIDED,
+                    'Статус покупки обновлён',
+                    null,
+                    ['url' => '/account/purchases/'.$request->getId()],
+                );
+            }
+        });
     }
 }

@@ -2055,6 +2055,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [x] Добавить ожидаемую цену, месячный лимит ребёнка, остаток/approved commitments,
   явное подтверждение и audit перерасхода, in-app уведомления родителям и ребёнку.
 - [x] Перейти от одного URL к нескольким позициям и частичным решениям по каждой позиции.
+- [x] Добавить post-approval lifecycle позиции: `ordered → delivered → bought|refused`,
+  фактическую цену, возврат, структурированную примерку и audit.
 - [x] Добавить отдельный mobile-first Twig-shell с safe-area и нижней навигацией:
   `templates/account/family_wardrobe/layout.html.twig`; несуществующие routes не хардкодить.
 - [x] Перевести существующие family/wardrobe страницы на shell, сохранив формы, CSRF, family member

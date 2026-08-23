@@ -154,6 +154,53 @@ class PurchaseRequestController extends AbstractController
         return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $requestId]));
     }
 
+    #[Route('/{requestId}/items/{itemId}/fulfillment', name: 'fulfillment', requirements: ['requestId' => '\d+', 'itemId' => '\d+'], methods: ['POST'])]
+    public function fulfillment(
+        int $requestId,
+        int $itemId,
+        Request $request,
+        PurchaseRequestRepository $requests,
+        PurchaseRequestItemRepository $items,
+        PurchaseRequestService $service,
+    ): Response {
+        $purchaseRequest = $requests->find($requestId);
+        $item = $items->find($itemId);
+        if (!$purchaseRequest instanceof PurchaseRequest || !$item instanceof PurchaseRequestItem) {
+            throw $this->createNotFoundException();
+        }
+        if (!$this->isCsrfTokenValid('purchase_fulfillment_'.$itemId, $request->request->getString('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный CSRF-токен');
+        }
+
+        /** @var User $actor */
+        $actor = $this->getUser();
+        try {
+            match ($request->request->getString('action')) {
+                'ordered' => $service->markOrdered($actor, $purchaseRequest, $item, $request->request->getString('actualPrice') ?: null),
+                'delivered' => $service->markDelivered($actor, $purchaseRequest, $item),
+                'fitting' => $service->recordFitting(
+                    $actor,
+                    $purchaseRequest,
+                    $item,
+                    $request->request->getString('outcome'),
+                    $request->request->getString('triedSize') ?: null,
+                    $request->request->getString('sizing') ?: null,
+                    array_values(array_intersect(
+                        $request->request->all('fitIssues'),
+                        ['shoulders', 'chest', 'waist', 'hips', 'sleeves', 'length', 'shoe_last'],
+                    )),
+                    $request->request->getString('comment') ?: null,
+                ),
+                'returned' => $service->markReturned($actor, $purchaseRequest, $item),
+                default => throw new \InvalidArgumentException('Недопустимое действие'),
+            };
+        } catch (\DomainException|\InvalidArgumentException $exception) {
+            $this->addFlash('error', $exception->getMessage());
+        }
+
+        return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $requestId]));
+    }
+
     #[Route('/{id}/decide', name: 'decide', requirements: ['id' => '\d+'], methods: ['POST'])]
     public function decide(
         PurchaseRequest $purchaseRequest,

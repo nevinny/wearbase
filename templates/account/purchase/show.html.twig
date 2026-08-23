@@ -10,14 +10,16 @@
         pending: 'Ждёт решения',
         approved: 'Одобрено',
         rejected: 'Отклонено',
-        partial: 'Частично одобрено'
+        partial: 'Частично одобрено',
+        ordered: 'Заказано', delivered: 'Получено', bought: 'Выкуплено', refused: 'Отказ на примерке', returned: 'Возврат'
     } %}
     {% set statusClasses = {
         draft: 'bg-slate-100 text-slate-700',
         pending: 'bg-amber-100 text-amber-800',
         approved: 'bg-emerald-100 text-emerald-800',
         rejected: 'bg-rose-100 text-rose-800',
-        partial: 'bg-violet-100 text-violet-800'
+        partial: 'bg-violet-100 text-violet-800',
+        ordered: 'bg-sky-100 text-sky-800', delivered: 'bg-violet-100 text-violet-800', bought: 'bg-emerald-100 text-emerald-800', refused: 'bg-rose-100 text-rose-800', returned: 'bg-amber-100 text-amber-800'
     } %}
 
     <div class="flex items-center justify-between gap-3">
@@ -89,9 +91,14 @@
                             {% endfor %}
                         </div>
                     {% endif %}
+                    {% include 'account/purchase/_fulfillment.html.twig' with {item: item, purchaseRequest: purchaseRequest, actor: actor} only %}
                 </article>
             {% endfor %}
         </section>
+    {% endif %}
+
+    {% if purchaseRequest.items|length == 1 %}
+        {% include 'account/purchase/_fulfillment.html.twig' with {item: purchaseRequest.items.first, purchaseRequest: purchaseRequest, actor: actor} only %}
     {% endif %}
 
     {% if purchaseRequest.items|length == 1 and purchaseRequest.decisionComment %}

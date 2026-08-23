@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Entity\PurchaseRequest;
 use App\Entity\PurchaseRequestEvent;
 use App\Entity\PurchaseRequestItem;
+use App\Entity\FittingFeedback;
 use App\Entity\Notification;
 use App\Entity\User;
 use App\Service\FamilyBudgetService;
@@ -140,6 +141,80 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
             $second->getItems()->first(),
             PurchaseRequest::STATUS_APPROVED,
         );
+    }
+
+    public function testParentOrdersAndDeliversThenChildRecordsSuccessfulFitting(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('fulfillment-parent'));
+        $child = $this->families()->createChild($parent, 'Маша');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/dress', null, '4200');
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, '3999.90');
+        $this->assertSame(PurchaseRequestItem::STATUS_ORDERED, $item->getStatus());
+        $this->assertSame('3999.90', $item->getActualPrice());
+        $this->purchaseRequests()->markDelivered($parent, $request, $item);
+        $this->purchaseRequests()->recordFitting(
+            $child,
+            $request,
+            $item,
+            FittingFeedback::OUTCOME_BOUGHT,
+            'S',
+            FittingFeedback::SIZING_TRUE,
+            [],
+            'Хорошо село по фигуре',
+        );
+
+        $this->assertSame(PurchaseRequestItem::STATUS_BOUGHT, $item->getStatus());
+        $this->assertSame('S', $item->getFittingFeedback()?->getTriedSize());
+        $this->assertSame($child->getId(), $item->getFittingFeedback()?->getActor()->getId());
+        $this->assertSame(
+            [PurchaseRequestEvent::TYPE_CREATED, PurchaseRequestEvent::TYPE_APPROVED, PurchaseRequestEvent::TYPE_ORDERED, PurchaseRequestEvent::TYPE_DELIVERED, PurchaseRequestEvent::TYPE_FITTING],
+            array_map(static fn (PurchaseRequestEvent $event): string => $event->getType(), $request->getEvents()->toArray()),
+        );
+    }
+
+    public function testFulfillmentRejectsInvalidTransitionAndSiblingFeedback(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('fulfillment-guard-parent'));
+        $child = $this->families()->createChild($parent, 'Лиза');
+        $sibling = $this->families()->createChild($parent, 'Настя');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/shoes', null);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+
+        try {
+            $this->purchaseRequests()->markDelivered($parent, $request, $item);
+            $this->fail('Pending item cannot be delivered');
+        } catch (\DomainException) {
+            $this->addToAssertionCount(1);
+        }
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AccessDeniedException::class);
+        $this->purchaseRequests()->recordFitting($sibling, $request, $item, FittingFeedback::OUTCOME_REFUSED, null, null, [], null);
+    }
+
+    public function testFulfillmentEndpointRequiresCsrf(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('fulfillment-csrf-parent'));
+        $child = $this->families()->createChild($parent, 'Вера');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/jacket', null);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $client->loginUser($parent);
+
+        $client->request('POST', sprintf('/account/purchases/%d/items/%d/fulfillment', $request->getId(), $item->getId()), [
+            '_token' => 'invalid',
+            'action' => 'ordered',
+        ]);
+
+        $this->assertResponseStatusCodeSame(403);
+        $this->em()->clear();
+        $reloaded = $this->em()->getRepository(PurchaseRequestItem::class)->find($item->getId());
+        $this->assertSame(PurchaseRequestItem::STATUS_APPROVED, $reloaded->getStatus());
     }
 
     public function testFormRejectsMoreThanTenItems(): void
