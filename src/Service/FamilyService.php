@@ -117,7 +117,7 @@ class FamilyService
         $child->setBirthDate($birthDate);
         $child->setFamily($family);
         $child->setFamilyRole(User::FAMILY_ROLE_CHILD);
-        $child->setFamilyClaimToken(bin2hex(random_bytes(32)));
+        $child->issueFamilyClaim();
 
         $this->em->persist($child);
         $this->em->flush();
@@ -223,7 +223,7 @@ class FamilyService
     public function claimUrl(User $child): ?string
     {
         $token = $child->getFamilyClaimToken();
-        if ($token === null) {
+        if ($token === null || !$child->isFamilyClaimUsable()) {
             return null;
         }
 
@@ -232,6 +232,63 @@ class FamilyService
             ['token' => $token],
             UrlGeneratorInterface::ABSOLUTE_URL,
         );
+    }
+
+    public function renewChildAccess(User $actor, User $child): void
+    {
+        $this->assertParentManagesChild($actor, $child);
+        $child->issueFamilyClaim();
+        $this->em->flush();
+    }
+
+    public function revokeChildAccess(User $actor, User $child): void
+    {
+        $this->assertParentManagesChild($actor, $child);
+        $child->revokeFamilyClaim();
+        $this->em->flush();
+    }
+
+    public function activateChildAccess(User $child, string $email, string $password): void
+    {
+        $connection = $this->em->getConnection();
+        $connection->beginTransaction();
+        try {
+            $lockedChild = $this->em->find(User::class, $child->getId(), LockMode::PESSIMISTIC_WRITE);
+            if (!$lockedChild instanceof User) {
+                throw new \DomainException('Ссылка больше не действует');
+            }
+            $this->em->refresh($lockedChild, LockMode::PESSIMISTIC_WRITE);
+            if (!$lockedChild->isFamilyClaimUsable()) {
+                throw new \DomainException('Ссылка больше не действует');
+            }
+            $normalizedEmail = mb_strtolower(trim($email));
+            $existing = $this->em->getRepository(User::class)->findOneBy(['email' => $normalizedEmail]);
+            if ($existing !== null && $existing->getId() !== $lockedChild->getId()) {
+                throw new \DomainException('Этот email уже зарегистрирован');
+            }
+
+            $lockedChild->setEmail($normalizedEmail);
+            $lockedChild->setPassword($this->passwordHasher->hashPassword($lockedChild, $password));
+            $lockedChild->setClaimedAt(new \DateTimeImmutable());
+            $this->em->flush();
+            $connection->commit();
+        } catch (\Throwable $exception) {
+            if ($connection->isTransactionActive()) {
+                $connection->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    private function assertParentManagesChild(User $actor, User $child): void
+    {
+        if (!$actor->isFamilyParent()
+            || !$this->canManage($actor, $child)
+            || $child->getFamilyRole() !== User::FAMILY_ROLE_CHILD
+            || !$child->isManaged()
+        ) {
+            throw new AccessDeniedException('Нет доступа к профилю ребёнка');
+        }
     }
 
     public function inviteUrl(FamilyInvite $invite): string

@@ -343,8 +343,55 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
 
         $this->assertSame('new-petya@example.com', $reloadedChild->getEmail());
         $this->assertNotNull($reloadedChild->getClaimedAt());
-        $this->assertNull($reloadedChild->getFamilyClaimToken());
+        $this->assertNotNull($reloadedChild->getFamilyClaimToken());
+        $this->assertFalse($reloadedChild->isFamilyClaimUsable());
         $this->assertFalse($reloadedChild->isManaged());
+
+        $client->request('GET', '/family/claim/'.$token);
+        $this->assertResponseStatusCodeSame(410);
+        $this->assertResponseHeaderSame('Referrer-Policy', 'no-referrer');
+        $this->assertStringContainsString('no-store', (string) $client->getResponse()->headers->get('Cache-Control'));
+    }
+
+    public function testParentCanRevokeAndRenewManagedChildAccess(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-claim-cycle-parent@test.local');
+        $child = static::getContainer()->get(FamilyService::class)->createChild($parent, 'Саша');
+        $oldToken = $child->getFamilyClaimToken();
+        $client->loginUser($parent);
+
+        $crawler = $client->request('GET', '/account/family');
+        $client->submit($crawler->filter('form[action="/account/family/child/'.$child->getId().'/access/revoke"]')->form());
+        $this->assertResponseRedirects('/account/family');
+        $client->request('GET', '/family/claim/'.$oldToken);
+        $this->assertResponseStatusCodeSame(410);
+
+        $crawler = $client->request('GET', '/account/family');
+        $client->submit($crawler->filter('form[action="/account/family/child/'.$child->getId().'/access/renew"]')->form());
+        $this->assertResponseRedirects('/account/family');
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $renewedChild = $em->getRepository(User::class)->find($child->getId());
+        $this->assertNotSame($oldToken, $renewedChild->getFamilyClaimToken());
+        $this->assertTrue($renewedChild->isFamilyClaimUsable());
+        $this->assertSame($child->getId(), $renewedChild->getId());
+    }
+
+    public function testExpiredManagedChildAccessReturnsGone(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-claim-expired-parent@test.local');
+        $child = static::getContainer()->get(FamilyService::class)->createChild($parent, 'Варя');
+        $property = new \ReflectionProperty(User::class, 'familyClaimExpiresAt');
+        $property->setValue($child, new \DateTimeImmutable('-1 minute'));
+        static::getContainer()->get('doctrine.orm.entity_manager')->flush();
+
+        $client->request('GET', '/family/claim/'.$child->getFamilyClaimToken());
+
+        $this->assertResponseStatusCodeSame(410);
+        $this->assertSelectorTextContains('body', 'Попроси родителя создать новую ссылку');
     }
 
     public function testClaimInvalidTokenReturns404(): void

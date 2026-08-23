@@ -197,4 +197,40 @@ class FamilyController extends AbstractController
 
         return $this->redirectToRoute('account_family_index');
     }
+
+    #[Route('/child/{id}/access/renew', name: 'child_access_renew', requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function renewChildAccess(
+        int $id,
+        Request $request,
+        FamilyService $familyService,
+    ): Response {
+        /** @var User $user */
+        $user = $this->getUser();
+        if (!$this->isCsrfTokenValid('family_child_access_renew_'.$id, $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+        $child = $familyService->resolveMember($user, $id);
+        $familyService->renewChildAccess($user, $child);
+        $this->addFlash('success', 'Создана новая ссылка для входа ребёнка');
+
+        return $this->redirectToRoute('account_family_index');
+    }
+
+    #[Route('/child/{id}/access/revoke', name: 'child_access_revoke', requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function revokeChildAccess(
+        int $id,
+        Request $request,
+        FamilyService $familyService,
+    ): Response {
+        /** @var User $user */
+        $user = $this->getUser();
+        if (!$this->isCsrfTokenValid('family_child_access_revoke_'.$id, $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+        $child = $familyService->resolveMember($user, $id);
+        $familyService->revokeChildAccess($user, $child);
+        $this->addFlash('success', 'Ссылка для входа ребёнка отозвана');
+
+        return $this->redirectToRoute('account_family_index');
+    }
 }
