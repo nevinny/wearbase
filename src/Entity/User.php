@@ -104,6 +104,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     #[ORM\Column(length: 64, unique: true, nullable: true)]
     private ?string $familyClaimToken = null;
 
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $familyClaimExpiresAt = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $familyClaimRevokedAt = null;
+
     // Когда managed-ребёнок «дорос» и получил свои email+пароль
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $claimedAt = null;
@@ -400,6 +406,41 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
         return $this;
     }
 
+    public function getFamilyClaimExpiresAt(): ?\DateTimeImmutable { return $this->familyClaimExpiresAt; }
+
+    public function getFamilyClaimRevokedAt(): ?\DateTimeImmutable { return $this->familyClaimRevokedAt; }
+
+    public function issueFamilyClaim(): static
+    {
+        if (!$this->isManaged()) {
+            throw new \DomainException('Доступ можно выдать только managed-профилю');
+        }
+        $this->familyClaimToken = bin2hex(random_bytes(32));
+        $this->familyClaimExpiresAt = new \DateTimeImmutable('+7 days');
+        $this->familyClaimRevokedAt = null;
+
+        return $this;
+    }
+
+    public function revokeFamilyClaim(): static
+    {
+        if ($this->claimedAt !== null) {
+            throw new \DomainException('Аккаунт ребёнка уже активирован');
+        }
+        $this->familyClaimRevokedAt ??= new \DateTimeImmutable();
+
+        return $this;
+    }
+
+    public function isFamilyClaimUsable(): bool
+    {
+        return $this->familyClaimToken !== null
+            && $this->claimedAt === null
+            && $this->familyClaimRevokedAt === null
+            && $this->familyClaimExpiresAt !== null
+            && $this->familyClaimExpiresAt > new \DateTimeImmutable();
+    }
+
     public function getClaimedAt(): ?\DateTimeImmutable { return $this->claimedAt; }
 
     public function setClaimedAt(?\DateTimeImmutable $claimedAt): static
@@ -477,8 +518,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
      */
     public function isManaged(): bool
     {
-        return $this->familyClaimToken !== null
-            || str_ends_with((string) $this->email, '@' . self::MANAGED_EMAIL_DOMAIN);
+        return $this->claimedAt === null
+            && ($this->familyClaimToken !== null
+                || str_ends_with((string) $this->email, '@' . self::MANAGED_EMAIL_DOMAIN));
     }
 
     public function isBrandManager(): bool

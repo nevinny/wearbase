@@ -12,6 +12,11 @@
     {% block panel_extra %}Родители завели для тебя гардероб на WEARBASE.<br>Остался последний шаг — свой доступ.{% endblock %}
 
     {% block form %}
+        {% if unavailable %}
+        <h1 class="text-xl font-bold mb-2">Ссылка недоступна</h1>
+        <p class="text-sm text-gray-500 mb-6">Попроси родителя создать новую ссылку для входа.</p>
+        <a href="{{ path('app_login') }}" class="inline-block rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600">Перейти ко входу</a>
+        {% else %}
         <h1 class="text-xl font-bold mb-1">Привет, {{ memberName }}!</h1>
         <p class="text-sm text-gray-500 mb-6">Заверши настройку аккаунта — укажи почту и придумай пароль</p>
 
@@ -38,6 +43,7 @@
             </button>
 
         {{ form_end(form) }}
+        {% endif %}
     {% endblock %}
 {% endembed %}
 {% endblock %}
