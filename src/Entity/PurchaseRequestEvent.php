@@ -20,6 +20,7 @@ class PurchaseRequestEvent
     public const TYPE_DELIVERED = 'delivered';
     public const TYPE_FITTING = 'fitting';
     public const TYPE_RETURNED = 'returned';
+    public const TYPE_ADDED_TO_WARDROBE = 'added_to_wardrobe';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
