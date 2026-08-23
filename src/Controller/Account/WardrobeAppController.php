@@ -6,6 +6,7 @@ namespace App\Controller\Account;
 
 use App\Entity\User;
 use App\Repository\WardrobeItemRepository;
+use App\Repository\PurchaseRequestRepository;
 use App\Service\FamilyService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,7 +15,11 @@ use Symfony\Component\Routing\Attribute\Route;
 class WardrobeAppController extends AbstractController
 {
     #[Route('/account/wardrobe-app', name: 'account_wardrobe_app', methods: ['GET'])]
-    public function index(FamilyService $familyService, WardrobeItemRepository $itemRepository): Response
+    public function index(
+        FamilyService $familyService,
+        WardrobeItemRepository $itemRepository,
+        PurchaseRequestRepository $purchaseRequests,
+    ): Response
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -36,6 +41,7 @@ class WardrobeAppController extends AbstractController
             'canManageFamily' => $user->getFamilyRole() !== User::FAMILY_ROLE_CHILD,
             'currentMember' => $user,
             'familyActiveSection' => 'wardrobe-app',
+            'pendingPurchaseCount' => $purchaseRequests->countPendingVisibleTo($user),
         ]);
     }
 }

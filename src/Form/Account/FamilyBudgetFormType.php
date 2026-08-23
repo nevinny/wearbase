@@ -8,16 +8,12 @@ use App\Entity\User;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\Extension\Core\Type\MoneyType;
-use Symfony\Component\Form\Extension\Core\Type\TextareaType;
-use Symfony\Component\Form\Extension\Core\Type\UrlType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
-use Symfony\Component\Validator\Constraints\Length;
 use Symfony\Component\Validator\Constraints\GreaterThanOrEqual;
 use Symfony\Component\Validator\Constraints\NotBlank;
-use Symfony\Component\Validator\Constraints\Url;
 
-class PurchaseRequestFormType extends AbstractType
+class FamilyBudgetFormType extends AbstractType
 {
     public function buildForm(FormBuilderInterface $builder, array $options): void
     {
@@ -28,28 +24,17 @@ class PurchaseRequestFormType extends AbstractType
 
         $builder
             ->add('subject', ChoiceType::class, [
-                'label' => 'Для кого',
+                'label' => 'Ребёнок',
                 'choices' => $choices,
             ])
-            ->add('productUrl', UrlType::class, [
-                'label' => 'Ссылка на товар или подборку',
-                'constraints' => [
-                    new NotBlank(['message' => 'Вставьте ссылку']),
-                    new Length(['max' => 2048]),
-                    new Url(['protocols' => ['https'], 'message' => 'Используйте безопасную HTTPS-ссылку']),
-                ],
-            ])
-            ->add('estimatedPrice', MoneyType::class, [
-                'label' => 'Ожидаемая цена',
+            ->add('monthlyLimit', MoneyType::class, [
+                'label' => 'Лимит на месяц',
                 'currency' => 'RUB',
                 'divisor' => 1,
-                'required' => false,
-                'constraints' => [new GreaterThanOrEqual(0)],
-            ])
-            ->add('comment', TextareaType::class, [
-                'label' => 'Комментарий',
-                'required' => false,
-                'constraints' => [new Length(['max' => 2000])],
+                'constraints' => [
+                    new NotBlank(),
+                    new GreaterThanOrEqual(0),
+                ],
             ]);
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Service\FamilyService;
+use App\Service\PurchaseRequestService;
 
 class WardrobeAppControllerTest extends AuthenticatedWebTestCase
 {
@@ -88,5 +89,25 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorNotExists('a[href="/account/family/add"]');
         $this->assertSelectorNotExists('form[action="/account/family/invite"]');
         $this->assertSelectorExists('#share-wardrobe-app[data-share-url$="/ru/wardrobe"]');
+    }
+
+    public function testParentDashboardShowsPendingPurchaseCount(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-wardrobe-app-purchase-parent@test.local');
+        $child = static::getContainer()->get(FamilyService::class)->createChild($parent, 'Маша');
+        static::getContainer()->get(PurchaseRequestService::class)->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/dashboard',
+            null,
+            '1500',
+        );
+        $client->loginUser($parent);
+
+        $client->request('GET', '/account/wardrobe-app');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('a[href="/account/purchases"]', '1 ждут решения');
     }
 }

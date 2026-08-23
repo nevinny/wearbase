@@ -4,6 +4,7 @@
   "description": "Playwright E2E tests for WEARBASE",
   "scripts": {
     "test": "playwright test",
+    "test:family": "playwright test --config=playwright.family.config.ts",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report"

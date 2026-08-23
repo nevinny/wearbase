@@ -50,12 +50,28 @@ readonly class NotificationDispatcher
         }
 
         if ($channels['telegram'] && $recipient->getTelegramChatId()) {
-            $text = "<b>{$title}</b>";
+            $safeTitle = htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $text = "<b>{$safeTitle}</b>";
             if ($body) {
-                $text .= "\n\n{$body}";
+                $text .= "\n\n".htmlspecialchars($body, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             }
             $this->telegramNotifier->send($recipient->getTelegramChatId(), $text);
         }
+    }
+
+    /**
+     * Persist-only delivery for use inside an application transaction.
+     *
+     * @param array<string, mixed>|null $data
+     */
+    public function dispatchInApp(
+        User $recipient,
+        string $type,
+        string $title,
+        ?string $body = null,
+        ?array $data = null,
+    ): void {
+        $this->createInApp($recipient, $type, $title, $body, $data);
     }
 
     /**
