@@ -2048,13 +2048,13 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 
 - [x] Реализовать provider-agnostic web/PWA MVP: одна HTTPS-ссылка без server fetch, комментарий,
   child/parent inbox, approve/reject с причиной, CSRF, IDOR-защита и append-only audit.
-- [ ] Добавить `PurchaseRequest`, `PurchaseRequestItem`, `PurchaseRequestEvent` и миграцию.
+- [x] Добавить `PurchaseRequest`, `PurchaseRequestItem`, `PurchaseRequestEvent` и миграцию.
 - [ ] Реализовать доменный lifecycle и `FamilyService`-проверки actor/profileSubject.
 - [ ] Сделать детский флоу: черновик → provider/manual import → вариант → отправка.
 - [ ] Сделать родительскую очередь и решения по каждой позиции: approve/reject/change/defer.
 - [x] Добавить ожидаемую цену, месячный лимит ребёнка, остаток/approved commitments,
   явное подтверждение и audit перерасхода, in-app уведомления родителям и ребёнку.
-- [ ] Перейти от одного URL к нескольким позициям и частичным решениям по каждой позиции.
+- [x] Перейти от одного URL к нескольким позициям и частичным решениям по каждой позиции.
 - [x] Добавить отдельный mobile-first Twig-shell с safe-area и нижней навигацией:
   `templates/account/family_wardrobe/layout.html.twig`; несуществующие routes не хардкодить.
 - [x] Перевести существующие family/wardrobe страницы на shell, сохранив формы, CSRF, family member
