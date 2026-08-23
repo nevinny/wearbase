@@ -12,6 +12,7 @@ use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiException;
 use App\Service\Wardrobe\WardrobeOutfitService;
 use App\Service\Wardrobe\WardrobeOutfitLearningService;
+use App\Service\Wardrobe\WardrobeOnboardingService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -74,6 +75,7 @@ class WardrobeOutfitController extends AbstractController
         Request $request,
         FamilyService $familyService,
         WardrobeOutfitLearningService $learning,
+        WardrobeOnboardingService $onboarding,
     ): Response
     {
         if (!$this->isCsrfTokenValid('wardrobe_outfit_reaction_' . $id, (string) $request->request->get('_token'))) {
@@ -84,7 +86,8 @@ class WardrobeOutfitController extends AbstractController
         $user = $this->getUser();
         $member = $familyService->resolveMember($user, $request->query->has('member') ? $request->query->getInt('member') : null);
         try {
-            $learning->react($user, $id, (string) $request->request->get('reaction'));
+            $learning->react($user, $member, $id, (string) $request->request->get('reaction'));
+            $onboarding->complete($user, $member);
             $this->addFlash('success', 'Спасибо — следующий подбор учтёт эту реакцию');
         } catch (\InvalidArgumentException|\DomainException $exception) {
             throw $this->createNotFoundException($exception->getMessage());

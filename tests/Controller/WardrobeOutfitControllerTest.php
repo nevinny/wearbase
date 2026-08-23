@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Entity\WardrobeItem;
+use App\Entity\WardrobeOnboarding;
 use App\Service\Wardrobe\WardrobeOutfitService;
 
 class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
@@ -83,5 +84,7 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
         self::assertResponseRedirects('/account/wardrobe/outfits');
         $saved = $em->getRepository(\App\Entity\WardrobeOutfit::class)->findOneBy(['user' => $user], ['id' => 'DESC']);
         self::assertSame('like', $saved?->getReaction());
+        $onboarding = $em->getRepository(WardrobeOnboarding::class)->findOneBy(['subject' => $user]);
+        self::assertTrue($onboarding?->isCompleted());
     }
 }

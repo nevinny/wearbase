@@ -5,25 +5,22 @@ declare(strict_types=1);
 namespace App\Controller\Account;
 
 use App\Entity\User;
-use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
 use App\Repository\WardrobeItemDraftRepository;
-use App\Repository\WardrobeItemRepository;
-use App\Service\Wardrobe\WardrobeManager;
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use App\Service\FamilyService;
+use App\Service\Wardrobe\WardrobeDraftPromotionService;
+use App\Service\Wardrobe\WardrobeOnboardingService;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\Persistence\ManagerRegistry;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Mime\MimeTypes;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Uid\Uuid;
 use Symfony\Component\Validator\Constraints\Image;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-use Vich\UploaderBundle\Storage\StorageInterface;
 
 /**
  * Авто-инжест гардероба по фото: загрузка партии → фоновое распознавание
@@ -34,7 +31,11 @@ use Vich\UploaderBundle\Storage\StorageInterface;
 #[Route('/account/wardrobe/ingest', name: 'account_wardrobe_ingest_')]
 class WardrobeIngestController extends AbstractController
 {
-    public function __construct(private readonly WardrobeManager $wardrobeManager) {}
+    public function __construct(
+        private readonly FamilyService $familyService,
+        private readonly WardrobeOnboardingService $onboardingService,
+        private readonly LoggerInterface $logger,
+    ) {}
 
     #[Route('/upload', name: 'upload', methods: ['POST'])]
     public function upload(
@@ -46,12 +47,17 @@ class WardrobeIngestController extends AbstractController
             return $fail;
         }
 
-        /** @var User $user */
-        $user = $this->getUser();
+        /** @var User $actor */
+        $actor = $this->getUser();
+        $memberId = $request->request->getInt('member') ?: $request->query->getInt('member');
+        $subject = $this->familyService->resolveMember($actor, $memberId > 0 ? $memberId : null);
 
         $files = $request->files->get('photos', []);
         if (!is_array($files)) {
             $files = [$files];
+        }
+        if (count($files) > 20) {
+            return $this->json(['ok' => false, 'error' => 'За один раз можно загрузить не больше 20 фотографий'], 422);
         }
 
         $constraint = new Image([
@@ -60,8 +66,7 @@ class WardrobeIngestController extends AbstractController
             'mimeTypesMessage' => 'Формат не поддерживается — сконвертируйте в JPEG/PNG (iPhone: Настройки→Камера→Форматы→Наиболее совместимый)',
         ]);
 
-        $batchId = Uuid::v4()->toRfc4122();
-        $uploaded = 0;
+        $acceptedFiles = [];
         $rejected = [];
 
         foreach ($files as $file) {
@@ -76,32 +81,50 @@ class WardrobeIngestController extends AbstractController
                 continue;
             }
 
-            $draft = new WardrobeItemDraft();
-            $draft->setUser($user);
-            $draft->setBatchId($batchId);
-            $draft->setPhotoFile($file);
-            $em->persist($draft);
-            $uploaded++;
+            $acceptedFiles[] = $file;
         }
 
+        if ($acceptedFiles === []) {
+            return $this->json([
+                'ok' => false,
+                'error' => $rejected === [] ? 'Выберите хотя бы одну фотографию' : 'Не удалось принять ни одной фотографии',
+                'uploaded' => 0,
+                'rejected' => $rejected,
+            ], 422);
+        }
+
+        $onboarding = $this->onboardingService->startOrResumeBatch($actor, $subject, Uuid::v4()->toRfc4122());
+        $batchId = $onboarding->getActiveBatchId();
+        foreach ($acceptedFiles as $file) {
+            $draft = (new WardrobeItemDraft())
+                ->setProfileSubject($subject)
+                ->setActor($actor)
+                ->setBatchId($batchId);
+            $draft->setPhotoFile($file);
+            $em->persist($draft);
+        }
         $em->flush();
 
         return $this->json([
             'ok' => true,
             'batch' => $batchId,
-            'uploaded' => $uploaded,
+            'uploaded' => count($acceptedFiles),
             'rejected' => $rejected,
-            'reviewUrl' => $this->generateUrl('account_wardrobe_ingest_review', ['batch' => $batchId]),
+            'reviewUrl' => $this->generateUrl('account_wardrobe_ingest_review', [
+                'batch' => $batchId,
+                'member' => $subject->getId(),
+            ]),
         ]);
     }
 
     #[Route('/{batch}', name: 'review', methods: ['GET'])]
-    public function review(string $batch, WardrobeItemDraftRepository $draftRepo): Response
+    public function review(string $batch, Request $request, WardrobeItemDraftRepository $draftRepo): Response
     {
-        /** @var User $user */
-        $user = $this->getUser();
+        /** @var User $actor */
+        $actor = $this->getUser();
+        $subject = $this->familyService->resolveMember($actor, $this->memberParam($request));
 
-        $drafts = $draftRepo->findByBatch($user, $batch);
+        $drafts = $draftRepo->findByBatch($subject, $batch);
         if ($drafts === []) {
             throw $this->createNotFoundException();
         }
@@ -109,21 +132,23 @@ class WardrobeIngestController extends AbstractController
         return $this->render('account/wardrobe/ingest.html.twig', [
             'drafts' => $drafts,
             'batch' => $batch,
-            'counts' => $draftRepo->countsByBatch($batch),
+            'counts' => $draftRepo->countsByBatch($subject, $batch),
+            'currentMember' => $subject,
         ]);
     }
 
     #[Route('/{batch}/status', name: 'status', methods: ['GET'])]
-    public function status(string $batch, WardrobeItemDraftRepository $draftRepo): JsonResponse
+    public function status(string $batch, Request $request, WardrobeItemDraftRepository $draftRepo): JsonResponse
     {
-        /** @var User $user */
-        $user = $this->getUser();
+        /** @var User $actor */
+        $actor = $this->getUser();
+        $subject = $this->familyService->resolveMember($actor, $this->memberParam($request));
 
-        if ($draftRepo->findByBatch($user, $batch) === []) {
+        if ($draftRepo->findByBatch($subject, $batch) === []) {
             throw $this->createNotFoundException();
         }
 
-        return $this->json($draftRepo->countsByBatch($batch));
+        return $this->json($draftRepo->countsByBatch($subject, $batch));
     }
 
     #[Route('/draft/{id}/accept', name: 'accept', requirements: ['id' => '\d+'], methods: ['POST'])]
@@ -131,9 +156,7 @@ class WardrobeIngestController extends AbstractController
         int $id,
         Request $request,
         WardrobeItemDraftRepository $draftRepo,
-        WardrobeItemRepository $itemRepo,
-        ManagerRegistry $doctrine,
-        StorageInterface $vichStorage,
+        WardrobeDraftPromotionService $promotion,
     ): JsonResponse {
         if ($fail = $this->csrfOrFail($request)) {
             return $fail;
@@ -143,16 +166,24 @@ class WardrobeIngestController extends AbstractController
         $user = $this->getUser();
 
         $draft = $draftRepo->find($id);
-        if ($draft === null || $draft->getUser()->getId() !== $user->getId()) {
+        if ($draft === null || !$this->familyService->canManage($user, $draft->getUser())) {
             throw $this->createNotFoundException();
         }
 
-        [$item, $error] = $this->promoteDraft($draft, $this->decodeBody($request), $itemRepo, $doctrine, $vichStorage);
-        if ($error !== null) {
-            return $this->json(['ok' => false, 'error' => $error], 422);
+        try {
+            $result = $promotion->promote($user, $id, $this->decodeBody($request));
+        } catch (\DomainException|\InvalidArgumentException $exception) {
+            return $this->json(['ok' => false, 'error' => $exception->getMessage()], 422);
         }
+        $item = $result['item'];
+        $this->onboardingService->refreshProgress($user, $draft->getUser());
 
-        return $this->json(['ok' => true, 'itemId' => $item->getId(), 'itemNo' => $item->getItemNo()]);
+        return $this->json([
+            'ok' => true,
+            'itemId' => $item->getId(),
+            'itemNo' => $item->getItemNo(),
+            'idempotent' => $result['idempotent'],
+        ]);
     }
 
     #[Route('/draft/{id}/reject', name: 'reject', requirements: ['id' => '\d+'], methods: ['POST'])]
@@ -170,12 +201,14 @@ class WardrobeIngestController extends AbstractController
         $user = $this->getUser();
 
         $draft = $draftRepo->find($id);
-        if ($draft === null || $draft->getUser()->getId() !== $user->getId()) {
+        if ($draft === null || !$this->familyService->canManage($user, $draft->getUser())) {
             throw $this->createNotFoundException();
         }
 
+        $subject = $draft->getUser();
         $em->remove($draft);
         $em->flush();
+        $this->onboardingService->refreshProgress($user, $subject);
 
         return $this->json(['ok' => true]);
     }
@@ -185,9 +218,7 @@ class WardrobeIngestController extends AbstractController
         string $batch,
         Request $request,
         WardrobeItemDraftRepository $draftRepo,
-        WardrobeItemRepository $itemRepo,
-        ManagerRegistry $doctrine,
-        StorageInterface $vichStorage,
+        WardrobeDraftPromotionService $promotion,
     ): JsonResponse {
         if ($fail = $this->csrfOrFail($request)) {
             return $fail;
@@ -196,7 +227,8 @@ class WardrobeIngestController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
 
-        $drafts = $draftRepo->findByBatch($user, $batch);
+        $subject = $this->familyService->resolveMember($user, $this->memberParam($request));
+        $drafts = $draftRepo->findByBatch($subject, $batch);
         if ($drafts === []) {
             throw $this->createNotFoundException();
         }
@@ -213,109 +245,20 @@ class WardrobeIngestController extends AbstractController
             }
 
             try {
-                [, $error] = $this->promoteDraft($draft, [], $itemRepo, $doctrine, $vichStorage);
-                $error === null ? $accepted++ : $skipped++;
-            } catch (\Throwable) {
+                $result = $promotion->promote($user, $draft->getId(), []);
+                $result['idempotent'] ? $skipped++ : $accepted++;
+            } catch (\Throwable $exception) {
                 // Одна неудача не должна валить весь батч — считаем как пропуск и продолжаем
+                $this->logger->error('Не удалось принять wardrobe draft из пачки', [
+                    'draft_id' => $draft->getId(),
+                    'exception' => $exception,
+                ]);
                 $skipped++;
             }
         }
+        $this->onboardingService->refreshProgress($user, $subject);
 
         return $this->json(['ok' => true, 'accepted' => $accepted, 'skipped' => $skipped]);
-    }
-
-    /**
-     * Промоушен черновика в полноценную вещь гардероба — общая логика для accept/accept-all.
-     * Мирроринг WardrobeController::new (itemNo + retry) и WardrobeDialogService::commitDraft
-     * (перенос файла между Vich-маппингами через tmp-копию).
-     *
-     * @param array{name?:string,category?:string,size?:string,notes?:string} $overrides
-     * @return array{0: ?WardrobeItem, 1: ?string} [созданная вещь|null, текст ошибки|null]
-     */
-    private function promoteDraft(
-        WardrobeItemDraft $draft,
-        array $overrides,
-        WardrobeItemRepository $itemRepo,
-        ManagerRegistry $doctrine,
-        StorageInterface $vichStorage,
-    ): array {
-        $category = $this->pick($overrides['category'] ?? null, $draft->getCategory());
-        $name = $this->pick($overrides['name'] ?? null, $draft->getName());
-        $size = $this->pick($overrides['size'] ?? null, $draft->getSize());
-        $notes = $this->pick($overrides['notes'] ?? null, $draft->getNotes());
-
-        // WardrobeItem::category/name не nullable — без обоих полей вещь не создать
-        if ($category === null || $name === null) {
-            return [null, 'Заполните категорию и название'];
-        }
-
-        $user = $draft->getUser();
-
-        $item = new WardrobeItem();
-        $item->setCategory($category);
-        $item->setName($name);
-        $item->setSize($size);
-        $item->setNotes($notes);
-        $item->setSource(WardrobeItem::SOURCE_IMPORT);
-        $item->setUser($user);
-        $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($user));
-        $item->setOriginalOwner($user);
-        $item->setItemNo($itemRepo->nextItemNo($user));
-
-        // Фото: draft photoFile (mapping wardrobe_draft_photo) → tmp-копия → item photoFile
-        // (mapping wardrobe_item_photo), как в WardrobeDialogService::commitDraft.
-        $draftPhotoPath = $draft->getPhoto() !== null ? $vichStorage->resolvePath($draft, 'photoFile') : null;
-        if ($draftPhotoPath !== null && is_file($draftPhotoPath)) {
-            $tmp = tempnam(sys_get_temp_dir(), 'wardrobe_ingest_');
-            copy($draftPhotoPath, $tmp);
-            $mime = MimeTypes::getDefault()->guessMimeType($tmp) ?? 'image/jpeg';
-            $item->setPhotoFile(new UploadedFile($tmp, basename($draftPhotoPath), $mime, null, true));
-        }
-
-        $em = $doctrine->getManager();
-        try {
-            $em->persist($item);
-            $em->flush();
-        } catch (UniqueConstraintViolationException) {
-            // Гонка за item_no: один retry со свежим EM (паттерн WardrobeController::new)
-            $doctrine->resetManager();
-            $em = $doctrine->getManager();
-            /** @var User $user */
-            $user = $em->find(User::class, $user->getId());
-            $this->wardrobeManager->forgetDefault($user);
-            $item->setUser($user);
-            $item->setWardrobe($this->wardrobeManager->getOrCreateDefault($user));
-            $item->setOriginalOwner($user);
-            $item->setItemNo($itemRepo->nextItemNo($user));
-            if ($item->getPhotoFile() !== null && !file_exists($item->getPhotoFile()->getPathname())) {
-                $item->setPhotoFile(null); // Vich мог успеть переместить tmp-файл при первой попытке
-            }
-            $em->persist($item);
-            $em->flush();
-        }
-
-        // Черновик удаляем СВЕЖИМ EM (мог смениться после retry выше) — hard-delete,
-        // Vich подчищает файл draft'а из wardrobe_draft_photo при remove.
-        $em = $doctrine->getManager();
-        $freshDraft = $em->find(WardrobeItemDraft::class, $draft->getId());
-        if ($freshDraft !== null) {
-            $em->remove($freshDraft);
-            $em->flush();
-        }
-
-        return [$item, null];
-    }
-
-    private function pick(?string $override, ?string $fallback): ?string
-    {
-        $override = $override !== null ? trim($override) : '';
-        if ($override !== '') {
-            return $override;
-        }
-
-        $fallback = $fallback !== null ? trim($fallback) : '';
-
-        return $fallback !== '' ? $fallback : null;
     }
 
     /** JSON- или form-тело запроса; пустое тело → пустые overrides (используются значения драфта). */
@@ -339,5 +282,12 @@ class WardrobeIngestController extends AbstractController
         }
 
         return null;
+    }
+
+    private function memberParam(Request $request): ?int
+    {
+        $member = $request->query->getInt('member');
+
+        return $member > 0 ? $member : null;
     }
 }

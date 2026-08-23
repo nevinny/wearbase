@@ -75,10 +75,10 @@
     <div class="md:col-span-5">
         <div class="overflow-hidden rounded-2xl bg-white shadow-sm">
             {% if item.coverPhoto %}
-                <img src="{{ vich_uploader_asset(item.coverPhoto, 'file') }}"
+                <img src="{{ path('account_wardrobe_media_photo', {id: item.coverPhoto.id}) }}"
                      class="aspect-square w-full object-cover" alt="{{ item.name }}">
             {% elseif item.photo %}
-                <img src="{{ vich_uploader_asset(item, 'photoFile') }}"
+                <img src="{{ path('account_wardrobe_media_item', {id: item.id}) }}"
                      class="aspect-square w-full object-cover" alt="{{ item.name }}">
             {% else %}
                 <div class="flex aspect-square w-full items-center justify-center bg-gray-100 text-6xl opacity-20">👕</div>
@@ -89,7 +89,7 @@
         <div class="mt-3 grid grid-cols-3 gap-2">
             {% for photo in item.activePhotos %}
             <div class="overflow-hidden rounded-xl bg-white p-1.5 shadow-sm">
-                <img src="{{ vich_uploader_asset(photo, 'file') }}" class="aspect-square w-full rounded-lg object-cover" alt="">
+                <img src="{{ path('account_wardrobe_media_photo', {id: photo.id}) }}" class="aspect-square w-full rounded-lg object-cover" alt="">
                 <div class="mt-1 flex gap-1">
                     {% if photo.cover %}
                         <span class="flex-1 px-1 py-1 text-center text-[10px] font-semibold text-emerald-700">Обложка</span>

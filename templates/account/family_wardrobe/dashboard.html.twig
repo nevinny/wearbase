@@ -3,13 +3,15 @@
 {% block family_mobile_title %}Гардеробы{% endblock %}
 
 {% block family_mobile_header_actions %}
-    <a href="{{ path('account_wardrobe_new') }}"
+    {% set headerMemberParam = currentMember is defined and currentMember.id != app.user.id ? {member: currentMember.id} : {} %}
+    <a href="{{ path('account_wardrobe_new', headerMemberParam) }}"
        class="flex min-h-11 items-center rounded-xl bg-indigo-600 px-3 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
         + Вещь
     </a>
 {% endblock %}
 
 {% block family_mobile_content %}
+    {% set memberParam = currentMember.id == app.user.id ? {} : {member: currentMember.id} %}
     <section aria-labelledby="wardrobe-app-title">
         <p class="text-sm font-semibold text-indigo-700">Личный и семейный гардероб</p>
         <h1 id="wardrobe-app-title" class="mt-1 text-2xl font-black tracking-tight text-slate-950">Что хотите сделать?</h1>
@@ -30,19 +32,19 @@
                 <span class="mt-1 block text-xs text-rose-100">Решения для детей</span>
             </a>
             {% endif %}
-            <a href="{{ path('account_wardrobe_new') }}"
+            <a href="{{ path('account_wardrobe_new', memberParam) }}"
                class="rounded-2xl bg-indigo-600 p-4 text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
                 <span class="block text-2xl" aria-hidden="true">＋</span>
                 <span class="mt-5 block text-sm font-bold">Добавить вещь</span>
                 <span class="mt-1 block text-xs text-indigo-100">Фото и карточка вещи</span>
             </a>
-            <a href="{{ path('account_wardrobe_outfits') }}"
+            <a href="{{ path('account_wardrobe_outfits', memberParam) }}"
                class="rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-sm transition hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
                 <span class="block text-2xl" aria-hidden="true">✦</span>
                 <span class="mt-5 block text-sm font-bold">Собрать образ</span>
                 <span class="mt-1 block text-xs text-slate-500">Из вещей гардероба</span>
             </a>
-            <a href="{{ path('account_wardrobe_statistics') }}"
+            <a href="{{ path('account_wardrobe_statistics', memberParam) }}"
                class="rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-sm transition hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
                 <span class="block text-2xl" aria-hidden="true">↗</span>
                 <span class="mt-5 block text-sm font-bold">Статистика</span>
@@ -56,6 +58,51 @@
             </a>
         </div>
     </section>
+
+    {% if not onboarding.completed %}
+        <section class="mt-5 rounded-3xl bg-gradient-to-br from-indigo-600 to-violet-700 p-5 text-white shadow-lg" aria-labelledby="wardrobe-onboarding-title">
+            {% if onboarding.skipped %}
+                <p class="text-xs font-bold uppercase tracking-wider text-indigo-100">Можно продолжить позже</p>
+                <h2 id="wardrobe-onboarding-title" class="mt-2 text-xl font-black">Настроить гардероб {{ currentMember.id == app.user.id ? '' : currentMember.firstName }}</h2>
+                <p class="mt-2 text-sm text-indigo-100">Стилист уже знает {{ onboarding.itemCount }} вещей. Продолжим с сохранённого места.</p>
+                <form method="post" action="{{ path('account_wardrobe_app_onboarding') }}" class="mt-4">
+                    <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_onboarding_' ~ currentMember.id) }}">
+                    <input type="hidden" name="member" value="{{ currentMember.id }}">
+                    <input type="hidden" name="action" value="resume">
+                    <button class="min-h-12 w-full rounded-xl bg-white px-4 py-3 text-sm font-bold text-indigo-700">Продолжить настройку</button>
+                </form>
+            {% elseif onboarding.nextAction in ['resume_batch', 'review_batch'] %}
+                {% set batchCounts = onboarding.batchCounts %}
+                <p class="text-xs font-bold uppercase tracking-wider text-indigo-100">Первая мини-капсула</p>
+                <h2 id="wardrobe-onboarding-title" class="mt-2 text-xl font-black">{{ batchCounts.pending > 0 ? 'Фото распознаются' : 'Проверьте вещи' }}</h2>
+                <p class="mt-2 text-sm text-indigo-100">{{ batchCounts.total }} в работе · {{ onboarding.itemCount }} уже в гардеробе</p>
+                <a href="{{ path('account_wardrobe_ingest_review', {batch: onboarding.activeBatchId}|merge(memberParam)) }}"
+                   class="mt-4 flex min-h-12 items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-bold text-indigo-700">Открыть загрузку</a>
+            {% elseif onboarding.nextAction == 'create_outfit' %}
+                <p class="text-xs font-bold uppercase tracking-wider text-indigo-100">Вещи готовы</p>
+                <h2 id="wardrobe-onboarding-title" class="mt-2 text-xl font-black">Соберите первый образ</h2>
+                <p class="mt-2 text-sm text-indigo-100">AI-стилист использует только {{ onboarding.itemCount }} подтверждённых вещей.</p>
+                <a href="{{ path('account_wardrobe_outfits', memberParam) }}"
+                   class="mt-4 flex min-h-12 items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-bold text-indigo-700">Собрать образ</a>
+            {% else %}
+                <p class="text-xs font-bold uppercase tracking-wider text-indigo-100">Начнём без длинной анкеты</p>
+                <h2 id="wardrobe-onboarding-title" class="mt-2 text-xl font-black">Добавьте первые 5 вещей</h2>
+                <p class="mt-2 text-sm text-indigo-100">Сфотографируйте несколько вещей пачкой — AI заполнит черновики, а вы только проверите.</p>
+                <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                    <a href="{{ path('account_wardrobe_index', memberParam) }}#wardrobe-ingest-panel"
+                       class="flex min-h-12 items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-bold text-indigo-700">Загрузить пачкой</a>
+                    <a href="{{ path('account_wardrobe_new', memberParam) }}"
+                       class="flex min-h-12 items-center justify-center rounded-xl border border-white/40 px-4 py-3 text-sm font-bold text-white">Добавить одну</a>
+                </div>
+                <form method="post" action="{{ path('account_wardrobe_app_onboarding') }}" class="mt-3 text-center">
+                    <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_onboarding_' ~ currentMember.id) }}">
+                    <input type="hidden" name="member" value="{{ currentMember.id }}">
+                    <input type="hidden" name="action" value="skip">
+                    <button class="min-h-11 px-4 text-sm font-semibold text-indigo-100 underline-offset-4 hover:underline">Настроить позже</button>
+                </form>
+            {% endif %}
+        </section>
+    {% endif %}
 
     <section id="family-members" class="mt-8" aria-labelledby="family-members-title">
         <div class="flex items-end justify-between gap-3">
@@ -82,7 +129,7 @@
                 {% endset %}
 
                 {% if familyMember.canManage %}
-                    <a href="{{ path('account_wardrobe_index', {member: familyMember.member.id}) }}"
+                    <a href="{{ path('account_wardrobe_app', {member: familyMember.member.id}) }}"
                        class="flex min-h-24 items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
                         {{ cardContent }}
                     </a>

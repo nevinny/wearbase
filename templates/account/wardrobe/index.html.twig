@@ -56,7 +56,7 @@
 <div id="wardrobe-ingest-panel"
      class="mb-6 hidden rounded-2xl bg-white p-6 shadow-sm"
      data-csrf="{{ csrf_token('wardrobe_ingest') }}"
-     data-upload-url="{{ path('account_wardrobe_ingest_upload') }}">
+     data-upload-url="{{ path('account_wardrobe_ingest_upload', memberParam) }}">
     <h2 class="mb-3 text-sm font-bold">Загрузить фото вещей</h2>
     <div id="ingest-panel-upload-area"
          class="cursor-pointer rounded-xl border-2 border-dashed border-gray-300 px-3 py-12 text-center text-gray-500 transition">
@@ -223,10 +223,10 @@
         <a href="{{ path('account_wardrobe_show', {id: item.id}|merge(activeQuery)) }}" class="block">
             <div class="relative aspect-square bg-gray-100">
                 {% if item.coverPhoto %}
-                    <img src="{{ vich_uploader_asset(item.coverPhoto, 'file') }}"
+                    <img src="{{ path('account_wardrobe_media_photo', {id: item.coverPhoto.id}) }}"
                          class="h-full w-full object-cover" alt="{{ item.name }}">
                 {% elseif item.photo %}
-                    <img src="{{ vich_uploader_asset(item, 'photoFile') }}"
+                    <img src="{{ path('account_wardrobe_media_item', {id: item.id}) }}"
                          class="h-full w-full object-cover" alt="{{ item.name }}">
                 {% else %}
                     <div class="flex h-full w-full items-center justify-center text-5xl opacity-20">👕</div>
@@ -282,6 +282,9 @@
     var toggleBtn = document.getElementById('wardrobe-ingest-toggle');
     var panel = document.getElementById('wardrobe-ingest-panel');
     if (toggleBtn && panel) {
+        if (window.location.hash === '#wardrobe-ingest-panel') {
+            panel.classList.remove('hidden');
+        }
         toggleBtn.addEventListener('click', function () {
             panel.classList.toggle('hidden');
         });

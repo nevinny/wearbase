@@ -37,6 +37,17 @@ class WardrobeItemDraft
     #[ORM\JoinColumn(nullable: false)]
     private ?User $user = null;
 
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?User $actor = null;
+
+    #[ORM\OneToOne]
+    #[ORM\JoinColumn(onDelete: 'SET NULL')]
+    private ?WardrobeItem $acceptedItem = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $acceptedAt = null;
+
     #[ORM\Column(name: 'batch_id', length: 36)]
     private ?string $batchId = null;
 
@@ -89,7 +100,33 @@ class WardrobeItemDraft
     public function setUser(?User $user): static
     {
         $this->user = $user;
+        $this->actor ??= $user;
         return $this;
+    }
+
+    public function getProfileSubject(): ?User { return $this->user; }
+    public function setProfileSubject(User $subject): static { $this->user = $subject; return $this; }
+    public function getActor(): ?User { return $this->actor; }
+    public function setActor(User $actor): static { $this->actor = $actor; return $this; }
+    public function getAcceptedItem(): ?WardrobeItem { return $this->acceptedItem; }
+    public function getAcceptedAt(): ?\DateTimeImmutable { return $this->acceptedAt; }
+
+    public function accept(WardrobeItem $item): void
+    {
+        if ($this->status === self::STATUS_ACCEPTED) {
+            if ($this->acceptedItem?->getId() !== $item->getId()) {
+                throw new \DomainException('Черновик уже принят как другая вещь');
+            }
+            return;
+        }
+        if ($this->status !== self::STATUS_RECOGNIZED && $this->status !== self::STATUS_FAILED) {
+            throw new \DomainException('Черновик ещё не готов к подтверждению');
+        }
+
+        $this->status = self::STATUS_ACCEPTED;
+        $this->acceptedItem = $item;
+        $this->acceptedAt = new \DateTimeImmutable();
+        $this->updatedAt = new \DateTime();
     }
 
     public function getBatchId(): ?string { return $this->batchId; }

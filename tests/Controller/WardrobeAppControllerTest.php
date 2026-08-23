@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use App\Entity\WardrobeOnboarding;
 use App\Service\FamilyService;
 
 class WardrobeAppControllerTest extends AuthenticatedWebTestCase
@@ -33,7 +34,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
     public function testDashboardShowsWardrobeAndQuickActions(): void
     {
         $client = static::createClient();
-        $this->loginAsCustomer($client);
+        $client->loginUser(UserFactory::withEmail(static::getContainer(), 'onboarding-dashboard-'.uniqid().'@test.local'));
 
         $client->request('GET', '/account/wardrobe-app');
 
@@ -44,6 +45,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorExists('a[href="/account/wardrobe/outfits"]');
         $this->assertSelectorExists('a[href="/account/wardrobe/statistics"]');
         $this->assertSelectorTextContains('body', 'Состав семьи');
+        $this->assertSelectorTextContains('#wardrobe-onboarding-title', 'Добавьте первые 5 вещей');
         $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="child"]');
         $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="parent"]');
         $this->assertSelectorExists('#family-main.family-safe-content.pt-5:not(.py-5)');
@@ -64,7 +66,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
 
         $this->assertResponseIsSuccessful();
         $this->assertSelectorTextContains('body', 'Саша');
-        $this->assertSelectorExists(sprintf('a[href="/account/wardrobe?member=%d"]', $child->getId()));
+        $this->assertSelectorExists(sprintf('a[href="/account/wardrobe-app?member=%d"]', $child->getId()));
     }
 
     public function testChildSeesFamilyButCannotOpenParentWardrobe(): void
@@ -88,5 +90,70 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorNotExists('a[href="/account/family/add"]');
         $this->assertSelectorNotExists('form[action="/account/family/invite"]');
         $this->assertSelectorExists('#share-wardrobe-app[data-share-url$="/ru/wardrobe"]');
+    }
+
+    public function testDashboardGetDoesNotPersistOnboardingAndSkipCanBeResumed(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'onboarding-skip-resume-'.uniqid().'@test.local');
+        $client->loginUser($user);
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $crawler = $client->request('GET', '/account/wardrobe-app');
+        $this->assertResponseIsSuccessful();
+        $this->assertSame(0, $em->getRepository(WardrobeOnboarding::class)->count(['subject' => $user]));
+
+        $form = $crawler->filter('form')->reduce(
+            static fn ($node): bool => $node->filter('input[name="action"][value="skip"]')->count() > 0,
+        )->form();
+        $client->submit($form);
+        $this->assertResponseRedirects('/account/wardrobe-app');
+
+        $crawler = $client->followRedirect();
+        $this->assertSelectorTextContains('#wardrobe-onboarding-title', 'Настроить гардероб');
+        $onboarding = $em->getRepository(WardrobeOnboarding::class)->findOneBy(['subject' => $user]);
+        $this->assertTrue($onboarding->isSkipped());
+
+        $form = $crawler->filter('form')->reduce(
+            static fn ($node): bool => $node->filter('input[name="action"][value="resume"]')->count() > 0,
+        )->form();
+        $client->submit($form);
+        $this->assertResponseRedirects('/account/wardrobe-app');
+        $em->refresh($onboarding);
+        $this->assertFalse($onboarding->isSkipped());
+    }
+
+    public function testParentCanOpenChildOnboardingButChildCannotOpenParent(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'onboarding-parent@test.local');
+        $child = static::getContainer()->get(FamilyService::class)->createChild($parent, 'Лиза');
+
+        $client->loginUser($parent);
+        $client->request('GET', '/account/wardrobe-app?member='.$child->getId());
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('#wardrobe-onboarding-title', 'Добавьте первые 5 вещей');
+        $this->assertSelectorExists(sprintf('input[name="member"][value="%d"]', $child->getId()));
+
+        $client->loginUser($child);
+        $client->request('GET', '/account/wardrobe-app?member='.$parent->getId());
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    public function testInvalidOnboardingCsrfDoesNotCreateState(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $countBefore = $em->getRepository(WardrobeOnboarding::class)->count(['subject' => $user]);
+
+        $client->request('POST', '/account/wardrobe-app/onboarding', [
+            'member' => $user->getId(),
+            'action' => 'skip',
+            '_token' => 'invalid',
+        ]);
+
+        $this->assertResponseStatusCodeSame(403);
+        $this->assertSame($countBefore, $em->getRepository(WardrobeOnboarding::class)->count(['subject' => $user]));
     }
 }
