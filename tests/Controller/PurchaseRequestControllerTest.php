@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Entity\PurchaseRequest;
 use App\Entity\PurchaseRequestEvent;
 use App\Entity\Notification;
+use App\Entity\User;
 use App\Service\FamilyBudgetService;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
@@ -194,6 +195,51 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->assertSame('Покупка одобрена', $childNotification->getTitle());
     }
 
+    public function testRequestNotifiesBothParentsButNotCreatingActor(): void
+    {
+        $firstParent = UserFactory::withEmail(static::getContainer(), $this->email('notify-first-parent'));
+        $secondParent = UserFactory::withEmail(static::getContainer(), $this->email('notify-second-parent'));
+        $invite = $this->families()->createInvite($firstParent, User::FAMILY_ROLE_PARENT);
+        $this->families()->acceptInvite($secondParent, $invite);
+        $child = $this->families()->createChild($firstParent, 'Мила');
+
+        $this->purchaseRequests()->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/two-parents',
+            'Посмотрите вместе',
+            '1200',
+        );
+        $notifications = $this->em()->getRepository(Notification::class)->findBy([
+            'type' => Notification::TYPE_PURCHASE_REQUEST_NEW,
+        ]);
+        $recipientIds = array_map(
+            static fn (Notification $notification): ?int => $notification->getRecipient()?->getId(),
+            $notifications,
+        );
+        $this->assertContains($firstParent->getId(), $recipientIds);
+        $this->assertContains($secondParent->getId(), $recipientIds);
+        $this->assertNotContains($child->getId(), $recipientIds);
+
+        $this->purchaseRequests()->create(
+            $firstParent,
+            $child,
+            'https://shop.example.test/item/created-by-parent',
+            null,
+            '800',
+        );
+        $actorNotifications = $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $firstParent,
+            'type' => Notification::TYPE_PURCHASE_REQUEST_NEW,
+        ]);
+        $secondParentNotifications = $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $secondParent,
+            'type' => Notification::TYPE_PURCHASE_REQUEST_NEW,
+        ]);
+        $this->assertCount(1, $actorNotifications);
+        $this->assertCount(2, $secondParentNotifications);
+    }
+
     public function testMonthlyBudgetRequiresExplicitOverspendApproval(): void
     {
         $parent = UserFactory::withEmail(static::getContainer(), $this->email('budget-parent'));
@@ -283,12 +329,45 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
             null,
         );
 
-        $this->expectException(\DomainException::class);
+        try {
+            $this->purchaseRequests()->decide($parent, $purchaseRequest, PurchaseRequest::STATUS_APPROVED);
+            $this->fail('Unknown price must require explicit confirmation');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('Укажите цену', $exception->getMessage());
+        }
+
         $this->purchaseRequests()->decide(
             $parent,
             $purchaseRequest,
             PurchaseRequest::STATUS_APPROVED,
+            'Цена появится при оформлении',
+            true,
         );
+        $event = $purchaseRequest->getEvents()->last();
+        $this->assertSame(PurchaseRequestEvent::TYPE_APPROVED_NO_PRICE, $event->getType());
+        $this->assertSame('unknown_price', $event->getMetadata()['reason']);
+        $this->assertTrue($event->getMetadata()['override']);
+    }
+
+    public function testBudgetUsesExactKopecks(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('exact-budget-parent'));
+        $child = $this->families()->createChild($parent, 'Лида');
+        static::getContainer()->get(FamilyBudgetService::class)->setMonthlyLimit($parent, $child, '1.00');
+        foreach (['0.01', '0.02'] as $index => $price) {
+            $request = $this->purchaseRequests()->create(
+                $child,
+                $child,
+                'https://shop.example.test/item/kopeck-'.$index,
+                null,
+                $price,
+            );
+            $this->purchaseRequests()->decide($parent, $request, PurchaseRequest::STATUS_APPROVED);
+        }
+
+        $summary = static::getContainer()->get(FamilyBudgetService::class)->summary($child);
+        $this->assertSame('0.03', $summary['approved']);
+        $this->assertSame('0.97', $summary['remaining']);
     }
 
     public function testNotificationRendersSafeRequestLink(): void

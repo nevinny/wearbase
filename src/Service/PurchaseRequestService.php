@@ -96,7 +96,7 @@ class PurchaseRequestService
         }
 
         $this->transactional(function () use ($actor, $request, $decision, $comment, $allowOverBudget): void {
-            $this->em->lock($request, LockMode::PESSIMISTIC_WRITE);
+            $this->em->refresh($request, LockMode::PESSIMISTIC_WRITE);
             $subject = $request->getSubject();
             \assert($subject instanceof User);
 
@@ -105,17 +105,24 @@ class PurchaseRequestService
                 : null;
             $request->decide($decision, $actor, $comment);
             $overBudget = $budget !== null && $budget['exceeded'];
+            $priceOverride = $decision === PurchaseRequest::STATUS_APPROVED
+                && $request->getEstimatedPrice() === null
+                && $budget !== null
+                && $allowOverBudget;
             $eventType = $overBudget
                 ? PurchaseRequestEvent::TYPE_APPROVED_OVER_BUDGET
+                : ($priceOverride
+                    ? PurchaseRequestEvent::TYPE_APPROVED_NO_PRICE
                 : ($decision === PurchaseRequest::STATUS_APPROVED
                     ? PurchaseRequestEvent::TYPE_APPROVED
-                    : PurchaseRequestEvent::TYPE_REJECTED);
-            $metadata = $overBudget ? [
-                'limit' => $budget['limit'],
-                'approvedBefore' => $budget['approved'],
-                'remainingBefore' => $budget['remaining'],
-                'requested' => (string) $request->getEstimatedPrice(),
+                    : PurchaseRequestEvent::TYPE_REJECTED));
+            $metadata = $overBudget || $priceOverride ? [
+                'limit' => (string) $budget['limit'],
+                'approvedBefore' => (string) $budget['approved'],
+                'remainingBefore' => (string) $budget['remaining'],
+                'requested' => $request->getEstimatedPrice() ?? 'unknown',
                 'override' => true,
+                'reason' => $priceOverride ? 'unknown_price' : 'over_budget',
             ] : null;
             $request->addEvent(new PurchaseRequestEvent($actor, $eventType, $metadata));
             $this->notifications->dispatchInApp(

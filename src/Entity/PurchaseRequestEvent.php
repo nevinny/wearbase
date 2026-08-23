@@ -15,6 +15,7 @@ class PurchaseRequestEvent
     public const TYPE_APPROVED = 'approved';
     public const TYPE_REJECTED = 'rejected';
     public const TYPE_APPROVED_OVER_BUDGET = 'approved_over_budget';
+    public const TYPE_APPROVED_NO_PRICE = 'approved_no_price';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]

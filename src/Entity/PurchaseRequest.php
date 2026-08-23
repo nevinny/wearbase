@@ -98,7 +98,14 @@ class PurchaseRequest
         return $this;
     }
     public function getComment(): ?string { return $this->comment; }
-    public function setComment(?string $comment): static { $this->comment = $comment; return $this; }
+    public function setComment(?string $comment): static
+    {
+        if ($comment !== null && mb_strlen($comment) > 2000) {
+            throw new \InvalidArgumentException('Комментарий не должен превышать 2000 символов');
+        }
+        $this->comment = $comment;
+        return $this;
+    }
     public function getEstimatedPrice(): ?string { return $this->estimatedPrice; }
     public function setEstimatedPrice(?string $estimatedPrice): static
     {
@@ -122,6 +129,9 @@ class PurchaseRequest
         }
         if ($status === self::STATUS_REJECTED && trim((string) $comment) === '') {
             throw new \DomainException('Укажите причину отказа');
+        }
+        if ($comment !== null && mb_strlen($comment) > 2000) {
+            throw new \InvalidArgumentException('Комментарий не должен превышать 2000 символов');
         }
 
         $this->status = $status;

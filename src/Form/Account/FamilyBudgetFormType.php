@@ -31,6 +31,8 @@ class FamilyBudgetFormType extends AbstractType
                 'label' => 'Лимит на месяц',
                 'currency' => 'RUB',
                 'divisor' => 1,
+                'input' => 'string',
+                'scale' => 2,
                 'constraints' => [
                     new NotBlank(),
                     new GreaterThanOrEqual(0),

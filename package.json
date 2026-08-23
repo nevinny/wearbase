@@ -6,7 +6,6 @@
     "test": "playwright test",
     "test:family": "playwright test --config=playwright.family.config.ts",
     "test:onboarding": "playwright test --config=playwright.onboarding.config.ts",
-    "test:family": "playwright test --config=playwright.family.config.ts",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report"

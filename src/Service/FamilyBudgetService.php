@@ -24,15 +24,26 @@ class FamilyBudgetService
     public function setMonthlyLimit(User $actor, User $subject, string $limit): FamilyBudget
     {
         $this->assertParentOf($actor, $subject);
+        $normalizedLimit = MoneyAmount::normalize($limit);
+        $connection = $this->em->getConnection();
+        $connection->beginTransaction();
+        try {
+            $this->em->lock($subject, LockMode::PESSIMISTIC_WRITE);
+            $budget = $this->budgets->findForSubject($subject) ?? (new FamilyBudget())
+                ->setSubject($subject);
+            $budget->setMonthlyLimit($normalizedLimit);
 
-        $budget = $this->budgets->findForSubject($subject) ?? (new FamilyBudget())
-            ->setSubject($subject);
-        $budget->setMonthlyLimit($limit);
+            $this->em->persist($budget);
+            $this->em->flush();
+            $connection->commit();
 
-        $this->em->persist($budget);
-        $this->em->flush();
-
-        return $budget;
+            return $budget;
+        } catch (\Throwable $exception) {
+            if ($connection->isTransactionActive()) {
+                $connection->rollBack();
+            }
+            throw $exception;
+        }
     }
 
     /**
@@ -63,6 +74,7 @@ class FamilyBudgetService
      */
     public function checkApproval(User $subject, ?string $price, bool $allowOverBudget): ?array
     {
+        $this->em->lock($subject, LockMode::PESSIMISTIC_WRITE);
         $budget = $this->budgets->findForSubject($subject);
         if ($budget === null) {
             return null;

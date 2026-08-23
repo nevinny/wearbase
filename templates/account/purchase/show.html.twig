@@ -41,7 +41,7 @@
             {{ purchaseRequest.createdBy.fullName }} · {{ purchaseRequest.createdAt|date('d.m.Y, H:i') }}
         </p>
         {% if purchaseRequest.estimatedPrice %}
-            <p class="mt-4 text-3xl font-black text-slate-950">{{ purchaseRequest.estimatedPrice|number_format(0, ',', ' ') }} ₽</p>
+            <p class="mt-4 text-3xl font-black text-slate-950">{{ purchaseRequest.estimatedPrice|number_format(2, ',', ' ') }} ₽</p>
         {% endif %}
 
         <a href="{{ purchaseRequest.productUrl }}" target="_blank" rel="noopener noreferrer"
@@ -74,8 +74,8 @@
             <p class="mt-1 text-sm text-slate-500">Комментарий поможет объяснить решение ребёнку.</p>
             {% if budgetSummary %}
                 <div class="mt-4 rounded-xl {{ budgetSummary.exceeded ? 'bg-amber-50 text-amber-900' : 'bg-indigo-50 text-indigo-900' }} p-4 text-sm">
-                    Бюджет: осталось {{ budgetSummary.remaining|number_format(0, ',', ' ') }} ₽
-                    из {{ budgetSummary.limit|number_format(0, ',', ' ') }} ₽.
+                    Бюджет: осталось {{ budgetSummary.remaining|number_format(2, ',', ' ') }} ₽
+                    из {{ budgetSummary.limit|number_format(2, ',', ' ') }} ₽.
                     {% if budgetPriceUnknown %}<strong>Цена не указана — бюджет нельзя проверить.</strong>{% endif %}
                     {% if budgetSummary.exceeded %}<strong>Запрос превышает остаток.</strong>{% endif %}
                 </div>

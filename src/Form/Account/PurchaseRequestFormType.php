@@ -43,6 +43,8 @@ class PurchaseRequestFormType extends AbstractType
                 'label' => 'Ожидаемая цена',
                 'currency' => 'RUB',
                 'divisor' => 1,
+                'input' => 'string',
+                'scale' => 2,
                 'required' => false,
                 'constraints' => [new GreaterThanOrEqual(0)],
             ])

@@ -75,7 +75,7 @@ test.describe.serial('Ребёнок ↔ родитель: покупка и б�
       'Хочу носить с синими джинсами',
     );
 
-    await expect(page.getByText('2 499 ₽')).toBeVisible();
+    await expect(page.getByText('2 499,00 ₽')).toBeVisible();
     await expect(page.getByText('Хочу носить с синими джинсами')).toBeVisible();
     await expect(page.getByText('Запрос отправлен родителю')).toBeVisible();
     await page.evaluate((value) => localStorage.setItem('e2eApproveRequest', value), requestPath);
@@ -89,7 +89,7 @@ test.describe.serial('Ребёнок ↔ родитель: покупка и б�
     await expect(notification).toBeVisible();
     await notification.locator('xpath=ancestor::div[contains(@class,"flex-1")]').getByRole('link', { name: 'Открыть →' }).click();
     await expect(page).toHaveURL(/\/account\/purchases\/\d+$/);
-    await expect(page.getByText('2 499 ₽')).toBeVisible();
+    await expect(page.getByText('2 499,00 ₽')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Ваше решение' })).toBeVisible();
   });
 
@@ -133,8 +133,8 @@ test.describe.serial('Ребёнок ↔ родитель: покупка и б�
     await page.getByRole('button', { name: 'Сохранить бюджет' }).click();
 
     await expect(page).toHaveURL('/account/purchases');
-    await expect(page.getByText('3 000 ₽').first()).toBeVisible();
-    await expect(page.getByText('из 3 000 ₽ в этом месяце')).toBeVisible();
+    await expect(page.getByText('3 000,00 ₽').first()).toBeVisible();
+    await expect(page.getByText('из 3 000,00 ₽ в этом месяце')).toBeVisible();
   });
 
   test('7. перерасход требует явного подтверждения и меняет остаток', async ({ browser }) => {
@@ -153,7 +153,7 @@ test.describe.serial('Ребёнок ↔ родитель: покупка и б�
     await expect(parentPage.getByText('Одобрено')).toBeVisible();
 
     await parentPage.goto('/account/purchases');
-    await expect(parentPage.getByText('-3 999 ₽')).toBeVisible();
+    await expect(parentPage.getByText('-3 999,00 ₽')).toBeVisible();
   });
 
   test('8. ребёнок не видит бюджет/решения, посторонний не читает запрос (IDOR)', async ({ browser }) => {
