@@ -13,10 +13,10 @@
 
 <div id="wardrobe-ingest-root"
      data-csrf="{{ csrf_token('wardrobe_ingest') }}"
-     data-upload-url="{{ path('account_wardrobe_ingest_upload') }}"
+     data-upload-url="{{ path('account_wardrobe_ingest_upload', currentMember is defined ? {member: currentMember.id} : {}) }}"
      {% if hasBatch %}
      data-batch="{{ batch }}"
-     data-status-url="{{ path('account_wardrobe_ingest_status', {batch: batch}) }}"
+     data-status-url="{{ path('account_wardrobe_ingest_status', {batch: batch, member: currentMember.id}) }}"
      {% endif %}>
 
 <div class="mb-5 flex items-center gap-3">
@@ -64,7 +64,7 @@
                 <h2 class="text-sm font-bold">Проверьте распознанные вещи ({{ reviewDrafts|length }})</h2>
                 {% if highCount > 0 %}
                     <button type="button" id="ingest-accept-all-btn"
-                            data-url="{{ path('account_wardrobe_ingest_accept_all', {batch: batch}) }}"
+                            data-url="{{ path('account_wardrobe_ingest_accept_all', {batch: batch, member: currentMember.id}) }}"
                             class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black transition disabled:opacity-50">
                         Принять всё уверенное ({{ highCount }})
                     </button>
@@ -85,7 +85,7 @@
                      data-reject-url="{{ path('account_wardrobe_ingest_reject', {id: draft.id}) }}">
                     <div class="relative aspect-square bg-gray-100">
                         {% if draft.photo %}
-                            <img src="{{ vich_uploader_asset(draft, 'photoFile') }}"
+                            <img src="{{ path('account_wardrobe_media_draft', {id: draft.id}) }}"
                                  class="h-full w-full object-cover" alt="{{ draft.name ?: 'Фото вещи' }}">
                         {% else %}
                             <div class="flex h-full w-full items-center justify-center text-5xl opacity-20">👕</div>

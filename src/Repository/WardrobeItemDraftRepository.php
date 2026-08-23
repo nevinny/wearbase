@@ -22,14 +22,18 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
     /**
      * @return WardrobeItemDraft[]
      */
-    public function findPending(int $limit): array
+    public function findPending(int $limit, ?string $batchId = null): array
     {
-        return $this->createQueryBuilder('d')
+        $query = $this->createQueryBuilder('d')
             ->andWhere('d.status = :status')
             ->setParameter('status', WardrobeItemDraft::STATUS_PENDING)
             ->orderBy('d.id', 'ASC')
-            ->setMaxResults($limit)
-            ->getQuery()
+            ->setMaxResults($limit);
+        if ($batchId !== null) {
+            $query->andWhere('d.batchId = :batchId')->setParameter('batchId', $batchId);
+        }
+
+        return $query->getQuery()
             ->getResult();
     }
 
@@ -51,12 +55,16 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
     /**
      * @return array{total:int,pending:int,recognized:int,failed:int}
      */
-    public function countsByBatch(string $batchId): array
+    public function countsByBatch(User $user, string $batchId): array
     {
         $rows = $this->createQueryBuilder('d')
             ->select('d.status AS status', 'COUNT(d.id) AS cnt')
+            ->andWhere('d.user = :user')
             ->andWhere('d.batchId = :batchId')
+            ->andWhere('d.status NOT IN (:terminal)')
+            ->setParameter('user', $user)
             ->setParameter('batchId', $batchId)
+            ->setParameter('terminal', [WardrobeItemDraft::STATUS_ACCEPTED, WardrobeItemDraft::STATUS_REJECTED])
             ->groupBy('d.status')
             ->getQuery()
             ->getArrayResult();

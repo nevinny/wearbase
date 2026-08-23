@@ -62,8 +62,8 @@ vich_uploader:
                     dirs: 2
 
         wardrobe_item_photo:
-            uri_prefix: /images/wardrobe
-            upload_destination: '%kernel.project_dir%/public_html/images/wardrobe'
+            uri_prefix: /account/wardrobe/media/item
+            upload_destination: '%kernel.project_dir%/var/uploads/wardrobe'
             namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
             directory_namer:
                 service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer
@@ -76,8 +76,8 @@ vich_uploader:
             delete_on_remove: false
 
         wardrobe_gallery_photo:
-            uri_prefix: /images/wardrobe
-            upload_destination: '%kernel.project_dir%/public_html/images/wardrobe'
+            uri_prefix: /account/wardrobe/media/photo
+            upload_destination: '%kernel.project_dir%/var/uploads/wardrobe'
             namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
             directory_namer:
                 service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer
@@ -86,8 +86,8 @@ vich_uploader:
                     dirs: 2
 
         wardrobe_draft_photo:
-            uri_prefix: /images/wardrobe_drafts
-            upload_destination: '%kernel.project_dir%/public_html/images/wardrobe_drafts'
+            uri_prefix: /account/wardrobe/media/draft
+            upload_destination: '%kernel.project_dir%/var/uploads/wardrobe_drafts'
             namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
             directory_namer:
                 service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer

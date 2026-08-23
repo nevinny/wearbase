@@ -43,10 +43,13 @@ class WardrobeOutfitLearningService
         return $suggestions;
     }
 
-    public function react(User $user, int $id, string $reaction): void
+    public function react(User $user, User $wardrobeOwner, int $id, string $reaction): void
     {
         $outfit = $this->outfits->find($id);
-        if ($outfit === null || $outfit->getUser()->getId() !== $user->getId()) {
+        if ($outfit === null
+            || $outfit->getUser()->getId() !== $user->getId()
+            || $outfit->getWardrobeOwner()->getId() !== $wardrobeOwner->getId()
+        ) {
             throw new \DomainException('Образ не найден');
         }
         $outfit->react($reaction);

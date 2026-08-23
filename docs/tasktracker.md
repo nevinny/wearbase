@@ -2019,6 +2019,28 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [ ] Для native iOS добавить revocable per-device access/refresh tokens; не переиспользовать
   X-Agent-Token/HMAC и не доверять user/member ID из клиента.
 
+### Фаза 0B — activation существующего гардероба
+
+- [x] Добавить profile-aware onboarding на главную PWA: первые 5 вещей → первый образ → реакция.
+- [x] Сохранять этап, skip/resume и активную пачку отдельно для каждого `profileSubject`.
+- [x] Разделить загрузившего `actor` и владельца вещей; parent→child работает, child→siblings/parent
+  и cross-family переключение блокируются через `FamilyService`.
+- [x] Сделать promotion черновика транзакционным и идемпотентным; повторный accept возвращает
+  прежний `WardrobeItem`, конфликт `itemNo` повторяет всю транзакцию.
+- [x] Ограничить пачку 20 фото, не создавать пустую пачку при полностью невалидной загрузке.
+- [x] Перенести новые wardrobe/draft photos из web-root и выдавать через авторизованный media
+  controller с `private, no-store`, `nosniff` и family scope.
+- [x] Связать завершение onboarding с реакцией на первый образ и проверить owner контекст образа.
+- [ ] Добавить file hash + client idempotency key для повторной multipart-загрузки одной фотографии.
+- [ ] Добавить worker lease/retry (`processing`, `leaseUntil`, `attempts`) для multi-host и починить
+  batch-filter-before-limit в фоновой команде.
+- [ ] Добавить consent/retention: очистка abandoned drafts и диагностического `ai_raw`, EXIF strip,
+  лимит хранилища и rate limit стоимости vision.
+- [ ] Для nginx/CDN закрыть legacy `/images/wardrobe*` на уровне server config и перенести старые
+  файлы в private storage deploy-командой; `.htaccess` уже закрывает Apache.
+- [ ] Добавить IndexedDB retry только как foreground-resume при следующем online/open; не обещать
+  iOS background upload, пока платформа не даёт надёжную гарантию.
+
 ### Фаза 1 — запрос ребёнка и решение родителя
 
 - [x] Реализовать provider-agnostic web/PWA MVP: одна HTTPS-ссылка без server fetch, комментарий,

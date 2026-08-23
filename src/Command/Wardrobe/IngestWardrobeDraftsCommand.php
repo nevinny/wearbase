@@ -68,13 +68,7 @@ class IngestWardrobeDraftsCommand extends Command
         $batch = $input->getOption('batch');
         $limit = max(1, (int) $input->getOption('limit'));
 
-        $drafts = $this->draftRepo->findPending($limit);
-        if ($batch !== null) {
-            $drafts = array_values(array_filter(
-                $drafts,
-                static fn (WardrobeItemDraft $d): bool => $d->getBatchId() === $batch,
-            ));
-        }
+        $drafts = $this->draftRepo->findPending($limit, is_string($batch) ? $batch : null);
 
         if ($drafts === []) {
             $io->text('Нет ожидающих черновиков.');
@@ -103,7 +97,7 @@ class IngestWardrobeDraftsCommand extends Command
                 continue;
             }
 
-            $result = $this->ai->suggestFromPhoto($path, $draft->getUser());
+            $result = $this->ai->suggestFromPhoto($path, $draft->getProfileSubject());
 
             if ($result['ok'] ?? false) {
                 $fields = $result['fields'] ?? [];

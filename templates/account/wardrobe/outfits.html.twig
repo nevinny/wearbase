@@ -37,9 +37,9 @@
                         <a href="{{ path('account_wardrobe_show', {id: item.id, member: member.id}) }}" class="overflow-hidden rounded-xl border border-gray-100 hover:shadow-sm">
                             <div class="aspect-square bg-gray-100">
                                 {% if item.coverPhoto %}
-                                    <img src="{{ vich_uploader_asset(item.coverPhoto, 'file') }}" class="h-full w-full object-cover" alt="{{ item.name }}">
+                                    <img src="{{ path('account_wardrobe_media_photo', {id: item.coverPhoto.id}) }}" class="h-full w-full object-cover" alt="{{ item.name }}">
                                 {% elseif item.photo %}
-                                    <img src="{{ vich_uploader_asset(item, 'photoFile') }}" class="h-full w-full object-cover" alt="{{ item.name }}">
+                                    <img src="{{ path('account_wardrobe_media_item', {id: item.id}) }}" class="h-full w-full object-cover" alt="{{ item.name }}">
                                 {% else %}
                                     <div class="flex h-full items-center justify-center text-4xl opacity-20">👕</div>
                                 {% endif %}
