@@ -13,6 +13,7 @@ use App\Entity\User;
 use App\Service\FamilyBudgetService;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
+use App\Service\Wardrobe\PurchaseToWardrobeService;
 use Doctrine\ORM\EntityManagerInterface;
 
 class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
@@ -215,6 +216,49 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->em()->clear();
         $reloaded = $this->em()->getRepository(PurchaseRequestItem::class)->find($item->getId());
         $this->assertSame(PurchaseRequestItem::STATUS_APPROVED, $reloaded->getStatus());
+    }
+
+    public function testBoughtPositionCreatesExactlyOneWardrobeItemForChild(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('purchase-wardrobe-parent'));
+        $child = $this->families()->createChild($parent, 'Мила');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/cardigan', null, '2100');
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, '1999');
+        $this->purchaseRequests()->markDelivered($parent, $request, $item);
+        $this->purchaseRequests()->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_BOUGHT, '152', FittingFeedback::SIZING_TRUE, [], null);
+
+        /** @var PurchaseToWardrobeService $converter */
+        $converter = static::getContainer()->get(PurchaseToWardrobeService::class);
+        $first = $converter->add($parent, $request, $item);
+        $second = $converter->add($parent, $request, $item);
+
+        $this->assertSame($first->getId(), $second->getId());
+        $this->assertSame($child->getId(), $first->getUser()?->getId());
+        $this->assertSame($child->getId(), $first->getOriginalOwner()?->getId());
+        $this->assertSame('1999', $first->getPrice());
+        $this->assertSame('152', $first->getSize());
+        $this->assertSame($item->getSourceUrl(), $first->getProductUrl());
+        $this->assertSame(1, $this->em()->getRepository(\App\Entity\WardrobeItem::class)->count(['user' => $child]));
+        $this->assertSame(PurchaseRequestEvent::TYPE_ADDED_TO_WARDROBE, $request->getEvents()->last()->getType());
+    }
+
+    public function testRefusedPositionCannotCreateWardrobeItem(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('refused-wardrobe-parent'));
+        $child = $this->families()->createChild($parent, 'Оля');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/trousers', null);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, null);
+        $this->purchaseRequests()->markDelivered($parent, $request, $item);
+        $this->purchaseRequests()->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_REFUSED, null, null, ['waist'], 'Не сели');
+
+        $this->expectException(\DomainException::class);
+        static::getContainer()->get(PurchaseToWardrobeService::class)->add($parent, $request, $item);
     }
 
     public function testFormRejectsMoreThanTenItems(): void

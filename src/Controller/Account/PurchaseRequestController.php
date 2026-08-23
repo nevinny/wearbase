@@ -14,6 +14,7 @@ use App\Repository\PurchaseRequestItemRepository;
 use App\Service\FamilyBudgetService;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
+use App\Service\Wardrobe\PurchaseToWardrobeService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -199,6 +200,38 @@ class PurchaseRequestController extends AbstractController
         }
 
         return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $requestId]));
+    }
+
+    #[Route('/{requestId}/items/{itemId}/wardrobe', name: 'add_to_wardrobe', requirements: ['requestId' => '\d+', 'itemId' => '\d+'], methods: ['POST'])]
+    public function addToWardrobe(
+        int $requestId,
+        int $itemId,
+        Request $request,
+        PurchaseRequestRepository $requests,
+        PurchaseRequestItemRepository $items,
+        PurchaseToWardrobeService $service,
+    ): Response {
+        $purchaseRequest = $requests->find($requestId);
+        $item = $items->find($itemId);
+        if (!$purchaseRequest instanceof PurchaseRequest || !$item instanceof PurchaseRequestItem) {
+            throw $this->createNotFoundException();
+        }
+        if (!$this->isCsrfTokenValid('purchase_to_wardrobe_'.$itemId, $request->request->getString('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный CSRF-токен');
+        }
+        /** @var User $actor */
+        $actor = $this->getUser();
+        try {
+            $wardrobeItem = $service->add($actor, $purchaseRequest, $item);
+            $this->addFlash('success', 'Вещь добавлена в гардероб');
+            return $this->privateResponse($this->redirectToRoute('account_wardrobe_show', [
+                'id' => $wardrobeItem->getId(),
+                'member' => $purchaseRequest->getSubject()?->getId(),
+            ]));
+        } catch (\DomainException $exception) {
+            $this->addFlash('error', $exception->getMessage());
+            return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $requestId]));
+        }
     }
 
     #[Route('/{id}/decide', name: 'decide', requirements: ['id' => '\d+'], methods: ['POST'])]

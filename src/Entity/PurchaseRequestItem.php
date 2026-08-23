@@ -62,6 +62,10 @@ class PurchaseRequestItem
     #[ORM\OneToOne(mappedBy: 'item', targetEntity: FittingFeedback::class, cascade: ['persist'], orphanRemoval: true)]
     private ?FittingFeedback $fittingFeedback = null;
 
+    #[ORM\OneToOne]
+    #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
+    private ?WardrobeItem $wardrobeItem = null;
+
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
@@ -93,6 +97,17 @@ class PurchaseRequestItem
     public function getOrderedAt(): ?\DateTimeImmutable { return $this->orderedAt; }
     public function getDeliveredAt(): ?\DateTimeImmutable { return $this->deliveredAt; }
     public function getFittingFeedback(): ?FittingFeedback { return $this->fittingFeedback; }
+    public function getWardrobeItem(): ?WardrobeItem { return $this->wardrobeItem; }
+    public function linkWardrobeItem(WardrobeItem $wardrobeItem): void
+    {
+        if ($this->status !== self::STATUS_BOUGHT) {
+            throw new \DomainException('В гардероб можно добавить только выкупленную вещь');
+        }
+        if ($this->wardrobeItem !== null && $this->wardrobeItem !== $wardrobeItem) {
+            throw new \DomainException('Позиция уже добавлена в гардероб');
+        }
+        $this->wardrobeItem = $wardrobeItem;
+    }
     public function getDecidedBy(): ?User { return $this->decidedBy; }
     public function getDecisionComment(): ?string { return $this->decisionComment; }
     public function getDecidedAt(): ?\DateTimeImmutable { return $this->decidedAt; }
