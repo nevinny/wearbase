@@ -106,7 +106,18 @@ class FamilyClaimController extends AbstractController
         /** @var ?User $user */
         $user = $this->getUser();
 
+        $unavailable = !$invite->isUsable();
+
         if ($request->isMethod('POST')) {
+            if ($unavailable) {
+                $response = $this->render('family/invite_accept.html.twig', [
+                    'invite' => $invite,
+                    'inviterName' => $invite->getFamily()->getOwner()->getFullName(),
+                    'unavailable' => true,
+                ], new Response(status: Response::HTTP_GONE));
+
+                return $this->secureInviteResponse($response);
+            }
             if ($user === null) {
                 $this->addFlash('error', 'Войдите, чтобы принять приглашение');
                 return $this->redirectToRoute('app_login');
@@ -134,16 +145,24 @@ class FamilyClaimController extends AbstractController
             $request->getSession()->set('_security.main.target_path', $request->getUri());
         }
 
-        $alreadyUsed = $invite->isAccepted();
         $response = $this->render('family/invite_accept.html.twig', [
             'invite'      => $invite,
             'inviterName' => $invite->getFamily()->getOwner()->getFullName(),
-            'alreadyUsed' => $alreadyUsed,
+            'unavailable' => $unavailable,
         ]);
 
-        if ($alreadyUsed) {
+        if ($unavailable) {
             $response->setStatusCode(Response::HTTP_GONE);
         }
+        return $this->secureInviteResponse($response);
+    }
+
+    private function secureInviteResponse(Response $response): Response
+    {
+        $response->headers->set('Referrer-Policy', 'no-referrer');
+        $response->headers->set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+        $response->setPrivate();
+        $response->headers->addCacheControlDirective('no-store');
 
         return $response;
     }

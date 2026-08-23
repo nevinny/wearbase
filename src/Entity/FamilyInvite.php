@@ -35,6 +35,19 @@ class FamilyInvite
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
+    #[ORM\Column]
+    private \DateTimeImmutable $expiresAt;
+
+    #[ORM\Column(length: 180, nullable: true)]
+    private ?string $intendedEmail = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $revokedAt = null;
+
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?User $revokedBy = null;
+
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $acceptedAt = null;
 
@@ -46,6 +59,7 @@ class FamilyInvite
     {
         $this->token = bin2hex(random_bytes(32));
         $this->createdAt = new \DateTimeImmutable();
+        $this->expiresAt = new \DateTimeImmutable('+7 days');
     }
 
     public function getId(): ?int { return $this->id; }
@@ -69,6 +83,30 @@ class FamilyInvite
     public function getToken(): ?string { return $this->token; }
 
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
+    public function getExpiresAt(): \DateTimeImmutable { return $this->expiresAt; }
+    public function isExpired(): bool { return $this->expiresAt <= new \DateTimeImmutable(); }
+    public function getIntendedEmail(): ?string { return $this->intendedEmail; }
+    public function setIntendedEmail(?string $email): static
+    {
+        $email = $email !== null ? mb_strtolower(trim($email)) : null;
+        $this->intendedEmail = $email !== '' ? $email : null;
+        return $this;
+    }
+    public function getRevokedAt(): ?\DateTimeImmutable { return $this->revokedAt; }
+    public function getRevokedBy(): ?User { return $this->revokedBy; }
+    public function isRevoked(): bool { return $this->revokedAt !== null; }
+    public function revoke(User $actor): void
+    {
+        if ($this->isAccepted()) {
+            throw new \DomainException('Использованное приглашение нельзя отозвать');
+        }
+        $this->revokedAt ??= new \DateTimeImmutable();
+        $this->revokedBy ??= $actor;
+    }
+    public function isUsable(): bool
+    {
+        return !$this->isAccepted() && !$this->isRevoked() && !$this->isExpired();
+    }
 
     public function getAcceptedAt(): ?\DateTimeImmutable { return $this->acceptedAt; }
 

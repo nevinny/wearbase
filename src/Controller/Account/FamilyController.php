@@ -140,8 +140,60 @@ class FamilyController extends AbstractController
             return $this->redirectToRoute('account_family_index');
         }
 
-        $familyService->createInvite($user, $role);
+        $email = trim((string) $request->request->get('email'));
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            $this->addFlash('error', 'Укажите корректный email');
+            return $this->redirectToRoute('account_family_index');
+        }
+
+        $familyService->createInvite($user, $role, $email !== '' ? $email : null);
         $this->addFlash('success', 'Приглашение создано — отправьте ссылку члену семьи');
+
+        return $this->redirectToRoute('account_family_index');
+    }
+
+    #[Route('/invite/{id}/revoke', name: 'invite_revoke', requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function revokeInvite(
+        int $id,
+        Request $request,
+        FamilyInviteRepository $inviteRepo,
+        FamilyService $familyService,
+    ): Response {
+        /** @var User $user */
+        $user = $this->getUser();
+        $invite = $inviteRepo->find($id);
+        if ($invite === null) {
+            throw $this->createNotFoundException();
+        }
+        if (!$this->isCsrfTokenValid('family_invite_revoke_'.$id, $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+
+        $familyService->revokeInvite($user, $invite);
+        $this->addFlash('success', 'Приглашение отозвано');
+
+        return $this->redirectToRoute('account_family_index');
+    }
+
+    #[Route('/invite/{id}/renew', name: 'invite_renew', requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function renewInvite(
+        int $id,
+        Request $request,
+        FamilyInviteRepository $inviteRepo,
+        FamilyService $familyService,
+    ): Response {
+        /** @var User $user */
+        $user = $this->getUser();
+        $invite = $inviteRepo->find($id);
+        if ($invite === null) {
+            throw $this->createNotFoundException();
+        }
+        if (!$this->isCsrfTokenValid('family_invite_renew_'.$id, $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+
+        $familyService->renewInvite($user, $invite);
+        $this->addFlash('success', 'Создана новая ссылка; прежняя больше не действует');
 
         return $this->redirectToRoute('account_family_index');
     }

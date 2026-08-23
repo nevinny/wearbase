@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Family;
 use App\Entity\FamilyInvite;
 use App\Entity\User;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -128,7 +129,7 @@ class FamilyService
      * Инвайт для человека со своей почтой (взрослый или подросший ребёнок).
      * Лениво создаёт семью, если её ещё нет.
      */
-    public function createInvite(User $parent, string $role): FamilyInvite
+    public function createInvite(User $parent, string $role, ?string $intendedEmail = null): FamilyInvite
     {
         if (!in_array($role, [User::FAMILY_ROLE_PARENT, User::FAMILY_ROLE_CHILD], true)) {
             throw new \InvalidArgumentException('Недопустимая роль приглашения: ' . $role);
@@ -139,6 +140,7 @@ class FamilyService
         $invite = new FamilyInvite();
         $invite->setFamily($family);
         $invite->setRole($role);
+        $invite->setIntendedEmail($intendedEmail);
 
         $this->em->persist($invite);
         $this->em->flush();
@@ -153,19 +155,66 @@ class FamilyService
      */
     public function acceptInvite(User $user, FamilyInvite $invite): void
     {
-        if ($invite->isAccepted()) {
-            throw new \DomainException('Приглашение уже использовано');
-        }
-        if ($user->getFamily() !== null) {
-            throw new \DomainException('Вы уже состоите в семье');
-        }
+        $connection = $this->em->getConnection();
+        $connection->beginTransaction();
+        try {
+            $lockedInvite = $this->em->find(FamilyInvite::class, $invite->getId(), LockMode::PESSIMISTIC_WRITE);
+            $lockedUser = $this->em->find(User::class, $user->getId(), LockMode::PESSIMISTIC_WRITE);
+            if (!$lockedInvite instanceof FamilyInvite || !$lockedUser instanceof User) {
+                throw new \DomainException('Приглашение использовано, отозвано или истекло');
+            }
+            $this->em->refresh($lockedInvite, LockMode::PESSIMISTIC_WRITE);
+            $this->em->refresh($lockedUser, LockMode::PESSIMISTIC_WRITE);
+            if (!$lockedInvite->isUsable()) {
+                throw new \DomainException('Приглашение использовано, отозвано или истекло');
+            }
+            if ($lockedUser->getFamily() !== null) {
+                throw new \DomainException('Вы уже состоите в семье');
+            }
+            if ($lockedInvite->getIntendedEmail() !== null
+                && mb_strtolower((string) $lockedUser->getEmail()) !== $lockedInvite->getIntendedEmail()
+            ) {
+                throw new \DomainException('Приглашение предназначено для другого email');
+            }
 
-        $user->setFamily($invite->getFamily());
-        $user->setFamilyRole($invite->getRole());
-        $invite->setAcceptedAt(new \DateTimeImmutable());
-        $invite->setAcceptedBy($user);
+            $lockedUser->setFamily($lockedInvite->getFamily());
+            $lockedUser->setFamilyRole($lockedInvite->getRole());
+            $lockedInvite->setAcceptedAt(new \DateTimeImmutable());
+            $lockedInvite->setAcceptedBy($lockedUser);
+            $this->em->flush();
+            $connection->commit();
+        } catch (\Throwable $exception) {
+            if ($connection->isTransactionActive()) {
+                $connection->rollBack();
+            }
+            throw $exception;
+        }
+    }
 
+    public function revokeInvite(User $actor, FamilyInvite $invite): void
+    {
+        if (!$actor->isFamilyParent() || $actor->getFamily()?->getId() !== $invite->getFamily()?->getId()) {
+            throw new AccessDeniedException('Нет доступа к приглашению');
+        }
+        $invite->revoke($actor);
         $this->em->flush();
+    }
+
+    public function renewInvite(User $actor, FamilyInvite $invite): FamilyInvite
+    {
+        if (!$actor->isFamilyParent() || $actor->getFamily()?->getId() !== $invite->getFamily()?->getId()) {
+            throw new AccessDeniedException('Нет доступа к приглашению');
+        }
+
+        $invite->revoke($actor);
+        $renewed = new FamilyInvite();
+        $renewed->setFamily($invite->getFamily());
+        $renewed->setRole((string) $invite->getRole());
+        $renewed->setIntendedEmail($invite->getIntendedEmail());
+        $this->em->persist($renewed);
+        $this->em->flush();
+
+        return $renewed;
     }
 
     /**

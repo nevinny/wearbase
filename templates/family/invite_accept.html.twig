@@ -10,9 +10,9 @@
     {% block panel_extra %}Вещи каждого члена семьи — в одном месте,<br>с историей передач «от старших младшим».{% endblock %}
 
     {% block form %}
-        {% if alreadyUsed %}
+        {% if unavailable %}
 
-            <h1 class="text-xl font-bold mb-2">Приглашение уже использовано</h1>
+            <h1 class="text-xl font-bold mb-2">Приглашение недоступно</h1>
             <p class="text-sm text-gray-500 mb-6">Эта ссылка больше не действует. Попросите отправить вам новое приглашение.</p>
             <a href="{{ path('account_family_index') }}"
                class="inline-block rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Перейти в кабинет</a>

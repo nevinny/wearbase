@@ -100,6 +100,7 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
 
         $form = $crawler->selectButton('Пригласить в семью')->form([
             'role' => User::FAMILY_ROLE_PARENT,
+            'email' => 'spouse@example.test',
         ]);
         $client->submit($form);
 
@@ -117,6 +118,8 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
         $this->assertNotNull($invite);
         $this->assertFalse($invite->isAccepted());
         $this->assertSame(User::FAMILY_ROLE_PARENT, $invite->getRole());
+        $this->assertSame('spouse@example.test', $invite->getIntendedEmail());
+        $this->assertGreaterThan(new \DateTimeImmutable(), $invite->getExpiresAt());
 
         $crawler = $client->request('GET', '/account/family');
         $this->assertStringContainsString(
@@ -192,6 +195,102 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
 
         $client->request('GET', '/family/invite/' . $token);
         $this->assertResponseStatusCodeSame(410);
+    }
+
+    public function testInviteCanOnlyBeAcceptedByIntendedEmail(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-email-parent@test.local');
+        $invite = static::getContainer()->get(FamilyService::class)
+            ->createInvite($parent, User::FAMILY_ROLE_PARENT, 'right@example.test');
+        $wrongUser = UserFactory::withEmail(static::getContainer(), 'wrong@example.test');
+        $client->loginUser($wrongUser);
+
+        $crawler = $client->request('GET', '/family/invite/'.$invite->getToken());
+        $client->submit($crawler->selectButton('Принять приглашение')->form());
+
+        $this->assertResponseRedirects('/account/family');
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $reloadedUser = $em->getRepository(User::class)->find($wrongUser->getId());
+        $reloadedInvite = $em->getRepository(FamilyInvite::class)->find($invite->getId());
+        $this->assertNull($reloadedUser->getFamily());
+        $this->assertFalse($reloadedInvite->isAccepted());
+    }
+
+    public function testParentCanRevokeInviteAndLinkBecomesGone(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-revoke-parent@test.local');
+        $invite = static::getContainer()->get(FamilyService::class)
+            ->createInvite($parent, User::FAMILY_ROLE_CHILD);
+        $client->loginUser($parent);
+
+        $crawler = $client->request('GET', '/account/family');
+        $form = $crawler->filter('form[action="/account/family/invite/'.$invite->getId().'/revoke"]')->form();
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/family');
+        $client->request('GET', '/family/invite/'.$invite->getToken());
+        $this->assertResponseStatusCodeSame(410);
+        $this->assertSelectorTextContains('h1', 'Приглашение недоступно');
+        $this->assertResponseHeaderSame('Referrer-Policy', 'no-referrer');
+        $this->assertResponseHeaderSame('X-Robots-Tag', 'noindex, nofollow, noarchive');
+        $this->assertStringContainsString('no-store', (string) $client->getResponse()->headers->get('Cache-Control'));
+    }
+
+    public function testParentCanRenewInvite(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-renew-parent@test.local');
+        $invite = static::getContainer()->get(FamilyService::class)
+            ->createInvite($parent, User::FAMILY_ROLE_PARENT, 'husband@example.test');
+        $oldToken = $invite->getToken();
+        $client->loginUser($parent);
+
+        $crawler = $client->request('GET', '/account/family');
+        $form = $crawler->filter('form[action="/account/family/invite/'.$invite->getId().'/renew"]')->form();
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/family');
+        $client->request('GET', '/family/invite/'.$oldToken);
+        $this->assertResponseStatusCodeSame(410);
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $active = $em->getRepository(FamilyInvite::class)->findPendingForFamily($parent->getFamily());
+        $this->assertCount(1, $active);
+        $this->assertNotSame($oldToken, $active[0]->getToken());
+        $this->assertSame('husband@example.test', $active[0]->getIntendedEmail());
+    }
+
+    public function testExpiredInviteReturnsGone(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-expired-parent@test.local');
+        $invite = static::getContainer()->get(FamilyService::class)
+            ->createInvite($parent, User::FAMILY_ROLE_CHILD);
+        $property = new \ReflectionProperty(FamilyInvite::class, 'expiresAt');
+        $property->setValue($invite, new \DateTimeImmutable('-1 minute'));
+        static::getContainer()->get('doctrine.orm.entity_manager')->flush();
+
+        $client->request('GET', '/family/invite/'.$invite->getToken());
+
+        $this->assertResponseStatusCodeSame(410);
+        $this->assertSelectorTextContains('body', 'ссылка больше не действует');
+    }
+
+    public function testForeignParentCannotRevokeInvite(): void
+    {
+        $owner = UserFactory::withEmail(static::getContainer(), 'harness-family-revoke-owner@test.local');
+        $invite = static::getContainer()->get(FamilyService::class)
+            ->createInvite($owner, User::FAMILY_ROLE_PARENT);
+        $foreign = UserFactory::withEmail(static::getContainer(), 'harness-family-revoke-foreign@test.local');
+        static::getContainer()->get(FamilyService::class)
+            ->createInvite($foreign, User::FAMILY_ROLE_PARENT);
+
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AccessDeniedException::class);
+        static::getContainer()->get(FamilyService::class)->revokeInvite($foreign, $invite);
     }
 
     public function testChildInviteUsesOwnAccountAndStartsProfileWizard(): void
