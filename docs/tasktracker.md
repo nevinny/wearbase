@@ -2012,7 +2012,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [x] Скрыть family add/invite для child в family/wardrobe-app UI и явно запретить POST invite;
   гардеробы parent/sibling закрыты `FamilyService::resolveMember` и тестами.
 - [ ] Добавить claim expiry/rotate/revoke/recovery с сохранением User ID и истории гардероба.
-- [ ] Добавить invite expiry/revoke/regenerate, optional intended email и atomic single-use accept.
+- [x] Добавить invite expiry/revoke/regenerate, optional intended email и atomic single-use accept;
+  закрыть публичную страницу от referrer, индексации и кеширования.
 - [ ] Добавить lifecycle семьи: leave/remove, owner transfer, last-parent invariant, role changes.
 - [ ] Разделить consent несовершеннолетнего на private processing, personalization, shared learning
   и публикацию фото; пересматривать при взрослении.
