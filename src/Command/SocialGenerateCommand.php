@@ -145,15 +145,6 @@ class SocialGenerateCommand extends Command
                     continue;
                 }
 
-                // Биты из LLM (b.rag*/b.mix*) — первая партия на ручной просмотр: детерминированные
-                // факты (год/категории/материал/маркетплейс) уже проверены руками один раз здесь, а
-                // сгенерированные моделью — нет, и ошибка попала бы прямо в паблик Instagram.
-                if ($this->needsManualReview($post->getScriptKey())) {
-                    $this->hold($post, 'Биты из LLM на слайдах — ручной просмотр первой партии перед публикацией.');
-                    $held++;
-                    continue;
-                }
-
                 $post->setStatus(SocialPost::STATUS_SCHEDULED);
                 $post->setLastError(null);
                 $ok++;
@@ -297,30 +288,6 @@ class SocialGenerateCommand extends Command
         $post->setSlideCount(count($slides));
 
         return $slides;
-    }
-
-    /**
-     * Ручной просмотр первой партии, пока LLM-контент не проверен глазами хоть раз:
-     * - ветка f1.rag — САМ ХУК (hookA) сгенерирован моделью (v4, «факт вперёд»), не только биты;
-     * - биты 'rag'/'mix' в сегменте b.* (H1/departed-ветка может добрать grounded-битами) —
-     *   детерминированные факты уже проверялись руками, сгенерированные моделью — нет.
-     * Провал любого из двух ведёт прямо в паблик Instagram, поэтому проверяем оба независимо.
-     */
-    private function needsManualReview(?string $scriptKey): bool
-    {
-        if ($scriptKey === null) {
-            return false;
-        }
-
-        $segments = explode('|', $scriptKey);
-        $stage = $segments[0] ?? '';
-        $bitsSegment = $segments[1] ?? '';
-
-        if (str_starts_with($stage, 'f1.rag')) {
-            return true;
-        }
-
-        return str_starts_with($bitsSegment, 'b.rag') || str_starts_with($bitsSegment, 'b.mix');
     }
 
     /**
