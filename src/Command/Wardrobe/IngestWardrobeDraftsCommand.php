@@ -68,7 +68,8 @@ class IngestWardrobeDraftsCommand extends Command
         $batch = $input->getOption('batch');
         $limit = max(1, (int) $input->getOption('limit'));
 
-        $drafts = $this->draftRepo->findPending($limit, is_string($batch) ? $batch : null);
+        $workerId = sprintf('%s:%d', gethostname() ?: 'worker', getmypid());
+        $drafts = $this->draftRepo->claimPending($limit, $workerId, is_string($batch) ? $batch : null);
 
         if ($drafts === []) {
             $io->text('Нет ожидающих черновиков.');
@@ -80,16 +81,15 @@ class IngestWardrobeDraftsCommand extends Command
 
         foreach ($drafts as $draft) {
             if (!$this->meter->allowed()) {
-                // Дневной потолок исчерпан (только remote-ветка WardrobeAiService — при локальной
-                // ollama meter никогда не расходуется, этот break не срабатывает). Оставляем
-                // остаток pending — доберём на следующем прогоне после сброса потолка.
-                $io->warning('Дневной лимит AI-запросов исчерпан — оставляем оставшиеся черновики pending.');
-                break;
+                $draft->releaseForRetry('Дневной лимит AI-запросов исчерпан');
+                $this->em->flush();
+                $io->warning('Дневной лимит AI-запросов исчерпан — черновик возвращён в очередь.');
+                continue;
             }
 
             $path = $this->vichStorage->resolvePath($draft, 'photoFile');
             if ($path === null || !is_file($path)) {
-                $draft->setStatus(WardrobeItemDraft::STATUS_FAILED);
+                $draft->finishProcessing(WardrobeItemDraft::STATUS_FAILED);
                 $draft->setError('Файл фото не найден');
                 $this->em->flush();
                 $failed++;
@@ -97,7 +97,20 @@ class IngestWardrobeDraftsCommand extends Command
                 continue;
             }
 
-            $result = $this->ai->suggestFromPhoto($path, $draft->getProfileSubject());
+            try {
+                $result = $this->ai->suggestFromPhoto($path, $draft->getProfileSubject());
+            } catch (\Throwable $exception) {
+                if ($draft->getAttempts() >= 3) {
+                    $draft->setError(mb_substr($exception->getMessage(), 0, 255));
+                    $draft->finishProcessing(WardrobeItemDraft::STATUS_FAILED);
+                    $failed++;
+                } else {
+                    $draft->releaseForRetry($exception->getMessage());
+                }
+                $this->em->flush();
+                $io->text(sprintf('#%d: временная ошибка распознавания', $draft->getId()));
+                continue;
+            }
 
             if ($result['ok'] ?? false) {
                 $fields = $result['fields'] ?? [];
@@ -106,13 +119,16 @@ class IngestWardrobeDraftsCommand extends Command
                 $draft->setSize($fields['size'] ?? null);
                 $draft->setNotes($fields['notes'] ?? null);
                 $draft->setConfidence($result['confidence'] ?? null);
-                $draft->setAiRaw($result);
-                $draft->setStatus(WardrobeItemDraft::STATUS_RECOGNIZED);
+                $draft->setAiRaw(array_filter([
+                    'confidence' => $result['confidence'] ?? null,
+                    'model' => $result['model'] ?? null,
+                ], static fn (mixed $value): bool => $value !== null));
+                $draft->finishProcessing(WardrobeItemDraft::STATUS_RECOGNIZED);
                 $recognized++;
                 $io->text(sprintf('#%d: распознано (confidence=%s)', $draft->getId(), $result['confidence'] ?? '?'));
             } else {
                 $error = mb_substr((string) ($result['error'] ?? 'Ошибка распознавания'), 0, 255);
-                $draft->setStatus(WardrobeItemDraft::STATUS_FAILED);
+                $draft->finishProcessing(WardrobeItemDraft::STATUS_FAILED);
                 $draft->setError($error);
                 $failed++;
                 $io->text(sprintf('#%d: ошибка — %s', $draft->getId(), $error));
