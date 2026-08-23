@@ -6,6 +6,7 @@ namespace App\Controller\Account;
 
 use App\Entity\User;
 use App\Repository\WardrobeItemRepository;
+use App\Repository\PurchaseRequestRepository;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeOnboardingService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -21,6 +22,7 @@ class WardrobeAppController extends AbstractController
         FamilyService $familyService,
         WardrobeItemRepository $itemRepository,
         WardrobeOnboardingService $onboardingService,
+        PurchaseRequestRepository $purchaseRequests,
     ): Response
     {
         /** @var User $user */
@@ -45,6 +47,7 @@ class WardrobeAppController extends AbstractController
             'currentMember' => $currentMember,
             'onboarding' => $onboardingService->overview($user, $currentMember),
             'familyActiveSection' => 'wardrobe-app',
+            'pendingPurchaseCount' => $purchaseRequests->countPendingVisibleTo($user),
         ]);
     }
 

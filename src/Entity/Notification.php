@@ -20,6 +20,8 @@ class Notification
     public const TYPE_PRODUCT_LOW_STOCK = 'product_low_stock';
     public const TYPE_WEEKLY_STATS = 'weekly_stats';
     public const TYPE_SYSTEM = 'system';
+    public const TYPE_PURCHASE_REQUEST_NEW = 'purchase_request_new';
+    public const TYPE_PURCHASE_REQUEST_DECIDED = 'purchase_request_decided';
 
     // Каналы доставки
     public const CHANNEL_INAPP = 'inapp';
@@ -100,6 +102,13 @@ class Notification
     }
 
     public function getData(): ?array { return $this->data; }
+
+    public function getSafeAccountUrl(): ?string
+    {
+        $url = $this->data['url'] ?? null;
+
+        return is_string($url) && preg_match('#^/account/purchases/\d+$#', $url) ? $url : null;
+    }
 
     public function setData(?array $data): static
     {

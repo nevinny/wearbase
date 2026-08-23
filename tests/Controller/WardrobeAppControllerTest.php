@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Entity\WardrobeOnboarding;
 use App\Service\FamilyService;
+use App\Service\PurchaseRequestService;
 
 class WardrobeAppControllerTest extends AuthenticatedWebTestCase
 {
@@ -155,5 +156,25 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
 
         $this->assertResponseStatusCodeSame(403);
         $this->assertSame($countBefore, $em->getRepository(WardrobeOnboarding::class)->count(['subject' => $user]));
+    }
+
+    public function testParentDashboardShowsPendingPurchaseCount(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-wardrobe-app-purchase-parent@test.local');
+        $child = static::getContainer()->get(FamilyService::class)->createChild($parent, 'Маша');
+        static::getContainer()->get(PurchaseRequestService::class)->create(
+            $child,
+            $child,
+            'https://shop.example.test/item/dashboard',
+            null,
+            '1500',
+        );
+        $client->loginUser($parent);
+
+        $client->request('GET', '/account/wardrobe-app');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorTextContains('a[href="/account/purchases"]', '1 ждут решения');
     }
 }
