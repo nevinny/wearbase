@@ -23,7 +23,7 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 class BrandActionSigner
 {
     public function __construct(
-        #[Autowire('%env(default::AGENT_API_SECRET)%')]
+        #[Autowire('%env(AGENT_API_SECRET)%')]
         private readonly string $secret,
     ) {
     }
