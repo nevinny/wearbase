@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Entity\WardrobeItemDraft;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\DBAL\LockMode;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -16,6 +17,8 @@ use Doctrine\Persistence\ManagerRegistry;
  */
 class WardrobeItemDraftRepository extends ServiceEntityRepository
 {
+    private const LEASE_INTERVAL = '+15 minutes';
+
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, WardrobeItemDraft::class);
@@ -73,12 +76,99 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
             }
             $drafts = $builder->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getResult();
             foreach ($drafts as $draft) {
-                $draft->claim($workerId, $now->modify('+5 minutes'));
+                $draft->claim($workerId, $now->modify(self::LEASE_INTERVAL));
             }
             $em->flush();
 
             return $drafts;
         });
+    }
+
+    public function extendLease(int $draftId, string $workerId): bool
+    {
+        return 1 === $this->getEntityManager()->createQueryBuilder()
+            ->update(WardrobeItemDraft::class, 'd')
+            ->set('d.leaseUntil', ':leaseUntil')
+            ->set('d.updatedAt', ':updatedAt')
+            ->andWhere('d.id = :id')
+            ->andWhere('d.status = :processing')
+            ->andWhere('d.workerId = :workerId')
+            ->setParameter('leaseUntil', new \DateTimeImmutable(self::LEASE_INTERVAL))
+            ->setParameter('updatedAt', new \DateTime())
+            ->setParameter('id', $draftId)
+            ->setParameter('processing', WardrobeItemDraft::STATUS_PROCESSING)
+            ->setParameter('workerId', $workerId)
+            ->getQuery()
+            ->execute();
+    }
+
+    /** @param array{category?:?string,name?:?string,size?:?string,notes?:?string,confidence?:?string,aiRaw?:?array} $fields */
+    public function finishClaim(int $draftId, string $workerId, string $status, array $fields = [], ?string $error = null): bool
+    {
+        if (!in_array($status, [WardrobeItemDraft::STATUS_RECOGNIZED, WardrobeItemDraft::STATUS_FAILED], true)) {
+            throw new \InvalidArgumentException('Недопустимый итог распознавания');
+        }
+
+        $query = $this->getEntityManager()->createQueryBuilder()
+            ->update(WardrobeItemDraft::class, 'd')
+            ->set('d.status', ':resultStatus')
+            ->set('d.category', ':category')
+            ->set('d.name', ':name')
+            ->set('d.size', ':size')
+            ->set('d.notes', ':notes')
+            ->set('d.confidence', ':confidence')
+            ->set('d.aiRaw', ':aiRaw')
+            ->set('d.error', ':error')
+            ->set('d.workerId', 'NULL')
+            ->set('d.leaseUntil', 'NULL')
+            ->set('d.updatedAt', ':updatedAt')
+            ->andWhere('d.id = :id')
+            ->andWhere('d.status = :processing')
+            ->andWhere('d.workerId = :workerId');
+        foreach ([
+            'resultStatus' => $status,
+            'category' => $fields['category'] ?? null,
+            'name' => $fields['name'] ?? null,
+            'size' => $fields['size'] ?? null,
+            'notes' => $fields['notes'] ?? null,
+            'confidence' => $fields['confidence'] ?? null,
+            'aiRaw' => $fields['aiRaw'] ?? null,
+            'error' => $error === null ? null : mb_substr($error, 0, 255),
+            'updatedAt' => new \DateTime(),
+            'id' => $draftId,
+            'processing' => WardrobeItemDraft::STATUS_PROCESSING,
+            'workerId' => $workerId,
+        ] as $name => $value) {
+            $query->setParameter($name, $value, $name === 'aiRaw' ? Types::JSON : null);
+        }
+
+        return 1 === $query->getQuery()->execute();
+    }
+
+    public function releaseClaimForRetry(int $draftId, string $workerId, string $error): bool
+    {
+        $query = $this->getEntityManager()->createQueryBuilder()
+            ->update(WardrobeItemDraft::class, 'd')
+            ->set('d.status', ':pending')
+            ->set('d.error', ':error')
+            ->set('d.workerId', 'NULL')
+            ->set('d.leaseUntil', 'NULL')
+            ->set('d.updatedAt', ':updatedAt')
+            ->andWhere('d.id = :id')
+            ->andWhere('d.status = :processing')
+            ->andWhere('d.workerId = :workerId');
+        foreach ([
+            'pending' => WardrobeItemDraft::STATUS_PENDING,
+            'error' => mb_substr($error, 0, 255),
+            'updatedAt' => new \DateTime(),
+            'id' => $draftId,
+            'processing' => WardrobeItemDraft::STATUS_PROCESSING,
+            'workerId' => $workerId,
+        ] as $name => $value) {
+            $query->setParameter($name, $value);
+        }
+
+        return 1 === $query->getQuery()->execute();
     }
 
     /**

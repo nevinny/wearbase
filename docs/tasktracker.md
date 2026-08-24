@@ -2039,6 +2039,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   дубликат не создаёт новый draft и не расходует vision.
 - [x] Добавить worker lease/retry (`processing`, `leaseUntil`, `attempts`) для multi-host и починить
   batch-filter-before-limit в фоновой команде.
+- [x] Сделать lease длиннее максимального AI timeout и завершать/retry только атомарным CAS по
+  актуальному `workerId`; stale worker после повторного claim не может затереть результат.
 - [x] Добавить consent/retention: очистка abandoned drafts и диагностического `ai_raw`, EXIF strip,
   лимит хранилища и rate limit стоимости vision.
 - [x] Перенести legacy `/images/wardrobe*` в private storage идемпотентной deploy-командой;
