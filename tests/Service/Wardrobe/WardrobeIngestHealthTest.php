@@ -52,12 +52,13 @@ final class WardrobeIngestHealthTest extends TestCase
         self::assertSame(300, $snapshot['oldest_pending_age_seconds']);
         self::assertSame(4096, $snapshot['storage_usage_bytes']);
         self::assertTrue($snapshot['storage_writable']);
+        self::assertTrue($snapshot['storage_creatable']);
         self::assertTrue($snapshot['scheduler_last_success_known']);
         self::assertSame(60, $snapshot['scheduler_last_run_age_seconds']);
         self::assertSame('2026-08-24T11:59:00+03:00', $snapshot['scheduler_last_success_at']);
     }
 
-    public function testFailedLastRunAndMissingStorageAreCriticalWithoutInventingPreviousSuccess(): void
+    public function testFailedLastRunAndCreatableMissingStorageStayCriticalOnlyFromScheduler(): void
     {
         $drafts = $this->createMock(WardrobeItemDraftRepository::class);
         $drafts->method('operationalSnapshot')->willReturn([
@@ -80,9 +81,36 @@ final class WardrobeIngestHealthTest extends TestCase
         self::assertSame('critical', $snapshot['status']);
         self::assertFalse($snapshot['storage_exists']);
         self::assertFalse($snapshot['storage_writable']);
+        // Vich создаёт каталог при первой загрузке — отсутствие не критично.
+        self::assertTrue($snapshot['storage_creatable']);
+        self::assertNotContains('storage_not_writable', $snapshot['critical_reasons']);
         self::assertFalse($snapshot['scheduler_last_success_known']);
         self::assertNull($snapshot['scheduler_last_success_at']);
         self::assertContains('scheduler_last_run_failed', $snapshot['critical_reasons']);
+    }
+
+    public function testUncreatableStorageDirectoryStaysCritical(): void
+    {
+        $lockedParent = sys_get_temp_dir().'/wardrobe-health-ro-'.bin2hex(random_bytes(4));
+        mkdir($lockedParent, 0555);
+        try {
+            $drafts = $this->createStub(WardrobeItemDraftRepository::class);
+            $drafts->method('operationalSnapshot')->willReturn([
+                'pending' => 0, 'oldestPendingAt' => null,
+                'expiredLeases' => 0, 'failed' => 0, 'retrying' => 0, 'storageBytes' => 0,
+            ]);
+            $scheduled = $this->createStub(ScheduledCommandRepository::class);
+            $scheduled->method('findWardrobeIngestWorker')->willReturn(null);
+
+            $snapshot = (new WardrobeIngestHealth($drafts, $scheduled, $lockedParent.'/missing'))->snapshot();
+
+            self::assertSame('critical', $snapshot['status']);
+            self::assertFalse($snapshot['storage_creatable']);
+            self::assertContains('storage_not_writable', $snapshot['critical_reasons']);
+        } finally {
+            chmod($lockedParent, 0755);
+            @rmdir($lockedParent);
+        }
     }
 
     #[DataProvider('criticalSchedulerProvider')]

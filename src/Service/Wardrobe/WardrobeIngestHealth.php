@@ -28,10 +28,13 @@ final class WardrobeIngestHealth
         $lastExitCode = $scheduler?->getLastExitCode();
         $storageExists = is_dir($this->storageDir);
         $storageWritable = $storageExists && is_writable($this->storageDir);
+        // Vich создаёт каталог лениво при первой загрузке фото, а deploy-prune может удалить
+        // пустой каталог: отсутствие само по себе не авария, если родитель позволяет создать его.
+        $storageCreatable = $storageExists ? $storageWritable : $this->isAncestorWritable($this->storageDir);
         $oldestPendingAge = $drafts['oldestPendingAt'] === null ? null : max(0, $now->getTimestamp() - $drafts['oldestPendingAt']->getTimestamp());
         $lastRunAge = $lastRun === null ? null : max(0, $now->getTimestamp() - $lastRun->getTimestamp());
         $criticalReasons = [];
-        if (!$storageWritable) {
+        if (!$storageCreatable) {
             $criticalReasons[] = 'storage_not_writable';
         }
         if ($scheduler === null) {
@@ -74,6 +77,7 @@ final class WardrobeIngestHealth
             'storage_path' => $this->storageDir,
             'storage_exists' => $storageExists,
             'storage_writable' => $storageWritable,
+            'storage_creatable' => $storageCreatable,
             'storage_usage_bytes' => $drafts['storageBytes'],
             'storage_free_bytes' => $storageExists ? $this->diskFreeSpace($this->storageDir) : null,
             'scheduler_configured' => $scheduler !== null,
@@ -93,5 +97,15 @@ final class WardrobeIngestHealth
         $bytes = @disk_free_space($path);
 
         return $bytes === false ? null : (int) $bytes;
+    }
+
+    private function isAncestorWritable(string $path): bool
+    {
+        $parent = dirname($path);
+        while (!is_dir($parent)) {
+            $parent = dirname($parent);
+        }
+
+        return is_writable($parent);
     }
 }

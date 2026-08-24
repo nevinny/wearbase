@@ -194,6 +194,8 @@ jobs:
         id: ingest_health
         # Read-only operational check: validates scheduler heartbeat, queue SLA and private
         # storage after migrations. It does not claim drafts or call the vision model.
+        # mkdir -p: Vich создаёт каталог лениво при первой загрузке, а prune/rsync удаляют
+        # пустой var/uploads/wardrobe_drafts — без этого gate ложно валит деплой.
         env:
           H: ${{ secrets.DEPLOY_HOST }}
           U: ${{ secrets.DEPLOY_USER }}
@@ -202,7 +204,7 @@ jobs:
         run: |
           set -o pipefail
           ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${U}@${H}" "cd ${D} && APP_ENV=prod php bin/console app:wardrobe:ingest-health --check --json --no-debug" \
+            "${U}@${H}" "cd ${D} && mkdir -p var/uploads/wardrobe_drafts && APP_ENV=prod php bin/console app:wardrobe:ingest-health --check --json --no-debug" \
             2>&1 | tee ingest-health.log
 
       - name: Notify Telegram
