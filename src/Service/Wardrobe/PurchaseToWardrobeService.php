@@ -22,6 +22,7 @@ final class PurchaseToWardrobeService
         private readonly FamilyService $families,
         private readonly WardrobeManager $wardrobes,
         private readonly WardrobeItemRepository $items,
+        private readonly ?WardrobeActivationService $activation = null,
     ) {}
 
     public function add(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): WardrobeItem
@@ -34,7 +35,7 @@ final class PurchaseToWardrobeService
             throw new AccessDeniedException('Нет доступа к покупке');
         }
 
-        return $this->em->wrapInTransaction(function () use ($actor, $request, $item, $subject): WardrobeItem {
+        $wardrobeItem = $this->em->wrapInTransaction(function () use ($actor, $request, $item, $subject): WardrobeItem {
             $this->em->refresh($item, LockMode::PESSIMISTIC_WRITE);
             if ($item->getWardrobeItem() !== null) {
                 return $item->getWardrobeItem();
@@ -62,5 +63,8 @@ final class PurchaseToWardrobeService
 
             return $wardrobeItem;
         });
+        $this->activation?->firstItemAdded($actor, $subject, 'purchase');
+
+        return $wardrobeItem;
     }
 }

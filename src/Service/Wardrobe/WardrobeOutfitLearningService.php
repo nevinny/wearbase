@@ -17,6 +17,7 @@ class WardrobeOutfitLearningService
         private readonly WardrobeOutfitRepository $outfits,
         private readonly EntityManagerInterface $em,
         private readonly ?WardrobeWearEventRepository $wearEvents = null,
+        private readonly ?WardrobeActivationService $activation = null,
     ) {}
 
     /**
@@ -38,6 +39,9 @@ class WardrobeOutfitLearningService
             $entities[$index] = $outfit;
         }
         $this->em->flush();
+        if ($entities !== []) {
+            $this->activation?->firstOutfitCreated($user, $owner);
+        }
         foreach ($entities as $index => $outfit) {
             $suggestions[$index]['feedbackId'] = $outfit->getId();
         }

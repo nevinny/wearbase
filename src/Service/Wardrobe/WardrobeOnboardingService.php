@@ -25,6 +25,7 @@ class WardrobeOnboardingService
         private readonly WardrobeItemRepository $items,
         private readonly FamilyService $families,
         private readonly EntityManagerInterface $em,
+        private readonly ?WardrobeActivationService $activation = null,
     ) {}
 
     /**
@@ -64,18 +65,24 @@ class WardrobeOnboardingService
     {
         $this->assertCanManage($actor, $subject);
 
-        return $this->mutate($subject, static fn (WardrobeOnboarding $onboarding) => $onboarding->startCapsule($batchId));
+        $onboarding = $this->mutate($subject, static fn (WardrobeOnboarding $onboarding) => $onboarding->startCapsule($batchId));
+        $this->activation?->onboardingStarted($actor, $subject);
+
+        return $onboarding;
     }
 
     public function startOrResumeBatch(User $actor, User $subject, string $batchId): WardrobeOnboarding
     {
         $this->assertCanManage($actor, $subject);
 
-        return $this->mutate($subject, static function (WardrobeOnboarding $onboarding) use ($batchId): void {
+        $onboarding = $this->mutate($subject, static function (WardrobeOnboarding $onboarding) use ($batchId): void {
             if ($onboarding->getStage() !== WardrobeOnboarding::STAGE_CAPSULE || $onboarding->getActiveBatchId() === null) {
                 $onboarding->startCapsule($batchId);
             }
         });
+        $this->activation?->onboardingStarted($actor, $subject);
+
+        return $onboarding;
     }
 
     public function skip(User $actor, User $subject): WardrobeOnboarding
