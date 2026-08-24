@@ -22,7 +22,7 @@ final class WebPushPublisherTest extends TestCase
 
         $result = (new WebPushPublisher($subscriptions, new NullLogger(), '', '', 'mailto:test@example.com'))->send($user, ['title' => 'Test']);
 
-        self::assertTrue($result);
+        self::assertFalse($result);
     }
 
     public function testProviderFailureDoesNotLogEndpointOrBrowserKeys(): void

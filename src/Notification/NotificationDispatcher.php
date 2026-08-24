@@ -122,6 +122,41 @@ readonly class NotificationDispatcher
     }
 
     /**
+     * Persist every enabled channel exactly once under one domain-event key.
+     *
+     * @param array<string, mixed>|null $data
+     * @param array<string, mixed> $emailContext
+     */
+    public function dispatchOnce(
+        User $recipient,
+        string $type,
+        string $dedupeKey,
+        string $title,
+        ?string $body = null,
+        ?array $data = null,
+        ?string $emailTemplate = null,
+        array $emailContext = [],
+    ): void {
+        if ($this->em->getRepository(Notification::class)->findOneBy([
+            'recipient' => $recipient,
+            'dedupeKey' => $dedupeKey,
+        ]) !== null) {
+            return;
+        }
+
+        foreach ([Notification::CHANNEL_EMAIL, Notification::CHANNEL_TELEGRAM, Notification::CHANNEL_PUSH] as $channel) {
+            if ($this->em->getRepository(ExternalNotificationOutbox::class)->findOneBy([
+                'recipient' => $recipient,
+                'dedupeKey' => $dedupeKey.':'.$channel,
+            ]) !== null) {
+                return;
+            }
+        }
+
+        $this->dispatch($recipient, $type, $title, $body, $data, $emailTemplate, $emailContext, $dedupeKey);
+    }
+
+    /**
      * @param array<string, mixed>|null $data
      */
     private function createInApp(User $recipient, string $type, string $title, ?string $body = null, ?array $data = null): Notification

@@ -1,0 +1,9 @@
+{% extends 'emails/base.html.twig' %}
+
+{% block email_title %}{{ title }} — WEARBASE{% endblock %}
+
+{% block email_content %}
+    <h2 style="margin-top:0">{{ title }}</h2>
+    {% if body %}<p>{{ body }}</p>{% endif %}
+    {% if url %}<a class="btn" href="{{ absolute_url(url) }}">Открыть в WEARBASE</a>{% endif %}
+{% endblock %}

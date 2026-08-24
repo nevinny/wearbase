@@ -59,9 +59,10 @@ class PurchaseRequestService
 
             foreach ($this->families->membersFor($subject) as $member) {
                 if ($member->isFamilyParent() && $member->getId() !== $actor->getId()) {
-                    $this->notifications->dispatchInApp(
+                    $this->notifyOnce(
                         $member,
                         Notification::TYPE_PURCHASE_REQUEST_NEW,
+                        sprintf('purchase-request:%d:new:recipient:%d', $request->getId(), $member->getId()),
                         sprintf('%s просит согласовать покупку', $subject->getFirstName() ?: 'Ребёнок'),
                         $request->getComment(),
                         ['url' => '/account/purchases/'.$request->getId()],
@@ -161,9 +162,10 @@ class PurchaseRequestService
             ] : null;
             $event = (new PurchaseRequestEvent($actor, $eventType, $metadata))->setItem($item);
             $request->addEvent($event);
-            $this->notifications->dispatchInApp(
+            $this->notifyOnce(
                 $subject,
                 Notification::TYPE_PURCHASE_REQUEST_DECIDED,
+                sprintf('purchase-item:%d:decision:%s:recipient:%d', $item->getId(), $decision, $subject->getId()),
                 $decision === PurchaseRequest::STATUS_APPROVED ? 'Покупка одобрена' : 'Покупка отклонена',
                 $comment,
                 ['url' => '/account/purchases/'.$request->getId()],
@@ -249,9 +251,10 @@ class PurchaseRequestService
 
             $this->notifyParents($actor, $subject, $request, $item, Notification::TYPE_PURCHASE_RETURNED);
             if ($actor->getId() !== $subject->getId()) {
-                $this->notifications->dispatchInApp(
+                $this->notifyOnce(
                     $subject,
                     Notification::TYPE_PURCHASE_REQUEST_DECIDED,
+                    sprintf('purchase-item:%d:returned:recipient:%d', $item->getId(), $subject->getId()),
                     'Покупка возвращена продавцу',
                     null,
                     ['url' => '/account/purchases/'.$request->getId()],
@@ -343,9 +346,10 @@ class PurchaseRequestService
                 $this->notifyParents($actor, $subject, $request, $item, $parentNotificationType);
             }
             if ($actor->getId() !== $subject->getId()) {
-                $this->notifications->dispatchInApp(
+                $this->notifyOnce(
                     $subject,
                     Notification::TYPE_PURCHASE_REQUEST_DECIDED,
+                    sprintf('purchase-item:%d:%s:recipient:%d', $item->getId(), $eventType, $subject->getId()),
                     'Статус покупки обновлён',
                     null,
                     ['url' => '/account/purchases/'.$request->getId()],
@@ -366,7 +370,7 @@ class PurchaseRequestService
             if (!$parent->isFamilyParent() || $parent->getId() === $actor->getId()) {
                 continue;
             }
-            $this->notifications->dispatchInAppOnce(
+            $this->notifyOnce(
                 $parent,
                 $type,
                 sprintf('purchase-item:%d:%s:recipient:%d', $item->getId(), $type, $parent->getId()),
@@ -375,5 +379,20 @@ class PurchaseRequestService
                 ['url' => '/account/purchases/'.$request->getId()],
             );
         }
+    }
+
+    /** @param array<string, mixed> $data */
+    private function notifyOnce(User $recipient, string $type, string $dedupeKey, string $title, ?string $body, array $data): void
+    {
+        $this->notifications->dispatchOnce(
+            $recipient,
+            $type,
+            $dedupeKey,
+            $title,
+            $body,
+            $data,
+            'family_notification',
+            ['title' => $title, 'body' => $body, 'url' => $data['url'] ?? null],
+        );
     }
 }
