@@ -34,6 +34,7 @@ class WardrobeItem
     public const ITEM_ARCHIVED = 'archived';
     public const ITEM_SOLD = 'sold';
     public const ITEM_DONATED = 'donated';
+    public const ITEM_RETURNED = 'returned';
     public const ITEM_TRANSFERRED = 'transferred';
     public const ITEM_LOST = 'lost';
     public const ITEM_LABELS = [
@@ -42,6 +43,7 @@ class WardrobeItem
         self::ITEM_ARCHIVED => 'В архиве',
         self::ITEM_SOLD => 'Продана',
         self::ITEM_DONATED => 'Подарена',
+        self::ITEM_RETURNED => 'Возвращена продавцу',
         self::ITEM_TRANSFERRED => 'Передана',
         self::ITEM_LOST => 'Потеряна',
     ];
@@ -56,6 +58,7 @@ class WardrobeItem
         self::ITEM_ARCHIVED,
         self::ITEM_SOLD,
         self::ITEM_DONATED,
+        self::ITEM_RETURNED,
         self::ITEM_LOST,
     ];
 
