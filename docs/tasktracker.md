@@ -2070,6 +2070,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   context, импорт, AI-стилиста и touch targets.
 - [x] Добавить installable PWA-фундамент: manifest, Apple/192/512 icons, scoped service worker,
   offline 503 без кеширования приватных HTML/API/фото.
+- [x] Отдавать manifest через Symfony с `application/manifest+json`, ограничить SW scope `/account/`
+  и автоматизировать mobile E2E для install metadata, камеры, offline shell и privacy cache policy.
 - [x] Проверить Twig/manifest/JS, профильные tests (67/375) и полный PHPUnit: 611 tests,
   1974 assertions; только 7 существующих deprecation.
 - [x] Перевести экраны покупок, lifecycle вещи и дневника образов на mobile-first family shell.

@@ -14,7 +14,11 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $file = dirname(__DIR__, 3).'/public_html'.$path;
 
 if ($path !== '/' && is_file($file)) {
-    $mime = mime_content_type($file);
+    $mime = match (pathinfo($file, PATHINFO_EXTENSION)) {
+        'js' => 'application/javascript',
+        'json', 'webmanifest' => 'application/json',
+        default => mime_content_type($file),
+    };
     if (is_string($mime)) {
         header('Content-Type: '.$mime);
     }

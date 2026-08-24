@@ -1,6 +1,6 @@
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js', {scope: '/'}).catch(() => {
+        navigator.serviceWorker.register('/service-worker.js', {scope: '/account/'}).catch(() => {
             // PWA support is optional: a registration failure must not break the web flow.
         });
     });
