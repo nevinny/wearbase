@@ -43,6 +43,19 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
         self::assertSelectorTextContains('body', 'Недействительный токен');
     }
 
+    public function testWeatherMustBeExplicitlySelected(): void
+    {
+        $client = static::createClient();
+        $this->loginAsCustomer($client);
+        $crawler = $client->request('GET', '/account/wardrobe/outfits');
+        $token = (string) $crawler->filter('input[name="_token"]')->attr('value');
+
+        $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'В офис']);
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('body', 'Выберите текущую погоду и температуру');
+    }
+
     public function testParentCanGrantAndRevokeChildPersonalization(): void
     {
         $client = static::createClient();
@@ -106,6 +119,8 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
                 '',
                 self::callback(static fn ($subject): bool => $subject->getId() === $user->getId()),
                 '',
+                'rain',
+                'cold',
             )
             ->willReturn([[
                 'title' => 'Спокойный офис',
@@ -116,7 +131,7 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
 
         $crawler = $client->request('GET', '/account/wardrobe/outfits');
         $token = (string) $crawler->filter('input[name="_token"]')->attr('value');
-        $crawler = $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'В офис']);
+        $crawler = $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'В офис', 'weather_condition' => 'rain', 'temperature_band' => 'cold']);
 
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h2', 'Спокойный офис');
@@ -149,7 +164,7 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
         static::getContainer()->set(WardrobeOutfitService::class, $mock);
         $crawler = $client->request('GET', '/account/wardrobe/outfits');
         $token = $crawler->filter('input[name="_token"]')->attr('value');
-        $crawler = $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'На сегодня']);
+        $crawler = $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'На сегодня', 'weather_condition' => 'clear', 'temperature_band' => 'mild']);
         $form = $crawler->selectButton('✅ Я это надел')->form();
         $action = $form->getUri();
         $values = $form->getPhpValues();

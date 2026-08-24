@@ -764,6 +764,36 @@ class WardrobeController extends AbstractController
         );
     }
 
+    #[Route('/{id}/cleanliness', name: 'cleanliness', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function cleanliness(
+        int $id,
+        Request $request,
+        WardrobeItemRepository $repo,
+        EntityManagerInterface $em,
+    ): Response {
+        /** @var User $user */
+        $user = $this->getUser();
+        $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
+
+        if (!$this->isCsrfTokenValid('cleanliness_wardrobe_item_'.$id, (string) $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+        $item = $repo->findActiveOneForUser($id, $currentMember);
+        if (!$item) {
+            throw $this->createNotFoundException();
+        }
+        try {
+            $item->setCleanlinessStatus((string) $request->request->get('cleanliness_status'));
+        } catch (\InvalidArgumentException $exception) {
+            $this->addFlash('error', $exception->getMessage());
+            return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
+        }
+        $em->flush();
+        $this->addFlash('success', 'Чистота обновлена: '.$item->getCleanlinessStatusLabel());
+
+        return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
+    }
+
     /**
      * Собственно передача: журнал (append-only) + смена носителя и его сквозного номера.
      * item.id стабилен, original_owner не трогаем (immutable).

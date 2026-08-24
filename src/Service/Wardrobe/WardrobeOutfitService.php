@@ -31,12 +31,14 @@ class WardrobeOutfitService
      * @param WardrobeItem[] $items
      * @return array<int, array{title:string, explanation:string, items:WardrobeItem[]}>
      */
-    public function suggest(User $user, array $items, string $request, string $preferenceContext = '', ?User $subject = null, ?string $event = null): array
+    public function suggest(User $user, array $items, string $request, string $preferenceContext = '', ?User $subject = null, ?string $event = null, ?string $weatherCondition = null, ?string $temperatureBand = null): array
     {
         $subject ??= $user;
-        $context = $this->contextBuilder?->build($subject, $items, $event) ?? [
+        $context = $this->contextBuilder?->build($subject, $items, $event, $weatherCondition, $temperatureBand) ?? [
             'items' => array_values(array_filter($items, static fn (WardrobeItem $item): bool =>
-                $item->getItemStatus() === WardrobeItem::ITEM_ACTIVE && $item->getWearStatus() === WardrobeItem::WEAR_ACTIVE
+                $item->getItemStatus() === WardrobeItem::ITEM_ACTIVE
+                && $item->getWearStatus() === WardrobeItem::WEAR_ACTIVE
+                && $item->getCleanlinessStatus() === WardrobeItem::CLEANLINESS_CLEAN
             )),
             'rotation' => [],
             'event' => null,

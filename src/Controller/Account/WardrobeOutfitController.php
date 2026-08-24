@@ -16,6 +16,7 @@ use App\Service\Wardrobe\WardrobeConsentService;
 use App\Service\Wardrobe\WardrobeOutfitService;
 use App\Service\Wardrobe\WardrobeOutfitLearningService;
 use App\Service\Wardrobe\WardrobeOnboardingService;
+use App\Service\Wardrobe\WardrobeStylistContextBuilder;
 use App\Service\Wardrobe\WardrobeWearService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -45,16 +46,21 @@ class WardrobeOutfitController extends AbstractController
         $error = null;
         $prompt = mb_substr(trim((string) $request->request->get('prompt')), 0, 300);
         $event = (string) $request->request->get('event');
+        $weatherCondition = (string) $request->request->get('weather_condition');
+        $temperatureBand = (string) $request->request->get('temperature_band');
 
         if ($request->isMethod('POST')) {
             if (!$this->isCsrfTokenValid('wardrobe_outfits', (string) $request->request->get('_token'))) {
                 $error = 'Недействительный токен';
+            } elseif (!in_array($weatherCondition, WardrobeStylistContextBuilder::WEATHER_CONDITIONS, true)
+                || !in_array($temperatureBand, WardrobeStylistContextBuilder::TEMPERATURE_BANDS, true)) {
+                $error = 'Выберите текущую погоду и температуру';
             } elseif (!$wardrobeAiLimiter->create((string) $actor->getId())->consume()->isAccepted()) {
                 $error = 'Лимит AI-подсказок на сегодня';
                 $usageTracker->recordError($actor, AiUsageLog::FEATURE_WARDROBE_OUTFIT, $error);
             } else {
                 try {
-                    $result = $outfits->suggest($actor, $wardrobeItems, $prompt, $learning->context($member), $member, $event);
+                    $result = $outfits->suggest($actor, $wardrobeItems, $prompt, $learning->context($member), $member, $event, $weatherCondition, $temperatureBand);
                     $result = $learning->remember($actor, $member, $prompt, $result);
                 } catch (WardrobeAiException|\DomainException $exception) {
                     $error = $exception->getMessage();
@@ -70,6 +76,8 @@ class WardrobeOutfitController extends AbstractController
             'member' => $member,
             'prompt' => $prompt,
             'event' => $event,
+            'weatherCondition' => $weatherCondition,
+            'temperatureBand' => $temperatureBand,
             'outfits' => $result,
             'error' => $error,
             'itemCount' => count($wardrobeItems),
