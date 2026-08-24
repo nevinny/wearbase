@@ -143,7 +143,7 @@ jobs:
         run: |
           set -o pipefail
           ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${U}@${H}" "cd ${D} && php -d memory_limit=512M bin/console doctrine:migrations:migrate --no-interaction && php bin/console app:wardrobe:migrate-private-media --no-interaction && test ! -d public_html/images/wardrobe && test ! -d public_html/images/wardrobe_drafts && php -d memory_limit=512M bin/console cache:clear --no-debug" \
+            "${U}@${H}" "cd ${D} && php -d memory_limit=512M bin/console doctrine:migrations:migrate --no-interaction && php -d memory_limit=512M bin/console cache:clear --no-debug && php bin/console app:wardrobe:migrate-private-media --no-interaction && test ! -d public_html/images/wardrobe && test ! -d public_html/images/wardrobe_drafts" \
             2>&1 | tee migrate.log
 
       - name: Smoke test
