@@ -105,6 +105,7 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
                 'В офис',
                 '',
                 self::callback(static fn ($subject): bool => $subject->getId() === $user->getId()),
+                '',
             )
             ->willReturn([[
                 'title' => 'Спокойный офис',

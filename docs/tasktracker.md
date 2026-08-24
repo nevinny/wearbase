@@ -2024,6 +2024,10 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   взрослый управляет своим consent, для child нужен parent; revoke сразу убирает history context,
   а local failure без consent не делает silent remote fallback. Remote wardrobe payload ограничен
   одноразовыми ID и category/color/season/styles без фото, названий, материалов, URL и DB ID.
+- [x] Добавить KISS structured context стилиста: исключать cleaning/repair/unavailable вещи,
+  мягко ротировать подтверждённые носки за 7 дней, принимать event только из allowlist и ограничить
+  explanation одной строкой/240 символами. Weather оставить interface + null implementation без
+  внешнего API, геоданных и location в prompt.
 - [ ] Для native iOS добавить revocable per-device access/refresh tokens; не переиспользовать
   X-Agent-Token/HMAC и не доверять user/member ID из клиента.
 

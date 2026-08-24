@@ -11,7 +11,7 @@ use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
 /** @extends ServiceEntityRepository<WardrobeWearEvent> */
-final class WardrobeWearEventRepository extends ServiceEntityRepository
+class WardrobeWearEventRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry) { parent::__construct($registry, WardrobeWearEvent::class); }
 
@@ -67,6 +67,26 @@ final class WardrobeWearEventRepository extends ServiceEntityRepository
             ->having('COUNT(event.id) >= 2')
             ->setMaxResults(1)
             ->getQuery()->getOneOrNullResult() !== null;
+    }
+
+    /** @return int[] */
+    public function recentlyWornItemIds(User $subject, \DateTimeImmutable $since): array
+    {
+        $rows = $this->createQueryBuilder('event')
+            ->select('DISTINCT IDENTITY(eventItem.item) AS itemId')
+            ->join('event.items', 'eventItem')
+            ->andWhere('event.profileSubject = :subject')
+            ->andWhere('event.status = :status')
+            ->andWhere('event.type = :type')
+            ->andWhere('event.wornOn >= :since')
+            ->andWhere('eventItem.confirmed = true')
+            ->setParameter('subject', $subject)
+            ->setParameter('status', WardrobeWearEvent::STATUS_CONFIRMED)
+            ->setParameter('type', WardrobeWearEvent::TYPE_WORN)
+            ->setParameter('since', $since)
+            ->getQuery()->getSingleColumnResult();
+
+        return array_map('intval', $rows);
     }
 
     /** @return WardrobeWearEvent[] */
