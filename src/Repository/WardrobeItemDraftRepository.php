@@ -124,4 +124,26 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
 
         return $counts;
     }
+
+    public function storageUsedForSubject(User $subject): int
+    {
+        return (int) $this->createQueryBuilder('d')
+            ->select('COALESCE(SUM(d.fileSize), 0)')
+            ->andWhere('d.user = :subject')
+            ->andWhere('d.photo IS NOT NULL')
+            ->setParameter('subject', $subject)
+            ->getQuery()->getSingleScalarResult();
+    }
+
+    /** @return WardrobeItemDraft[] */
+    public function findAcceptedBefore(\DateTimeImmutable $before, int $limit = 100): array
+    {
+        return $this->createQueryBuilder('d')->andWhere('d.status = :status')->andWhere('d.acceptedAt < :before')->andWhere('d.photo IS NOT NULL OR d.aiRaw IS NOT NULL')->setParameter('status', WardrobeItemDraft::STATUS_ACCEPTED)->setParameter('before', $before)->orderBy('d.id', 'ASC')->setMaxResults($limit)->getQuery()->getResult();
+    }
+
+    /** @return WardrobeItemDraft[] */
+    public function findAbandonedBefore(\DateTimeImmutable $before, int $limit = 100): array
+    {
+        return $this->createQueryBuilder('d')->andWhere('d.status IN (:statuses)')->andWhere('d.createdAt < :before')->setParameter('statuses', [WardrobeItemDraft::STATUS_PENDING, WardrobeItemDraft::STATUS_FAILED, WardrobeItemDraft::STATUS_REJECTED])->setParameter('before', $before)->orderBy('d.id', 'ASC')->setMaxResults($limit)->getQuery()->getResult();
+    }
 }

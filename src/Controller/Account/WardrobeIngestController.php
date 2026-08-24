@@ -7,9 +7,12 @@ namespace App\Controller\Account;
 use App\Entity\User;
 use App\Entity\WardrobeItemDraft;
 use App\Repository\WardrobeItemDraftRepository;
+use App\Repository\WardrobeConsentRepository;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeDraftPromotionService;
 use App\Service\Wardrobe\WardrobeOnboardingService;
+use App\Service\Wardrobe\WardrobeConsentService;
+use App\Service\Wardrobe\WardrobeImageSanitizer;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -45,6 +48,9 @@ class WardrobeIngestController extends AbstractController
         EntityManagerInterface $em,
         ValidatorInterface $validator,
         WardrobeItemDraftRepository $drafts,
+        WardrobeConsentRepository $consents,
+        WardrobeConsentService $consentService,
+        WardrobeImageSanitizer $imageSanitizer,
         RateLimiterFactory $wardrobeIngestLimiter,
     ): JsonResponse {
         if ($fail = $this->csrfOrFail($request)) {
@@ -58,6 +64,17 @@ class WardrobeIngestController extends AbstractController
         }
         $memberId = $request->request->getInt('member') ?: $request->query->getInt('member');
         $subject = $this->familyService->resolveMember($actor, $memberId > 0 ? $memberId : null);
+        $consent = $consents->findForSubject($subject);
+        if (!$consent?->isPhotoProcessingGranted()) {
+            if (!$request->request->getBoolean('photoConsent')) {
+                return $this->json(['ok' => false, 'error' => 'Подтвердите согласие на приватную обработку фото'], 422);
+            }
+            try {
+                $consentService->grantPhotoProcessing($actor, $subject);
+            } catch (\Symfony\Component\Security\Core\Exception\AccessDeniedException $exception) {
+                return $this->json(['ok' => false, 'error' => $exception->getMessage()], 403);
+            }
+        }
 
         $files = $request->files->get('photos', []);
         if (!is_array($files)) {
@@ -66,11 +83,17 @@ class WardrobeIngestController extends AbstractController
         if (count($files) > 20) {
             return $this->json(['ok' => false, 'error' => 'За один раз можно загрузить не больше 20 фотографий'], 422);
         }
+        $batchBytes = array_sum(array_map(static fn (mixed $file): int => $file instanceof UploadedFile ? (int) ($file->getSize() ?: 0) : 0, $files));
+        if ($batchBytes > 100_000_000 || $drafts->storageUsedForSubject($subject) + $batchBytes > 200_000_000) {
+            return $this->json(['ok' => false, 'error' => 'Превышен лимит хранения фото. Завершите или удалите старые черновики'], 422);
+        }
 
         $constraint = new Image([
             'maxSize' => '10M',
             'mimeTypes' => ['image/jpeg', 'image/png', 'image/webp'],
             'mimeTypesMessage' => 'Формат не поддерживается — сконвертируйте в JPEG/PNG (iPhone: Настройки→Камера→Форматы→Наиболее совместимый)',
+            'maxWidth' => 5000,
+            'maxHeight' => 5000,
         ]);
 
         $acceptedFiles = [];
@@ -98,7 +121,13 @@ class WardrobeIngestController extends AbstractController
             }
 
             $seenHashes[$hash] = true;
-            $acceptedFiles[] = ['file' => $file, 'hash' => $hash];
+            try {
+                $sanitized = $imageSanitizer->sanitize($file);
+            } catch (\InvalidArgumentException $exception) {
+                $rejected[] = ['name' => $name, 'reason' => $exception->getMessage()];
+                continue;
+            }
+            $acceptedFiles[] = ['file' => $sanitized, 'hash' => $hash, 'size' => (int) ($sanitized->getSize() ?: 0)];
         }
 
         if ($acceptedFiles === []) {
@@ -143,7 +172,8 @@ class WardrobeIngestController extends AbstractController
                     ->setProfileSubject($subject)
                     ->setActor($actor)
                     ->setBatchId($batchId)
-                    ->setContentHash($acceptedFile['hash']);
+                    ->setContentHash($acceptedFile['hash'])
+                    ->setFileSize($acceptedFile['size']);
                 $draft->setPhotoFile($acceptedFile['file']);
                 $em->persist($draft);
                 $created++;

@@ -9,7 +9,9 @@ use App\Entity\Wardrobe;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
 use App\Entity\WardrobeOnboarding;
+use App\Entity\WardrobeConsent;
 use App\Service\FamilyService;
+use App\Service\Wardrobe\WardrobeImageSanitizer;
 use Doctrine\ORM\Event\PrePersistEventArgs;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Events;
@@ -60,7 +62,7 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $client->request(
             'POST',
             '/account/wardrobe/ingest/upload',
-            [],
+            ['photoConsent' => '1'],
             ['photos' => [$photo1, $photo2]],
             ['HTTP_X_CSRF_TOKEN' => $token],
         );
@@ -100,7 +102,7 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $client->request(
             'POST',
             '/account/wardrobe/ingest/upload?member='.$child->getId(),
-            [],
+            ['photoConsent' => '1'],
             ['photos' => [$photo]],
             ['HTTP_X_CSRF_TOKEN' => $token],
         );
@@ -113,7 +115,7 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $client->request(
             'POST',
             '/account/wardrobe/ingest/upload?member='.$child->getId(),
-            [],
+            ['photoConsent' => '1'],
             ['photos' => [$secondPhoto]],
             ['HTTP_X_CSRF_TOKEN' => $token],
         );
@@ -164,7 +166,7 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $client->request(
             'POST',
             '/account/wardrobe/ingest/upload',
-            [],
+            ['photoConsent' => '1'],
             ['photos' => [$badFile]],
             ['HTTP_X_CSRF_TOKEN' => $token],
         );
@@ -192,12 +194,12 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         copy($firstPath, $retryPath);
         $this->tmpFiles[] = $retryPath;
 
-        $client->request('POST', '/account/wardrobe/ingest/upload', [], [
+        $client->request('POST', '/account/wardrobe/ingest/upload', ['photoConsent' => '1'], [
             'photos' => [new UploadedFile($firstPath, 'same.png', 'image/png', null, true)],
         ], ['HTTP_X_CSRF_TOKEN' => $token]);
         $this->assertResponseIsSuccessful();
 
-        $client->request('POST', '/account/wardrobe/ingest/upload', [], [
+        $client->request('POST', '/account/wardrobe/ingest/upload', ['photoConsent' => '1'], [
             'photos' => [new UploadedFile($retryPath, 'same-retry.png', 'image/png', null, true)],
         ], ['HTTP_X_CSRF_TOKEN' => $token]);
 
@@ -490,9 +492,72 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $this->assertSame('Чужой черновик', $reloaded->getName());
     }
 
-    /**
-     * @param array{category?:string,name?:string} $fields
-     */
+    public function testUploadRequiresExplicitPhotoConsent(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'ingest-explicit-consent-'.bin2hex(random_bytes(4)).'@test.local');
+        $client->loginUser($user);
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+        $client->request('POST', '/account/wardrobe/ingest/upload', [], [
+            'photos' => [new UploadedFile($this->makeTempImage(), 'private.png', 'image/png', null, true)],
+        ], ['HTTP_X_CSRF_TOKEN' => $token]);
+
+        $this->assertResponseStatusCodeSame(422);
+        $this->assertStringContainsString('согласие', (string) json_decode((string) $client->getResponse()->getContent(), true)['error']);
+        $this->assertSame(0, static::getContainer()->get('doctrine.orm.entity_manager')->getRepository(WardrobeConsent::class)->count(['subject' => $user]));
+    }
+
+    public function testChildCannotGrantOwnPhotoProcessingConsent(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'ingest-consent-parent-'.bin2hex(random_bytes(4)).'@test.local');
+        $child = static::getContainer()->get(FamilyService::class)->createChild($parent, 'Аня');
+        $client->loginUser($child);
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+        $client->request('POST', '/account/wardrobe/ingest/upload', ['photoConsent' => '1'], [
+            'photos' => [new UploadedFile($this->makeTempImage(), 'child.png', 'image/png', null, true)],
+        ], ['HTTP_X_CSRF_TOKEN' => $token]);
+
+        $this->assertResponseStatusCodeSame(403);
+        $this->assertSame(0, static::getContainer()->get('doctrine.orm.entity_manager')->getRepository(WardrobeConsent::class)->count(['subject' => $child]));
+    }
+
+    public function testImageSanitizerRemovesEmbeddedMetadata(): void
+    {
+        $path = $this->makeTempImage();
+        file_put_contents($path, 'GPSSECRET', FILE_APPEND);
+        $sanitized = static::getContainer()->get(WardrobeImageSanitizer::class)->sanitize(new UploadedFile($path, 'metadata.png', 'image/png', null, true));
+        $this->tmpFiles[] = $sanitized->getPathname();
+
+        $this->assertStringNotContainsString('GPSSECRET', (string) file_get_contents($sanitized->getPathname()));
+        $this->assertSame('image/jpeg', $sanitized->getMimeType());
+    }
+
+    public function testDraftStorageQuotaBlocksNewUpload(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'ingest-storage-quota-'.bin2hex(random_bytes(4)).'@test.local');
+        $client->loginUser($user);
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $consent = new WardrobeConsent($user, $user);
+        $consent->grantPhotoProcessing($user);
+        $draft = (new WardrobeItemDraft())->setUser($user)->setBatchId('quota-batch')->setFileSize(200_000_000)->setPhoto('quota.jpg');
+        $em->persist($consent);
+        $em->persist($draft);
+        $em->flush();
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+        $client->request('POST', '/account/wardrobe/ingest/upload', [], [
+            'photos' => [new UploadedFile($this->makeTempImage(), 'over-quota.png', 'image/png', null, true)],
+        ], ['HTTP_X_CSRF_TOKEN' => $token]);
+
+        $this->assertResponseStatusCodeSame(422);
+        $this->assertStringContainsString('лимит хранения', (string) json_decode((string) $client->getResponse()->getContent(), true)['error']);
+    }
+
+    /** @param array{category?:string,name?:string} $fields */
     private function makeDraft(
         EntityManagerInterface $em,
         User $user,

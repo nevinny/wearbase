@@ -15,7 +15,7 @@ final class WardrobePhotoManager
     private const MAX_FILE_SIZE = 10_000_000;
     private const MAX_BATCH_SIZE = 8;
 
-    public function __construct(private readonly EntityManagerInterface $entityManager) {}
+    public function __construct(private readonly EntityManagerInterface $entityManager, private readonly WardrobeImageSanitizer $sanitizer) {}
 
     /** @param UploadedFile[] $files
      *  @return WardrobeItemPhoto[]
@@ -51,13 +51,14 @@ final class WardrobePhotoManager
                 throw new \InvalidArgumentException('Разрешены JPG, PNG и WebP размером до 10 МБ.');
             }
 
+            $cleanFile = $this->sanitizer->sanitize($file);
             $photo = (new WardrobeItemPhoto())
-                ->setFile($file)
+                ->setFile($cleanFile)
                 ->setPhotoType($photoType)
                 ->setSortOrder($nextSort++)
                 ->setOriginalFilename($file->getClientOriginalName())
-                ->setMimeType($file->getMimeType())
-                ->setFileSize($file->getSize() ?: null)
+                ->setMimeType($cleanFile->getMimeType())
+                ->setFileSize($cleanFile->getSize() ?: null)
                 ->setIsCover(!$hasCover);
             $hasCover = true;
             $item->addPhoto($photo);
