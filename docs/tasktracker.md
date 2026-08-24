@@ -2157,6 +2157,9 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   first outfit → repeat wear. Milestone уникален на профиль; metadata ограничена `actorKind`
   (`self|family_manager`) и low-cardinality `entryPoint`, без email, URL, фото, текста и параметров вещей.
   Исторический backfill намеренно не выполняется: когорта начинается с даты выкладки миграции.
+- [x] Добавить first-party activation report: дневные когорты и time-to-first milestones,
+  batch completion, correction/autofill acceptance. Повторяемые batch/draft события идемпотентны
+  по hashed dedup key; metadata — только low-cardinality allowlist без фото, URL и свободного текста.
 - [ ] Не начинать fine-tuning до достаточного подтверждённого корпуса, privacy-review и offline eval;
   выпускать LoRA только через A/B по повторным носкам и снижению неудачных покупок.
 

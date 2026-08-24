@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Entity\User;
 use App\Entity\Wardrobe;
+use App\Entity\WardrobeActivationEvent;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
 use App\Entity\WardrobeOnboarding;
@@ -297,6 +298,13 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $this->assertSame($data['itemId'], $retry['itemId']);
         $this->assertTrue($retry['idempotent']);
         $this->assertSame($itemCountBefore + 1, $em->getRepository(WardrobeItem::class)->count([]));
+        $acceptedEvents = $em->getRepository(WardrobeActivationEvent::class)->findBy([
+            'profileSubject' => $user,
+            'eventType' => WardrobeActivationEvent::DRAFT_ACCEPTED,
+        ]);
+        $this->assertCount(1, $acceptedEvents);
+        $this->assertSame('manual_correction', $acceptedEvents[0]->getMetadata()['source']);
+        $this->assertTrue($acceptedEvents[0]->getMetadata()['correction']);
     }
 
     /**

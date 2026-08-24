@@ -44,13 +44,24 @@ final class WardrobeDraftPromotionService
         }
 
         $this->activation?->firstItemAdded($actor, $result['item']->getUser(), 'batch');
+        if (!$result['idempotent']) {
+            $this->activation?->draftAccepted(
+                $actor,
+                $result['item']->getUser(),
+                $draftId,
+                $result['correction'] ? 'manual_correction' : 'ai',
+                $result['durationBucket'],
+                $result['correction'],
+                $result['autofillAccepted'],
+            );
+        }
 
-        return $result;
+        return ['item' => $result['item'], 'idempotent' => $result['idempotent']];
     }
 
     /**
      * @param array{name?:mixed,category?:mixed,size?:mixed,notes?:mixed} $overrides
-     * @return array{item:WardrobeItem,idempotent:bool}
+     * @return array{item:WardrobeItem,idempotent:bool,correction:bool,durationBucket:string,autofillAccepted:bool}
      */
     private function attempt(?int $actorId, int $draftId, array $overrides): array
     {
@@ -76,7 +87,7 @@ final class WardrobeDraftPromotionService
                     throw new \DomainException('Принятый черновик повреждён');
                 }
                 $connection->commit();
-                return ['item' => $item, 'idempotent' => true];
+                return ['item' => $item, 'idempotent' => true, 'correction' => false, 'durationBucket' => 'under_1m', 'autofillAccepted' => false];
             }
             if (!in_array($draft->getStatus(), [WardrobeItemDraft::STATUS_RECOGNIZED, WardrobeItemDraft::STATUS_FAILED], true)) {
                 throw new \DomainException('Черновик ещё не готов к подтверждению');
@@ -89,6 +100,12 @@ final class WardrobeDraftPromotionService
             if ($category === null || $name === null) {
                 throw new \DomainException('Заполните категорию и название');
             }
+            $correction = $draft->getStatus() === WardrobeItemDraft::STATUS_FAILED
+                || $category !== $draft->getCategory()
+                || $name !== $draft->getName()
+                || $size !== $draft->getSize()
+                || $notes !== $draft->getNotes();
+            $durationBucket = $this->durationBucket($draft->getCreatedAt());
 
             // Сериализует выдачу itemNo для одного владельца между web workers.
             $em->lock($subject, LockMode::PESSIMISTIC_WRITE);
@@ -126,7 +143,13 @@ final class WardrobeDraftPromotionService
             $em->flush();
             $connection->commit();
 
-            return ['item' => $item, 'idempotent' => false];
+            return [
+                'item' => $item,
+                'idempotent' => false,
+                'correction' => $correction,
+                'durationBucket' => $durationBucket,
+                'autofillAccepted' => !$correction,
+            ];
         } catch (\Throwable $exception) {
             if ($connection->isTransactionActive()) {
                 $connection->rollBack();
@@ -142,6 +165,18 @@ final class WardrobeDraftPromotionService
             }
             throw $exception;
         }
+    }
+
+    private function durationBucket(\DateTimeInterface $startedAt): string
+    {
+        $seconds = max(0, time() - $startedAt->getTimestamp());
+
+        return match (true) {
+            $seconds < 60 => 'under_1m',
+            $seconds < 300 => '1_5m',
+            $seconds < 900 => '5_15m',
+            default => 'over_15m',
+        };
     }
 
     /** @param array<string, mixed> $overrides */
