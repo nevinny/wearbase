@@ -19,6 +19,7 @@ use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use App\Service\Look\LookShareOgCardRenderer;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
 /**
@@ -37,6 +38,7 @@ final class LookShareController extends AbstractController
     public function __construct(
         private readonly WardrobeOutfitShareRepository $shares,
         private readonly EntityManagerInterface $em,
+        private readonly LookShareOgCardRenderer $ogRenderer,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {}
@@ -73,6 +75,7 @@ final class LookShareController extends AbstractController
             'isGuestLoggedIn' => $this->getUser() instanceof User,
             'canonicalUrl' => $this->generateUrl('look_shared_show', ['token' => $token], UrlGeneratorInterface::ABSOLUTE_URL),
             'sharePath' => $this->generateUrl('look_shared_show', ['token' => $token]),
+            'ogDescription' => $this->ogDescription($share->getOutfit()->getExplanation()),
         ]);
 
         // Счётчик просмотров §6: быстрый атомарный UPDATE при сборке ответа, боты отсечены
@@ -106,6 +109,43 @@ final class LookShareController extends AbstractController
         }
 
         return $this->mediaResponse($storage->resolvePath($photo, 'file'), $photo->getFilePath());
+    }
+
+    /**
+     * OG-карта для мессенджеров (§3): ленивая генерация в приватное хранилище + раздача.
+     * Публичный кэш допустим: секрет — сам URL; ревок отдаёт 404 (превью в переписке
+     * всё равно остаётся, §3.3).
+     */
+    #[Route('/{token}/og.png', name: 'og', requirements: ['token' => '[0-9a-f]{64}'], methods: ['GET'])]
+    public function og(string $token): Response
+    {
+        $share = $this->shares->findByToken($token);
+        if ($share === null || !$share->isViewable()) {
+            throw $this->createNotFoundException();
+        }
+
+        $path = $this->ogRenderer->renderFor($share);
+        if ($path === null || !is_file($path)) {
+            throw $this->createNotFoundException();
+        }
+
+        $response = new BinaryFileResponse($path);
+        $response->setPublic();
+        $response->setMaxAge(3600);
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+
+        return $response;
+    }
+
+    /** Краткая og:description: explanation одной строкой, обрезка ~160 символов. */
+    private function ogDescription(?string $explanation): string
+    {
+        $text = trim(preg_replace('/\s+/u', ' ', (string) $explanation) ?? '');
+        if ($text === '') {
+            return 'Образ из гардероба WEARBASE — собери свой из вещей российских брендов';
+        }
+
+        return mb_strlen($text) > 160 ? mb_substr($text, 0, 159).'…' : $text;
     }
 
     /** @return list<array{id:int,category:?string,color:?string,coverPhotoId:?int}> */

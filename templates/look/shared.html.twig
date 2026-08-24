@@ -12,6 +12,17 @@
     <meta name="robots" content="noindex, follow">
     <link rel="canonical" href="{{ canonicalUrl }}">
     <meta name="referrer" content="no-referrer">
+    <meta property="og:title" content="Лук: {{ outfitTitle }} | WEARBASE">
+    <meta property="og:description" content="{{ ogDescription }}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ canonicalUrl }}">
+    <meta property="og:image" content="{{ url('look_shared_og', {token: token}) }}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Лук: {{ outfitTitle }} | WEARBASE">
+    <meta name="twitter:description" content="{{ ogDescription }}">
+    <meta name="twitter:image" content="{{ url('look_shared_og', {token: token}) }}">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fafaf9; color: #111827; min-height: 100vh; display: flex; flex-direction: column; }
