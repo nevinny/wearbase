@@ -1,4 +1,4 @@
-const VERSION = 'wearbase-family-v2';
+const VERSION = 'wearbase-family-v3';
 const STATIC_CACHE = `${VERSION}-static`;
 const STATIC_ASSETS = [
     '/favicon.ico',
@@ -6,6 +6,7 @@ const STATIC_ASSETS = [
     '/images/pwa/icon-180.png',
     '/images/pwa/icon-192.png',
     '/images/pwa/icon-512.png',
+    '/js/tailwind-3.4.17.js',
     '/manifest.webmanifest'
 ];
 

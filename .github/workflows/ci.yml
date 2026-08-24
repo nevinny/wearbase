@@ -55,9 +55,37 @@ jobs:
         # схема провижинится из сущностей в tests/bootstrap.php.
         run: php -d memory_limit=512M vendor/bin/phpunit
 
+  pwa:
+    name: PWA acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, mbstring, intl, pdo_sqlite, sqlite3, xml, tokenizer, gd
+          coverage: none
+          tools: composer:v2
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --no-scripts
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+
+      - name: Install frontend test dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run PWA acceptance
+        run: npx playwright test --config=playwright.pwa.config.ts
+
   deploy:
     name: Deploy to prod (regru)
-    needs: tests
+    needs: [tests, pwa]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:

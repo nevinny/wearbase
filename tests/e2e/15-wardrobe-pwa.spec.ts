@@ -21,12 +21,15 @@ async function login(page: Page): Promise<void> {
 }
 
 test('manifest, service-worker scope and camera input are install-ready', async ({ page, request }) => {
+  const tailwindResponse = await request.get('/js/tailwind-3.4.17.js');
+  expect(tailwindResponse.status()).toBe(200);
+  expect(tailwindResponse.headers()['content-type']).toContain('javascript');
   const manifestResponse = await request.get('/manifest.webmanifest');
   expect(manifestResponse.status()).toBe(200);
   expect(manifestResponse.headers()['content-type']).toBe('application/manifest+json; charset=utf-8');
   expect(await manifestResponse.json()).toMatchObject({
     start_url: '/account/wardrobe-app',
-    scope: '/account/',
+    scope: '/',
     display: 'standalone',
   });
 
@@ -50,6 +53,22 @@ test('manifest, service-worker scope and camera input are install-ready', async 
   });
   expect(cachedPaths.some((url) => url.startsWith('/account/'))).toBe(false);
   expect(cachedPaths.some((url) => url.startsWith('/api/'))).toBe(false);
+});
+
+test('anonymous installed start logs in and returns to the wardrobe app inside scope', async ({ page, context, request }) => {
+  await context.clearCookies();
+  const manifest = await (await request.get('/manifest.webmanifest')).json();
+
+  await page.goto(manifest.start_url);
+  await expect(page).toHaveURL(/\/login$/);
+  expect(new URL(page.url()).pathname.startsWith(manifest.scope)).toBe(true);
+
+  await page.getByLabel('Email').fill(fixture().intro.email);
+  await page.getByLabel('Пароль').fill(fixture().password);
+  await page.getByRole('button', {name: /Войти/}).click();
+
+  await expect(page).toHaveURL(/\/account\/wardrobe-app$/);
+  expect(new URL(page.url()).pathname.startsWith(manifest.scope)).toBe(true);
 });
 
 test('offline navigation shows a data-free shell instead of cached family content', async ({ page, context }) => {

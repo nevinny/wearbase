@@ -21,7 +21,7 @@ final class PwaManifestController extends AbstractController
             'lang' => 'ru',
             'dir' => 'ltr',
             'start_url' => '/account/wardrobe-app',
-            'scope' => '/account/',
+            'scope' => '/',
             'display' => 'standalone',
             'orientation' => 'portrait-primary',
             'background_color' => '#f8fafc',
