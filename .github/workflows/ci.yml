@@ -128,6 +128,8 @@ jobs:
               -e "ssh -i ~/.ssh/deploy_key -p ${P} -o UserKnownHostsFile=~/.ssh/known_hosts" \
               "./$DIR/" "${U}@${H}:${D}/$DIR/"
           done
+          ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${U}@${H}" "rm -f '${D}/public_html/manifest.webmanifest'"
 
       - name: Migrate + clear cache
         id: migrate
