@@ -39,6 +39,7 @@ final class WardrobeIngestHealthCommand extends Command
                 static fn (string $key, mixed $value): array => [$key, match (true) {
                     $value === null => 'unknown',
                     is_bool($value) => $value ? 'yes' : 'no',
+                    is_array($value) => $value === [] ? 'none' : implode(', ', $value),
                     default => (string) $value,
                 }],
                 array_keys($snapshot),
