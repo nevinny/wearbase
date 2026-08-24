@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller\Api;
 
+use App\Entity\NativeDeviceSession;
 use App\Entity\User;
 use App\Service\NativeDeviceAuth;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -29,15 +30,46 @@ final class NativeDeviceAuthController extends AbstractController
         }
         $password = is_string($data['password'] ?? null) ? $data['password'] : '';
         $deviceId = is_string($data['deviceId'] ?? null) ? trim($data['deviceId']) : '';
+        $deviceLabel = is_string($data['deviceLabel'] ?? null) ? trim($data['deviceLabel']) : NativeDeviceSession::LABEL_OTHER;
         if ($email === '' || $password === '' || strlen($password) > 4096 || strlen($deviceId) < 8 || strlen($deviceId) > 128) {
             return $this->jsonPrivate(['error' => 'invalid_credentials'], Response::HTTP_UNAUTHORIZED);
         }
+        if (!in_array($deviceLabel, NativeDeviceSession::LABELS, true)) {
+            return $this->jsonPrivate(['error' => 'invalid_device_label'], Response::HTTP_BAD_REQUEST);
+        }
 
         try {
-            return $this->jsonPrivate($this->auth->login($email, $password, $deviceId));
+            return $this->jsonPrivate($this->auth->login($email, $password, $deviceId, $deviceLabel));
         } catch (\DomainException) {
             return $this->jsonPrivate(['error' => 'invalid_credentials'], Response::HTTP_UNAUTHORIZED);
         }
+    }
+
+    #[Route('/devices', name: 'devices', methods: ['GET'])]
+    public function devices(Request $request): JsonResponse
+    {
+        $user = $this->nativeUser($request);
+        if ($user === null) {
+            return $this->jsonPrivate(['error' => 'native_authentication_required'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        return $this->jsonPrivate(['devices' => $this->auth->devices($user, $request->attributes->getInt('_native_device_session_id'))]);
+    }
+
+    #[Route('/devices/{publicId}', name: 'revoke_device', requirements: ['publicId' => '[a-f0-9]{32}'], methods: ['DELETE'])]
+    public function revokeDevice(string $publicId, Request $request): JsonResponse
+    {
+        $user = $this->nativeUser($request);
+        if ($user === null) {
+            return $this->jsonPrivate(['error' => 'native_authentication_required'], Response::HTTP_UNAUTHORIZED);
+        }
+        try {
+            $this->auth->revokeByPublicId($publicId, $user);
+        } catch (\DomainException) {
+            return $this->jsonPrivate(['error' => 'device_not_found'], Response::HTTP_NOT_FOUND);
+        }
+
+        return $this->jsonPrivate(['ok' => true]);
     }
 
     #[Route('/refresh', name: 'refresh', methods: ['POST'])]
@@ -97,5 +129,12 @@ final class NativeDeviceAuthController extends AbstractController
     private function jsonPrivate(array $data, int $status = Response::HTTP_OK): JsonResponse
     {
         return $this->json($data, $status, ['Cache-Control' => 'no-store, private']);
+    }
+
+    private function nativeUser(Request $request): ?User
+    {
+        $user = $this->getUser();
+
+        return $user instanceof User && $request->attributes->getInt('_native_device_session_id') > 0 ? $user : null;
     }
 }

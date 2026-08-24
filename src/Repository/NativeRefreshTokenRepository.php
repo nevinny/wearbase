@@ -19,4 +19,10 @@ final class NativeRefreshTokenRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('t')->andWhere('t.tokenHash = :hash')->setParameter('hash', $hash)
             ->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
     }
+
+    public function deleteExpired(\DateTimeImmutable $now): int
+    {
+        return $this->createQueryBuilder('t')->delete()->andWhere('t.expiresAt <= :now')
+            ->setParameter('now', $now)->getQuery()->execute();
+    }
 }
