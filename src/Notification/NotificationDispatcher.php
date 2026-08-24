@@ -74,10 +74,34 @@ readonly class NotificationDispatcher
         $this->createInApp($recipient, $type, $title, $body, $data);
     }
 
+    /** @param array<string, mixed>|null $data */
+    public function dispatchInAppOnce(
+        User $recipient,
+        string $type,
+        string $dedupeKey,
+        string $title,
+        ?string $body = null,
+        ?array $data = null,
+    ): void {
+        $settings = $this->settingsRepo->findOneBy(['user' => $recipient, 'eventType' => $type]);
+        if ($settings !== null && !$settings->isChannelInapp()) {
+            return;
+        }
+        if ($this->em->getRepository(Notification::class)->findOneBy([
+            'recipient' => $recipient,
+            'dedupeKey' => $dedupeKey,
+        ]) !== null) {
+            return;
+        }
+
+        $notification = $this->createInApp($recipient, $type, $title, $body, $data);
+        $notification->setDedupeKey($dedupeKey);
+    }
+
     /**
      * @param array<string, mixed>|null $data
      */
-    private function createInApp(User $recipient, string $type, string $title, ?string $body = null, ?array $data = null): void
+    private function createInApp(User $recipient, string $type, string $title, ?string $body = null, ?array $data = null): Notification
     {
         $notification = new Notification();
         $notification->setRecipient($recipient);
@@ -88,5 +112,7 @@ readonly class NotificationDispatcher
         $notification->setChannel(Notification::CHANNEL_INAPP);
 
         $this->em->persist($notification);
+
+        return $notification;
     }
 }

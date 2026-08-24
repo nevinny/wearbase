@@ -9,6 +9,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: NotificationRepository::class)]
+#[ORM\UniqueConstraint(name: 'uniq_notification_recipient_dedupe', columns: ['recipient_id', 'dedupe_key'])]
 class Notification
 {
     // Типы событий
@@ -22,6 +23,10 @@ class Notification
     public const TYPE_SYSTEM = 'system';
     public const TYPE_PURCHASE_REQUEST_NEW = 'purchase_request_new';
     public const TYPE_PURCHASE_REQUEST_DECIDED = 'purchase_request_decided';
+    public const TYPE_PURCHASE_FITTING = 'purchase_fitting';
+    public const TYPE_PURCHASE_BOUGHT = 'purchase_bought';
+    public const TYPE_PURCHASE_REFUSED = 'purchase_refused';
+    public const TYPE_PURCHASE_RETURNED = 'purchase_returned';
 
     // Каналы доставки
     public const CHANNEL_INAPP = 'inapp';
@@ -49,6 +54,9 @@ class Notification
     // Дополнительные данные (id заказа, ссылка, etc.)
     #[ORM\Column(type: Types::JSON, nullable: true)]
     private ?array $data = null;
+
+    #[ORM\Column(length: 100, nullable: true)]
+    private ?string $dedupeKey = null;
 
     #[ORM\Column(options: ['default' => false])]
     private bool $isRead = false;
@@ -113,6 +121,14 @@ class Notification
     public function setData(?array $data): static
     {
         $this->data = $data;
+        return $this;
+    }
+
+    public function getDedupeKey(): ?string { return $this->dedupeKey; }
+
+    public function setDedupeKey(?string $dedupeKey): static
+    {
+        $this->dedupeKey = $dedupeKey;
         return $this;
     }
 

@@ -199,9 +199,14 @@ class PurchaseRequestService
         ?string $comment,
     ): void {
         $this->assertCanRecordFitting($actor, $request, $item);
+        $notificationType = match ($outcome) {
+            FittingFeedback::OUTCOME_BOUGHT => Notification::TYPE_PURCHASE_BOUGHT,
+            FittingFeedback::OUTCOME_REFUSED, FittingFeedback::OUTCOME_DIFFERENT_SIZE => Notification::TYPE_PURCHASE_REFUSED,
+            default => Notification::TYPE_PURCHASE_FITTING,
+        };
         $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_FITTING, static function (PurchaseRequestItem $locked) use ($actor, $outcome, $triedSize, $sizing, $fitIssues, $comment): void {
             $locked->recordFitting(new FittingFeedback($actor, $outcome, $triedSize, $sizing, $fitIssues, $comment));
-        });
+        }, $notificationType);
     }
 
     public function markReturned(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): void
@@ -223,6 +228,7 @@ class PurchaseRequestService
 
             $subject = $request->getSubject();
             \assert($subject instanceof User);
+            $this->notifyParents($actor, $subject, $request, $item, Notification::TYPE_PURCHASE_RETURNED);
             if ($actor->getId() !== $subject->getId()) {
                 $this->notifications->dispatchInApp(
                     $subject,
@@ -303,14 +309,17 @@ class PurchaseRequestService
     }
 
     /** @param callable(PurchaseRequestItem): void $mutation */
-    private function mutateItem(User $actor, PurchaseRequest $request, PurchaseRequestItem $item, string $eventType, callable $mutation): void
+    private function mutateItem(User $actor, PurchaseRequest $request, PurchaseRequestItem $item, string $eventType, callable $mutation, ?string $parentNotificationType = null): void
     {
-        $this->transactional(function () use ($actor, $request, $item, $eventType, $mutation): void {
+        $this->transactional(function () use ($actor, $request, $item, $eventType, $mutation, $parentNotificationType): void {
             $this->em->refresh($item, LockMode::PESSIMISTIC_WRITE);
             $mutation($item);
             $request->addEvent((new PurchaseRequestEvent($actor, $eventType))->setItem($item));
             $subject = $request->getSubject();
             \assert($subject instanceof User);
+            if ($parentNotificationType !== null) {
+                $this->notifyParents($actor, $subject, $request, $item, $parentNotificationType);
+            }
             if ($actor->getId() !== $subject->getId()) {
                 $this->notifications->dispatchInApp(
                     $subject,
@@ -321,5 +330,28 @@ class PurchaseRequestService
                 );
             }
         });
+    }
+
+    private function notifyParents(User $actor, User $subject, PurchaseRequest $request, PurchaseRequestItem $item, string $type): void
+    {
+        $titles = [
+            Notification::TYPE_PURCHASE_FITTING => '%s оставил(а) результат примерки',
+            Notification::TYPE_PURCHASE_BOUGHT => '%s выкупил(а) вещь',
+            Notification::TYPE_PURCHASE_REFUSED => '%s отказался(-ась) от вещи',
+            Notification::TYPE_PURCHASE_RETURNED => 'Вещь для %s возвращена',
+        ];
+        foreach ($this->families->membersFor($subject) as $parent) {
+            if (!$parent->isFamilyParent() || $parent->getId() === $actor->getId()) {
+                continue;
+            }
+            $this->notifications->dispatchInAppOnce(
+                $parent,
+                $type,
+                sprintf('purchase-item:%d:%s:recipient:%d', $item->getId(), $type, $parent->getId()),
+                sprintf($titles[$type], $subject->getFirstName() ?: 'Ребёнок'),
+                null,
+                ['url' => '/account/purchases/'.$request->getId()],
+            );
+        }
     }
 }
