@@ -25,10 +25,14 @@
                         {% for channel in channels %}
                             {% set checked = s ? attribute(s, 'channel' ~ channel|slice(7)) : false %}
                             <td class="px-5 py-3 text-center">
-                                <input type="hidden" name="settings[{{ eventType }}][{{ channel }}]" value="0">
-                                <input class="h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900" type="checkbox"
-                                       name="settings[{{ eventType }}][{{ channel }}]" value="1"
-                                       {{ checked ? 'checked' : '' }}>
+                                {% if channel == 'channelEmail' and eventType in inappOnlyTypes %}
+                                    <span class="text-gray-300">—</span>
+                                {% else %}
+                                    <input type="hidden" name="settings[{{ eventType }}][{{ channel }}]" value="0">
+                                    <input class="h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900" type="checkbox"
+                                           name="settings[{{ eventType }}][{{ channel }}]" value="1"
+                                           {{ checked ? 'checked' : '' }}>
+                                {% endif %}
                             </td>
                         {% endfor %}
                     </tr>

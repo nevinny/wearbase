@@ -27,6 +27,8 @@ class Notification
     public const TYPE_PURCHASE_BOUGHT = 'purchase_bought';
     public const TYPE_PURCHASE_REFUSED = 'purchase_refused';
     public const TYPE_PURCHASE_RETURNED = 'purchase_returned';
+    public const TYPE_PURCHASE_DECISION_REMINDER = 'purchase_decision_reminder';
+    public const TYPE_PURCHASE_FITTING_REMINDER = 'purchase_fitting_reminder';
 
     // Каналы доставки
     public const CHANNEL_INAPP = 'inapp';

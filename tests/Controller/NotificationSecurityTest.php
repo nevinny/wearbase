@@ -90,4 +90,19 @@ class NotificationSecurityTest extends AuthenticatedWebTestCase
         $this->assertResponseIsSuccessful();
         $this->assertSelectorNotExists('a[href="/account/../admin"]');
     }
+
+    public function testReminderSettingsExposeOnlyInAppChannel(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'notification-reminder-settings@test.local');
+        $client->loginUser($user);
+
+        $client->request('GET', '/account/notifications/settings');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorNotExists('input[name="settings[purchase_decision_reminder][channelEmail]"]');
+        $this->assertSelectorExists('input[name="settings[purchase_decision_reminder][channelInapp]"]');
+        $this->assertSelectorNotExists('input[name="settings[purchase_fitting_reminder][channelEmail]"]');
+        $this->assertSelectorExists('input[name="settings[purchase_fitting_reminder][channelInapp]"]');
+    }
 }

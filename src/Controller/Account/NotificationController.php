@@ -30,9 +30,15 @@ class NotificationController extends AbstractController
         Notification::TYPE_PURCHASE_BOUGHT => 'Вещь выкуплена',
         Notification::TYPE_PURCHASE_REFUSED => 'Отказ после примерки',
         Notification::TYPE_PURCHASE_RETURNED => 'Вещь возвращена',
+        Notification::TYPE_PURCHASE_DECISION_REMINDER => 'Напоминание о решении',
+        Notification::TYPE_PURCHASE_FITTING_REMINDER => 'Напоминание о примерке',
     ];
 
     private const CHANNELS = ['channelEmail', 'channelInapp'];
+    private const INAPP_ONLY_TYPES = [
+        Notification::TYPE_PURCHASE_DECISION_REMINDER,
+        Notification::TYPE_PURCHASE_FITTING_REMINDER,
+    ];
 
     #[Route('', name: 'index')]
     public function index(NotificationRepository $repo): Response
@@ -92,6 +98,7 @@ class NotificationController extends AbstractController
             'eventTypes' => self::EVENT_TYPES,
             'channels'   => self::CHANNELS,
             'settings'   => $indexed,
+            'inappOnlyTypes' => self::INAPP_ONLY_TYPES,
         ]));
     }
 
