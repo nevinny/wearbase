@@ -17,6 +17,7 @@ class PurchaseRequestEvent
     public const TYPE_APPROVED_OVER_BUDGET = 'approved_over_budget';
     public const TYPE_APPROVED_NO_PRICE = 'approved_no_price';
     public const TYPE_ORDERED = 'ordered';
+    public const TYPE_ORDERED_OVER_BUDGET = 'ordered_over_budget';
     public const TYPE_DELIVERED = 'delivered';
     public const TYPE_FITTING = 'fitting';
     public const TYPE_RETURNED = 'returned';

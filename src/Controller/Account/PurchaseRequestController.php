@@ -177,7 +177,13 @@ class PurchaseRequestController extends AbstractController
         $actor = $this->getUser();
         try {
             match ($request->request->getString('action')) {
-                'ordered' => $service->markOrdered($actor, $purchaseRequest, $item, $request->request->getString('actualPrice') ?: null),
+                'ordered' => $service->markOrdered(
+                    $actor,
+                    $purchaseRequest,
+                    $item,
+                    $request->request->getString('actualPrice') ?: null,
+                    $request->request->getBoolean('allowActualOverBudget'),
+                ),
                 'delivered' => $service->markDelivered($actor, $purchaseRequest, $item),
                 'fitting' => $service->recordFitting(
                     $actor,

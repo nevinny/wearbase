@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\FamilyBudget;
+use App\Entity\PurchaseRequestItem;
 use App\Entity\User;
 use App\Repository\FamilyBudgetRepository;
 use App\Repository\PurchaseRequestRepository;
@@ -49,7 +50,7 @@ class FamilyBudgetService
     /**
      * @return array{limit: string, approved: string, remaining: string, exceeded: bool}|null
      */
-    public function summary(User $subject, ?string $additional = null): ?array
+    public function summary(User $subject, ?string $additional = null, ?\DateTimeImmutable $month = null): ?array
     {
         $budget = $this->budgets->findForSubject($subject);
         if ($budget === null) {
@@ -57,7 +58,7 @@ class FamilyBudgetService
         }
 
         $limit = MoneyAmount::toMinor($budget->getMonthlyLimit());
-        $approved = MoneyAmount::toMinor($this->purchaseRequests->approvedAmountForMonth($subject, new \DateTimeImmutable()));
+        $approved = MoneyAmount::toMinor($this->purchaseRequests->approvedAmountForMonth($subject, $month ?? new \DateTimeImmutable()));
         $remaining = $limit - $approved;
         $additionalMinor = $additional === null ? null : MoneyAmount::toMinor($additional);
 
@@ -67,6 +68,52 @@ class FamilyBudgetService
             'remaining' => MoneyAmount::fromMinor($remaining),
             'exceeded' => $additionalMinor !== null && $additionalMinor > max(0, $remaining),
         ];
+    }
+
+    /** @return array<string, string|bool>|null */
+    public function reconcileOrder(User $subject, PurchaseRequestItem $item, ?string $actualPrice, bool $allowOverBudget): ?array
+    {
+        $this->em->lock($subject, LockMode::PESSIMISTIC_WRITE);
+        $budget = $this->budgets->findForSubject($subject);
+        if ($budget === null) {
+            return null;
+        }
+        $this->em->lock($budget, LockMode::PESSIMISTIC_WRITE);
+
+        $price = $actualPrice === null ? $item->getEstimatedPrice() : MoneyAmount::normalize($actualPrice);
+        $month = $item->getDecidedAt() ?? new \DateTimeImmutable();
+        $limit = MoneyAmount::toMinor($budget->getMonthlyLimit());
+        $before = MoneyAmount::toMinor($this->purchaseRequests->approvedAmountForMonth($subject, $month));
+        $other = MoneyAmount::toMinor($this->purchaseRequests->approvedAmountForMonth($subject, $month, $item));
+        $after = $other + ($price === null ? 0 : MoneyAmount::toMinor($price));
+        $exceeded = $price === null || $after > $limit;
+        if ($exceeded && !$allowOverBudget) {
+            throw new \DomainException($price === null
+                ? 'Укажите фактическую цену или подтвердите заказ без проверки бюджета.'
+                : 'Фактическая цена превышает месячный бюджет. Подтвердите перерасход.');
+        }
+
+        return [
+            'limit' => MoneyAmount::fromMinor($limit),
+            'committedBefore' => MoneyAmount::fromMinor($before),
+            'remainingBefore' => MoneyAmount::fromMinor($limit - $before),
+            'estimated' => $item->getEstimatedPrice() ?? 'unknown',
+            'actual' => $price ?? 'unknown',
+            'committedAfter' => MoneyAmount::fromMinor($after),
+            'remainingAfter' => MoneyAmount::fromMinor($limit - $after),
+            'delta' => MoneyAmount::fromMinor($after - $before),
+            'override' => $exceeded,
+            'reason' => $price === null ? 'unknown_actual_price' : ($exceeded ? 'actual_price_over_budget' : 'actual_price_reconciled'),
+        ];
+    }
+
+    public function lockForAccounting(User $subject): void
+    {
+        $this->em->lock($subject, LockMode::PESSIMISTIC_WRITE);
+        $budget = $this->budgets->findForSubject($subject);
+        if ($budget !== null) {
+            $this->em->lock($budget, LockMode::PESSIMISTIC_WRITE);
+        }
     }
 
     /**

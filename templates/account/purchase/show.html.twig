@@ -91,14 +91,14 @@
                             {% endfor %}
                         </div>
                     {% endif %}
-                    {% include 'account/purchase/_fulfillment.html.twig' with {item: item, purchaseRequest: purchaseRequest, actor: actor} only %}
+                    {% include 'account/purchase/_fulfillment.html.twig' with {item: item, purchaseRequest: purchaseRequest, actor: actor, budget: itemBudget} only %}
                 </article>
             {% endfor %}
         </section>
     {% endif %}
 
     {% if purchaseRequest.items|length == 1 %}
-        {% include 'account/purchase/_fulfillment.html.twig' with {item: purchaseRequest.items.first, purchaseRequest: purchaseRequest, actor: actor} only %}
+        {% include 'account/purchase/_fulfillment.html.twig' with {item: purchaseRequest.items.first, purchaseRequest: purchaseRequest, actor: actor, budget: budgetSummary} only %}
     {% endif %}
 
     {% if purchaseRequest.items|length == 1 and purchaseRequest.decisionComment %}

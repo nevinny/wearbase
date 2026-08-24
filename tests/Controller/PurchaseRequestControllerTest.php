@@ -717,6 +717,111 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->assertSame('0.97', $summary['remaining']);
     }
 
+    public function testOrderedDeliveredAndBoughtKeepActualCommitmentUntilReturn(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('budget-lifecycle-parent'));
+        $child = $this->families()->createChild($parent, 'Лена');
+        $budgets = static::getContainer()->get(FamilyBudgetService::class);
+        $budgets->setMonthlyLimit($parent, $child, '5000');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/budget-lifecycle', null, '2000');
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, '2500.01');
+        $this->assertSame('2500.01', $budgets->summary($child)['approved']);
+        $this->purchaseRequests()->markDelivered($parent, $request, $item);
+        $this->assertSame('2500.01', $budgets->summary($child)['approved']);
+        $this->purchaseRequests()->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_BOUGHT, null, null, [], null);
+        $this->assertSame('2500.01', $budgets->summary($child)['approved']);
+        $this->purchaseRequests()->markReturned($parent, $request, $item);
+        $this->assertSame('0.00', $budgets->summary($child)['approved']);
+    }
+
+    public function testRefusedItemReleasesCommitment(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('budget-refused-parent'));
+        $child = $this->families()->createChild($parent, 'Люба');
+        $budgets = static::getContainer()->get(FamilyBudgetService::class);
+        $budgets->setMonthlyLimit($parent, $child, '3000');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/budget-refused', null, '1200');
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, '1100');
+        $this->assertSame('1100.00', $budgets->summary($child)['approved']);
+        $this->purchaseRequests()->markDelivered($parent, $request, $item);
+        $this->purchaseRequests()->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_REFUSED, null, null, [], 'Не подошло');
+
+        $this->assertSame('0.00', $budgets->summary($child)['approved']);
+    }
+
+    public function testActualPriceIncreaseRequiresOverrideAndAuditsExactSnapshot(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('actual-override-parent'));
+        $child = $this->families()->createChild($parent, 'Инна');
+        static::getContainer()->get(FamilyBudgetService::class)->setMonthlyLimit($parent, $child, '100.00');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/actual-override', null, '99.99');
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+
+        try {
+            $this->purchaseRequests()->markOrdered($parent, $request, $item, '100.01');
+            $this->fail('Actual overspend must require explicit confirmation');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('Фактическая цена', $exception->getMessage());
+        }
+        $this->assertSame(PurchaseRequestItem::STATUS_APPROVED, $item->getStatus());
+
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, '100.01', true);
+        $event = $request->getEvents()->last();
+        $this->assertSame(PurchaseRequestEvent::TYPE_ORDERED_OVER_BUDGET, $event->getType());
+        $this->assertSame('99.99', $event->getMetadata()['committedBefore']);
+        $this->assertSame('100.01', $event->getMetadata()['committedAfter']);
+        $this->assertSame('0.02', $event->getMetadata()['delta']);
+        $this->assertSame('-0.01', $event->getMetadata()['remainingAfter']);
+        $this->assertTrue($event->getMetadata()['override']);
+    }
+
+    public function testCompetingOrdersUseLatestLockedActualCommitment(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('actual-concurrency-parent'));
+        $child = $this->families()->createChild($parent, 'Ася');
+        static::getContainer()->get(FamilyBudgetService::class)->setMonthlyLimit($parent, $child, '100');
+        $requests = [];
+        foreach (['first', 'second'] as $slug) {
+            $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/'.$slug, null, '20');
+            /** @var PurchaseRequestItem $item */
+            $item = $request->getItems()->first();
+            $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+            $requests[] = [$request, $item];
+        }
+
+        $this->purchaseRequests()->markOrdered($parent, $requests[0][0], $requests[0][1], '80');
+        $this->assertSame('100.00', static::getContainer()->get(FamilyBudgetService::class)->summary($child)['approved']);
+        $this->expectException(\DomainException::class);
+        $this->purchaseRequests()->markOrdered($parent, $requests[1][0], $requests[1][1], '30');
+    }
+
+    public function testBudgetUsesDecisionMonthBoundaryAfterOrdering(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('budget-month-parent'));
+        $child = $this->families()->createChild($parent, 'Майя');
+        $budgets = static::getContainer()->get(FamilyBudgetService::class);
+        $budgets->setMonthlyLimit($parent, $child, '5000');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/month-boundary', null, '700');
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->em()->getConnection()->update('purchase_request_item', ['decided_at' => '2026-07-31 23:59:59'], ['id' => $item->getId()]);
+        $this->em()->refresh($item);
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, '750');
+
+        $this->assertSame('750.00', $budgets->summary($child, null, new \DateTimeImmutable('2026-07-15'))['approved']);
+        $this->assertSame('0.00', $budgets->summary($child, null, new \DateTimeImmutable('2026-08-15'))['approved']);
+    }
+
     public function testNotificationRendersSafeRequestLink(): void
     {
         $client = static::createClient();
