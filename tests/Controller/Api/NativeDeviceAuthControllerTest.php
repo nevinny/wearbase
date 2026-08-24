@@ -32,9 +32,9 @@ final class NativeDeviceAuthControllerTest extends AuthenticatedWebTestCase
 
         $connection = static::getContainer()->get('doctrine.orm.entity_manager')->getConnection();
         $row = $connection->fetchAssociative('SELECT access_hash FROM native_device_session WHERE user_id = ?', [$user->getId()]);
-        $refreshHash = $connection->fetchOne('SELECT token_hash FROM native_refresh_token');
+        $matchingRefreshHashes = $connection->fetchOne('SELECT COUNT(*) FROM native_refresh_token WHERE token_hash = ?', [hash('sha256', $tokens['refreshToken'])]);
         self::assertSame(hash('sha256', $tokens['accessToken']), $row['access_hash']);
-        self::assertSame(hash('sha256', $tokens['refreshToken']), $refreshHash);
+        self::assertSame(1, (int) $matchingRefreshHashes);
         self::assertNotSame($tokens['accessToken'], $row['access_hash']);
 
         $this->bearer($client, $tokens['accessToken'], '/api/v1/wardrobe-app/bootstrap');
@@ -197,11 +197,74 @@ final class NativeDeviceAuthControllerTest extends AuthenticatedWebTestCase
         }
     }
 
-    /** @return array<string, string> */
-    private function login(KernelBrowser $client, User $user, string $deviceId = 'iphone-test-device', string $password = UserFactory::PASSWORD): array
+    public function testDeviceListUsesOpaqueIdsAllowlistedLabelsAndTracksLastUse(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), $this->email('device-list'));
+        $first = $this->login($client, $user, 'iphone-list-one', UserFactory::PASSWORD, 'iphone');
+        $second = $this->login($client, $user, 'ipad-list-two', UserFactory::PASSWORD, 'ipad');
+
+        self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/', $first['device']['publicId']);
+        self::assertSame('iphone', $first['device']['label']);
+        self::assertNotSame((string) $user->getId(), $first['device']['publicId']);
+        $this->bearer($client, $second['accessToken'], '/api/v1/wardrobe-app/auth/devices');
+        self::assertResponseIsSuccessful();
+        $devices = $this->json($client)['devices'];
+        self::assertCount(2, $devices);
+        $byId = array_column($devices, null, 'publicId');
+        self::assertFalse($byId[$first['device']['publicId']]['current']);
+        self::assertTrue($byId[$second['device']['publicId']]['current']);
+        self::assertSame('ipad', $byId[$second['device']['publicId']]['label']);
+        self::assertNotNull($byId[$second['device']['publicId']]['lastUsedAt']);
+
+        $client->jsonRequest('POST', '/api/v1/wardrobe-app/auth/login', [
+            'email' => $user->getEmail(), 'password' => UserFactory::PASSWORD,
+            'deviceId' => 'invalid-label-device', 'deviceLabel' => 'Anna iPhone',
+        ]);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('invalid_device_label', $this->json($client)['error']);
+    }
+
+    public function testOwnerCanRevokeOtherAndCurrentDevice(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), $this->email('device-revoke'));
+        $other = $this->login($client, $user, 'revoke-other-device');
+        $current = $this->login($client, $user, 'revoke-current-device');
+
+        $this->bearer($client, $current['accessToken'], '/api/v1/wardrobe-app/auth/devices/'.$other['device']['publicId'], 'DELETE');
+        self::assertResponseIsSuccessful();
+        $this->bearer($client, $other['accessToken'], '/api/v1/wardrobe-app/bootstrap');
+        self::assertResponseStatusCodeSame(401);
+        $client->jsonRequest('POST', '/api/v1/wardrobe-app/auth/refresh', ['refreshToken' => $other['refreshToken']]);
+        self::assertResponseStatusCodeSame(401);
+
+        $this->bearer($client, $current['accessToken'], '/api/v1/wardrobe-app/auth/devices/'.$current['device']['publicId'], 'DELETE');
+        self::assertResponseIsSuccessful();
+        $this->bearer($client, $current['accessToken'], '/api/v1/wardrobe-app/bootstrap');
+        self::assertResponseStatusCodeSame(401);
+    }
+
+    public function testDeviceRevokeDoesNotExposeOrModifyForeignSession(): void
+    {
+        $client = static::createClient();
+        $owner = UserFactory::withEmail(static::getContainer(), $this->email('device-owner'));
+        $attacker = UserFactory::withEmail(static::getContainer(), $this->email('device-attacker'));
+        $victim = $this->login($client, $owner, 'victim-device');
+        $foreign = $this->login($client, $attacker, 'attacker-device');
+
+        $this->bearer($client, $foreign['accessToken'], '/api/v1/wardrobe-app/auth/devices/'.$victim['device']['publicId'], 'DELETE');
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame('device_not_found', $this->json($client)['error']);
+        $this->bearer($client, $victim['accessToken'], '/api/v1/wardrobe-app/bootstrap');
+        self::assertResponseIsSuccessful();
+    }
+
+    /** @return array<string, mixed> */
+    private function login(KernelBrowser $client, User $user, string $deviceId = 'iphone-test-device', string $password = UserFactory::PASSWORD, string $deviceLabel = 'other'): array
     {
         $client->jsonRequest('POST', '/api/v1/wardrobe-app/auth/login', [
-            'email' => $user->getEmail(), 'password' => $password, 'deviceId' => $deviceId,
+            'email' => $user->getEmail(), 'password' => $password, 'deviceId' => $deviceId, 'deviceLabel' => $deviceLabel,
         ]);
         self::assertResponseIsSuccessful();
 

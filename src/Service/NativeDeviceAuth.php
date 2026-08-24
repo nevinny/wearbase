@@ -27,8 +27,8 @@ final class NativeDeviceAuth
         private readonly EntityManagerInterface $em,
     ) {}
 
-    /** @return array{accessToken:string,accessExpiresAt:string,refreshToken:string,refreshExpiresAt:string} */
-    public function login(string $email, string $password, string $deviceId): array
+    /** @return array{accessToken:string,accessExpiresAt:string,refreshToken:string,refreshExpiresAt:string,device:array{publicId:string,label:string}} */
+    public function login(string $email, string $password, string $deviceId, string $deviceLabel = NativeDeviceSession::LABEL_OTHER): array
     {
         $email = mb_strtolower(trim($email));
         $user = $this->users->findOneBy(['email' => $email]);
@@ -39,14 +39,14 @@ final class NativeDeviceAuth
             throw new \DomainException('invalid_credentials');
         }
 
-        return $this->em->wrapInTransaction(function () use ($user, $deviceId): array {
+        return $this->em->wrapInTransaction(function () use ($user, $deviceId, $deviceLabel): array {
             $this->em->lock($user, LockMode::PESSIMISTIC_WRITE);
             $deviceHash = $this->hash($deviceId);
             foreach ($this->sessions->findActiveForDevice($user, $deviceHash) as $existing) {
                 $existing->revoke();
             }
 
-            return $this->issue($user, $deviceHash);
+            return $this->issue($user, $deviceHash, $deviceLabel);
         });
     }
 
@@ -73,6 +73,7 @@ final class NativeDeviceAuth
             [$access, $accessExpiresAt] = $this->newToken(self::ACCESS_TTL, 32);
             [$refresh, $refreshExpiresAt] = $this->newToken(self::REFRESH_TTL, 48);
             $session->rotateAccess($this->hash($access), $accessExpiresAt);
+            $session->touch();
             $next = new NativeRefreshToken($session, $this->hash($refresh), $refreshExpiresAt);
             $session->addRefreshToken($next);
             $this->em->persist($next);
@@ -90,8 +91,36 @@ final class NativeDeviceAuth
     public function authenticateAccess(string $rawAccessToken): ?NativeDeviceSession
     {
         $session = $this->sessions->findValidAccess($this->hash($rawAccessToken), new \DateTimeImmutable());
+        if ($session?->getUser()->getStatus() === 'active') {
+            $this->sessions->touchLastUsed($session, new \DateTimeImmutable());
 
-        return $session?->getUser()->getStatus() === 'active' ? $session : null;
+            return $session;
+        }
+
+        return null;
+    }
+
+    /** @return array<int, array{publicId:string,label:string,createdAt:string,lastUsedAt:?string,revokedAt:?string,current:bool}> */
+    public function devices(User $user, int $currentSessionId): array
+    {
+        return array_map(static fn (NativeDeviceSession $session): array => [
+            'publicId' => $session->getPublicId(),
+            'label' => $session->getDeviceLabel(),
+            'createdAt' => $session->getCreatedAt()->format(DATE_ATOM),
+            'lastUsedAt' => $session->getLastUsedAt()?->format(DATE_ATOM),
+            'revokedAt' => $session->getRevokedAt()?->format(DATE_ATOM),
+            'current' => $session->getId() === $currentSessionId,
+        ], $this->sessions->findForUser($user));
+    }
+
+    public function revokeByPublicId(string $publicId, User $user): void
+    {
+        $session = $this->sessions->findOwnedByPublicId($user, $publicId);
+        if ($session === null) {
+            throw new \DomainException('invalid_device_session');
+        }
+        $session->revoke();
+        $this->em->flush();
     }
 
     public function revokeSession(int $sessionId, User $user): void
@@ -112,19 +141,19 @@ final class NativeDeviceAuth
         $this->em->flush();
     }
 
-    /** @return array{accessToken:string,accessExpiresAt:string,refreshToken:string,refreshExpiresAt:string} */
-    private function issue(User $user, string $deviceHash): array
+    /** @return array{accessToken:string,accessExpiresAt:string,refreshToken:string,refreshExpiresAt:string,device:array{publicId:string,label:string}} */
+    private function issue(User $user, string $deviceHash, string $deviceLabel): array
     {
         [$access, $accessExpiresAt] = $this->newToken(self::ACCESS_TTL, 32);
         [$refresh, $refreshExpiresAt] = $this->newToken(self::REFRESH_TTL, 48);
-        $session = new NativeDeviceSession($user, $deviceHash, $this->hash($access), $accessExpiresAt);
+        $session = new NativeDeviceSession($user, $deviceHash, $this->hash($access), $accessExpiresAt, $deviceLabel);
         $refreshEntity = new NativeRefreshToken($session, $this->hash($refresh), $refreshExpiresAt);
         $session->addRefreshToken($refreshEntity);
         $this->em->persist($session);
         $this->em->persist($refreshEntity);
         $this->em->flush();
 
-        return $this->response($access, $accessExpiresAt, $refresh, $refreshExpiresAt);
+        return $this->response($access, $accessExpiresAt, $refresh, $refreshExpiresAt, $session);
     }
 
     /** @return array{0:string,1:\DateTimeImmutable} */
@@ -133,15 +162,20 @@ final class NativeDeviceAuth
         return [rtrim(strtr(base64_encode(random_bytes($bytes)), '+/', '-_'), '='), new \DateTimeImmutable("+{$ttl} seconds")];
     }
 
-    /** @return array{accessToken:string,accessExpiresAt:string,refreshToken:string,refreshExpiresAt:string} */
-    private function response(string $access, \DateTimeImmutable $accessExpiresAt, string $refresh, \DateTimeImmutable $refreshExpiresAt): array
+    /** @return array{accessToken:string,accessExpiresAt:string,refreshToken:string,refreshExpiresAt:string,device?:array{publicId:string,label:string}} */
+    private function response(string $access, \DateTimeImmutable $accessExpiresAt, string $refresh, \DateTimeImmutable $refreshExpiresAt, ?NativeDeviceSession $session = null): array
     {
-        return [
+        $response = [
             'accessToken' => $access,
             'accessExpiresAt' => $accessExpiresAt->format(DATE_ATOM),
             'refreshToken' => $refresh,
             'refreshExpiresAt' => $refreshExpiresAt->format(DATE_ATOM),
         ];
+        if ($session !== null) {
+            $response['device'] = ['publicId' => $session->getPublicId(), 'label' => $session->getDeviceLabel()];
+        }
+
+        return $response;
     }
 
     private function hash(string $value): string { return hash('sha256', $value); }

@@ -129,6 +129,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 |---|---|---|---|
 | `app:wardrobe:ingest-drafts` | Фоновое vision-распознавание приватных batch-drafts с lease/retry. | ⏰ `*/2 * * * *` | ☁️ prod |
 | `app:wardrobe:cleanup-drafts` | Через 7 дней очищает photo/`ai_raw` accepted receipts; через 30 дней удаляет abandoned drafts. `--dry-run`. | ⏰ `17 3 * * *` | ☁️ prod |
+| `app:native-auth:cleanup` | Удаляет истёкшие refresh receipts, отозванные native device sessions и sessions без действующего refresh. | ⏰ `43 3 * * *` | ☁️ prod |
 | `app:wardrobe:ingest-health` | Очередь, oldest pending, expired lease, failed/retry, storage и последний scheduler run. `--json`, `--check`. Подробнее: [операционная проверка](wardrobe_ingest_operations.md). | 👆 smoke/monitoring | ☁️ prod |
 | `app:family:purchase-reminders` | Только in-app: раз в локальный день напоминает родителям о pending-запросах, а родителям и активированному ребёнку — о delivered-позициях без результата примерки. `--dry-run`, `--now=ISO-8601`; граница дня — Europe/Moscow, дедуп — состояние/объект/дата/получатель. | ⏰ `15 9 * * *` | ☁️ prod |
 | `app:notification:deliver-outbox` | Доставляет уже committed email, Telegram и Web Push с lease, retry/backoff и повторной проверкой настроек получателя. | ⏰ `* * * * *` | ☁️ prod |
