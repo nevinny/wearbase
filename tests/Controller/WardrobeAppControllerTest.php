@@ -26,7 +26,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         self::assertResponseHeaderSame('Content-Type', 'application/manifest+json; charset=utf-8');
         $manifest = json_decode((string) $client->getResponse()->getContent(), true, flags: JSON_THROW_ON_ERROR);
         self::assertSame('/account/wardrobe-app', $manifest['start_url']);
-        self::assertSame('/account/', $manifest['scope']);
+        self::assertSame('/', $manifest['scope']);
         self::assertStringContainsString("scope: '/account/'", (string) file_get_contents(dirname(__DIR__, 2).'/public_html/pwa-register.js'));
 
         $serviceWorker = (string) file_get_contents(dirname(__DIR__, 2).'/public_html/service-worker.js');
@@ -44,6 +44,21 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $client->request('GET', '/account/wardrobe-app');
 
         $this->assertResponseRedirects('/login', 302);
+    }
+
+    public function testGuestLoginReturnsToWardrobeApp(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'pwa-login-'.uniqid().'@test.local');
+
+        $client->request('GET', '/account/wardrobe-app');
+        $crawler = $client->followRedirect();
+        $client->submit($crawler->selectButton('Войти')->form([
+            '_username' => $user->getEmail(),
+            '_password' => UserFactory::PASSWORD,
+        ]));
+
+        $this->assertResponseRedirects('/account/wardrobe-app');
     }
 
     public function testDashboardShowsWardrobeAndQuickActions(): void
