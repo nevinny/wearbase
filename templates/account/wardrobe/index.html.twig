@@ -56,6 +56,7 @@
 <div id="wardrobe-ingest-panel"
      class="mb-6 hidden rounded-2xl bg-white p-6 shadow-sm"
      data-csrf="{{ csrf_token('wardrobe_ingest') }}"
+     data-member="{{ currentMember.id }}"
      data-upload-url="{{ path('account_wardrobe_ingest_upload', memberParam) }}">
     <h2 class="mb-3 text-sm font-bold">Загрузить фото вещей</h2>
     <div id="ingest-panel-upload-area"
@@ -281,6 +282,7 @@
     </div>
 {% endif %}
 
+<script src="/js/wardrobe-ingest-queue.js"></script>
 <script>
 (function () {
     var toggleBtn = document.getElementById('wardrobe-ingest-toggle');
@@ -303,6 +305,14 @@
     var bar = document.getElementById('ingest-panel-progress-bar');
     var errorBox = document.getElementById('ingest-panel-error');
     var consent = document.getElementById('ingest-panel-photo-consent');
+
+    if (window.WardrobeIngestQueue) {
+        window.WardrobeIngestQueue.mount({
+            area: area, fileInput: fileInput, consent: consent, errorBox: errorBox,
+            uploadUrl: UPLOAD_URL, csrf: CSRF_TOKEN, member: Number(panel.dataset.member)
+        });
+        return;
+    }
 
     area.addEventListener('click', function () { fileInput.click(); });
     area.addEventListener('dragover', function (e) { e.preventDefault(); area.classList.add('bg-gray-50'); });

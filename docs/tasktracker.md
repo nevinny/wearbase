@@ -2045,6 +2045,9 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [x] Связать завершение onboarding с реакцией на первый образ и проверить owner контекст образа.
 - [x] Добавить SHA-256 content hash и идемпотентный ответ для повторной multipart-загрузки фото;
   дубликат не создаёт новый draft и не расходует vision.
+- [x] Добавить PWA foreground retry/resume: pending photo Blob хранится только в IndexedDB с
+  member/idempotency key и explicit consent, повторяется при app open/online, поддерживает per-file
+  cancel; 401 сохраняет очередь и просит login, logout очищает. Без Background Sync и Cache Storage.
 - [x] Добавить worker lease/retry (`processing`, `leaseUntil`, `attempts`) для multi-host и починить
   batch-filter-before-limit в фоновой команде.
 - [x] Сделать lease длиннее максимального AI timeout и завершать/retry только атомарным CAS по

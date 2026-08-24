@@ -13,6 +13,7 @@
 
 <div id="wardrobe-ingest-root"
      data-csrf="{{ csrf_token('wardrobe_ingest') }}"
+     data-member="{{ currentMember.id }}"
      data-upload-url="{{ path('account_wardrobe_ingest_upload', currentMember is defined ? {member: currentMember.id} : {}) }}"
      {% if hasBatch %}
      data-batch="{{ batch }}"
@@ -142,6 +143,7 @@
 
 </div>
 
+<script src="/js/wardrobe-ingest-queue.js"></script>
 <script>
 (function () {
     var root = document.getElementById('wardrobe-ingest-root');
@@ -156,6 +158,14 @@
     var bar = document.getElementById('ingest-progress-bar');
     var errorBox = document.getElementById('ingest-upload-error');
     var rejectedList = document.getElementById('ingest-rejected-list');
+
+    if (window.WardrobeIngestQueue) {
+        window.WardrobeIngestQueue.mount({
+            area: area, fileInput: fileInput,
+            consent: document.getElementById('ingest-photo-consent'), errorBox: errorBox,
+            uploadUrl: UPLOAD_URL, csrf: CSRF_TOKEN, member: Number(root.dataset.member)
+        });
+    } else {
 
     area.addEventListener('click', function () { fileInput.click(); });
     area.addEventListener('dragover', function (e) { e.preventDefault(); area.classList.add('bg-gray-50'); });
@@ -227,6 +237,7 @@
         xhr.open('POST', UPLOAD_URL);
         xhr.setRequestHeader('X-CSRF-Token', CSRF_TOKEN);
         xhr.send(fd);
+    }
     }
 
     if (!STATUS_URL) return;
