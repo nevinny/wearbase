@@ -31,7 +31,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
 
         $serviceWorker = (string) file_get_contents(dirname(__DIR__, 2).'/public_html/service-worker.js');
         self::assertStringNotContainsString("'/api/", $serviceWorker);
-        self::assertStringNotContainsString("'/account/", $serviceWorker);
+        self::assertMatchesRegularExpression('/const STATIC_ASSETS = \[(?:(?!\/account\/).)*\];/s', $serviceWorker);
         self::assertStringContainsString("request.mode === 'navigate'", $serviceWorker);
         self::assertStringContainsString("'Cache-Control': 'no-store'", $serviceWorker);
         self::assertStringContainsString("cacheControl.includes('private')", $serviceWorker);

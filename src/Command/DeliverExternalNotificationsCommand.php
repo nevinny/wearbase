@@ -8,6 +8,7 @@ use App\Entity\ExternalNotificationOutbox;
 use App\Entity\Notification;
 use App\Notification\EmailNotifier;
 use App\Notification\TelegramNotifier;
+use App\Notification\WebPushPublisherInterface;
 use App\Repository\ExternalNotificationOutboxRepository;
 use App\Repository\NotificationSettingsRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -17,7 +18,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-#[AsCommand(name: 'app:notification:deliver-outbox', description: 'Deliver pending email and Telegram notification outbox messages')]
+#[AsCommand(name: 'app:notification:deliver-outbox', description: 'Deliver pending external notification outbox messages')]
 class DeliverExternalNotificationsCommand extends Command
 {
     public function __construct(
@@ -25,6 +26,7 @@ class DeliverExternalNotificationsCommand extends Command
         private readonly NotificationSettingsRepository $settings,
         private readonly EmailNotifier $email,
         private readonly TelegramNotifier $telegram,
+        private readonly WebPushPublisherInterface $webPush,
         private readonly EntityManagerInterface $em,
     ) {
         parent::__construct();
@@ -83,9 +85,12 @@ class DeliverExternalNotificationsCommand extends Command
         if ($settings === null) {
             return $message->getChannel() === Notification::CHANNEL_EMAIL;
         }
-        return $message->getChannel() === Notification::CHANNEL_EMAIL
-            ? $settings->isChannelEmail()
-            : $settings->isChannelTelegram();
+        return match ($message->getChannel()) {
+            Notification::CHANNEL_EMAIL => $settings->isChannelEmail(),
+            Notification::CHANNEL_TELEGRAM => $settings->isChannelTelegram(),
+            Notification::CHANNEL_PUSH => $settings->isChannelPush(),
+            default => false,
+        };
     }
 
     private function deliver(ExternalNotificationOutbox $message): bool
@@ -96,6 +101,9 @@ class DeliverExternalNotificationsCommand extends Command
         }
         if ($message->getChannel() === Notification::CHANNEL_TELEGRAM) {
             return $this->telegram->send((string) $payload['chatId'], (string) $payload['text']);
+        }
+        if ($message->getChannel() === Notification::CHANNEL_PUSH) {
+            return $this->webPush->send($message->getRecipient(), $payload);
         }
         throw new \LogicException('Unsupported external notification channel.');
     }
