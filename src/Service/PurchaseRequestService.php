@@ -10,6 +10,7 @@ use App\Entity\PurchaseRequestItem;
 use App\Entity\Notification;
 use App\Entity\FittingFeedback;
 use App\Entity\User;
+use App\Entity\WardrobeItem;
 use App\Notification\NotificationDispatcher;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\DBAL\LockMode;
@@ -206,8 +207,31 @@ class PurchaseRequestService
     public function markReturned(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): void
     {
         $this->assertParentCanManageItem($actor, $request, $item);
-        $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_RETURNED, static function (PurchaseRequestItem $locked): void {
-            $locked->markReturned();
+        $this->transactional(function () use ($actor, $request, $item): void {
+            $this->em->refresh($item, LockMode::PESSIMISTIC_WRITE);
+            if ($item->getStatus() === PurchaseRequestItem::STATUS_RETURNED) {
+                return;
+            }
+
+            $wardrobeItem = $item->getWardrobeItem();
+            if ($wardrobeItem !== null) {
+                $this->em->lock($wardrobeItem, LockMode::PESSIMISTIC_WRITE);
+            }
+            $item->markReturned();
+            $wardrobeItem?->setItemStatus(WardrobeItem::ITEM_RETURNED);
+            $request->addEvent((new PurchaseRequestEvent($actor, PurchaseRequestEvent::TYPE_RETURNED))->setItem($item));
+
+            $subject = $request->getSubject();
+            \assert($subject instanceof User);
+            if ($actor->getId() !== $subject->getId()) {
+                $this->notifications->dispatchInApp(
+                    $subject,
+                    Notification::TYPE_PURCHASE_REQUEST_DECIDED,
+                    'Покупка возвращена продавцу',
+                    null,
+                    ['url' => '/account/purchases/'.$request->getId()],
+                );
+            }
         });
     }
 

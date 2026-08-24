@@ -10,6 +10,7 @@ use App\Entity\PurchaseRequestItem;
 use App\Entity\FittingFeedback;
 use App\Entity\Notification;
 use App\Entity\User;
+use App\Entity\WardrobeItem;
 use App\Service\FamilyBudgetService;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
@@ -243,6 +244,33 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->assertSame($item->getSourceUrl(), $first->getProductUrl());
         $this->assertSame(1, $this->em()->getRepository(\App\Entity\WardrobeItem::class)->count(['user' => $child]));
         $this->assertSame(PurchaseRequestEvent::TYPE_ADDED_TO_WARDROBE, $request->getEvents()->last()->getType());
+    }
+
+    public function testReturningBoughtPositionArchivesLinkedWardrobeItemExactlyOnce(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('purchase-return-parent'));
+        $child = $this->families()->createChild($parent, 'Соня');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/coat', null, '8000');
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, '7600');
+        $this->purchaseRequests()->markDelivered($parent, $request, $item);
+        $this->purchaseRequests()->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_BOUGHT, '152', FittingFeedback::SIZING_TRUE, [], null);
+
+        /** @var PurchaseToWardrobeService $converter */
+        $converter = static::getContainer()->get(PurchaseToWardrobeService::class);
+        $wardrobeItem = $converter->add($parent, $request, $item);
+        $eventsBeforeReturn = $request->getEvents()->count();
+
+        $this->purchaseRequests()->markReturned($parent, $request, $item);
+        $this->purchaseRequests()->markReturned($parent, $request, $item);
+
+        $this->assertSame(PurchaseRequestItem::STATUS_RETURNED, $item->getStatus());
+        $this->assertSame(WardrobeItem::ITEM_RETURNED, $wardrobeItem->getItemStatus());
+        $this->assertContains(WardrobeItem::ITEM_RETURNED, WardrobeItem::ARCHIVE_STATUSES);
+        $this->assertSame($eventsBeforeReturn + 1, $request->getEvents()->count());
+        $this->assertSame(PurchaseRequestEvent::TYPE_RETURNED, $request->getEvents()->last()->getType());
     }
 
     public function testRefusedPositionCannotCreateWardrobeItem(): void
