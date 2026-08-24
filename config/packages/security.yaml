@@ -92,6 +92,7 @@ security:
         - { path: ^/brand-claim,  roles: ROLE_USER }
         - { path: ^/brands,       roles: PUBLIC_ACCESS } # публичный A-Z индекс /brands/a-z (ДО ^/brand — префикс!)
         - { path: ^/brand,        roles: ROLE_BRAND_MANAGER }
+        - { path: ^/l/,           roles: PUBLIC_ACCESS } # гостевые ссылки луков («Поделиться луком») — ДО ^/account
         - { path: ^/account,      roles: ROLE_USER }
         - { path: ^/checkout,     roles: IS_AUTHENTICATED_REMEMBERED }
 
