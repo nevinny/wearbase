@@ -41,6 +41,7 @@ readonly class NotificationDispatcher
             'inapp'    => $settings ? $settings->isChannelInapp() : true,
             'email'    => $settings ? $settings->isChannelEmail() : true,
             'telegram' => $settings ? $settings->isChannelTelegram() : false,
+            'push'     => $settings ? $settings->isChannelPush() : false,
         ];
 
         $dedupeKey ??= bin2hex(random_bytes(16));
@@ -68,6 +69,15 @@ readonly class NotificationDispatcher
             $this->em->persist(new ExternalNotificationOutbox($recipient, Notification::CHANNEL_TELEGRAM, $type, $dedupeKey.':telegram', [
                 'chatId' => $recipient->getTelegramChatId(),
                 'text' => $text,
+            ]));
+        }
+
+        if ($channels['push']) {
+            $notification = (new Notification())->setData($data);
+            $this->em->persist(new ExternalNotificationOutbox($recipient, Notification::CHANNEL_PUSH, $type, $dedupeKey.':push', [
+                'title' => $title,
+                'body' => $body,
+                'url' => $notification->getSafeAccountUrl() ?? '/account/notifications',
             ]));
         }
     }

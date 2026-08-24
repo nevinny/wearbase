@@ -15,6 +15,7 @@
                     <th class="w-2/5 px-5 py-3">Событие</th>
                     <th class="px-5 py-3 text-center">Email</th>
                     <th class="px-5 py-3 text-center">В приложении</th>
+                    <th class="px-5 py-3 text-center">Push</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
@@ -43,4 +44,25 @@
 
     <button type="submit" class="mt-4 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">Сохранить настройки</button>
 </form>
+
+<section class="mt-6 rounded-2xl bg-white p-5 shadow-sm" data-web-push-settings
+         data-public-key="{{ webPushPublicKey }}" data-csrf="{{ csrf_token('web_push_subscription') }}"
+         data-subscribe-url="{{ path('account_notification_push_subscribe') }}">
+    <h5 class="font-semibold">Push на этом устройстве</h5>
+    <p class="mt-1 text-sm text-gray-500">Опционально. Разрешение браузера запрашивается только после нажатия.</p>
+    <button type="button" data-web-push-enable class="mt-3 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Включить push</button>
+    <p class="mt-2 text-sm" data-web-push-status aria-live="polite"></p>
+    {% if pushSubscriptions %}
+        <ul class="mt-4 space-y-2">
+            {% for subscription in pushSubscriptions %}
+                <li class="flex items-center justify-between text-sm" data-web-push-row>
+                    <span>Подключённое устройство</span>
+                    <button type="button" class="text-red-600" data-web-push-revoke
+                            data-url="{{ path('account_notification_push_unsubscribe', {id: subscription.id}) }}">Отключить</button>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</section>
+<script src="/push-settings.js" defer></script>
 {% endblock %}

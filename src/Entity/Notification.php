@@ -34,6 +34,7 @@ class Notification
     public const CHANNEL_INAPP = 'inapp';
     public const CHANNEL_EMAIL = 'email';
     public const CHANNEL_TELEGRAM = 'telegram';
+    public const CHANNEL_PUSH = 'push';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]

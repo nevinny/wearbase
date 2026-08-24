@@ -32,6 +32,9 @@ class NotificationSettings
     #[ORM\Column(options: ['default' => true])]
     private bool $channelInapp = true;
 
+    #[ORM\Column(options: ['default' => false])]
+    private bool $channelPush = false;
+
     public function getId(): ?int { return $this->id; }
 
     public function getUser(): ?User { return $this->user; }
@@ -58,5 +61,8 @@ class NotificationSettings
 
     public function isChannelInapp(): bool { return $this->channelInapp; }
     public function setChannelInapp(bool $channelInapp): static { $this->channelInapp = $channelInapp; return $this; }
+
+    public function isChannelPush(): bool { return $this->channelPush; }
+    public function setChannelPush(bool $channelPush): static { $this->channelPush = $channelPush; return $this; }
 
 }

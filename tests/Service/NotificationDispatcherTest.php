@@ -162,4 +162,29 @@ class NotificationDispatcherTest extends TestCase
             'Test no telegram',
         );
     }
+
+    public function testDispatchQueuesPushTransactionallyWithSafePayloadAndDedupe(): void
+    {
+        $settings = (new NotificationSettings())
+            ->setChannelInapp(false)->setChannelEmail(false)->setChannelTelegram(false)->setChannelPush(true);
+        $this->settingsRepo->method('findOneBy')->willReturn($settings);
+        $queued = null;
+        $this->em->expects($this->once())->method('persist')->willReturnCallback(function (object $entity) use (&$queued): void {
+            $queued = $entity;
+        });
+
+        $this->createDispatcher()->dispatch(
+            $this->recipient,
+            Notification::TYPE_PURCHASE_REQUEST_NEW,
+            'Новый запрос',
+            'Нужна куртка',
+            ['url' => '/account/purchases/42'],
+            dedupeKey: 'purchase:42',
+        );
+
+        self::assertInstanceOf(ExternalNotificationOutbox::class, $queued);
+        self::assertSame(Notification::CHANNEL_PUSH, $queued->getChannel());
+        self::assertSame('purchase:42:push', $queued->getDedupeKey());
+        self::assertSame('/account/purchases/42', $queued->getPayload()['url']);
+    }
 }

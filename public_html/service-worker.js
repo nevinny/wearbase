@@ -67,6 +67,40 @@ self.addEventListener('fetch', (event) => {
     }
 });
 
+self.addEventListener('push', (event) => {
+    let payload = {};
+    try { payload = event.data ? event.data.json() : {}; } catch (_) {}
+    event.waitUntil(self.registration.showNotification(payload.title || 'WEARBASE', {
+        body: payload.body || 'Новое уведомление',
+        icon: '/images/pwa/icon-192.png',
+        data: {url: safeAccountUrl(payload.url)}
+    }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const target = safeAccountUrl(event.notification.data && event.notification.data.url);
+    event.waitUntil(self.clients.matchAll({type: 'window', includeUncontrolled: true}).then((clients) => {
+        const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+        if (existing) {
+            return existing.navigate(target).then(() => existing.focus());
+        }
+        return self.clients.openWindow(target);
+    }));
+});
+
+function safeAccountUrl(value) {
+    if (typeof value !== 'string') return '/account/notifications';
+    try {
+        const url = new URL(value, self.location.origin);
+        return url.origin === self.location.origin && /^\/account(?:\/|$)/.test(url.pathname)
+            ? url.pathname + url.search
+            : '/account/notifications';
+    } catch (_) {
+        return '/account/notifications';
+    }
+}
+
 function offlinePage() {
     return `<!doctype html>
 <html lang="ru">
