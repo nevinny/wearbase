@@ -37,5 +37,25 @@ final class WardrobeIngestHealthCommandTest extends TestCase
         self::assertSame('critical', $payload['status']);
         self::assertFalse($payload['storage_writable']);
         self::assertFalse($payload['scheduler_configured']);
+        self::assertContains('scheduler_missing', $payload['critical_reasons']);
+        self::assertContains('storage_not_writable', $payload['critical_reasons']);
+    }
+
+    public function testHumanOutputRendersCriticalReasons(): void
+    {
+        $drafts = $this->createStub(WardrobeItemDraftRepository::class);
+        $drafts->method('operationalSnapshot')->willReturn([
+            'pending' => 0, 'oldestPendingAt' => null, 'expiredLeases' => 0,
+            'failed' => 0, 'retrying' => 0, 'storageBytes' => 0,
+        ]);
+        $scheduled = $this->createStub(ScheduledCommandRepository::class);
+        $tester = new CommandTester(new WardrobeIngestHealthCommand(
+            new WardrobeIngestHealth($drafts, $scheduled, '/missing/wardrobe-health-storage'),
+        ));
+
+        $tester->execute([]);
+
+        self::assertStringContainsString('scheduler_missing', $tester->getDisplay());
+        self::assertStringNotContainsString('Array', $tester->getDisplay());
     }
 }

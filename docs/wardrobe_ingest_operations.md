@@ -8,10 +8,16 @@ php bin/console app:wardrobe:ingest-health --json
 php bin/console app:wardrobe:ingest-health --check
 ```
 
-`--check` возвращает ненулевой код только при `critical`: каталог приватных загрузок отсутствует
-или недоступен для записи либо последний запуск scheduler завершился с ошибкой. Наличие retry,
-failed или истёкших lease отображается как `warning`: истёкший lease штатно забирается следующим
-worker-проходом, поэтому сам по себе не означает аварию.
+`--check` возвращает ненулевой код при `critical`. Критичны:
+
+- отсутствующая, отключённая или ошибочно привязанная не к `prod` строка ingest scheduler;
+- scheduler без единого запуска, последний неуспешный запуск или heartbeat старше 10 минут;
+- oldest pending старше 15 минут;
+- отсутствующий или недоступный для записи каталог приватных загрузок.
+
+Machine-readable `critical_reasons` содержит стабильные коды причины. Наличие retry, failed или
+истёкших lease до нарушения SLA отображается как `warning_reasons`: истёкший lease штатно забирается
+следующим worker-проходом, поэтому сам по себе не означает аварию.
 
 Команда показывает:
 
@@ -20,6 +26,9 @@ worker-проходом, поэтому сам по себе не означае
 - failed и pending, уже возвращённые на retry;
 - объём файлов по сохранённому `file_size`, доступность каталога для записи и свободное место;
 - состояние строки `scheduled_command`, время и exit code последнего запуска worker.
+
+Отдельная строка `scheduled_command` запускает health check каждые 5 минут. Её последний exit code
+и JSON доступны в админке scheduler. Проверка ничего не claim'ит и не вызывает vision/AI.
 
 ## Production smoke
 
@@ -33,6 +42,10 @@ APP_ENV=prod php bin/console app:wardrobe:ingest-health --json --no-debug
 Проверить, что `storage_writable=true`, `scheduler_configured=true`, последний exit code равен `0`,
 а возраст oldest pending уменьшается после очередного двухминутного запуска. При expired lease
 повторить команду после следующего тика: счётчик должен обнулиться или запись должна перейти в retry/failed.
+
+Deploy workflow выполняет тот же `--check --json` после миграций и HTTP smoke. Critical-состояние
+останавливает деплой и попадает отдельным шагом `Wardrobe ingest health gate` в уведомление, но сам
+gate не запускает ingest worker.
 
 ## Ограничение данных scheduler
 

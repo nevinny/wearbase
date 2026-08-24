@@ -9,13 +9,16 @@ use App\Repository\WardrobeItemDraftRepository;
 
 final class WardrobeIngestHealth
 {
+    public const SCHEDULER_SLA_SECONDS = 600;
+    public const PENDING_SLA_SECONDS = 900;
+
     public function __construct(
         private readonly WardrobeItemDraftRepository $drafts,
         private readonly ScheduledCommandRepository $scheduledCommands,
         private readonly string $storageDir,
     ) {}
 
-    /** @return array<string, bool|int|string|null> */
+    /** @return array<string, bool|int|string|array<int, string>|null> */
     public function snapshot(?\DateTimeImmutable $now = null): array
     {
         $now ??= new \DateTimeImmutable();
@@ -25,25 +28,46 @@ final class WardrobeIngestHealth
         $lastExitCode = $scheduler?->getLastExitCode();
         $storageExists = is_dir($this->storageDir);
         $storageWritable = $storageExists && is_writable($this->storageDir);
-
-        $status = 'ok';
-        if (!$storageWritable || ($lastExitCode !== null && $lastExitCode !== 0)) {
-            $status = 'critical';
-        } elseif ($drafts['expiredLeases'] > 0
-            || $drafts['retrying'] > 0
-            || $drafts['failed'] > 0
-            || $scheduler === null
-            || !$scheduler->isEnabled()
-            || $lastRun === null
-        ) {
-            $status = 'warning';
+        $oldestPendingAge = $drafts['oldestPendingAt'] === null ? null : max(0, $now->getTimestamp() - $drafts['oldestPendingAt']->getTimestamp());
+        $lastRunAge = $lastRun === null ? null : max(0, $now->getTimestamp() - $lastRun->getTimestamp());
+        $criticalReasons = [];
+        if (!$storageWritable) {
+            $criticalReasons[] = 'storage_not_writable';
         }
+        if ($scheduler === null) {
+            $criticalReasons[] = 'scheduler_missing';
+        } elseif (!$scheduler->isEnabled()) {
+            $criticalReasons[] = 'scheduler_disabled';
+        } elseif ($scheduler->getEnvironment() !== 'prod') {
+            $criticalReasons[] = 'scheduler_wrong_environment';
+        } elseif ($lastRun === null) {
+            $criticalReasons[] = 'scheduler_never_run';
+        } elseif ($lastRunAge > self::SCHEDULER_SLA_SECONDS) {
+            $criticalReasons[] = 'scheduler_stale';
+        }
+        if ($lastExitCode !== null && $lastExitCode !== 0) {
+            $criticalReasons[] = 'scheduler_last_run_failed';
+        }
+        if ($oldestPendingAge !== null && $oldestPendingAge > self::PENDING_SLA_SECONDS) {
+            $criticalReasons[] = 'oldest_pending_sla_exceeded';
+        }
+        $warningReasons = [];
+        foreach (['expiredLeases' => 'expired_leases', 'retrying' => 'retrying', 'failed' => 'failed'] as $metric => $reason) {
+            if ($drafts[$metric] > 0) {
+                $warningReasons[] = $reason;
+            }
+        }
+
+        $status = $criticalReasons !== [] ? 'critical' : ($warningReasons !== [] ? 'warning' : 'ok');
 
         return [
             'status' => $status,
+            'critical_reasons' => $criticalReasons,
+            'warning_reasons' => $warningReasons,
             'pending' => $drafts['pending'],
             'oldest_pending_at' => $drafts['oldestPendingAt']?->format(DATE_ATOM),
-            'oldest_pending_age_seconds' => $drafts['oldestPendingAt'] === null ? null : max(0, $now->getTimestamp() - $drafts['oldestPendingAt']->getTimestamp()),
+            'oldest_pending_age_seconds' => $oldestPendingAge,
+            'oldest_pending_sla_seconds' => self::PENDING_SLA_SECONDS,
             'expired_leases' => $drafts['expiredLeases'],
             'failed' => $drafts['failed'],
             'retrying' => $drafts['retrying'],
@@ -54,8 +78,10 @@ final class WardrobeIngestHealth
             'storage_free_bytes' => $storageExists ? $this->diskFreeSpace($this->storageDir) : null,
             'scheduler_configured' => $scheduler !== null,
             'scheduler_enabled' => $scheduler?->isEnabled(),
+            'scheduler_environment' => $scheduler?->getEnvironment(),
             'scheduler_last_run_at' => $lastRun?->format(DATE_ATOM),
-            'scheduler_last_run_age_seconds' => $lastRun === null ? null : max(0, $now->getTimestamp() - $lastRun->getTimestamp()),
+            'scheduler_last_run_age_seconds' => $lastRunAge,
+            'scheduler_sla_seconds' => self::SCHEDULER_SLA_SECONDS,
             'scheduler_last_exit_code' => $lastExitCode,
             'scheduler_last_success_at' => $lastExitCode === 0 ? $lastRun?->format(DATE_ATOM) : null,
             'scheduler_last_success_known' => $lastExitCode === 0,

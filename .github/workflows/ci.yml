@@ -190,6 +190,21 @@ jobs:
           done
           exit $fail
 
+      - name: Wardrobe ingest health gate
+        id: ingest_health
+        # Read-only operational check: validates scheduler heartbeat, queue SLA and private
+        # storage after migrations. It does not claim drafts or call the vision model.
+        env:
+          H: ${{ secrets.DEPLOY_HOST }}
+          U: ${{ secrets.DEPLOY_USER }}
+          P: ${{ secrets.DEPLOY_PORT }}
+          D: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -o pipefail
+          ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${U}@${H}" "cd ${D} && APP_ENV=prod php bin/console app:wardrobe:ingest-health --check --json --no-debug" \
+            2>&1 | tee ingest-health.log
+
       - name: Notify Telegram
         # always(): шлём уведомление и при успехе, и при провале любого предыдущего
         # шага деплоя (rsync/prune/migrate/smoke). continue-on-error — сбой отправки
@@ -205,6 +220,7 @@ jobs:
           OUTCOME_PRUNE: ${{ steps.prune.outcome }}
           OUTCOME_MIGRATE: ${{ steps.migrate.outcome }}
           OUTCOME_SMOKE: ${{ steps.smoke.outcome }}
+          OUTCOME_INGEST_HEALTH: ${{ steps.ingest_health.outcome }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_AUTHOR: ${{ github.actor }}
