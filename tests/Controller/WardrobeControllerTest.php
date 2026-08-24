@@ -950,6 +950,59 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertSame($foreignPhoto1->getId(), $em->find(WardrobeItem::class, $foreignId)->getCoverPhoto()?->getId());
     }
 
+    public function testLegacyItemAndGalleryMediaRemainBehindFamilyAuthorizationDuringMigration(): void
+    {
+        $client = static::createClient();
+        $owner = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $filename = 'legacy-'.bin2hex(random_bytes(8)).'.jpg';
+        $item = (new WardrobeItem())
+            ->setUser($owner)
+            ->setItemNo(516)
+            ->setName('Legacy photo')
+            ->setPhoto($filename);
+        $photo = (new WardrobeItemPhoto())
+            ->setItem($item)
+            ->setFilePath($filename)
+            ->setIsCover(true);
+        $item->addPhoto($photo);
+        $em->persist($item);
+        $em->persist($photo);
+        $em->flush();
+
+        $legacyPath = dirname(__DIR__, 2).'/public_html/images/wardrobe/'
+            .mb_substr($filename, 0, 2).'/'.mb_substr($filename, 2, 2).'/'.$filename;
+        if (!is_dir(dirname($legacyPath))) {
+            mkdir(dirname($legacyPath), 0755, true);
+        }
+        file_put_contents($legacyPath, 'legacy-photo');
+        $this->tmpFiles[] = $legacyPath;
+
+        foreach ([
+            '/account/wardrobe/media/item/'.$item->getId(),
+            '/account/wardrobe/media/photo/'.$photo->getId(),
+        ] as $url) {
+            $client->request('GET', $url);
+            $this->assertResponseIsSuccessful();
+            $this->assertResponseHeaderSame('X-Content-Type-Options', 'nosniff');
+            $this->assertResponseHeaderSame('Referrer-Policy', 'no-referrer');
+            $this->assertStringContainsString('private', (string) $client->getResponse()->headers->get('Cache-Control'));
+            $this->assertStringContainsString('no-store', (string) $client->getResponse()->headers->get('Cache-Control'));
+        }
+
+        $client->loginUser(UserFactory::withEmail(static::getContainer(), 'legacy-media-foreign@test.local'));
+        $client->request('GET', '/account/wardrobe/media/item/'.$item->getId());
+        $this->assertResponseStatusCodeSame(404);
+        $client->request('GET', '/account/wardrobe/media/photo/'.$photo->getId());
+        $this->assertResponseStatusCodeSame(404);
+
+        $client->restart();
+        $client->request('GET', '/account/wardrobe/media/item/'.$item->getId());
+        $this->assertResponseRedirects('/login', 302);
+    }
+
     /**
      * Регресс на жёлтую находку: у проданной/подаренной/потерянной вещи «В архив» и
      * «Вернуть» не должны молча перезаписывать терминальный статус.
