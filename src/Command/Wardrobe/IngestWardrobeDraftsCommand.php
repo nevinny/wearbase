@@ -8,7 +8,6 @@ use App\Entity\WardrobeItemDraft;
 use App\Repository\WardrobeItemDraftRepository;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\WardrobeAiMeter;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -22,8 +21,8 @@ use Vich\UploaderBundle\Storage\StorageInterface;
  * Стадия конвейера авто-инжеста гардероба: распознаёт ожидающие черновики
  * (WardrobeItemDraft::STATUS_PENDING) через WardrobeAiService::suggestFromPhoto.
  * Идемпотентно — обрабатывает только pending, повторный запуск не трогает
- * уже recognized/failed. flush() по каждому черновику — прогресс виден
- * и прогон резюмируется, если оборвался.
+ * уже recognized/failed. Результат сохраняется атомарно только владельцем
+ * актуального worker claim, поэтому устаревший worker не затирает повторный запуск.
  *
  * flock — защита от параллельного второго экземпляра (паттерн RagDaemonCommand).
  */
@@ -39,7 +38,6 @@ class IngestWardrobeDraftsCommand extends Command
     public function __construct(
         private readonly WardrobeItemDraftRepository $draftRepo,
         private readonly WardrobeAiService $ai,
-        private readonly EntityManagerInterface $em,
         private readonly StorageInterface $vichStorage,
         private readonly WardrobeAiMeter $meter,
         #[Autowire('%kernel.project_dir%')]
@@ -80,20 +78,27 @@ class IngestWardrobeDraftsCommand extends Command
         $failed = 0;
 
         foreach ($drafts as $draft) {
+            $draftId = $draft->getId();
+            if ($draftId === null) {
+                continue;
+            }
             if (!$this->meter->allowed()) {
-                $draft->releaseForRetry('Дневной лимит AI-запросов исчерпан');
-                $this->em->flush();
+                $this->draftRepo->releaseClaimForRetry($draftId, $workerId, 'Дневной лимит AI-запросов исчерпан');
                 $io->warning('Дневной лимит AI-запросов исчерпан — черновик возвращён в очередь.');
                 continue;
             }
 
             $path = $this->vichStorage->resolvePath($draft, 'photoFile');
             if ($path === null || !is_file($path)) {
-                $draft->finishProcessing(WardrobeItemDraft::STATUS_FAILED);
-                $draft->setError('Файл фото не найден');
-                $this->em->flush();
-                $failed++;
-                $io->text(sprintf('#%d: файл фото не найден — failed', $draft->getId()));
+                if ($this->draftRepo->finishClaim($draftId, $workerId, WardrobeItemDraft::STATUS_FAILED, error: 'Файл фото не найден')) {
+                    $failed++;
+                    $io->text(sprintf('#%d: файл фото не найден — failed', $draftId));
+                }
+                continue;
+            }
+
+            if (!$this->draftRepo->extendLease($draftId, $workerId)) {
+                $io->note(sprintf('#%d: claim уже передан другому worker.', $draftId));
                 continue;
             }
 
@@ -101,45 +106,50 @@ class IngestWardrobeDraftsCommand extends Command
                 $result = $this->ai->suggestFromPhoto($path, $draft->getProfileSubject());
             } catch (\Throwable $exception) {
                 if ($draft->getAttempts() >= 3) {
-                    $draft->setError(mb_substr($exception->getMessage(), 0, 255));
-                    $draft->finishProcessing(WardrobeItemDraft::STATUS_FAILED);
-                    $failed++;
+                    if ($this->draftRepo->finishClaim($draftId, $workerId, WardrobeItemDraft::STATUS_FAILED, error: $exception->getMessage())) {
+                        $failed++;
+                    }
                 } else {
-                    $draft->releaseForRetry($exception->getMessage());
+                    $this->draftRepo->releaseClaimForRetry($draftId, $workerId, $exception->getMessage());
                 }
-                $this->em->flush();
-                $io->text(sprintf('#%d: временная ошибка распознавания', $draft->getId()));
+                $io->text(sprintf('#%d: временная ошибка распознавания', $draftId));
                 continue;
             }
 
             if ($result['ok'] ?? false) {
                 $fields = $result['fields'] ?? [];
-                $draft->setCategory($fields['category'] ?? null);
-                $draft->setName($fields['name'] ?? null);
-                $draft->setSize($fields['size'] ?? null);
-                $draft->setNotes($fields['notes'] ?? null);
-                $draft->setConfidence($result['confidence'] ?? null);
-                $draft->setAiRaw(array_filter([
-                    'confidence' => $result['confidence'] ?? null,
-                    'model' => $result['model'] ?? null,
-                ], static fn (mixed $value): bool => $value !== null));
-                $draft->finishProcessing(WardrobeItemDraft::STATUS_RECOGNIZED);
-                $recognized++;
-                $io->text(sprintf('#%d: распознано (confidence=%s)', $draft->getId(), $result['confidence'] ?? '?'));
+                $saved = $this->draftRepo->finishClaim($draftId, $workerId, WardrobeItemDraft::STATUS_RECOGNIZED, [
+                    'category' => $this->nullableString($fields['category'] ?? null),
+                    'name' => $this->nullableString($fields['name'] ?? null),
+                    'size' => $this->nullableString($fields['size'] ?? null),
+                    'notes' => $this->nullableString($fields['notes'] ?? null),
+                    'confidence' => $this->nullableString($result['confidence'] ?? null),
+                    'aiRaw' => array_filter([
+                        'confidence' => $this->nullableString($result['confidence'] ?? null),
+                        'model' => $this->nullableString($result['model'] ?? null),
+                    ], static fn (mixed $value): bool => $value !== null),
+                ]);
+                if ($saved) {
+                    $recognized++;
+                    $io->text(sprintf('#%d: распознано (confidence=%s)', $draftId, $result['confidence'] ?? '?'));
+                }
             } else {
                 $error = mb_substr((string) ($result['error'] ?? 'Ошибка распознавания'), 0, 255);
-                $draft->finishProcessing(WardrobeItemDraft::STATUS_FAILED);
-                $draft->setError($error);
-                $failed++;
-                $io->text(sprintf('#%d: ошибка — %s', $draft->getId(), $error));
+                if ($this->draftRepo->finishClaim($draftId, $workerId, WardrobeItemDraft::STATUS_FAILED, error: $error)) {
+                    $failed++;
+                    $io->text(sprintf('#%d: ошибка — %s', $draftId, $error));
+                }
             }
-
-            $this->em->flush();
         }
 
         $io->success(sprintf('Готово: распознано %d, ошибок %d.', $recognized, $failed));
 
         return Command::SUCCESS;
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        return is_string($value) ? $value : null;
     }
 
     /** Эксклюзивный flock — защита от случайного второго экземпляра (паттерн RagDaemonCommand). */
