@@ -72,9 +72,18 @@ final class WardrobeMediaController extends AbstractController
     {
         if (($path === null || !is_file($path)) && $legacyName !== null) {
             $root = realpath($this->projectDir.'/public_html/images/'.$legacyDirectory);
-            $legacyPath = realpath($this->projectDir.'/public_html/images/'.$legacyDirectory.'/'.$legacyName);
-            if ($root !== false && $legacyPath !== false && str_starts_with($legacyPath, $root.DIRECTORY_SEPARATOR)) {
-                $path = $legacyPath;
+            if ($root !== false && basename($legacyName) === $legacyName) {
+                $relativePaths = [
+                    $legacyName,
+                    mb_substr($legacyName, 0, 2).'/'.mb_substr($legacyName, 2, 2).'/'.$legacyName,
+                ];
+                foreach ($relativePaths as $relativePath) {
+                    $legacyPath = realpath($root.'/'.$relativePath);
+                    if ($legacyPath !== false && str_starts_with($legacyPath, $root.DIRECTORY_SEPARATOR)) {
+                        $path = $legacyPath;
+                        break;
+                    }
+                }
             }
         }
         if ($path === null || !is_file($path)) {

@@ -2041,8 +2041,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   batch-filter-before-limit в фоновой команде.
 - [x] Добавить consent/retention: очистка abandoned drafts и диагностического `ai_raw`, EXIF strip,
   лимит хранилища и rate limit стоимости vision.
-- [ ] Для nginx/CDN закрыть legacy `/images/wardrobe*` на уровне server config и перенести старые
-  файлы в private storage deploy-командой; `.htaccess` уже закрывает Apache.
+- [x] Перенести legacy `/images/wardrobe*` в private storage идемпотентной deploy-командой;
+  после успешного переноса публичные каталоги удаляются, конфликтующие файлы останавливают деплой.
 - [ ] Добавить IndexedDB retry только как foreground-resume при следующем online/open; не обещать
   iOS background upload, пока платформа не даёт надёжную гарантию.
 
