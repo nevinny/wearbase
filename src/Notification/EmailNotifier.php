@@ -10,6 +10,7 @@ use Symfony\Bridge\Twig\Mime\TemplatedEmail;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Address;
+use Symfony\Component\Mime\Email;
 
 readonly class EmailNotifier
 {
@@ -90,6 +91,26 @@ readonly class EmailNotifier
                 'error' => $e->getMessage(),
             ]);
 
+            return false;
+        }
+    }
+
+    public function sendHtml(string $recipient, string $recipientName, string $subject, string $html): bool
+    {
+        $to = new Address($recipient, $recipientName);
+        $email = (new Email())
+            ->from($this->fromAddress())
+            ->to($to)
+            ->subject($subject)
+            ->html($html);
+        if ($this->adminEmail !== '' && $recipient !== $this->adminEmail) {
+            $email->replyTo(new Address($this->adminEmail));
+        }
+        try {
+            $this->mailer->send($email);
+            return true;
+        } catch (\Throwable $e) {
+            $this->logger->error('Email notification failed', ['to' => $recipient, 'subject' => $subject, 'error' => $e->getMessage()]);
             return false;
         }
     }
