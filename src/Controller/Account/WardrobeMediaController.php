@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
 use App\Entity\WardrobeItemPhoto;
+use App\Entity\WardrobeWearEvent;
 use App\Service\FamilyService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -49,6 +50,14 @@ final class WardrobeMediaController extends AbstractController
         $this->assertCanView($draft->getProfileSubject(), $families);
 
         return $this->mediaResponse($storage->resolvePath($draft, 'photoFile'), $draft->getPhoto(), 'wardrobe_drafts');
+    }
+
+    #[Route('/wear/{id}', name: 'wear', requirements: ['id' => '\\d+'], methods: ['GET'])]
+    public function wear(WardrobeWearEvent $event, FamilyService $families, StorageInterface $storage): Response
+    {
+        $this->assertCanView($event->getProfileSubject(), $families);
+
+        return $this->mediaResponse($storage->resolvePath($event, 'photoFile'), null, 'wardrobe_wear');
     }
 
     private function assertCanView(?User $subject, FamilyService $families): void

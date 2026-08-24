@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeOutfit;
 use App\Repository\WardrobeOutfitRepository;
+use App\Repository\WardrobeWearEventRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 class WardrobeOutfitLearningService
@@ -15,6 +16,7 @@ class WardrobeOutfitLearningService
     public function __construct(
         private readonly WardrobeOutfitRepository $outfits,
         private readonly EntityManagerInterface $em,
+        private readonly ?WardrobeWearEventRepository $wearEvents = null,
     ) {}
 
     /**
@@ -69,6 +71,25 @@ class WardrobeOutfitLearningService
                 }
             }
             if ($outfit->getReaction() === WardrobeOutfit::REACTION_DISLIKE) {
+                $negative = $target;
+            } else {
+                $positive = $target;
+            }
+        }
+        foreach ($this->wearEvents?->findRecentConfirmed($wardrobeOwner, 50) ?? [] as $event) {
+            if (!$event->isConfirmedWorn()) {
+                continue;
+            }
+            $isNegative = $event->getComfort() === 'uncomfortable' || $event->wantsRepeat() === false;
+            $target = $isNegative ? $negative : $positive;
+            $weight = $event->wantsRepeat() === true ? 4 : 2;
+            foreach ($event->getItems() as $eventItem) {
+                $item = $eventItem->getItem();
+                foreach (array_filter([$item->getCategory(), $item->getColorName()]) as $value) {
+                    $target[$value] = ($target[$value] ?? 0) + $weight;
+                }
+            }
+            if ($isNegative) {
                 $negative = $target;
             } else {
                 $positive = $target;

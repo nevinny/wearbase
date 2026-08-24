@@ -20,8 +20,11 @@ async function login(page: Page, actor: Actor): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('Email').fill(actor.email);
   await page.getByLabel('Пароль').fill(fixture().password);
-  await page.getByRole('button', { name: 'Войти' }).click();
-  await expect(page).toHaveURL(/\/account/);
+  await Promise.all([
+    page.waitForURL(/\/account/),
+    page.getByRole('button', { name: 'Войти' }).click(),
+  ]);
+  await page.waitForLoadState('domcontentloaded');
 }
 
 async function loggedPage(browser: Browser, actor: Actor): Promise<Page> {
@@ -34,7 +37,8 @@ async function loggedPage(browser: Browser, actor: Actor): Promise<Page> {
 
 async function createRequest(page: Page, url: string, price: string, comment: string): Promise<string> {
   await page.goto('/account/purchases/new');
-  await page.getByLabel('Ссылка на товар или подборку').fill(url);
+  await expect(page).toHaveURL('/account/purchases/new');
+  await page.getByLabel('Первая ссылка на товар').fill(url);
   await page.getByLabel('Ожидаемая цена').fill(price);
   await page.getByLabel('Комментарий').fill(comment);
   await page.getByRole('button', { name: 'Отправить родителю' }).click();

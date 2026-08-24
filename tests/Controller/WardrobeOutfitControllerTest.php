@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeOnboarding;
+use App\Entity\WardrobeWearEvent;
 use App\Service\Wardrobe\WardrobeOutfitService;
 
 class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
@@ -86,5 +87,37 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
         self::assertSame('like', $saved?->getReaction());
         $onboarding = $em->getRepository(WardrobeOnboarding::class)->findOneBy(['subject' => $user]);
         self::assertTrue($onboarding?->isCompleted());
+    }
+
+    public function testWornReactionCreatesOneWearEventOnRetry(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $user = UserFactory::withEmail(static::getContainer(), 'outfit-worn@test.local');
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $next = static::getContainer()->get(\App\Repository\WardrobeItemRepository::class)->nextItemNo($user);
+        $shirt = (new WardrobeItem())->setUser($user)->setItemNo($next)->setName('Футболка')->setCategory('Футболка');
+        $jeans = (new WardrobeItem())->setUser($user)->setItemNo($next + 1)->setName('Джинсы')->setCategory('Джинсы');
+        $em->persist($shirt);
+        $em->persist($jeans);
+        $em->flush();
+        $client->loginUser($user);
+        $mock = $this->createMock(WardrobeOutfitService::class);
+        $mock->method('suggest')->willReturn([['title' => 'На каждый день', 'explanation' => '', 'items' => [$shirt, $jeans]]]);
+        static::getContainer()->set(WardrobeOutfitService::class, $mock);
+        $crawler = $client->request('GET', '/account/wardrobe/outfits');
+        $token = $crawler->filter('input[name="_token"]')->attr('value');
+        $crawler = $client->request('POST', '/account/wardrobe/outfits', ['_token' => $token, 'prompt' => 'На сегодня']);
+        $form = $crawler->selectButton('✅ Я это надел')->form();
+        $action = $form->getUri();
+        $values = $form->getPhpValues();
+        $client->request('POST', $action, $values);
+        self::assertResponseRedirects('/account/wardrobe/outfits');
+        $client->request('POST', $action, $values);
+        self::assertResponseRedirects('/account/wardrobe/outfits');
+
+        $events = $em->getRepository(WardrobeWearEvent::class)->findBy(['profileSubject' => $user, 'type' => 'worn']);
+        self::assertCount(1, $events);
+        self::assertCount(2, $events[0]->getItems());
     }
 }

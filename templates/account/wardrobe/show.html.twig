@@ -69,6 +69,14 @@
     {% endif %}
 </div>
 
+{% if wearStatistic %}
+<div class="mb-4 grid grid-cols-3 gap-3 rounded-2xl bg-gradient-to-r from-indigo-50 to-violet-50 p-4">
+    <div><p class="text-xl font-black text-indigo-700">{{ wearStatistic.wearCount }}</p><p class="text-xs text-slate-500">носок</p></div>
+    <div><p class="text-sm font-black text-slate-800">{{ wearStatistic.lastWorn|date('d.m.Y') }}</p><p class="text-xs text-slate-500">последний раз</p></div>
+    <div>{% if wearStatistic.costPerWear %}<p class="text-sm font-black text-emerald-700">{{ wearStatistic.costPerWear|number_format(2, ',', ' ') }} ₽</p><p class="text-xs text-slate-500">за носку</p>{% else %}<p class="text-xs text-slate-400">Добавьте цену</p>{% endif %}</div>
+</div>
+{% endif %}
+
 <div class="grid gap-4 md:grid-cols-12">
 
     {# ── Фото ── #}

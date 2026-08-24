@@ -2008,16 +2008,18 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [x] Добавить read-only `/api/v1/wardrobe-app/bootstrap` и cursor-paginated `/items`, session-auth,
   explicit DTO, `no-store`, FamilyService IDOR guard.
 - [x] Покрыть web/API: guest, parent→child, child roster, child→parent/sibling deny, schema/privacy.
-- [ ] Зафиксировать capability matrix owner/parent/child и решение spouse-to-spouse privacy.
+- [x] Зафиксировать capability matrix owner/parent/child/adult: взрослые гардеробы приватны,
+  родитель управляет только детскими профилями; второй parent равноправен для детей и покупок.
 - [x] Скрыть family add/invite для child в family/wardrobe-app UI и явно запретить POST invite;
   гардеробы parent/sibling закрыты `FamilyService::resolveMember` и тестами.
 - [x] Добавить claim expiry/rotate/revoke/recovery с сохранением User ID и истории гардероба;
   used/revoked/expired ссылки закрывать нейтральным 410 и `no-store`.
 - [x] Добавить invite expiry/revoke/regenerate, optional intended email и atomic single-use accept;
   закрыть публичную страницу от referrer, индексации и кеширования.
-- [ ] Добавить lifecycle семьи: leave/remove, owner transfer, last-parent invariant, role changes.
-- [ ] Разделить consent несовершеннолетнего на private processing, personalization, shared learning
-  и публикацию фото; пересматривать при взрослении.
+- [x] Добавить lifecycle семьи: leave/remove, owner transfer, last-parent invariant и переход
+  активированного детского профиля в самостоятельный adult без смены User ID/истории.
+- [ ] Расширить уже реализованный consent на private photo processing/revoke-at-adulthood отдельными
+  grant/revoke для personalization, shared learning и публичных snapshot-фото.
 - [ ] Для native iOS добавить revocable per-device access/refresh tokens; не переиспользовать
   X-Agent-Token/HMAC и не доверять user/member ID из клиента.
 
@@ -2049,9 +2051,10 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [x] Реализовать provider-agnostic web/PWA MVP: одна HTTPS-ссылка без server fetch, комментарий,
   child/parent inbox, approve/reject с причиной, CSRF, IDOR-защита и append-only audit.
 - [x] Добавить `PurchaseRequest`, `PurchaseRequestItem`, `PurchaseRequestEvent` и миграцию.
-- [ ] Реализовать доменный lifecycle и `FamilyService`-проверки actor/profileSubject.
-- [ ] Сделать детский флоу: черновик → provider/manual import → вариант → отправка.
-- [ ] Сделать родительскую очередь и решения по каждой позиции: approve/reject/change/defer.
+- [x] Реализовать доменный lifecycle и `FamilyService`-проверки actor/profileSubject.
+- [x] Сделать детский флоу: provider-agnostic HTTPS/manual input → несколько позиций → отправка.
+- [x] Сделать родительскую очередь и решения approve/reject по каждой позиции; change/defer оставлены
+  отдельными расширениями, не блокирующими заказ и примерку.
 - [x] Добавить ожидаемую цену, месячный лимит ребёнка, остаток/approved commitments,
   явное подтверждение и audit перерасхода, in-app уведомления родителям и ребёнку.
 - [x] Перейти от одного URL к нескольким позициям и частичным решениям по каждой позиции.
@@ -2069,10 +2072,10 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   offline 503 без кеширования приватных HTML/API/фото.
 - [x] Проверить Twig/manifest/JS, профильные tests (67/375) и полный PHPUnit: 611 tests,
   1974 assertions; только 7 существующих deprecation.
-- [ ] Перевести новые экраны покупок/образов на готовый shell после реализации их routes.
+- [x] Перевести экраны покупок, lifecycle вещи и дневника образов на mobile-first family shell.
 - [ ] Убрать runtime Tailwind CDN в локальную production-сборку перед строгим CSP/offline-first.
-- [x] Сделать интерфейс role-aware: ребёнку — запросы/ответы, родителю — очередь решений,
-  уведомления и управление бюджетом. Примерки остаются следующей фазой.
+- [x] Сделать интерфейс role-aware: ребёнку — запросы/ответы и примерка, родителю — очередь решений,
+  уведомления, бюджет и действия от имени managed-child.
 - [x] Покрыть PHPUnit: переходы, CSRF, IDOR между семьями, бюджет, точные денежные расчёты,
   audit перерасхода и безопасность уведомлений.
 - [x] Покрыть Playwright E2E на Pixel 7: 8 последовательных сценариев от invite/анкеты ребёнка до
@@ -2093,28 +2096,33 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 ### Фаза 2 — заказ, примерка и карточка вещи
 
 - [ ] Best-effort проверять цену/наличие через исходного provider перед ручным заказом.
-- [ ] Добавить ordered/fitting/bought/refused/returned/cancelled без хранения сессии/оплаты магазина.
-- [ ] Добавить `FittingFeedback`: размерность, посадка, проблемные зоны, качество и причины отказа.
-- [ ] Создавать `WardrobeItem` только после `bought`, идемпотентно и с provenance запроса.
+- [x] Добавить ordered/delivered/bought/refused/returned без хранения сессии/оплаты магазина.
+- [x] Добавить структурированную примерку: размерность, посадка, качество и причина отказа.
+- [x] Создавать `WardrobeItem` только после `bought`, идемпотентно и с provenance запроса.
 - [ ] Добавить напоминания через 7–14 и ~30 дней без автоматического создания носок.
 
 ### Фаза 3 — фото образа и source of truth носок
 
-- [ ] Добавить `WardrobeWearEvent`, `WardrobeWearEventItem` и миграцию.
-- [ ] Реализовать приватную загрузку фото и асинхронное vision-распознавание.
-- [ ] Ограничить кандидатов вещами выбранного `profileSubject`; unscoped-поиск запретить API.
-- [ ] Сделать обязательное подтверждение/исправление распознанных вещей.
+- [x] Добавить `WardrobeWearEvent`, `WardrobeWearEventItem` и миграцию.
+- [x] Реализовать приватную загрузку фото, bounded vision-вызов и ручной fallback без ложного
+  обещания фоновой обработки в iOS/PWA.
+- [x] Ограничить кандидатов вещами выбранного `profileSubject`; unscoped-поиск запретить.
+- [x] Сделать обязательное подтверждение/исправление распознанных вещей.
 - [ ] Добавить предупреждение дублей по file hash/perceptual hash/времени/составу.
-- [ ] Считать носки только по подтверждённым `type=worn`; fitting/planned не учитывать.
-- [ ] Вывести историю образов, последнюю носку, количество носок и стоимость одной носки.
-- [ ] Проверить пересчёт после исправления/удаления события и деление на ноль.
+- [x] Считать носки только по подтверждённым `type=worn`; fitting/planned не учитывать.
+- [x] Вывести историю образов, последнюю носку, количество носок и стоимость одной носки.
+- [x] Проверить пересчёт после исправления/удаления события и деление на ноль.
+- [x] Покрыть lifecycle Playwright E2E на мобильном viewport: CRUD вещи, заказ→примерка→гардероб,
+  химчистка/ремонт, внутренняя/внешняя передача, носка+feedback, spouse invite, adulthood,
+  owner transfer/leave — 9 сценариев; полный PHPUnit — 705 tests / 2415 assertions.
 
 ### Фаза 4 — обратная связь и сочетаемость
 
-- [ ] Добавить оценку образа после дня носки: удобство, повтор, причина отказа и замена вещи.
+- [x] Добавить оценку образа: удобство, желание повторить и свободный комментарий/замена вещи.
 - [ ] Добавить `WardrobeItemRelation` для подтверждённых удачных/неудачных сочетаний.
-- [ ] Сохранять actor/profileSubject/signalSource (`self|parent_observed|child_confirmed`).
-- [ ] Подключить фактические сочетания и повторные носки к AI-стилисту.
+- [x] Сохранять actor/profileSubject/signalSource (`self|parent_observed`). Подтверждение ребёнком
+  родительского наблюдения остаётся отдельным расширением `child_confirmed`.
+- [x] Подключить подтверждённые носки, comfort и repeat к персональной памяти AI-стилиста.
 - [ ] Дать родителю аналитику возвратов, неношеных покупок и стоимости одной носки.
 
 ### Фаза 5 — персональная память и controlled learning
