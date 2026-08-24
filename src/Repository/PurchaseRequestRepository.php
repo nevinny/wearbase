@@ -70,4 +70,20 @@ class PurchaseRequestRepository extends ServiceEntityRepository
 
         return (int) $qb->getQuery()->getSingleScalarResult();
     }
+
+    /** @return PurchaseRequest[] */
+    public function findPendingCreatedBefore(\DateTimeImmutable $before): array
+    {
+        return $this->createQueryBuilder('request')
+            ->addSelect('subject', 'family')
+            ->join('request.subject', 'subject')
+            ->join('request.family', 'family')
+            ->andWhere('request.status = :status')
+            ->andWhere('request.createdAt < :before')
+            ->setParameter('status', PurchaseRequest::STATUS_PENDING)
+            ->setParameter('before', $before)
+            ->orderBy('request.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
 }
