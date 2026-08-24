@@ -5,6 +5,7 @@
   "scripts": {
     "test": "playwright test",
     "test:family": "playwright test --config=playwright.family.config.ts",
+    "test:lifecycle": "playwright test --config=playwright.lifecycle.config.ts",
     "test:onboarding": "playwright test --config=playwright.onboarding.config.ts",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",

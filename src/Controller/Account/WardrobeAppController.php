@@ -9,6 +9,7 @@ use App\Repository\WardrobeItemRepository;
 use App\Repository\PurchaseRequestRepository;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeOnboardingService;
+use App\Service\Wardrobe\WardrobeEngagementService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -23,6 +24,7 @@ class WardrobeAppController extends AbstractController
         WardrobeItemRepository $itemRepository,
         WardrobeOnboardingService $onboardingService,
         PurchaseRequestRepository $purchaseRequests,
+        WardrobeEngagementService $engagement,
     ): Response
     {
         /** @var User $user */
@@ -48,6 +50,8 @@ class WardrobeAppController extends AbstractController
             'onboarding' => $onboardingService->overview($user, $currentMember),
             'familyActiveSection' => 'wardrobe-app',
             'pendingPurchaseCount' => $purchaseRequests->countPendingVisibleTo($user),
+            'engagement' => $engagement->summary($currentMember),
+            'familyCaptureUrl' => $this->generateUrl('account_wardrobe_wear_index', $currentMember->getId() === $user->getId() ? [] : ['member' => $currentMember->getId()]),
         ]);
     }
 

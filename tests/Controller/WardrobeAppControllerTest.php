@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Entity\WardrobeOnboarding;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
+use App\Service\Wardrobe\WardrobeOnboardingService;
 
 class WardrobeAppControllerTest extends AuthenticatedWebTestCase
 {
@@ -47,9 +48,25 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorExists('a[href="/account/wardrobe/statistics"]');
         $this->assertSelectorTextContains('body', 'Состав семьи');
         $this->assertSelectorTextContains('#wardrobe-onboarding-title', 'Добавьте первые 5 вещей');
+        $this->assertSelectorNotExists('[data-testid="wear-loop-card"]');
         $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="child"]');
         $this->assertSelectorExists('form[action="/account/family/invite"] input[name="role"][value="parent"]');
         $this->assertSelectorExists('#family-main.family-safe-content.pt-5:not(.py-5)');
+    }
+
+    public function testCompletedOnboardingShowsSingleWearLoopAction(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'wear-loop-dashboard-'.uniqid().'@test.local');
+        static::getContainer()->get(WardrobeOnboardingService::class)->complete($user, $user);
+        $client->loginUser($user);
+
+        $client->request('GET', '/account/wardrobe-app');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorCount(1, '[data-testid="wear-loop-card"]');
+        $this->assertSelectorExists('[data-testid="wear-loop-card"] a[href="/account/wardrobe/wear"]');
+        $this->assertSelectorTextContains('[data-testid="wear-loop-card"]', 'Что на мне сегодня');
     }
 
     public function testParentSeesChildWardrobe(): void

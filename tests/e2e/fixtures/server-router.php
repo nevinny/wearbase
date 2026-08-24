@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-$database = 'sqlite:///'.dirname(__DIR__, 3).'/var/e2e-family.db';
+$database = getenv('DATABASE_URL') ?: 'sqlite:///'.dirname(__DIR__, 3).'/var/e2e-family.db';
 putenv('APP_ENV=test');
 putenv('APP_DEBUG=1');
 putenv('DATABASE_URL='.$database);

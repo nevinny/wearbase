@@ -22,6 +22,7 @@ use App\Service\Wardrobe\WardrobePhotoManager;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use App\Service\Wardrobe\WardrobeStatisticsService;
 use App\Service\Wardrobe\WardrobeImageSanitizer;
+use App\Service\Wardrobe\WardrobeWearService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -440,6 +441,7 @@ class WardrobeController extends AbstractController
         WardrobeItemRepository $repo,
         WardrobeTransferRepository $transferRepo,
         WardrobeItemLifecycleEventRepository $lifecycleEvents,
+        WardrobeWearService $wear,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
@@ -467,6 +469,7 @@ class WardrobeController extends AbstractController
             'transferTargets' => $transferTargets,
             'canManage'       => $this->familyService->canManage($user, $currentMember),
             'currentMember'   => $currentMember,
+            'wearStatistic'   => $wear->statistics($currentMember)[$item->getId()] ?? null,
         ]);
     }
 
