@@ -43,6 +43,16 @@ framework:
             limit: 10
             interval: '1 hour'
 
+        native_auth_login:
+            policy: sliding_window
+            limit: 5
+            interval: '15 minutes'
+
+        native_auth_refresh:
+            policy: sliding_window
+            limit: 30
+            interval: '1 minute'
+
 # В тестах дневное окно wardrobe_ai живёт в var/cache/test МЕЖДУ прогонами
 # (тест-БД одноразовая → user id повторяются) — после ~30 прогонов сьют
 # начинает флейкать 429. Лимитер в тестах отключаем.
@@ -52,4 +62,8 @@ when@test:
             wardrobe_ai:
                 policy: no_limit
             wardrobe_ingest:
+                policy: no_limit
+            native_auth_login:
+                policy: no_limit
+            native_auth_refresh:
                 policy: no_limit

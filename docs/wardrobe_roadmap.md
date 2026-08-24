@@ -25,6 +25,9 @@
 | 6 | **AI-стилист**: подбор до трёх образов из активных вещей, реакции и персональная память на подтверждённых носках/comfort/repeat; embeddings и общий опыт только по consent | ✅ персональный MVP 2026-08-24; [дизайн обучения](wardrobe_ai_learning.md) |
 | 7 | **Клиенты**: mobile-first PWA поверх versioned API; после проверки метрик — нативный iOS-клиент того же API; Telegram только дополнительный канал | 📋 [план](family_purchase_learning.md) |
 
+Native-клиент аутентифицируется отдельными opaque device credentials с rotation/reuse detection;
+PWA сохраняет session cookie. Контракт и правила хранения: [native device auth](native_device_auth.md).
+
 ## Extension points, заложенные в фундамент итерации 3
 
 - `Family` — первоклассная сущность (к ней цепляются бюджеты и вишлисты итерации 4).
