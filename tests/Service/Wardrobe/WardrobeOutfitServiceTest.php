@@ -7,6 +7,7 @@ namespace App\Tests\Service\Wardrobe;
 use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Repository\WardrobeConsentRepository;
 use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Service\Wardrobe\WardrobeAiException;
@@ -22,7 +23,7 @@ class WardrobeOutfitServiceTest extends TestCase
         $trousers = $this->item(12, 'Синие брюки', 'Брюки');
         $llm = $this->createMock(LlmService::class);
         $llm->expects(self::once())->method('generate')->willReturn(
-            '{"outfits":[{"title":"В офис","explanation":"Спокойное сочетание","item_ids":[11,12,999]}]}',
+            '{"outfits":[{"title":"В офис","explanation":"Спокойное сочетание","item_ids":[1,2,999]}]}',
         );
         $meter = $this->createMock(WardrobeAiMeter::class);
         $meter->method('allowed')->willReturn(true);
@@ -31,7 +32,7 @@ class WardrobeOutfitServiceTest extends TestCase
         $user = new User();
         $tracker->expects(self::once())->method('record')->with($user, AiUsageLog::FEATURE_WARDROBE_OUTFIT);
 
-        $result = (new WardrobeOutfitService($llm, $meter, $tracker, 'remote-model', 'local-model', false))
+        $result = (new WardrobeOutfitService($llm, $meter, $tracker, 'remote-model', 'local-model', false, $this->grantedConsents()))
             ->suggest($user, [$shirt, $trousers], 'В офис');
 
         self::assertCount(1, $result);
@@ -47,6 +48,7 @@ class WardrobeOutfitServiceTest extends TestCase
             'remote-model',
             'local-model',
             false,
+            $this->grantedConsents(),
         );
 
         $this->expectException(\DomainException::class);
@@ -60,7 +62,7 @@ class WardrobeOutfitServiceTest extends TestCase
         $meter = $this->createMock(WardrobeAiMeter::class);
         $meter->method('allowed')->willReturn(false);
         $meter->expects(self::never())->method('record');
-        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false);
+        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false, $this->grantedConsents());
 
         $this->expectException(WardrobeAiException::class);
         $this->expectExceptionMessage('Дневной лимит');
@@ -73,7 +75,7 @@ class WardrobeOutfitServiceTest extends TestCase
         $llm->method('generate')->willReturn('Сочетайте рубашку и брюки');
         $meter = $this->createStub(WardrobeAiMeter::class);
         $meter->method('allowed')->willReturn(true);
-        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false);
+        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false, $this->grantedConsents());
 
         $this->expectException(WardrobeAiException::class);
         $this->expectExceptionMessage('Не удалось собрать образы');
@@ -86,7 +88,7 @@ class WardrobeOutfitServiceTest extends TestCase
         $llm->method('generate')->willReturn('{"outfits":[{"title":"Фантазия","item_ids":[1,999]}]}');
         $meter = $this->createStub(WardrobeAiMeter::class);
         $meter->method('allowed')->willReturn(true);
-        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false);
+        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false, $this->grantedConsents());
 
         $this->expectException(WardrobeAiException::class);
         $this->expectExceptionMessage('Модель не нашла');
@@ -101,7 +103,7 @@ class WardrobeOutfitServiceTest extends TestCase
         $llm->method('generate')->willReturn("```json\n{\"outfits\":[{\"title\":\"База\",\"item_ids\":[\"1\",\"2\"]}]}\n```");
         $meter = $this->createStub(WardrobeAiMeter::class);
         $meter->method('allowed')->willReturn(true);
-        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false);
+        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false, $this->grantedConsents());
 
         $result = $service->suggest(new User(), [$shirt, $trousers], '');
 
@@ -157,10 +159,55 @@ class WardrobeOutfitServiceTest extends TestCase
         $tracker->expects(self::never())->method('recordLocal');
         $tracker->expects(self::once())->method('record');
 
-        $result = (new WardrobeOutfitService($llm, $meter, $tracker, 'remote-model', 'gemma4:26b', true))
+        $result = (new WardrobeOutfitService($llm, $meter, $tracker, 'remote-model', 'gemma4:26b', true, $this->grantedConsents()))
             ->suggest(new User(), [$shirt, $trousers], 'В офис');
 
         self::assertSame('Резервный образ', $result[0]['title']);
+    }
+
+    public function testLocalFailureDoesNotFallbackWithoutConsent(): void
+    {
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::once())->method('generate')->willThrowException(new \RuntimeException('local unavailable'));
+        $meter = $this->createMock(WardrobeAiMeter::class);
+        $meter->expects(self::never())->method('allowed');
+        $consents = $this->createStub(WardrobeConsentRepository::class);
+        $consents->method('isPersonalizationGranted')->willReturn(false);
+        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', true, $consents);
+        $parent = new User();
+        $child = (new User())->setFamilyRole(User::FAMILY_ROLE_CHILD);
+
+        $this->expectException(WardrobeAiException::class);
+        $this->expectExceptionMessage('Разрешите remote-стилиста');
+        $service->suggest($parent, [$this->item(1, 'Рубашка', 'Рубашки'), $this->item(2, 'Брюки', 'Брюки')], 'В офис', '', $child);
+    }
+
+    public function testRemotePayloadOmitsNamesMaterialsAndDatabaseIds(): void
+    {
+        $shirt = $this->item(101, 'Рубашка Маши', 'Рубашки')->setMaterialText('секретный материал');
+        $trousers = $this->item(202, 'Брюки Маши', 'Брюки');
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::once())->method('generate')->willReturnCallback(static function (string $prompt): string {
+            self::assertStringNotContainsString('Рубашка Маши', $prompt);
+            self::assertStringNotContainsString('секретный материал', $prompt);
+            self::assertStringNotContainsString('101', $prompt);
+            self::assertStringNotContainsString('202', $prompt);
+            return '{"outfits":[{"title":"Образ","item_ids":[1,2]}]}';
+        });
+        $meter = $this->createStub(WardrobeAiMeter::class);
+        $meter->method('allowed')->willReturn(true);
+        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false, $this->grantedConsents());
+
+        $result = $service->suggest(new User(), [$shirt, $trousers], 'В офис');
+
+        self::assertSame([$shirt, $trousers], $result[0]['items']);
+    }
+
+    private function grantedConsents(): WardrobeConsentRepository
+    {
+        $consents = $this->createStub(WardrobeConsentRepository::class);
+        $consents->method('isPersonalizationGranted')->willReturn(true);
+        return $consents;
     }
 
     private function item(int $id, string $name, string $category): WardrobeItem

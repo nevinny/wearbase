@@ -14,4 +14,5 @@ class WardrobeConsentRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry) { parent::__construct($registry, WardrobeConsent::class); }
     public function findForSubject(User $subject): ?WardrobeConsent { return $this->findOneBy(['subject' => $subject]); }
+    public function isPersonalizationGranted(User $subject): bool { return $this->findForSubject($subject)?->isPersonalizationGranted() ?? false; }
 }

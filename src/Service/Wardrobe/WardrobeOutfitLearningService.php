@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeOutfit;
 use App\Repository\WardrobeOutfitRepository;
+use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeWearEventRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -18,6 +19,7 @@ class WardrobeOutfitLearningService
         private readonly EntityManagerInterface $em,
         private readonly ?WardrobeWearEventRepository $wearEvents = null,
         private readonly ?WardrobeActivationService $activation = null,
+        private readonly ?WardrobeConsentRepository $consents = null,
     ) {}
 
     /**
@@ -64,6 +66,9 @@ class WardrobeOutfitLearningService
 
     public function context(User $wardrobeOwner): string
     {
+        if (!$this->consents?->isPersonalizationGranted($wardrobeOwner)) {
+            return '';
+        }
         $positive = [];
         $negative = [];
         foreach ($this->outfits->findRecentReacted($wardrobeOwner) as $outfit) {

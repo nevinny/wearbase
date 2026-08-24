@@ -2020,6 +2020,10 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   активированного детского профиля в самостоятельный adult без смены User ID/истории.
 - [ ] Расширить уже реализованный consent на private photo processing/revoke-at-adulthood отдельными
   grant/revoke для personalization, shared learning и публичных snapshot-фото.
+- [x] Закрыть remote-стилиста и персональный learning context отдельным personalization consent:
+  взрослый управляет своим consent, для child нужен parent; revoke сразу убирает history context,
+  а local failure без consent не делает silent remote fallback. Remote wardrobe payload ограничен
+  одноразовыми ID и category/color/season/styles без фото, названий, материалов, URL и DB ID.
 - [ ] Для native iOS добавить revocable per-device access/refresh tokens; не переиспользовать
   X-Agent-Token/HMAC и не доверять user/member ID из клиента.
 

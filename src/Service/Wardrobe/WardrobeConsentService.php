@@ -29,4 +29,35 @@ final class WardrobeConsentService
         $this->em->flush();
         return $consent;
     }
+
+    public function grantPersonalization(User $actor, User $subject): WardrobeConsent
+    {
+        $this->assertCanControlPersonalization($actor, $subject);
+        $consent = $this->consents->findForSubject($subject) ?? new WardrobeConsent($subject, $actor);
+        $consent->grantPersonalization($actor);
+        $this->em->persist($consent);
+        $this->em->flush();
+
+        return $consent;
+    }
+
+    public function revokePersonalization(User $actor, User $subject): void
+    {
+        $this->assertCanControlPersonalization($actor, $subject);
+        $this->consents->findForSubject($subject)?->revokePersonalization();
+        $this->em->flush();
+    }
+
+    private function assertCanControlPersonalization(User $actor, User $subject): void
+    {
+        if ($subject->getFamilyRole() === User::FAMILY_ROLE_CHILD) {
+            if (!$actor->isFamilyParent() || !$this->families->canManage($actor, $subject)) {
+                throw new AccessDeniedException('Для remote-стилиста ребёнка нужно согласие родителя');
+            }
+            return;
+        }
+        if ($actor->getId() !== $subject->getId()) {
+            throw new AccessDeniedException('Согласие взрослого может изменить только он сам');
+        }
+    }
 }
