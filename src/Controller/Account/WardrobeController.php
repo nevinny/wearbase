@@ -12,6 +12,7 @@ use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeTransfer;
 use App\Form\Account\WardrobeItemFormType;
 use App\Repository\WardrobeItemRepository;
+use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeTransferRepository;
 use App\Repository\WardrobeItemLifecycleEventRepository;
 use App\Service\AiUsageTracker;
@@ -22,6 +23,7 @@ use App\Service\Wardrobe\WardrobePhotoManager;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use App\Service\Wardrobe\WardrobeStatisticsService;
 use App\Service\Wardrobe\WardrobeImageSanitizer;
+use App\Service\Wardrobe\WardrobeConsentService;
 use App\Service\Wardrobe\WardrobeWearService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,6 +38,8 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Validator\Constraints\Image;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
 #[Route('/account/wardrobe', name: 'account_wardrobe_')]
@@ -351,6 +355,9 @@ class WardrobeController extends AbstractController
         StorageInterface $vichStorage,
         AiUsageTracker $usageTracker,
         LoggerInterface $wardrobeAiLogger,
+        ValidatorInterface $validator,
+        WardrobeConsentRepository $consents,
+        WardrobeConsentService $consentService,
     ): JsonResponse {
         if (!$this->isCsrfTokenValid('wardrobe_ai', (string) $request->request->get('_token'))) {
             return $this->json(['ok' => false, 'error' => 'Недействительный токен'], Response::HTTP_BAD_REQUEST);
@@ -369,14 +376,24 @@ class WardrobeController extends AbstractController
             if (!$photo instanceof UploadedFile || !$photo->isValid()) {
                 return $this->json(['ok' => false, 'error' => 'Файл не получен'], Response::HTTP_BAD_REQUEST);
             }
-            if (!str_starts_with((string) $photo->getMimeType(), 'image/')) {
-                return $this->json(['ok' => false, 'error' => 'Нужен файл изображения'], Response::HTTP_BAD_REQUEST);
+            if ($error = $this->validateAiPhoto($photo, $validator)) {
+                return $error;
             }
-            if ($photo->getSize() > 10 * 1024 * 1024) {
-                return $this->json(['ok' => false, 'error' => 'Файл больше 10 МБ'], Response::HTTP_BAD_REQUEST);
+            if ($error = $this->photoConsentError($request, $user, $user, $consents, $consentService)) {
+                return $error;
             }
 
-            $result = $ai->suggestFromPhoto($photo->getPathname(), $user);
+            try {
+                $sanitized = $this->imageSanitizer->sanitize($photo);
+                $result = $ai->suggestFromPhoto($sanitized->getPathname(), $user);
+            } catch (\InvalidArgumentException $exception) {
+                return $this->json(['ok' => false, 'error' => $exception->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+            } finally {
+                if (isset($sanitized) && is_file($sanitized->getPathname())) {
+                    @unlink($sanitized->getPathname());
+                }
+            }
+
             return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);
         }
 
@@ -399,10 +416,65 @@ class WardrobeController extends AbstractController
         if ($absPath === null || !is_file($absPath)) {
             return $this->json(['ok' => false, 'error' => 'Файл фото не найден'], Response::HTTP_BAD_REQUEST);
         }
+        $subject = $item->getUser();
+        if ($error = $this->photoConsentError($request, $user, $subject, $consents, $consentService)) {
+            return $error;
+        }
 
-        $result = $ai->suggestFromPhoto($absPath, $user);
+        $savedPhoto = new UploadedFile($absPath, basename($absPath), (string) mime_content_type($absPath), null, true);
+        if ($error = $this->validateAiPhoto($savedPhoto, $validator)) {
+            return $error;
+        }
+
+        try {
+            $sanitized = $this->imageSanitizer->sanitize($savedPhoto);
+            $result = $ai->suggestFromPhoto($sanitized->getPathname(), $subject);
+        } catch (\InvalidArgumentException $exception) {
+            return $this->json(['ok' => false, 'error' => $exception->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } finally {
+            if (isset($sanitized) && is_file($sanitized->getPathname())) {
+                @unlink($sanitized->getPathname());
+            }
+        }
 
         return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);
+    }
+
+    private function validateAiPhoto(UploadedFile $photo, ValidatorInterface $validator): ?JsonResponse
+    {
+        $violations = $validator->validate($photo, new Image([
+            'maxSize' => '10M',
+            'mimeTypes' => ['image/jpeg', 'image/png', 'image/webp'],
+            'maxWidth' => 5000,
+            'maxHeight' => 5000,
+        ]));
+
+        return $violations->count() === 0
+            ? null
+            : $this->json(['ok' => false, 'error' => $violations->get(0)->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    private function photoConsentError(
+        Request $request,
+        User $actor,
+        User $subject,
+        WardrobeConsentRepository $consents,
+        WardrobeConsentService $consentService,
+    ): ?JsonResponse {
+        if ($consents->findForSubject($subject)?->isPhotoProcessingGranted()) {
+            return null;
+        }
+        if (!$request->request->getBoolean('photoConsent')) {
+            return $this->json(['ok' => false, 'error' => 'Подтвердите согласие на приватную обработку фото'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        try {
+            $consentService->grantPhotoProcessing($actor, $subject);
+        } catch (\Symfony\Component\Security\Core\Exception\AccessDeniedException $exception) {
+            return $this->json(['ok' => false, 'error' => $exception->getMessage()], Response::HTTP_FORBIDDEN);
+        }
+
+        return null;
     }
 
     /**

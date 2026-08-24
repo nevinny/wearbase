@@ -2041,6 +2041,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   batch-filter-before-limit в фоновой команде.
 - [x] Добавить consent/retention: очистка abandoned drafts и диагностического `ai_raw`, EXIF strip,
   лимит хранилища и rate limit стоимости vision.
+- [x] Закрыть legacy AI-photo endpoint тем же consent/sanitization boundary: явное согласие,
+  parent grant для child, строгая image validation, EXIF re-encode и subject-aware AI context.
 - [x] Перенести legacy `/images/wardrobe*` в private storage идемпотентной deploy-командой;
   после успешного переноса публичные каталоги удаляются, конфликтующие файлы останавливают деплой.
 - [ ] Добавить IndexedDB retry только как foreground-resume при следующем online/open; не обещать
