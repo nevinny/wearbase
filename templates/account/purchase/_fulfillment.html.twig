@@ -4,6 +4,7 @@
         <input type="hidden" name="_token" value="{{ csrf_token('purchase_fulfillment_' ~ item.id) }}"><input type="hidden" name="action" value="ordered">
         <label class="block text-sm font-bold text-sky-950" for="actual-price-{{ item.id }}">Фактическая цена <span class="font-normal">(необязательно)</span></label>
         <input id="actual-price-{{ item.id }}" name="actualPrice" type="number" min="0" step="0.01" inputmode="decimal" value="{{ item.estimatedPrice }}" class="mt-2 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-base">
+        {% if budget|default(null) %}<label class="mt-2 flex min-h-11 items-center gap-2 text-xs text-amber-900"><input type="checkbox" name="allowActualOverBudget" value="1" class="h-5 w-5"> Разрешить перерасход, если фактическая цена выше остатка</label>{% endif %}
         <button class="mt-2 min-h-11 w-full rounded-xl bg-sky-600 px-3 font-bold text-white">Отметить «Заказано»</button>
     </form>
 {% elseif item.status == 'ordered' and actor.familyParent %}

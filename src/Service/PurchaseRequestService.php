@@ -171,11 +171,29 @@ class PurchaseRequestService
         });
     }
 
-    public function markOrdered(User $actor, PurchaseRequest $request, PurchaseRequestItem $item, ?string $actualPrice): void
+    public function markOrdered(User $actor, PurchaseRequest $request, PurchaseRequestItem $item, ?string $actualPrice, bool $allowOverBudget = false): void
     {
         $this->assertParentCanManageItem($actor, $request, $item);
-        $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_ORDERED, function (PurchaseRequestItem $locked) use ($actualPrice): void {
-            $locked->markOrdered($actualPrice);
+        $this->transactional(function () use ($actor, $request, $item, $actualPrice, $allowOverBudget): void {
+            $this->em->refresh($item, LockMode::PESSIMISTIC_WRITE);
+            $subject = $request->getSubject();
+            \assert($subject instanceof User);
+            $snapshot = $this->budgets->reconcileOrder($subject, $item, $actualPrice, $allowOverBudget);
+            $item->markOrdered($actualPrice);
+            $request->addEvent((new PurchaseRequestEvent(
+                $actor,
+                ($snapshot['override'] ?? false) ? PurchaseRequestEvent::TYPE_ORDERED_OVER_BUDGET : PurchaseRequestEvent::TYPE_ORDERED,
+                $snapshot,
+            ))->setItem($item));
+            if ($actor->getId() !== $subject->getId()) {
+                $this->notifications->dispatchInApp(
+                    $subject,
+                    Notification::TYPE_PURCHASE_REQUEST_DECIDED,
+                    'Статус покупки обновлён',
+                    null,
+                    ['url' => '/account/purchases/'.$request->getId()],
+                );
+            }
         });
     }
 
@@ -206,7 +224,7 @@ class PurchaseRequestService
         };
         $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_FITTING, static function (PurchaseRequestItem $locked) use ($actor, $outcome, $triedSize, $sizing, $fitIssues, $comment): void {
             $locked->recordFitting(new FittingFeedback($actor, $outcome, $triedSize, $sizing, $fitIssues, $comment));
-        }, $notificationType);
+        }, $notificationType, in_array($outcome, [FittingFeedback::OUTCOME_REFUSED, FittingFeedback::OUTCOME_DIFFERENT_SIZE], true));
     }
 
     public function markReturned(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): void
@@ -222,12 +240,13 @@ class PurchaseRequestService
             if ($wardrobeItem !== null) {
                 $this->em->lock($wardrobeItem, LockMode::PESSIMISTIC_WRITE);
             }
+            $subject = $request->getSubject();
+            \assert($subject instanceof User);
+            $this->budgets->lockForAccounting($subject);
             $item->markReturned();
             $wardrobeItem?->setItemStatus(WardrobeItem::ITEM_RETURNED);
             $request->addEvent((new PurchaseRequestEvent($actor, PurchaseRequestEvent::TYPE_RETURNED))->setItem($item));
 
-            $subject = $request->getSubject();
-            \assert($subject instanceof User);
             $this->notifyParents($actor, $subject, $request, $item, Notification::TYPE_PURCHASE_RETURNED);
             if ($actor->getId() !== $subject->getId()) {
                 $this->notifications->dispatchInApp(
@@ -309,14 +328,17 @@ class PurchaseRequestService
     }
 
     /** @param callable(PurchaseRequestItem): void $mutation */
-    private function mutateItem(User $actor, PurchaseRequest $request, PurchaseRequestItem $item, string $eventType, callable $mutation, ?string $parentNotificationType = null): void
+    private function mutateItem(User $actor, PurchaseRequest $request, PurchaseRequestItem $item, string $eventType, callable $mutation, ?string $parentNotificationType = null, bool $releasesBudget = false): void
     {
-        $this->transactional(function () use ($actor, $request, $item, $eventType, $mutation, $parentNotificationType): void {
+        $this->transactional(function () use ($actor, $request, $item, $eventType, $mutation, $parentNotificationType, $releasesBudget): void {
             $this->em->refresh($item, LockMode::PESSIMISTIC_WRITE);
-            $mutation($item);
-            $request->addEvent((new PurchaseRequestEvent($actor, $eventType))->setItem($item));
             $subject = $request->getSubject();
             \assert($subject instanceof User);
+            if ($releasesBudget) {
+                $this->budgets->lockForAccounting($subject);
+            }
+            $mutation($item);
+            $request->addEvent((new PurchaseRequestEvent($actor, $eventType))->setItem($item));
             if ($parentNotificationType !== null) {
                 $this->notifyParents($actor, $subject, $request, $item, $parentNotificationType);
             }

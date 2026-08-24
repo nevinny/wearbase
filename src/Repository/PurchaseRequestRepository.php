@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\PurchaseRequest;
+use App\Entity\PurchaseRequestItem;
 use App\Entity\User;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -36,22 +37,31 @@ class PurchaseRequestRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
-    public function approvedAmountForMonth(User $subject, \DateTimeImmutable $month): string
+    public function approvedAmountForMonth(User $subject, \DateTimeImmutable $month, ?PurchaseRequestItem $exclude = null): string
     {
         $from = $month->modify('first day of this month')->setTime(0, 0);
         $to = $from->modify('first day of next month');
 
-        return (string) $this->createQueryBuilder('request')
-            ->select('COALESCE(SUM(item.estimatedPrice), 0)')
+        $query = $this->createQueryBuilder('request')
+            ->select('COALESCE(SUM(COALESCE(item.actualPrice, item.estimatedPrice)), 0)')
             ->join('request.items', 'item')
             ->andWhere('request.subject = :subject')
-            ->andWhere('item.status = :status')
+            ->andWhere('item.status IN (:statuses)')
             ->andWhere('item.decidedAt >= :from AND item.decidedAt < :to')
             ->setParameter('subject', $subject)
-            ->setParameter('status', PurchaseRequest::STATUS_APPROVED)
+            ->setParameter('statuses', [
+                PurchaseRequestItem::STATUS_APPROVED,
+                PurchaseRequestItem::STATUS_ORDERED,
+                PurchaseRequestItem::STATUS_DELIVERED,
+                PurchaseRequestItem::STATUS_BOUGHT,
+            ])
             ->setParameter('from', $from)
-            ->setParameter('to', $to)
-            ->getQuery()
+            ->setParameter('to', $to);
+        if ($exclude !== null) {
+            $query->andWhere('item != :exclude')->setParameter('exclude', $exclude);
+        }
+
+        return (string) $query->getQuery()
             ->getSingleScalarResult();
     }
 
