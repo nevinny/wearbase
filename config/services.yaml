@@ -14,6 +14,7 @@ parameters:
     env(BRAND_CLAIM_AUTOGRANT_EMAIL): '1'
     env(BRAND_CLAIM_AUTOGRANT_VK): '1'
     env(PAYMENT_SECRET_KEY): ''
+    env(AGENT_API_SECRET): ''
     env(WEB_PUSH_PUBLIC_KEY): ''
     env(WEB_PUSH_PRIVATE_KEY): ''
     env(WEB_PUSH_SUBJECT): 'mailto:admin@wearbase.ru'
