@@ -4,23 +4,22 @@ declare(strict_types=1);
 
 namespace App\Tests\Service;
 
+use App\Entity\ExternalNotificationOutbox;
 use App\Entity\Notification;
 use App\Entity\NotificationSettings;
 use App\Entity\User;
-use App\Notification\EmailNotifier;
 use App\Notification\NotificationDispatcher;
-use App\Notification\TelegramNotifier;
 use App\Repository\NotificationSettingsRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
+use Twig\Environment;
 
 class NotificationDispatcherTest extends TestCase
 {
     private User $recipient;
     private EntityManagerInterface $em;
-    private EmailNotifier $emailNotifier;
-    private TelegramNotifier $telegramNotifier;
     private NotificationSettingsRepository $settingsRepo;
+    private Environment $twig;
 
     protected function setUp(): void
     {
@@ -29,18 +28,16 @@ class NotificationDispatcherTest extends TestCase
         $this->recipient->setRoles(['ROLE_BRAND_MANAGER']);
 
         $this->em = $this->createMock(EntityManagerInterface::class);
-        $this->emailNotifier = $this->createMock(EmailNotifier::class);
-        $this->telegramNotifier = $this->createMock(TelegramNotifier::class);
         $this->settingsRepo = $this->createMock(NotificationSettingsRepository::class);
+        $this->twig = $this->createMock(Environment::class);
     }
 
     private function createDispatcher(): NotificationDispatcher
     {
         return new NotificationDispatcher(
             $this->em,
-            $this->emailNotifier,
-            $this->telegramNotifier,
             $this->settingsRepo,
+            $this->twig,
         );
     }
 
@@ -68,8 +65,6 @@ class NotificationDispatcherTest extends TestCase
     {
         $this->settingsRepo->method('findOneBy')->willReturn(null);
 
-        $this->emailNotifier->expects($this->never())->method('send');
-
         $this->createDispatcher()->dispatch(
             $this->recipient,
             Notification::TYPE_ORDER_NEW,
@@ -79,14 +74,18 @@ class NotificationDispatcherTest extends TestCase
         $this->assertTrue(true);
     }
 
-    public function testDispatchSendsEmailWhenTemplateProvided(): void
+    public function testDispatchQueuesRenderedEmailWithoutSendingIt(): void
     {
         $this->settingsRepo->method('findOneBy')->willReturn(null);
-        $this->em->method('persist');
-        $this->em->method('flush');
-
-        $this->emailNotifier->expects($this->once())->method('send')
-            ->with($this->recipient, 'Test email', 'new_order_brand', ['order' => 'stub']);
+        $this->twig->expects($this->once())->method('render')->willReturn('<p>safe</p>');
+        $queued = $inApp = null;
+        $this->em->expects($this->exactly(2))->method('persist')->willReturnCallback(function (object $entity) use (&$queued, &$inApp): void {
+            if ($entity instanceof ExternalNotificationOutbox) {
+                $queued = $entity;
+            } elseif ($entity instanceof Notification) {
+                $inApp = $entity;
+            }
+        });
 
         $this->createDispatcher()->dispatch(
             $this->recipient,
@@ -96,7 +95,12 @@ class NotificationDispatcherTest extends TestCase
             null,
             'new_order_brand',
             ['order' => 'stub'],
+            'order:1',
         );
+        $this->assertInstanceOf(ExternalNotificationOutbox::class, $queued);
+        $this->assertSame('<p>safe</p>', $queued->getPayload()['html']);
+        $this->assertSame('order:1', $inApp->getDedupeKey());
+        $this->assertSame('order:1:email', $queued->getDedupeKey());
     }
 
     public function testDispatchRespectsSettingsInappDisabled(): void
@@ -116,7 +120,7 @@ class NotificationDispatcherTest extends TestCase
         );
     }
 
-    public function testDispatchSendsTelegramWhenEnabled(): void
+    public function testDispatchQueuesEscapedTelegramWhenEnabled(): void
     {
         $this->recipient->setTelegramChatId('12345');
 
@@ -127,14 +131,19 @@ class NotificationDispatcherTest extends TestCase
 
         $this->settingsRepo->method('findOneBy')->willReturn($settings);
 
-        $this->telegramNotifier->expects($this->once())->method('send')
-            ->with('12345', $this->stringContains('Test telegram'));
+        $queued = null;
+        $this->em->expects($this->once())->method('persist')->willReturnCallback(function (object $entity) use (&$queued): void {
+            $queued = $entity;
+        });
 
         $this->createDispatcher()->dispatch(
             $this->recipient,
             Notification::TYPE_ORDER_NEW,
-            'Test telegram',
+            '<script>telegram & test</script>',
         );
+        $this->assertInstanceOf(ExternalNotificationOutbox::class, $queued);
+        $this->assertStringNotContainsString('<script>', $queued->getPayload()['text']);
+        $this->assertStringContainsString('&lt;script&gt;', $queued->getPayload()['text']);
     }
 
     public function testDispatchSkipsTelegramWhenNoChatId(): void
@@ -145,7 +154,7 @@ class NotificationDispatcherTest extends TestCase
 
         $this->settingsRepo->method('findOneBy')->willReturn($settings);
 
-        $this->telegramNotifier->expects($this->never())->method('send');
+        $this->em->expects($this->once())->method('persist')->with($this->isInstanceOf(Notification::class));
 
         $this->createDispatcher()->dispatch(
             $this->recipient,
