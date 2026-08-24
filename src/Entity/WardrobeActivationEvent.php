@@ -10,7 +10,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: WardrobeActivationEventRepository::class)]
 #[ORM\Table(name: 'wardrobe_activation_event')]
 #[ORM\UniqueConstraint(name: 'uniq_wardrobe_activation_milestone', columns: ['profile_subject_id', 'event_type'])]
-final class WardrobeActivationEvent
+class WardrobeActivationEvent
 {
     public const ONBOARDING_STARTED = 'onboarding_started';
     public const FIRST_ITEM_ADDED = 'first_item_added';
