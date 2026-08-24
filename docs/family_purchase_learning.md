@@ -463,6 +463,13 @@ Lamoda, Яндекс Маркет или сайт бренда) добавляю
   пересматриваются.
 - Cookies, авторизация и платёжные данные внешних магазинов не сохраняются.
 
+Фото из batch-ingest принимаются только после отдельного `photoProcessing` consent. Для child-профиля его даёт
+родитель; это не включает `personalization` или `sharedLearning`. Перед хранением все локальные фото перекодируются,
+что удаляет EXIF/GPS и вложенные metadata. Лимиты: 20 фото и 100 МБ на batch, 200 МБ активных draft media на
+профиль, 10 batch-загрузок в час. Через 7 дней у accepted receipt удаляются photo/`ai_raw`, но receipt и связь с вещью
+остаются; abandoned pending/failed/rejected drafts удаляются через 30 дней ежедневной командой
+`app:wardrobe:cleanup-drafts`.
+
 Быстрая ссылка «поделиться с друзьями» не должна открывать live-профиль ребёнка. Будущая реализация
 создаёт минимизированный immutable snapshot выбранного образа/подборки с opaque token, сроком не
 более 7 дней, parent approval, revoke и noindex/no-store/no-referrer. Дата рождения, размеры,

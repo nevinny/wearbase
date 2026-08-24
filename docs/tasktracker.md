@@ -2037,7 +2037,7 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   дубликат не создаёт новый draft и не расходует vision.
 - [x] Добавить worker lease/retry (`processing`, `leaseUntil`, `attempts`) для multi-host и починить
   batch-filter-before-limit в фоновой команде.
-- [ ] Добавить consent/retention: очистка abandoned drafts и диагностического `ai_raw`, EXIF strip,
+- [x] Добавить consent/retention: очистка abandoned drafts и диагностического `ai_raw`, EXIF strip,
   лимит хранилища и rate limit стоимости vision.
 - [ ] Для nginx/CDN закрыть legacy `/images/wardrobe*` на уровне server config и перенести старые
   файлы в private storage deploy-командой; `.htaccess` уже закрывает Apache.

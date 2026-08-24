@@ -65,6 +65,10 @@
         <div class="text-xs">JPG, PNG, WebP — можно сразу несколько</div>
         <input type="file" id="ingest-panel-file-input" multiple accept="image/*" class="hidden">
     </div>
+    <label class="mt-3 flex min-h-11 items-start gap-3 rounded-xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-900">
+        <input id="ingest-panel-photo-consent" type="checkbox" class="mt-0.5 h-5 w-5 shrink-0">
+        Я согласен(на) на приватную обработку этих фото для распознавания вещей. Это не даёт согласия на общее обучение AI.
+    </label>
     <div id="ingest-panel-progress" class="mt-3 hidden">
         <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
             <div id="ingest-panel-progress-bar" class="h-full bg-gray-900 transition-all" style="width:0%"></div>
@@ -298,6 +302,7 @@
     var progress = document.getElementById('ingest-panel-progress');
     var bar = document.getElementById('ingest-panel-progress-bar');
     var errorBox = document.getElementById('ingest-panel-error');
+    var consent = document.getElementById('ingest-panel-photo-consent');
 
     area.addEventListener('click', function () { fileInput.click(); });
     area.addEventListener('dragover', function (e) { e.preventDefault(); area.classList.add('bg-gray-50'); });
@@ -311,9 +316,15 @@
 
     function uploadFiles(files) {
         if (!files || !files.length) return;
+        if (!consent.checked) {
+            errorBox.textContent = 'Подтвердите согласие на обработку фото';
+            errorBox.classList.remove('hidden');
+            return;
+        }
 
         var fd = new FormData();
         [].forEach.call(files, function (f) { fd.append('photos', f); });
+        fd.append('photoConsent', '1');
 
         errorBox.classList.add('hidden');
         progress.classList.remove('hidden');

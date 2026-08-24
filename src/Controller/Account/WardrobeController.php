@@ -21,6 +21,7 @@ use App\Service\Wardrobe\WardrobeManager;
 use App\Service\Wardrobe\WardrobePhotoManager;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
 use App\Service\Wardrobe\WardrobeStatisticsService;
+use App\Service\Wardrobe\WardrobeImageSanitizer;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -44,6 +45,7 @@ class WardrobeController extends AbstractController
         private readonly WardrobeManager $wardrobeManager,
         private readonly WardrobePhotoManager $photoManager,
         private readonly WardrobeRemotePhotoFetcher $remotePhotoFetcher,
+        private readonly WardrobeImageSanitizer $imageSanitizer,
     ) {}
 
     #[Route('', name: 'index', methods: ['GET'])]
@@ -253,6 +255,7 @@ class WardrobeController extends AbstractController
         $galleryPhotos = $form->get('galleryPhotos')->getData() ?? [];
 
         if ($form->isSubmitted() && $form->isValid()) {
+            $this->sanitizeItemPhoto($item);
             if ($item->getPhotoFile() === null && $galleryPhotos === []) {
                 $this->remotePhotoFetcher->attachWildberriesPhoto($item, $remotePhotoUrl);
             }
@@ -498,6 +501,7 @@ class WardrobeController extends AbstractController
         $form->handleRequest($request);
 
         if ($form->isSubmitted() && $form->isValid()) {
+            $this->sanitizeItemPhoto($item);
             foreach ($preservedInactiveStyles as $style) {
                 $item->addStyle($style);
             }
@@ -736,6 +740,14 @@ class WardrobeController extends AbstractController
     private function memberParam(Request $request): ?int
     {
         return $request->query->has('member') ? $request->query->getInt('member') : null;
+    }
+
+    private function sanitizeItemPhoto(WardrobeItem $item): void
+    {
+        $file = $item->getPhotoFile();
+        if ($file instanceof UploadedFile) {
+            $item->setPhotoFile($this->imageSanitizer->sanitize($file));
+        }
     }
 
     /** @return array{q: string, category: string, brand: string, color: string, size: string, season: string, completion: string, status: string, wear: string} */

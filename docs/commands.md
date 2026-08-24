@@ -127,6 +127,8 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 
 | Команда | Зачем | Как часто | Где |
 |---|---|---|---|
+| `app:wardrobe:ingest-drafts` | Фоновое vision-распознавание приватных batch-drafts с lease/retry. | ⏰ `*/2 * * * *` | ☁️ prod |
+| `app:wardrobe:cleanup-drafts` | Через 7 дней очищает photo/`ai_raw` accepted receipts; через 30 дней удаляет abandoned drafts. `--dry-run`. | ⏰ `17 3 * * *` | ☁️ prod |
 | `app:contacts:refresh` | Актуализация контактов из RAG-корпуса (новый конвейер, см. `_docs/contacts-refresh-plan.md`). TTL-ревалидация, демон-режим. | ⏰/🔁 | 🖥 .43 |
 | `app:brand:enrich-contacts` | **Легаси**: разовое обогащение из скрейп-корпуса (27b). Терминальные статусы, HTTP-проверка URL. Вытесняется `contacts:refresh`. | ⏰ `*/10` (пока) | 🖥 .43 |
 

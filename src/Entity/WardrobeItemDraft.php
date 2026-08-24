@@ -93,6 +93,9 @@ class WardrobeItemDraft
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $photo = null;
 
+    #[ORM\Column(nullable: true)]
+    private ?int $fileSize = null;
+
     #[Vich\UploadableField(mapping: 'wardrobe_draft_photo', fileNameProperty: 'photo')]
     private ?File $photoFile = null;
 
@@ -269,6 +272,8 @@ class WardrobeItemDraft
     }
 
     public function getPhoto(): ?string { return $this->photo; }
+    public function getFileSize(): ?int { return $this->fileSize; }
+    public function setFileSize(?int $fileSize): static { $this->fileSize = $fileSize; return $this; }
 
     public function setPhoto(?string $photo): static
     {
@@ -290,6 +295,14 @@ class WardrobeItemDraft
     public function getCreatedAt(): \DateTime { return $this->createdAt; }
 
     public function getUpdatedAt(): ?\DateTime { return $this->updatedAt; }
+
+    public function clearSensitiveData(): void
+    {
+        $this->aiRaw = null;
+        $this->photo = null;
+        $this->fileSize = null;
+        $this->updatedAt = new \DateTime();
+    }
 
     public function setUpdatedAt(?\DateTime $updatedAt): static
     {
