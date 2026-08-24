@@ -25,6 +25,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
 {
     public const FAMILY_ROLE_PARENT = 'parent';
     public const FAMILY_ROLE_CHILD = 'child';
+    public const FAMILY_ROLE_ADULT = 'adult';
 
     // Домен синтетических email managed-детей (email NOT NULL UNIQUE не трогаем)
     public const MANAGED_EMAIL_DOMAIN = 'family.wearbase.local';
@@ -113,6 +114,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     // Когда managed-ребёнок «дорос» и получил свои email+пароль
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $claimedAt = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $adulthoodAt = null;
 
     #[ORM\Column(type: 'date_immutable', nullable: true)]
     private ?\DateTimeImmutable $birthDate = null;
@@ -396,6 +400,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     public function isFamilyParent(): bool
     {
         return $this->familyRole === self::FAMILY_ROLE_PARENT;
+    }
+
+    public function getAdulthoodAt(): ?\DateTimeImmutable { return $this->adulthoodAt; }
+
+    public function canBecomeFamilyAdult(): bool
+    {
+        return $this->familyRole === self::FAMILY_ROLE_CHILD
+            && !$this->isManaged()
+            && $this->birthDate !== null
+            && $this->birthDate->modify('+18 years') <= new \DateTimeImmutable('today');
+    }
+
+    public function becomeFamilyAdult(): void
+    {
+        if ($this->familyRole !== self::FAMILY_ROLE_CHILD || $this->isManaged()) {
+            throw new \DomainException('Сначала активируйте личный вход в детский профиль');
+        }
+        if (!$this->canBecomeFamilyAdult()) {
+            throw new \DomainException('Переход доступен после 18-летия');
+        }
+        $this->familyRole = self::FAMILY_ROLE_ADULT;
+        $this->adulthoodAt = new \DateTimeImmutable();
     }
 
     public function getFamilyClaimToken(): ?string { return $this->familyClaimToken; }
