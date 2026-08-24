@@ -7,6 +7,7 @@ namespace App\Service\Wardrobe;
 use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Repository\WardrobeConsentRepository;
 use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Service\WardrobeAiMeter;
@@ -22,33 +23,87 @@ class WardrobeOutfitService
         private readonly string $remoteModel,
         private readonly string $localModel,
         private readonly bool $localFirst,
+        private readonly ?WardrobeConsentRepository $consents = null,
     ) {}
 
     /**
      * @param WardrobeItem[] $items
      * @return array<int, array{title:string, explanation:string, items:WardrobeItem[]}>
      */
-    public function suggest(User $user, array $items, string $request, string $preferenceContext = ''): array
+    public function suggest(User $user, array $items, string $request, string $preferenceContext = '', ?User $subject = null): array
     {
+        $subject ??= $user;
         $items = array_slice($items, 0, self::MAX_ITEMS);
         if (count($items) < 2) {
             throw new \DomainException('Добавьте хотя бы две активные вещи, чтобы собрать образ');
         }
-        $catalog = array_map(static fn (WardrobeItem $item): array => [
-            'id' => $item->getId(),
-            'name' => $item->getName() ?: 'Без названия',
-            'category' => $item->getCategory(),
-            'color' => $item->getColorName(),
-            'season' => $item->getSeason(),
-            'material' => $item->getMaterialText(),
-            'styles' => array_map(static fn ($style): string => $style->getTitle(), $item->getStyles()->toArray()),
-        ], $items);
-        $catalogJson = json_encode($catalog, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $request = mb_substr(trim($request), 0, 300) ?: 'Повседневный универсальный образ';
 
+        if ($this->localFirst) {
+            try {
+                [$prompt, $itemMap] = $this->prompt($items, $request, $preferenceContext, false);
+                $response = $this->llm->generate(
+                    $prompt,
+                    model: $this->localModel,
+                    timeout: 60,
+                    local: true,
+                    think: false,
+                    temperature: 0.4,
+                    fastFail: true,
+                );
+                $result = $this->normalize($response, $itemMap);
+            } catch (\Throwable) {
+                // Remote fallback ниже разрешён только явным consent владельца гардероба.
+            }
+            if (isset($result)) {
+                $this->usageTracker->recordLocal($user, AiUsageLog::FEATURE_WARDROBE_OUTFIT, $this->localModel);
+
+                return $result;
+            }
+        }
+
+        if (!$this->consents?->isPersonalizationGranted($subject)) {
+            throw new WardrobeAiException('Разрешите remote-стилиста и персонализацию для этого профиля');
+        }
+        if (!$this->meter->allowed()) {
+            throw new WardrobeAiException('Дневной лимит AI-подборов исчерпан, попробуйте завтра');
+        }
+        $this->meter->record();
+        [$prompt, $itemMap] = $this->prompt($items, $request, $preferenceContext, true);
+        $response = $this->llm->generate($prompt, model: $this->remoteModel, timeout: 45, maxTokens: 1200, temperature: 0.4);
+        $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_OUTFIT);
+
+        return $this->normalize($response, $itemMap);
+    }
+
+    /**
+     * @param WardrobeItem[] $items
+     * @return array{string,array<int,WardrobeItem>}
+     */
+    private function prompt(array $items, string $request, string $preferenceContext, bool $minimized): array
+    {
+        $catalog = [];
+        $itemMap = [];
+        foreach ($items as $index => $item) {
+            $promptId = $minimized ? $index + 1 : (int) $item->getId();
+            $itemMap[$promptId] = $item;
+            $row = [
+                'id' => $promptId,
+                'category' => $item->getCategory(),
+                'color' => $item->getColorName(),
+                'season' => $item->getSeason(),
+                'styles' => array_map(static fn ($style): string => $style->getTitle(), $item->getStyles()->toArray()),
+            ];
+            if (!$minimized) {
+                $row['name'] = $item->getName() ?: 'Без названия';
+                $row['material'] = $item->getMaterialText();
+            }
+            $catalog[] = $row;
+        }
+        $catalogJson = json_encode($catalog, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $prompt = <<<PROMPT
 Ты стилист цифрового гардероба. Собери до 3 разных образов только из вещей каталога.
-Учитывай категорию, цвет, сезон, материал и стиль. Не добавляй вещи, которых нет в каталоге.
+Учитывай категорию, цвет, сезон и стиль. Не добавляй вещи, которых нет в каталоге.
 В каждом образе должно быть от 2 до 5 вещей с разными функциональными ролями.
 
 Запрос пользователя: {$request}
@@ -61,43 +116,14 @@ class WardrobeOutfitService
 {"outfits":[{"title":"короткое название","explanation":"почему вещи сочетаются и куда так пойти","item_ids":[1,2]}]}
 PROMPT;
 
-        if ($this->localFirst) {
-            try {
-                $response = $this->llm->generate(
-                    $prompt,
-                    model: $this->localModel,
-                    timeout: 60,
-                    local: true,
-                    think: false,
-                    temperature: 0.4,
-                    fastFail: true,
-                );
-                $result = $this->normalize($response, $items);
-            } catch (\Throwable) {
-                // Локальный риг выключен или вернул плохой JSON — прозрачно пробуем remote.
-            }
-            if (isset($result)) {
-                $this->usageTracker->recordLocal($user, AiUsageLog::FEATURE_WARDROBE_OUTFIT, $this->localModel);
-
-                return $result;
-            }
-        }
-
-        if (!$this->meter->allowed()) {
-            throw new WardrobeAiException('Дневной лимит AI-подборов исчерпан, попробуйте завтра');
-        }
-        $this->meter->record();
-        $response = $this->llm->generate($prompt, model: $this->remoteModel, timeout: 45, maxTokens: 1200, temperature: 0.4);
-        $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_OUTFIT);
-
-        return $this->normalize($response, $items);
+        return [$prompt, $itemMap];
     }
 
     /**
-     * @param WardrobeItem[] $items
+     * @param array<int,WardrobeItem> $byId
      * @return array<int, array{title:string, explanation:string, items:WardrobeItem[]}>
      */
-    private function normalize(string $response, array $items): array
+    private function normalize(string $response, array $byId): array
     {
         $cleaned = preg_replace('/```(?:json)?\s*([\s\S]*?)```/', '$1', $response) ?? $response;
         if (!preg_match('/\{[\s\S]*\}/', $cleaned, $match)) {
@@ -106,11 +132,6 @@ PROMPT;
         $data = json_decode($match[0], true);
         if (!is_array($data['outfits'] ?? null)) {
             throw new WardrobeAiException('Не удалось собрать образы, попробуйте ещё раз');
-        }
-
-        $byId = [];
-        foreach ($items as $item) {
-            $byId[$item->getId()] = $item;
         }
 
         $result = [];

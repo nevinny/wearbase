@@ -7,10 +7,12 @@ namespace App\Controller\Account;
 use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeOutfit;
+use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiException;
+use App\Service\Wardrobe\WardrobeConsentService;
 use App\Service\Wardrobe\WardrobeOutfitService;
 use App\Service\Wardrobe\WardrobeOutfitLearningService;
 use App\Service\Wardrobe\WardrobeOnboardingService;
@@ -31,6 +33,7 @@ class WardrobeOutfitController extends AbstractController
         WardrobeItemRepository $items,
         WardrobeOutfitService $outfits,
         WardrobeOutfitLearningService $learning,
+        WardrobeConsentRepository $consents,
         RateLimiterFactory $wardrobeAiLimiter,
         AiUsageTracker $usageTracker,
     ): Response {
@@ -50,7 +53,7 @@ class WardrobeOutfitController extends AbstractController
                 $usageTracker->recordError($actor, AiUsageLog::FEATURE_WARDROBE_OUTFIT, $error);
             } else {
                 try {
-                    $result = $outfits->suggest($actor, $wardrobeItems, $prompt, $learning->context($member));
+                    $result = $outfits->suggest($actor, $wardrobeItems, $prompt, $learning->context($member), $member);
                     $result = $learning->remember($actor, $member, $prompt, $result);
                 } catch (WardrobeAiException|\DomainException $exception) {
                     $error = $exception->getMessage();
@@ -68,7 +71,32 @@ class WardrobeOutfitController extends AbstractController
             'outfits' => $result,
             'error' => $error,
             'itemCount' => count($wardrobeItems),
+            'personalizationGranted' => $consents->isPersonalizationGranted($member),
+            'canControlPersonalization' => $member->getFamilyRole() !== User::FAMILY_ROLE_CHILD || $actor->isFamilyParent(),
         ]);
+    }
+
+    #[Route('/consent/personalization', name: 'account_wardrobe_outfit_consent', methods: ['POST'])]
+    public function consent(
+        Request $request,
+        FamilyService $familyService,
+        WardrobeConsentService $consents,
+    ): Response {
+        if (!$this->isCsrfTokenValid('wardrobe_outfit_consent', (string) $request->request->get('_consent_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+        /** @var User $actor */
+        $actor = $this->getUser();
+        $member = $familyService->resolveMember($actor, $request->query->has('member') ? $request->query->getInt('member') : null);
+        if ($request->request->get('action') === 'revoke') {
+            $consents->revokePersonalization($actor, $member);
+            $this->addFlash('success', 'Remote-стилист и персонализация отключены');
+        } else {
+            $consents->grantPersonalization($actor, $member);
+            $this->addFlash('success', 'Remote-стилист и персонализация включены');
+        }
+
+        return $this->redirectToRoute('account_wardrobe_outfits', $member->getId() === $actor->getId() ? [] : ['member' => $member->getId()]);
     }
 
     #[Route('/{id}/reaction', name: 'account_wardrobe_outfit_reaction', requirements: ['id' => '\d+'], methods: ['POST'])]

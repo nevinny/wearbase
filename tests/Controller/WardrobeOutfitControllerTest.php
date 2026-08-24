@@ -7,6 +7,9 @@ namespace App\Tests\Controller;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeOnboarding;
 use App\Entity\WardrobeWearEvent;
+use App\Entity\WardrobeConsent;
+use App\Entity\User;
+use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeOutfitService;
 
 class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
@@ -40,6 +43,43 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
         self::assertSelectorTextContains('body', 'Недействительный токен');
     }
 
+    public function testParentCanGrantAndRevokeChildPersonalization(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'stylist-consent-parent@test.local');
+        $child = static::getContainer()->get(FamilyService::class)->createChild($parent, 'Стилист consent child');
+        $client->loginUser($parent);
+        $crawler = $client->request('GET', '/account/wardrobe/outfits?member='.$child->getId());
+        $form = $crawler->selectButton('Разрешить')->form();
+
+        $client->submit($form);
+
+        self::assertResponseRedirects('/account/wardrobe/outfits?member='.$child->getId());
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        self::assertTrue($em->getRepository(WardrobeConsent::class)->findOneBy(['subject' => $child])?->isPersonalizationGranted());
+
+        $crawler = $client->followRedirect();
+        $client->submit($crawler->selectButton('Отключить')->form());
+        self::assertFalse($em->getRepository(WardrobeConsent::class)->findOneBy(['subject' => $child])?->isPersonalizationGranted());
+    }
+
+    public function testChildCannotGrantOwnRemoteConsent(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'stylist-consent-parent-2@test.local');
+        $child = UserFactory::withEmail(static::getContainer(), 'stylist-consent-child@test.local');
+        static::getContainer()->get(FamilyService::class)->acceptInvite(
+            $child,
+            static::getContainer()->get(FamilyService::class)->createInvite($parent, User::FAMILY_ROLE_CHILD, $child->getEmail()),
+        );
+        $client->loginUser($child);
+
+        $crawler = $client->request('GET', '/account/wardrobe/outfits');
+
+        self::assertSelectorTextContains('body', 'согласие выдаёт родитель');
+        self::assertSelectorNotExists('form[action*="consent/personalization"]');
+    }
+
     public function testValidPostRendersSuggestedOutfit(): void
     {
         $client = static::createClient();
@@ -64,6 +104,7 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
                 }),
                 'В офис',
                 '',
+                self::callback(static fn ($subject): bool => $subject->getId() === $user->getId()),
             )
             ->willReturn([[
                 'title' => 'Спокойный офис',
