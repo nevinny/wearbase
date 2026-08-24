@@ -475,6 +475,118 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->assertCount(2, $secondParentNotifications);
     }
 
+    public function testChildFittingOutcomeNotifiesParentsOnceWithDistinctType(): void
+    {
+        $firstParent = UserFactory::withEmail(static::getContainer(), $this->email('fitting-first-parent'));
+        $secondParent = UserFactory::withEmail(static::getContainer(), $this->email('fitting-second-parent'));
+        $invite = $this->families()->createInvite($firstParent, User::FAMILY_ROLE_PARENT);
+        $this->families()->acceptInvite($secondParent, $invite);
+        $child = $this->families()->createChild($firstParent, 'Мила');
+        $sibling = $this->families()->createChild($firstParent, 'Лиза');
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/item/fitting-notice', null);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($firstParent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->purchaseRequests()->markOrdered($firstParent, $request, $item, null);
+        $this->purchaseRequests()->markDelivered($firstParent, $request, $item);
+
+        $this->purchaseRequests()->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_PENDING, '152', null, [], null);
+
+        $notifications = $this->em()->getRepository(Notification::class)->findBy([
+            'type' => Notification::TYPE_PURCHASE_FITTING,
+        ]);
+        $this->assertCount(2, $notifications);
+        $this->assertEqualsCanonicalizing(
+            [$firstParent->getId(), $secondParent->getId()],
+            array_map(static fn (Notification $notification): ?int => $notification->getRecipient()?->getId(), $notifications),
+        );
+        $this->assertNotContains($child->getId(), array_map(static fn (Notification $notification): ?int => $notification->getRecipient()?->getId(), $notifications));
+        $this->assertNotContains($sibling->getId(), array_map(static fn (Notification $notification): ?int => $notification->getRecipient()?->getId(), $notifications));
+
+        $firstNotification = array_values(array_filter(
+            $notifications,
+            static fn (Notification $notification): bool => $notification->getRecipient()?->getId() === $firstParent->getId(),
+        ))[0];
+        static::getContainer()->get(\App\Notification\NotificationDispatcher::class)->dispatchInAppOnce(
+            $firstParent,
+            Notification::TYPE_PURCHASE_FITTING,
+            (string) $firstNotification->getDedupeKey(),
+            'Повторная доставка',
+        );
+        $this->em()->flush();
+        $this->assertCount(1, $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $firstParent,
+            'type' => Notification::TYPE_PURCHASE_FITTING,
+        ]));
+    }
+
+    public function testBoughtNotificationHonoursEachParentsInAppSetting(): void
+    {
+        $firstParent = UserFactory::withEmail(static::getContainer(), $this->email('bought-first-parent'));
+        $secondParent = UserFactory::withEmail(static::getContainer(), $this->email('bought-second-parent'));
+        $invite = $this->families()->createInvite($firstParent, User::FAMILY_ROLE_PARENT);
+        $this->families()->acceptInvite($secondParent, $invite);
+        $child = $this->families()->createChild($firstParent, 'Аня');
+        $settings = (new \App\Entity\NotificationSettings())
+            ->setUser($secondParent)
+            ->setEventType(Notification::TYPE_PURCHASE_BOUGHT)
+            ->setChannelInapp(false);
+        $this->em()->persist($settings);
+        $this->em()->flush();
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/item/bought-notice', null);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($firstParent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->purchaseRequests()->markOrdered($firstParent, $request, $item, null);
+        $this->purchaseRequests()->markDelivered($firstParent, $request, $item);
+
+        $this->purchaseRequests()->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_BOUGHT, null, null, [], null);
+
+        $this->assertCount(1, $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $firstParent,
+            'type' => Notification::TYPE_PURCHASE_BOUGHT,
+        ]));
+        $this->assertCount(0, $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $secondParent,
+            'type' => Notification::TYPE_PURCHASE_BOUGHT,
+        ]));
+    }
+
+    public function testRefusedAndReturnedUseDistinctParentNotificationTypes(): void
+    {
+        $firstParent = UserFactory::withEmail(static::getContainer(), $this->email('status-first-parent'));
+        $secondParent = UserFactory::withEmail(static::getContainer(), $this->email('status-second-parent'));
+        $invite = $this->families()->createInvite($firstParent, User::FAMILY_ROLE_PARENT);
+        $this->families()->acceptInvite($secondParent, $invite);
+        $child = $this->families()->createChild($firstParent, 'Саша');
+
+        $refusedRequest = $this->deliveredRequest($firstParent, $child, 'refused-notice');
+        /** @var PurchaseRequestItem $refusedItem */
+        $refusedItem = $refusedRequest->getItems()->first();
+        $this->purchaseRequests()->recordFitting($child, $refusedRequest, $refusedItem, FittingFeedback::OUTCOME_REFUSED, null, null, [], 'Не подошло');
+
+        $returnedRequest = $this->deliveredRequest($firstParent, $child, 'returned-notice');
+        /** @var PurchaseRequestItem $returnedItem */
+        $returnedItem = $returnedRequest->getItems()->first();
+        $this->purchaseRequests()->recordFitting($child, $returnedRequest, $returnedItem, FittingFeedback::OUTCOME_BOUGHT, null, null, [], null);
+        $this->purchaseRequests()->markReturned($firstParent, $returnedRequest, $returnedItem);
+
+        foreach ([$firstParent, $secondParent] as $parent) {
+            $this->assertCount(1, $this->em()->getRepository(Notification::class)->findBy([
+                'recipient' => $parent,
+                'type' => Notification::TYPE_PURCHASE_REFUSED,
+            ]));
+        }
+        $this->assertCount(0, $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $firstParent,
+            'type' => Notification::TYPE_PURCHASE_RETURNED,
+        ]));
+        $this->assertCount(1, $this->em()->getRepository(Notification::class)->findBy([
+            'recipient' => $secondParent,
+            'type' => Notification::TYPE_PURCHASE_RETURNED,
+        ]));
+    }
+
     public function testMonthlyBudgetRequiresExplicitOverspendApproval(): void
     {
         $parent = UserFactory::withEmail(static::getContainer(), $this->email('budget-parent'));
@@ -665,6 +777,18 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
     private function purchaseRequests(): PurchaseRequestService
     {
         return static::getContainer()->get(PurchaseRequestService::class);
+    }
+
+    private function deliveredRequest(User $parent, User $child, string $slug): PurchaseRequest
+    {
+        $request = $this->purchaseRequests()->create($child, $child, 'https://shop.example.test/item/'.$slug, null);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchaseRequests()->decideItem($parent, $request, $item, PurchaseRequest::STATUS_APPROVED);
+        $this->purchaseRequests()->markOrdered($parent, $request, $item, null);
+        $this->purchaseRequests()->markDelivered($parent, $request, $item);
+
+        return $request;
     }
 
     private function em(): EntityManagerInterface

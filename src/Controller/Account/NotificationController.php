@@ -26,6 +26,10 @@ class NotificationController extends AbstractController
         Notification::TYPE_SYSTEM => 'Системные',
         Notification::TYPE_PURCHASE_REQUEST_NEW => 'Новый запрос на покупку',
         Notification::TYPE_PURCHASE_REQUEST_DECIDED => 'Решение по покупке',
+        Notification::TYPE_PURCHASE_FITTING => 'Результат примерки',
+        Notification::TYPE_PURCHASE_BOUGHT => 'Вещь выкуплена',
+        Notification::TYPE_PURCHASE_REFUSED => 'Отказ после примерки',
+        Notification::TYPE_PURCHASE_RETURNED => 'Вещь возвращена',
     ];
 
     private const CHANNELS = ['channelEmail', 'channelInapp'];
@@ -36,10 +40,10 @@ class NotificationController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
 
-        return $this->render('account/notifications.html.twig', [
+        return $this->privateResponse($this->render('account/notifications.html.twig', [
             'notifications' => $repo->findForUser($user),
             'unreadCount'   => $repo->countUnread($user),
-        ]);
+        ]));
     }
 
     #[Route('/settings', name: 'settings')]
@@ -84,11 +88,11 @@ class NotificationController extends AbstractController
             return $this->redirectToRoute('account_notification_settings');
         }
 
-        return $this->render('account/notification_settings.html.twig', [
+        return $this->privateResponse($this->render('account/notification_settings.html.twig', [
             'eventTypes' => self::EVENT_TYPES,
             'channels'   => self::CHANNELS,
             'settings'   => $indexed,
-        ]);
+        ]));
     }
 
     #[Route('/mark-read/{id}', name: 'mark_read', requirements: ['id' => '\d+'], methods: ['POST'])]
@@ -135,5 +139,14 @@ class NotificationController extends AbstractController
         $em->flush();
 
         return $this->redirectToRoute('account_notification_index');
+    }
+
+    private function privateResponse(Response $response): Response
+    {
+        $response->setPrivate();
+        $response->setMaxAge(0);
+        $response->headers->addCacheControlDirective('no-store');
+
+        return $response;
     }
 }

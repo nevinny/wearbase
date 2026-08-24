@@ -36,11 +36,39 @@ class NotificationSecurityTest extends AuthenticatedWebTestCase
         $this->assertFalse($notification->isRead());
 
         $crawler = $client->request('GET', '/account/notifications');
+        $cacheControl = (string) $client->getResponse()->headers->get('Cache-Control');
+        $this->assertStringContainsString('private', $cacheControl);
+        $this->assertStringContainsString('no-store', $cacheControl);
         $form = $crawler->filter(sprintf('form[action="/account/notifications/mark-read/%d"]', $notification->getId()))->form();
         $client->submit($form);
         $em->clear();
         $notification = $em->getRepository(Notification::class)->find($notification->getId());
         $this->assertTrue($notification->isRead());
+    }
+
+    public function testUserCannotMarkAnotherUsersNotificationAsRead(): void
+    {
+        $client = static::createClient();
+        $owner = UserFactory::withEmail(static::getContainer(), 'notification-owner@test.local');
+        $actor = UserFactory::withEmail(static::getContainer(), 'notification-idor@test.local');
+        $notification = (new Notification())
+            ->setRecipient($actor)
+            ->setType(Notification::TYPE_PURCHASE_BOUGHT)
+            ->setTitle('Выкуплена вещь');
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $em->persist($notification);
+        $em->flush();
+        $client->loginUser($actor);
+        $crawler = $client->request('GET', '/account/notifications');
+        $form = $crawler->filter(sprintf('form[action="/account/notifications/mark-read/%d"]', $notification->getId()))->form();
+        $notification->setRecipient($owner);
+        $em->flush();
+
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/notifications');
+        $em->clear();
+        $this->assertFalse($em->getRepository(Notification::class)->find($notification->getId())->isRead());
     }
 
     public function testUnsafeInternalNotificationUrlIsNotRendered(): void
