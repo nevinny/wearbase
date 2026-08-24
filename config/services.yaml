@@ -6,6 +6,7 @@
 parameters:
     app.admin_email: '%env(ADMIN_EMAIL)%'
     app.telegram_bot_username: 'wearbase_bot'
+    app.wardrobe_draft_storage_dir: '%kernel.project_dir%/var/uploads/wardrobe_drafts'
     # Дефолты опциональных env (чтобы приложение грузилось без записи в .env)
     env(ADMIN_TELEGRAM_CHAT_ID): ''
     env(VK_APP_ID): ''
@@ -157,6 +158,10 @@ services:
             $visionModel: '%env(WARDROBE_VISION_MODEL)%'
             $visionLocal: '%env(bool:WARDROBE_VISION_LOCAL)%'
             $localModel: '%env(LOCAL_LLM_MODEL)%'
+
+    App\Service\Wardrobe\WardrobeIngestHealth:
+        arguments:
+            $storageDir: '%app.wardrobe_draft_storage_dir%'
 
     App\Service\Wardrobe\WardrobeOutfitService:
         arguments:

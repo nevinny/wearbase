@@ -87,7 +87,7 @@ vich_uploader:
 
         wardrobe_draft_photo:
             uri_prefix: /account/wardrobe/media/draft
-            upload_destination: '%kernel.project_dir%/var/uploads/wardrobe_drafts'
+            upload_destination: '%app.wardrobe_draft_storage_dir%'
             namer: Vich\UploaderBundle\Naming\SmartUniqueNamer
             directory_namer:
                 service: Vich\UploaderBundle\Naming\SubdirDirectoryNamer

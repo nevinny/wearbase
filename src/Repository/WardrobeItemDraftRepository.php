@@ -135,6 +135,38 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
             ->getQuery()->getSingleScalarResult();
     }
 
+    /**
+     * Operational counters for the asynchronous ingest worker.
+     *
+     * @return array{pending:int,oldestPendingAt:?\DateTimeInterface,expiredLeases:int,failed:int,retrying:int,storageBytes:int}
+     */
+    public function operationalSnapshot(\DateTimeImmutable $now): array
+    {
+        $pending = (int) $this->count(['status' => WardrobeItemDraft::STATUS_PENDING]);
+        $oldest = $this->createQueryBuilder('d')
+            ->select('MIN(d.createdAt)')
+            ->andWhere('d.status = :status')
+            ->setParameter('status', WardrobeItemDraft::STATUS_PENDING)
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return [
+            'pending' => $pending,
+            'oldestPendingAt' => is_string($oldest) ? new \DateTimeImmutable($oldest) : null,
+            'expiredLeases' => (int) $this->createQueryBuilder('d')->select('COUNT(d.id)')
+                ->andWhere('d.status = :status')->andWhere('d.leaseUntil < :now')
+                ->setParameter('status', WardrobeItemDraft::STATUS_PROCESSING)->setParameter('now', $now)
+                ->getQuery()->getSingleScalarResult(),
+            'failed' => (int) $this->count(['status' => WardrobeItemDraft::STATUS_FAILED]),
+            'retrying' => (int) $this->createQueryBuilder('d')->select('COUNT(d.id)')
+                ->andWhere('d.status = :status')->andWhere('d.attempts > 0')
+                ->setParameter('status', WardrobeItemDraft::STATUS_PENDING)
+                ->getQuery()->getSingleScalarResult(),
+            'storageBytes' => (int) $this->createQueryBuilder('d')->select('COALESCE(SUM(d.fileSize), 0)')
+                ->andWhere('d.photo IS NOT NULL')->getQuery()->getSingleScalarResult(),
+        ];
+    }
+
     /** @return WardrobeItemDraft[] */
     public function findAcceptedBefore(\DateTimeImmutable $before, int $limit = 100): array
     {

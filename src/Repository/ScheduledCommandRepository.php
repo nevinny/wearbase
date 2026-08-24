@@ -23,4 +23,14 @@ class ScheduledCommandRepository extends ServiceEntityRepository
     {
         return $this->findBy(['enabled' => true, 'environment' => $environment], ['id' => 'ASC']);
     }
+
+    public function findWardrobeIngestWorker(): ?ScheduledCommand
+    {
+        return $this->createQueryBuilder('c')
+            ->andWhere('c.command LIKE :command')
+            ->setParameter('command', 'app:wardrobe:ingest-drafts%')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
 }
