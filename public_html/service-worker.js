@@ -1,4 +1,4 @@
-const VERSION = 'wearbase-family-v1';
+const VERSION = 'wearbase-family-v2';
 const STATIC_CACHE = `${VERSION}-static`;
 const STATIC_ASSETS = [
     '/favicon.ico',
@@ -12,7 +12,11 @@ const STATIC_ASSETS = [
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(STATIC_CACHE)
-            .then((cache) => cache.addAll(STATIC_ASSETS))
+            .then((cache) => Promise.allSettled(
+                STATIC_ASSETS.map((asset) => fetch(asset, {cache: 'reload'})
+                    .then((response) => cacheableStaticResponse(response) ? cache.put(asset, response) : undefined)
+                    .catch(() => undefined))
+            ))
             .then(() => self.skipWaiting())
     );
 });
@@ -81,4 +85,14 @@ function offlinePage() {
 </head>
 <body><main><section><h1>Нет подключения</h1><p>Подключитесь к интернету, чтобы продолжить работу с семейным гардеробом.</p><button onclick="location.reload()">Повторить</button></section></main></body>
 </html>`;
+}
+
+function cacheableStaticResponse(response) {
+    if (!response.ok) {
+        return false;
+    }
+
+    const cacheControl = (response.headers.get('Cache-Control') || '').toLowerCase();
+
+    return !cacheControl.includes('private') && !cacheControl.includes('no-store');
 }

@@ -176,12 +176,15 @@ UI строится поверх versioned JSON API `/api/v1/family-wardrobe/...
   откуда на iOS выполняется «Поделиться → На экран Домой»;
 - «Семья» и «Гардероб» работают через существующие маршруты; «Покупки» и «Снять образ» остаются
   видимо выключенными до появления соответствующих контроллеров и не вызывают неизвестные routes;
-- `public_html/manifest.webmanifest` — install metadata, start URL/scope и shortcuts;
+- `PwaManifestController` отдаёт install metadata, start URL/scope и shortcuts с корректным
+  `application/manifest+json` независимо от MIME-конфигурации nginx;
 - PNG-иконки 180/192/512 получены из существующего фирменного SVG без изменения знака;
 - `public_html/service-worker.js` зарегистрирован только со scope `/account/`;
 - приватные HTML, JSON API и пользовательские изображения не пишутся в Cache Storage;
 - при потере сети показывается автономная 503-заглушка без персональных данных; полноценное
   offline-редактирование семейного гардероба намеренно не реализовано;
+- mobile Playwright проверяет manifest/scope, camera input, data-free offline navigation и отсутствие
+  `/account`/`/api` в Cache Storage; реальный iOS Add to Home Screen остаётся release smoke;
 - runtime Tailwind CDN остаётся текущим ограничением проекта: рабочие страницы требуют сеть,
   offline-заглушка использует встроенные стили. Перед строгим CSP/offline-first CSS нужно собрать
   локально как отдельную инфраструктурную задачу.

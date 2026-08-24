@@ -19,10 +19,23 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
 
     public function testLoginStaysInsideStandaloneAppScope(): void
     {
-        $manifest = json_decode((string) file_get_contents(dirname(__DIR__, 2).'/public_html/manifest.webmanifest'), true, flags: JSON_THROW_ON_ERROR);
+        $client = static::createClient();
+        $client->request('GET', '/manifest.webmanifest');
 
-        self::assertSame('/', $manifest['scope']);
-        self::assertStringContainsString("scope: '/'", (string) file_get_contents(dirname(__DIR__, 2).'/public_html/pwa-register.js'));
+        self::assertResponseIsSuccessful();
+        self::assertResponseHeaderSame('Content-Type', 'application/manifest+json; charset=utf-8');
+        $manifest = json_decode((string) $client->getResponse()->getContent(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('/account/wardrobe-app', $manifest['start_url']);
+        self::assertSame('/account/', $manifest['scope']);
+        self::assertStringContainsString("scope: '/account/'", (string) file_get_contents(dirname(__DIR__, 2).'/public_html/pwa-register.js'));
+
+        $serviceWorker = (string) file_get_contents(dirname(__DIR__, 2).'/public_html/service-worker.js');
+        self::assertStringNotContainsString("'/api/", $serviceWorker);
+        self::assertStringNotContainsString("'/account/", $serviceWorker);
+        self::assertStringContainsString("request.mode === 'navigate'", $serviceWorker);
+        self::assertStringContainsString("'Cache-Control': 'no-store'", $serviceWorker);
+        self::assertStringContainsString("cacheControl.includes('private')", $serviceWorker);
+        self::assertStringContainsString("cacheControl.includes('no-store')", $serviceWorker);
     }
 
     public function testGuestIsRedirectedToLogin(): void
