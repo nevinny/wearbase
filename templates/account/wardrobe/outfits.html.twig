@@ -35,6 +35,13 @@
     <textarea id="outfit-prompt" name="prompt" maxlength="300" rows="3"
               placeholder="Например: повседневный образ для офиса, прохладно и дождь"
               class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">{{ prompt }}</textarea>
+    <label for="outfit-event" class="mb-2 mt-3 block text-sm font-semibold">Событие <span class="font-normal text-gray-400">(необязательно)</span></label>
+    <select id="outfit-event" name="event" class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm">
+        <option value="">Не указывать</option>
+        {% for value, label in {everyday: 'На каждый день', work: 'Работа', school: 'Учёба', walk: 'Прогулка', celebration: 'Праздник', sport: 'Спорт', travel: 'Поездка'} %}
+            <option value="{{ value }}"{{ event == value ? ' selected' : '' }}>{{ label }}</option>
+        {% endfor %}
+    </select>
     <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span class="text-xs text-gray-400">Проверяйте результат: AI может ошибаться в сочетаемости и погоде.</span>
         <button class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Собрать образы</button>

@@ -8,10 +8,13 @@ use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Repository\WardrobeConsentRepository;
+use App\Repository\WardrobeWearEventRepository;
 use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Service\Wardrobe\WardrobeAiException;
 use App\Service\Wardrobe\WardrobeOutfitService;
+use App\Service\Wardrobe\WardrobeStylistContextBuilder;
+use App\Service\Wardrobe\WardrobeWeatherContextProviderInterface;
 use App\Service\WardrobeAiMeter;
 use PHPUnit\Framework\TestCase;
 
@@ -201,6 +204,51 @@ class WardrobeOutfitServiceTest extends TestCase
         $result = $service->suggest(new User(), [$shirt, $trousers], 'В офис');
 
         self::assertSame([$shirt, $trousers], $result[0]['items']);
+    }
+
+    public function testPromptContainsOnlyAllowlistedStructuredContextAndRotation(): void
+    {
+        $shirt = $this->item(101, 'Рубашка', 'Рубашки');
+        $trousers = $this->item(202, 'Брюки', 'Брюки');
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::once())->method('generate')->willReturnCallback(static function (string $prompt): string {
+            self::assertStringContainsString('"event":"celebration"', $prompt);
+            self::assertStringContainsString('"weather":"rain"', $prompt);
+            self::assertStringContainsString('"rotation":"fresh"', $prompt);
+            self::assertStringContainsString('"rotation":"recent"', $prompt);
+            self::assertStringNotContainsString('location', $prompt);
+            return '{"outfits":[{"title":"Образ","item_ids":[1,2]}]}';
+        });
+        $meter = $this->createStub(WardrobeAiMeter::class);
+        $meter->method('allowed')->willReturn(true);
+        $wears = $this->createStub(WardrobeWearEventRepository::class);
+        $wears->method('recentlyWornItemIds')->willReturn([101]);
+        $weather = $this->createStub(WardrobeWeatherContextProviderInterface::class);
+        $weather->method('current')->willReturn('rain');
+        $context = new WardrobeStylistContextBuilder($wears, $weather);
+        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false, $this->grantedConsents(), $context);
+
+        $result = $service->suggest(new User(), [$shirt, $trousers], 'На праздник', '', null, 'celebration');
+
+        self::assertSame([$trousers, $shirt], $result[0]['items']);
+    }
+
+    public function testExplanationIsSingleLineAndBounded(): void
+    {
+        $llm = $this->createStub(LlmService::class);
+        $llm->method('generate')->willReturn(json_encode(['outfits' => [[
+            'title' => 'Образ',
+            'explanation' => str_repeat("Подходит.\n", 80),
+            'item_ids' => [1, 2],
+        ]]], JSON_THROW_ON_ERROR));
+        $meter = $this->createStub(WardrobeAiMeter::class);
+        $meter->method('allowed')->willReturn(true);
+        $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false, $this->grantedConsents());
+
+        $result = $service->suggest(new User(), [$this->item(1, 'Рубашка', 'Рубашки'), $this->item(2, 'Брюки', 'Брюки')], 'В офис');
+
+        self::assertLessThanOrEqual(240, mb_strlen($result[0]['explanation']));
+        self::assertStringNotContainsString("\n", $result[0]['explanation']);
     }
 
     private function grantedConsents(): WardrobeConsentRepository
