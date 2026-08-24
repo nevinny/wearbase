@@ -86,6 +86,10 @@
             {% endif %}
         </div>
     {% endif %}
+    <label class="mb-3 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+        <input id="wardrobe-ai-photo-consent" type="checkbox" class="mt-0.5 h-4 w-4 rounded">
+        <span>Разрешаю приватную обработку выбранного фото для AI-подсказок. Для детского профиля согласие подтверждает родитель.</span>
+    </label>
     {{ form_widget(form.photoFile, {'attr': {'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-black'}}) }}
     {{ f.err(form.photoFile) }}
     <div class="mt-4">
@@ -230,6 +234,7 @@
 
     // ── Фото-флоу ──
     var photoInput = document.querySelector('#wardrobe-photo-section input[type="file"]');
+    var photoConsent = document.getElementById('wardrobe-ai-photo-consent');
     var photoStatus = document.getElementById('wardrobe-ai-photo-status');
 
     if (photoInput && photoStatus) {
@@ -248,6 +253,7 @@
             var fd = new FormData();
             fd.append('photo', file);
             fd.append('_token', CSRF_TOKEN);
+            if (photoConsent && photoConsent.checked) fd.append('photoConsent', '1');
 
             fetch(PHOTO_URL, { method: 'POST', body: fd, credentials: 'same-origin', signal: controller.signal })
                 .then(readJson)
@@ -385,10 +391,13 @@
                 var fd = new FormData();
                 fd.append('photo', file);
                 fd.append('_token', CSRF_TOKEN);
+                if (photoConsent && photoConsent.checked) fd.append('photoConsent', '1');
                 reqPromise = requestAiPhoto(fd);
             } else {
+                var savedParams = new URLSearchParams({ item_id: ITEM_ID, _token: CSRF_TOKEN });
+                if (photoConsent && photoConsent.checked) savedParams.append('photoConsent', '1');
                 reqPromise = requestAiPhoto(
-                    new URLSearchParams({ item_id: ITEM_ID, _token: CSRF_TOKEN }),
+                    savedParams,
                     { 'Content-Type': 'application/x-www-form-urlencoded' }
                 );
             }

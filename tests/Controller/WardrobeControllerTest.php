@@ -1820,12 +1820,15 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $storage = static::getContainer()->get(StorageInterface::class);
         $absPath = $storage->resolvePath($item, 'photoFile');
         @mkdir(dirname($absPath), 0777, true);
-        file_put_contents($absPath, 'fake-image-bytes');
+        copy($this->makeTempImage(), $absPath);
 
         $aiMock = $this->createMock(WardrobeAiService::class);
         $aiMock->expects($this->once())
             ->method('suggestFromPhoto')
-            ->with($absPath, $this->callback(static fn (User $u): bool => $u->getId() === $user->getId()))
+            ->with(
+                $this->callback(static fn (string $path): bool => $path !== $absPath && is_file($path) && mime_content_type($path) === 'image/jpeg'),
+                $this->callback(static fn (User $u): bool => $u->getId() === $user->getId()),
+            )
             ->willReturn(['ok' => true, 'fields' => ['category' => 'Обувь'], 'confidence' => 'high']);
         static::getContainer()->set(WardrobeAiService::class, $aiMock);
 
@@ -1836,6 +1839,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
             $client->request('POST', '/account/wardrobe/ai/photo', [
                 'item_id' => (string) $item->getId(),
                 '_token'  => $token,
+                'photoConsent' => '1',
             ]);
 
             $this->assertResponseIsSuccessful();
@@ -1845,6 +1849,52 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         } finally {
             @unlink($absPath);
         }
+    }
+
+    public function testAiPhotoRequiresExplicitConsentAndParentGrantForChild(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $parent = UserFactory::withEmail(static::getContainer(), 'ai-consent-parent-'.bin2hex(random_bytes(4)).'@test.local');
+        /** @var FamilyService $families */
+        $families = static::getContainer()->get(FamilyService::class);
+        $child = $families->createChild($parent, 'Лена');
+        $client->loginUser($child);
+
+        $aiMock = $this->createMock(WardrobeAiService::class);
+        $aiMock->expects($this->never())->method('suggestFromPhoto');
+        static::getContainer()->set(WardrobeAiService::class, $aiMock);
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+        $photo = new UploadedFile($this->makeTempImage(), 'child.png', 'image/png', null, true);
+        $client->request('POST', '/account/wardrobe/ai/photo', [
+            '_token' => $token,
+            'photoConsent' => '1',
+        ], ['photo' => $photo]);
+
+        $this->assertResponseStatusCodeSame(403);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertStringContainsString('согласие родителя', $data['error']);
+    }
+
+    public function testAiPhotoRejectsUnconsentedAdultUploadBeforeCallingAi(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->loginUser(UserFactory::withEmail(static::getContainer(), 'ai-consent-adult-'.bin2hex(random_bytes(4)).'@test.local'));
+        $aiMock = $this->createMock(WardrobeAiService::class);
+        $aiMock->expects($this->never())->method('suggestFromPhoto');
+        static::getContainer()->set(WardrobeAiService::class, $aiMock);
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+        $photo = new UploadedFile($this->makeTempImage(), 'adult.png', 'image/png', null, true);
+        $client->request('POST', '/account/wardrobe/ai/photo', ['_token' => $token], ['photo' => $photo]);
+
+        $this->assertResponseStatusCodeSame(422);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertStringContainsString('Подтвердите согласие', $data['error']);
     }
 
     /**
