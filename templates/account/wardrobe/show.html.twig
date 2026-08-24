@@ -216,6 +216,19 @@
         </div>
         {% endif %}
 
+        {% if mayManage %}
+        <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+            <h2 class="mb-2 text-sm font-bold">Чистота и доступность</h2>
+            <p class="mb-4 text-xs text-gray-500">Грязные вещи и вещи в стирке не участвуют в подборе образов.</p>
+            <div class="flex flex-wrap gap-2">{% for status, label in constant('App\\Entity\\WardrobeItem::CLEANLINESS_LABELS') %}
+                <form method="post" action="{{ path('account_wardrobe_cleanliness', {id: item.id}|merge(memberParam)) }}">
+                    <input type="hidden" name="_token" value="{{ csrf_token('cleanliness_wardrobe_item_' ~ item.id) }}"><input type="hidden" name="cleanliness_status" value="{{ status }}">
+                    <button{{ item.cleanlinessStatus == status ? ' disabled' : '' }} class="min-h-11 rounded-full {{ item.cleanlinessStatus == status ? 'bg-gray-900 text-white' : 'border border-gray-200 text-gray-600' }} px-4 text-xs font-semibold">{{ label }}</button>
+                </form>
+            {% endfor %}</div>
+        </div>
+        {% endif %}
+
         {# ── Уход и ремонт ── #}
         {% if mayManage and item.itemStatus == constant('App\\Entity\\WardrobeItem::ITEM_ACTIVE') %}
         <div class="mb-4 rounded-2xl bg-white p-6 shadow-sm">

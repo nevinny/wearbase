@@ -84,6 +84,15 @@ class WardrobeItem
         self::WEAR_GIVEN_AWAY => 'Отдана из семьи',
     ];
 
+    public const CLEANLINESS_CLEAN = 'clean';
+    public const CLEANLINESS_DIRTY = 'dirty';
+    public const CLEANLINESS_LAUNDRY = 'laundry';
+    public const CLEANLINESS_LABELS = [
+        self::CLEANLINESS_CLEAN => 'Чистая',
+        self::CLEANLINESS_DIRTY => 'Грязная',
+        self::CLEANLINESS_LAUNDRY => 'В стирке',
+    ];
+
     public const SUGGESTED_CATEGORIES = [
         'Футболки',
         'Майки и топы',
@@ -215,6 +224,9 @@ class WardrobeItem
     // Статус носки: WEAR_ACTIVE / WEAR_RESERVE / WEAR_OUTGROWN / WEAR_GIVEN_AWAY
     #[ORM\Column(length: 12, options: ['default' => self::WEAR_ACTIVE])]
     private string $wearStatus = self::WEAR_ACTIVE;
+
+    #[ORM\Column(length: 12, options: ['default' => self::CLEANLINESS_CLEAN])]
+    private string $cleanlinessStatus = self::CLEANLINESS_CLEAN;
 
     // Кому вещь принадлежала изначально; immutable при передачах внутри семьи
     #[ORM\ManyToOne]
@@ -536,6 +548,22 @@ class WardrobeItem
     public function getWearStatusLabel(): string
     {
         return self::WEAR_LABELS[$this->wearStatus] ?? $this->wearStatus;
+    }
+
+    public function getCleanlinessStatus(): string { return $this->cleanlinessStatus; }
+
+    public function setCleanlinessStatus(string $cleanlinessStatus): static
+    {
+        if (!array_key_exists($cleanlinessStatus, self::CLEANLINESS_LABELS)) {
+            throw new \InvalidArgumentException('Недопустимый статус чистоты');
+        }
+        $this->cleanlinessStatus = $cleanlinessStatus;
+        return $this;
+    }
+
+    public function getCleanlinessStatusLabel(): string
+    {
+        return self::CLEANLINESS_LABELS[$this->cleanlinessStatus];
     }
 
     public function getOriginalOwner(): ?User { return $this->originalOwner; }

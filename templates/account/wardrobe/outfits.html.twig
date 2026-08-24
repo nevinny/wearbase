@@ -42,6 +42,18 @@
             <option value="{{ value }}"{{ event == value ? ' selected' : '' }}>{{ label }}</option>
         {% endfor %}
     </select>
+    <div class="mt-3 grid grid-cols-2 gap-3">
+        <div><label for="outfit-weather" class="mb-2 block text-sm font-semibold">Погода сейчас</label>
+        <select id="outfit-weather" name="weather_condition" required class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm">
+            <option value="">Выберите</option>
+            {% for value, label in {clear: 'Ясно', cloudy: 'Облачно', rain: 'Дождь', snow: 'Снег', wind: 'Ветрено'} %}<option value="{{ value }}"{{ weatherCondition == value ? ' selected' : '' }}>{{ label }}</option>{% endfor %}
+        </select></div>
+        <div><label for="outfit-temperature" class="mb-2 block text-sm font-semibold">Температура</label>
+        <select id="outfit-temperature" name="temperature_band" required class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm">
+            <option value="">Выберите</option>
+            {% for value, label in {freezing: 'Мороз', cold: 'Холодно', mild: 'Прохладно', warm: 'Тепло', hot: 'Жарко'} %}<option value="{{ value }}"{{ temperatureBand == value ? ' selected' : '' }}>{{ label }}</option>{% endfor %}
+        </select></div>
+    </div>
     <div class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span class="text-xs text-gray-400">Проверяйте результат: AI может ошибаться в сочетаемости и погоде.</span>
         <button class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Собрать образы</button>

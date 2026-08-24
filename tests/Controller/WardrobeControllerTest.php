@@ -169,6 +169,37 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         }
     }
 
+    public function testOwnerCanMarkItemDirtyAndForeignUserCannotChangeIt(): void
+    {
+        $client = static::createClient();
+        $owner = UserFactory::withEmail(static::getContainer(), 'cleanliness-owner@test.local');
+        $foreign = UserFactory::withEmail(static::getContainer(), 'cleanliness-foreign@test.local');
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $item = (new WardrobeItem())->setUser($owner)->setItemNo(9911)->setName('Куртка');
+        $em->persist($item);
+        $em->flush();
+
+        $client->loginUser($owner);
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'cleanliness_wardrobe_item_'.$item->getId());
+        $client->request('POST', '/account/wardrobe/'.$item->getId().'/cleanliness', [
+            '_token' => $token,
+            'cleanliness_status' => WardrobeItem::CLEANLINESS_DIRTY,
+        ]);
+        self::assertResponseRedirects('/account/wardrobe/'.$item->getId());
+        self::assertSame(WardrobeItem::CLEANLINESS_DIRTY, $em->find(WardrobeItem::class, $item->getId())?->getCleanlinessStatus());
+
+        $client->loginUser($foreign);
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'cleanliness_wardrobe_item_'.$item->getId());
+        $client->request('POST', '/account/wardrobe/'.$item->getId().'/cleanliness', [
+            '_token' => $token,
+            'cleanliness_status' => WardrobeItem::CLEANLINESS_CLEAN,
+        ]);
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame(WardrobeItem::CLEANLINESS_DIRTY, $em->find(WardrobeItem::class, $item->getId())?->getCleanlinessStatus());
+    }
+
     /**
      * Галерея при РЕДАКТИРОВАНИИ — путь сложнее создания: у вещи уже есть обложка,
      * отрабатывает backfillLegacyCoverRow и продолжается нумерация sortOrder. Именно

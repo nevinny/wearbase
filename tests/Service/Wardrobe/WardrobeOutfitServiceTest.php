@@ -14,7 +14,6 @@ use App\Service\LlmService;
 use App\Service\Wardrobe\WardrobeAiException;
 use App\Service\Wardrobe\WardrobeOutfitService;
 use App\Service\Wardrobe\WardrobeStylistContextBuilder;
-use App\Service\Wardrobe\WardrobeWeatherContextProviderInterface;
 use App\Service\WardrobeAiMeter;
 use PHPUnit\Framework\TestCase;
 
@@ -213,7 +212,7 @@ class WardrobeOutfitServiceTest extends TestCase
         $llm = $this->createMock(LlmService::class);
         $llm->expects(self::once())->method('generate')->willReturnCallback(static function (string $prompt): string {
             self::assertStringContainsString('"event":"celebration"', $prompt);
-            self::assertStringContainsString('"weather":"rain"', $prompt);
+            self::assertStringContainsString('"weather":"condition:rain;temperature:cold"', $prompt);
             self::assertStringContainsString('"rotation":"fresh"', $prompt);
             self::assertStringContainsString('"rotation":"recent"', $prompt);
             self::assertStringNotContainsString('location', $prompt);
@@ -223,12 +222,10 @@ class WardrobeOutfitServiceTest extends TestCase
         $meter->method('allowed')->willReturn(true);
         $wears = $this->createStub(WardrobeWearEventRepository::class);
         $wears->method('recentlyWornItemIds')->willReturn([101]);
-        $weather = $this->createStub(WardrobeWeatherContextProviderInterface::class);
-        $weather->method('current')->willReturn('rain');
-        $context = new WardrobeStylistContextBuilder($wears, $weather);
+        $context = new WardrobeStylistContextBuilder($wears);
         $service = new WardrobeOutfitService($llm, $meter, $this->createStub(AiUsageTracker::class), 'remote-model', 'local-model', false, $this->grantedConsents(), $context);
 
-        $result = $service->suggest(new User(), [$shirt, $trousers], 'На праздник', '', null, 'celebration');
+        $result = $service->suggest(new User(), [$shirt, $trousers], 'На праздник', '', null, 'celebration', 'rain', 'cold');
 
         self::assertSame([$trousers, $shirt], $result[0]['items']);
     }
