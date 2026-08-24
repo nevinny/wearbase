@@ -37,7 +37,7 @@ class NotificationController extends AbstractController
         Notification::TYPE_PURCHASE_FITTING_REMINDER => 'Напоминание о примерке',
     ];
 
-    private const CHANNELS = ['channelEmail', 'channelInapp', 'channelPush'];
+    private const CHANNELS = ['channelEmail', 'channelInapp', 'channelTelegram', 'channelPush'];
     private const INAPP_ONLY_TYPES = [
         Notification::TYPE_PURCHASE_DECISION_REMINDER,
         Notification::TYPE_PURCHASE_FITTING_REMINDER,

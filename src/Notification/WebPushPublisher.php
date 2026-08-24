@@ -23,7 +23,8 @@ final readonly class WebPushPublisher implements WebPushPublisherInterface
     public function send(User $recipient, array $payload): bool
     {
         if (!$this->isConfigured()) {
-            return true;
+            $this->logger->warning('Web Push delivery is disabled because VAPID is not configured.');
+            return false;
         }
 
         try {

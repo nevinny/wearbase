@@ -131,6 +131,8 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:wardrobe:cleanup-drafts` | Через 7 дней очищает photo/`ai_raw` accepted receipts; через 30 дней удаляет abandoned drafts. `--dry-run`. | ⏰ `17 3 * * *` | ☁️ prod |
 | `app:wardrobe:ingest-health` | Очередь, oldest pending, expired lease, failed/retry, storage и последний scheduler run. `--json`, `--check`. Подробнее: [операционная проверка](wardrobe_ingest_operations.md). | 👆 smoke/monitoring | ☁️ prod |
 | `app:family:purchase-reminders` | Только in-app: раз в локальный день напоминает родителям о pending-запросах, а родителям и активированному ребёнку — о delivered-позициях без результата примерки. `--dry-run`, `--now=ISO-8601`; граница дня — Europe/Moscow, дедуп — состояние/объект/дата/получатель. | ⏰ `15 9 * * *` | ☁️ prod |
+| `app:notification:deliver-outbox` | Доставляет уже committed email, Telegram и Web Push с lease, retry/backoff и повторной проверкой настроек получателя. | ⏰ `* * * * *` | ☁️ prod |
+| `app:notifications:cleanup-web-push` | Удаляет отозванные Web Push subscriptions старше 30 дней. | ⏰ `41 3 * * *` | ☁️ prod |
 | `app:contacts:refresh` | Актуализация контактов из RAG-корпуса (новый конвейер, см. `_docs/contacts-refresh-plan.md`). TTL-ревалидация, демон-режим. | ⏰/🔁 | 🖥 .43 |
 | `app:brand:enrich-contacts` | **Легаси**: разовое обогащение из скрейп-корпуса (27b). Терминальные статусы, HTTP-проверка URL. Вытесняется `contacts:refresh`. | ⏰ `*/10` (пока) | 🖥 .43 |
 

@@ -101,8 +101,11 @@ class NotificationSecurityTest extends AuthenticatedWebTestCase
 
         $this->assertResponseIsSuccessful();
         $this->assertSelectorNotExists('input[name="settings[purchase_decision_reminder][channelEmail]"]');
+        $this->assertSelectorNotExists('input[name="settings[purchase_decision_reminder][channelTelegram]"]');
         $this->assertSelectorExists('input[name="settings[purchase_decision_reminder][channelInapp]"]');
         $this->assertSelectorNotExists('input[name="settings[purchase_fitting_reminder][channelEmail]"]');
+        $this->assertSelectorNotExists('input[name="settings[purchase_fitting_reminder][channelTelegram]"]');
         $this->assertSelectorExists('input[name="settings[purchase_fitting_reminder][channelInapp]"]');
+        $this->assertSelectorExists('input[name="settings[purchase_bought][channelTelegram]"]');
     }
 }

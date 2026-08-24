@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Entity\PurchaseRequest;
 use App\Entity\PurchaseRequestEvent;
 use App\Entity\PurchaseRequestItem;
+use App\Entity\ExternalNotificationOutbox;
 use App\Entity\FittingFeedback;
 use App\Entity\Notification;
 use App\Entity\User;
@@ -549,6 +550,50 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->assertCount(0, $this->em()->getRepository(Notification::class)->findBy([
             'recipient' => $secondParent,
             'type' => Notification::TYPE_PURCHASE_BOUGHT,
+        ]));
+    }
+
+    public function testChildFittingQueuesEnabledExternalChannelsOnce(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('external-parent'));
+        $parent->setTelegramChatId('123456');
+        $child = $this->families()->createChild($parent, 'Аня');
+        $settings = (new \App\Entity\NotificationSettings())
+            ->setUser($parent)
+            ->setEventType(Notification::TYPE_PURCHASE_FITTING)
+            ->setChannelEmail(true)
+            ->setChannelTelegram(true)
+            ->setChannelPush(true);
+        $this->em()->persist($settings);
+        $this->em()->flush();
+        $request = $this->deliveredRequest($parent, $child, 'external-fitting');
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+
+        $this->purchaseRequests()->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_PENDING, null, null, [], null);
+
+        $rows = $this->em()->getRepository(ExternalNotificationOutbox::class)->findBy([
+            'recipient' => $parent,
+            'notificationType' => Notification::TYPE_PURCHASE_FITTING,
+        ]);
+        $this->assertCount(3, $rows);
+        $this->assertEqualsCanonicalizing(
+            [Notification::CHANNEL_EMAIL, Notification::CHANNEL_TELEGRAM, Notification::CHANNEL_PUSH],
+            array_map(static fn (ExternalNotificationOutbox $row): string => $row->getChannel(), $rows),
+        );
+
+        static::getContainer()->get(\App\Notification\NotificationDispatcher::class)->dispatchOnce(
+            $parent,
+            Notification::TYPE_PURCHASE_FITTING,
+            sprintf('purchase-item:%d:%s:recipient:%d', $item->getId(), Notification::TYPE_PURCHASE_FITTING, $parent->getId()),
+            'Повторная доставка',
+            emailTemplate: 'family_notification',
+            emailContext: ['title' => 'Повторная доставка', 'body' => null, 'url' => null],
+        );
+        $this->em()->flush();
+        $this->assertCount(3, $this->em()->getRepository(ExternalNotificationOutbox::class)->findBy([
+            'recipient' => $parent,
+            'notificationType' => Notification::TYPE_PURCHASE_FITTING,
         ]));
     }
 
