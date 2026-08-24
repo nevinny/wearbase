@@ -8,9 +8,11 @@ use App\Entity\User;
 use App\Dto\Family\ChildProfileInput;
 use App\Form\Account\FamilyChildFormType;
 use App\Repository\FamilyInviteRepository;
+use App\Repository\UserRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Service\FamilyService;
 use App\Service\Family\ChildProfileService;
+use App\Service\FamilyLifecycleService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -22,6 +24,8 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route('/account/family', name: 'account_family_')]
 class FamilyController extends AbstractController
 {
+    public function __construct(private readonly UserRepository $users) {}
+
     #[Route('', name: 'index', methods: ['GET'])]
     public function index(
         FamilyService $familyService,
@@ -61,6 +65,7 @@ class FamilyController extends AbstractController
             'claimUrls'  => $claimUrls,
             'invites'    => $invites,
             'inviteUrls' => $inviteUrls,
+            'isOwner'    => $family?->getOwner()?->getId() === $user->getId(),
         ]);
     }
 
@@ -232,5 +237,89 @@ class FamilyController extends AbstractController
         $this->addFlash('success', 'Ссылка для входа ребёнка отозвана');
 
         return $this->redirectToRoute('account_family_index');
+    }
+
+    #[Route('/member/{id}/adulthood', name: 'member_adulthood', requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function adulthood(int $id, Request $request, FamilyLifecycleService $lifecycle): Response
+    {
+        /** @var User $actor */
+        $actor = $this->getUser();
+        if (!$this->isCsrfTokenValid('family_adulthood_'.$id, $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+
+        $child = $this->findUser($id);
+        try {
+            $lifecycle->confirmAdulthood($actor, $child);
+            $this->addFlash('success', 'Профиль стал самостоятельным. Гардероб и история сохранены');
+        } catch (\DomainException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->redirectToRoute('account_family_index');
+    }
+
+    #[Route('/member/{id}/owner', name: 'member_owner', requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function transferOwner(int $id, Request $request, FamilyLifecycleService $lifecycle): Response
+    {
+        /** @var User $actor */
+        $actor = $this->getUser();
+        if (!$this->isCsrfTokenValid('family_owner_'.$id, $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+        try {
+            $lifecycle->transferOwnership($actor, $this->findUser($id));
+            $this->addFlash('success', 'Права владельца семьи переданы');
+        } catch (\DomainException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->redirectToRoute('account_family_index');
+    }
+
+    #[Route('/member/{id}/remove', name: 'member_remove', requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function removeMember(int $id, Request $request, FamilyLifecycleService $lifecycle): Response
+    {
+        /** @var User $actor */
+        $actor = $this->getUser();
+        if (!$this->isCsrfTokenValid('family_remove_'.$id, $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+        try {
+            $lifecycle->removeMember($actor, $this->findUser($id));
+            $this->addFlash('success', 'Участник удалён из семьи. Его личные данные и гардероб сохранены');
+        } catch (\DomainException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->redirectToRoute('account_family_index');
+    }
+
+    #[Route('/leave', name: 'leave', methods: ['POST'])]
+    public function leave(Request $request, FamilyLifecycleService $lifecycle): Response
+    {
+        /** @var User $actor */
+        $actor = $this->getUser();
+        if (!$this->isCsrfTokenValid('family_leave', $request->request->get('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный токен');
+        }
+        try {
+            $lifecycle->leave($actor);
+            $this->addFlash('success', 'Вы вышли из семьи. Ваш гардероб остался у вас');
+        } catch (\DomainException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->redirectToRoute('account_family_index');
+    }
+
+    private function findUser(int $id): User
+    {
+        $member = $this->users->find($id);
+        if (!$member instanceof User) {
+            throw $this->createNotFoundException();
+        }
+
+        return $member;
     }
 }

@@ -73,7 +73,8 @@ class FamilyService
         return $actorFamily !== null
             && $targetFamily !== null
             && $actorFamily->getId() === $targetFamily->getId()
-            && $actor->isFamilyParent();
+            && $actor->isFamilyParent()
+            && $target->getFamilyRole() === User::FAMILY_ROLE_CHILD;
     }
 
     /**

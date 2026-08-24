@@ -2,7 +2,7 @@
 {% block family_mobile_title %}Семья{% endblock %}
 
 {% block family_mobile_content %}
-{% set canManageFamily = app.user.familyRole != 'child' %}
+{% set canManageFamily = family is null or app.user.familyRole == 'parent' %}
 <div class="mb-5 flex items-center justify-between gap-3">
     <h1 class="text-xl font-black text-slate-950">Семья</h1>
     {% if canManageFamily %}
@@ -54,8 +54,10 @@
                 <div class="text-sm font-semibold">{{ member.fullName }}</div>
                 {% if member.familyRole == 'child' %}
                     <span class="rounded-full bg-sky-100 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700">Ребёнок</span>
+                {% elseif member.familyRole == 'adult' %}
+                    <span class="rounded-full bg-violet-100 px-2.5 py-0.5 text-[11px] font-semibold text-violet-700">Взрослый</span>
                 {% else %}
-                    <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-600">Родитель</span>
+                    <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-600">{{ family.owner.id == member.id ? 'Владелец' : 'Родитель' }}</span>
                 {% endif %}
             </div>
             {% if itemCounts[member.id] is defined %}
@@ -90,6 +92,29 @@
                     <input type="hidden" name="_token" value="{{ csrf_token('family_child_access_renew_' ~ member.id) }}">
                     <button type="submit" class="min-h-11 text-xs font-semibold text-gray-700">Создать ссылку для входа</button>
                 </form>
+            {% endif %}
+
+            {% if member.canBecomeFamilyAdult and (member.id == app.user.id or canManageFamily) %}
+                <form method="post" action="{{ path('account_family_member_adulthood', {id: member.id}) }}" class="mt-4 border-t border-gray-100 pt-3">
+                    <input type="hidden" name="_token" value="{{ csrf_token('family_adulthood_' ~ member.id) }}">
+                    <p class="mb-2 text-xs text-gray-500">После 18 лет профиль может стать самостоятельным. Вещи и история сохранятся.</p>
+                    <button type="submit" class="min-h-11 text-xs font-semibold text-violet-700">Сделать профиль самостоятельным</button>
+                </form>
+            {% endif %}
+
+            {% if isOwner and member.id != app.user.id %}
+                <div class="mt-4 flex flex-wrap gap-4 border-t border-gray-100 pt-3">
+                    {% if member.familyRole == 'parent' %}
+                        <form method="post" action="{{ path('account_family_member_owner', {id: member.id}) }}">
+                            <input type="hidden" name="_token" value="{{ csrf_token('family_owner_' ~ member.id) }}">
+                            <button type="submit" class="min-h-11 text-xs font-semibold text-gray-700">Передать права владельца</button>
+                        </form>
+                    {% endif %}
+                    <form method="post" action="{{ path('account_family_member_remove', {id: member.id}) }}" onsubmit="return confirm('Удалить участника из семьи? Его гардероб останется в личном профиле.')">
+                        <input type="hidden" name="_token" value="{{ csrf_token('family_remove_' ~ member.id) }}">
+                        <button type="submit" class="min-h-11 text-xs font-semibold text-red-600">Удалить из семьи</button>
+                    </form>
+                </div>
             {% endif %}
         </div>
         {% endfor %}
@@ -147,6 +172,13 @@
             <p class="text-sm text-gray-400">Активных приглашений нет</p>
         {% endif %}
     </div>{% endif %}
+
+    {% if not isOwner %}
+        <form method="post" action="{{ path('account_family_leave') }}" class="mt-4 text-center" onsubmit="return confirm('Выйти из семьи? Ваш гардероб останется у вас.')">
+            <input type="hidden" name="_token" value="{{ csrf_token('family_leave') }}">
+            <button type="submit" class="min-h-11 text-sm font-semibold text-red-600">Выйти из семьи</button>
+        </form>
+    {% endif %}
 
 {% endif %}
 {% endblock %}
