@@ -105,13 +105,6 @@ class RegisterController extends AbstractController
                 $em->persist($user);
             }
 
-            // Referral-хук «Поделиться луком» (спец §7): одно событие атрибуции
-            // после успешной регистрации; возврат на лук — через target_path сессии.
-            $lookShareReferrals->recordFromSession($request, $user);
-            $lookShareTarget = $this->validatedLookShareTarget($request);
-            if ($lookShareTarget !== null) {
-                $request->getSession()->set('_security.main.target_path', $lookShareTarget);
-            }
 
             // Generate email verification token
             $token = bin2hex(random_bytes(32));
@@ -126,6 +119,14 @@ class RegisterController extends AbstractController
                 ['token' => $token],
             );
 
+
+            // Referral-хук «Поделиться луком» (спец §7): одно событие атрибуции после
+            // успешной регистрации; возврат на лук — через target_path сессии (LoginSuccessHandler).
+            $lookShareReferrals->recordFromSession($request, $user);
+            $lookShareTarget = $this->validatedLookShareTarget($request);
+            if ($lookShareTarget !== null) {
+                $request->getSession()->set('_security.main.target_path', $lookShareTarget);
+            }
             return $userAuthenticator->authenticateUser(
                 $user,
                 $authenticator,
