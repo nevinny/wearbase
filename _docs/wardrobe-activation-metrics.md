@@ -19,12 +19,26 @@ activation-события имеют другой lifecycle, retention и privac
 События начинают собираться после выкладки миграции; исторического backfill нет, поэтому время
 milestone не подменяется временем деплоя.
 
+Для эксплуатационного отчёта дополнительно записываются повторяемые события:
+
+- `batch_recognition_started|completed` — один раз на пачку;
+- `draft_accepted` — один раз на черновик, с `source=ai|manual_correction`, булевыми
+  `correction`/`autofillAccepted` и грубым `durationBucket`.
+
+UUID пачки и ID черновика не попадают в metadata: только их SHA-256 используется как технический
+`dedup_key`. Команда `php bin/console app:wardrobe:activation-report --days=30` отдаёт first-party
+JSON с дневными когортами, conversion/time-to-first-item/outfit/repeat, batch completion и долями
+исправлений/принятого autofill. Нулевой знаменатель всегда даёт rate `0`, исторического backfill нет.
+
 ## Privacy-контракт
 
 JSON metadata имеет закрытый контракт:
 
 - `actorKind`: только `self|family_manager`;
 - `entryPoint`: только `batch|manual|purchase|stylist|wear_review|outfit`.
+- `source`: только `ai|manual_correction`;
+- `durationBucket`: только `under_1m|1_5m|5_15m|over_15m`;
+- `correction`, `autofillAccepted`: boolean.
 
 Запрещены email, имя, возраст, ссылки магазинов, идентификаторы/названия/параметры вещей, фото,
 prompts и свободный текст. `profile_subject_id` — внутренний FK для построения воронки, удаляется

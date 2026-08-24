@@ -39,16 +39,43 @@ final class WardrobeActivationService
         $this->record($actor, $subject, WardrobeActivationEvent::REPEAT_WEAR_RECORDED, $entryPoint);
     }
 
-    private function record(User $actor, User $subject, string $eventType, string $entryPoint): void
+    public function batchRecognitionStarted(User $actor, User $subject, string $batchId): void
+    {
+        $this->record($actor, $subject, WardrobeActivationEvent::BATCH_RECOGNITION_STARTED, 'batch', $this->hash($batchId));
+    }
+
+    public function batchRecognitionCompleted(User $actor, User $subject, string $batchId): void
+    {
+        $this->record($actor, $subject, WardrobeActivationEvent::BATCH_RECOGNITION_COMPLETED, 'batch', $this->hash($batchId));
+    }
+
+    public function draftAccepted(User $actor, User $subject, int $draftId, string $source, string $durationBucket, bool $correction, bool $autofillAccepted): void
+    {
+        if (!in_array($source, ['ai', 'manual_correction'], true)
+            || !in_array($durationBucket, ['under_1m', '1_5m', '5_15m', 'over_15m'], true)
+        ) {
+            throw new \InvalidArgumentException('Unknown draft activation metadata');
+        }
+        $this->record($actor, $subject, WardrobeActivationEvent::DRAFT_ACCEPTED, 'batch', $this->hash((string) $draftId), [
+            'source' => $source,
+            'durationBucket' => $durationBucket,
+            'correction' => $correction,
+            'autofillAccepted' => $autofillAccepted,
+        ]);
+    }
+
+    /** @param array<string, bool|string> $extra */
+    private function record(User $actor, User $subject, string $eventType, string $entryPoint, ?string $dedupKey = null, array $extra = []): void
     {
         if (!in_array($entryPoint, self::ENTRY_POINTS, true)) {
             throw new \InvalidArgumentException('Unknown activation entry point');
         }
 
         try {
-            $this->events->recordOnce($subject, $eventType, [
+            $this->events->recordOnce($subject, $eventType, $dedupKey ?? $eventType, [
                 'actorKind' => $actor->getId() === $subject->getId() ? 'self' : 'family_manager',
                 'entryPoint' => $entryPoint,
+                ...$extra,
             ]);
         } catch (Exception $exception) {
             // Product telemetry must never roll back a successful wardrobe action.
@@ -57,5 +84,10 @@ final class WardrobeActivationService
                 'exception' => $exception,
             ]);
         }
+    }
+
+    private function hash(string $value): string
+    {
+        return hash('sha256', $value);
     }
 }

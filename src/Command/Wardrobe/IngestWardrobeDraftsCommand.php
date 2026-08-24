@@ -7,6 +7,7 @@ namespace App\Command\Wardrobe;
 use App\Entity\WardrobeItemDraft;
 use App\Repository\WardrobeItemDraftRepository;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeActivationService;
 use App\Service\WardrobeAiMeter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -42,6 +43,7 @@ class IngestWardrobeDraftsCommand extends Command
         private readonly WardrobeAiMeter $meter,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
+        private readonly ?WardrobeActivationService $activation = null,
     ) {
         parent::__construct();
     }
@@ -76,8 +78,19 @@ class IngestWardrobeDraftsCommand extends Command
 
         $recognized = 0;
         $failed = 0;
+        $batches = [];
 
         foreach ($drafts as $draft) {
+            $subject = $draft->getProfileSubject();
+            $actor = $draft->getActor();
+            $batchId = $draft->getBatchId();
+            if ($subject !== null && $actor !== null && $batchId !== null) {
+                $batchKey = $subject->getId().':'.$batchId;
+                if (!isset($batches[$batchKey])) {
+                    $batches[$batchKey] = [$actor, $subject, $batchId];
+                    $this->activation?->batchRecognitionStarted($actor, $subject, $batchId);
+                }
+            }
             $draftId = $draft->getId();
             if ($draftId === null) {
                 continue;
@@ -139,6 +152,13 @@ class IngestWardrobeDraftsCommand extends Command
                     $failed++;
                     $io->text(sprintf('#%d: ошибка — %s', $draftId, $error));
                 }
+            }
+        }
+
+        foreach ($batches as [$actor, $subject, $batchId]) {
+            $counts = $this->draftRepo->countsByBatch($subject, $batchId);
+            if ($counts['total'] === $counts['recognized'] + $counts['failed']) {
+                $this->activation?->batchRecognitionCompleted($actor, $subject, $batchId);
             }
         }
 

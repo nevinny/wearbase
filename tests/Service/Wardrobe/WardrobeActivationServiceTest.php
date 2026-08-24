@@ -21,6 +21,7 @@ final class WardrobeActivationServiceTest extends TestCase
         $events->expects(self::once())->method('recordOnce')->with(
             $subject,
             WardrobeActivationEvent::FIRST_ITEM_ADDED,
+            WardrobeActivationEvent::FIRST_ITEM_ADDED,
             ['actorKind' => 'family_manager', 'entryPoint' => 'batch'],
         );
 
@@ -44,6 +45,7 @@ final class WardrobeActivationServiceTest extends TestCase
         $events->expects(self::once())->method('recordOnce')->with(
             $subject,
             $eventType,
+            $eventType,
             ['actorKind' => 'self', 'entryPoint' => $entryPoint],
         );
         $service = new WardrobeActivationService($events);
@@ -53,6 +55,34 @@ final class WardrobeActivationServiceTest extends TestCase
         } else {
             $service->{$method}($subject, $subject);
         }
+    }
+
+    public function testDraftMetadataIsBoundedAndDedupKeyIsHashed(): void
+    {
+        $subject = $this->userWithId(10);
+        $events = $this->createMock(WardrobeActivationEventRepository::class);
+        $events->expects(self::once())->method('recordOnce')->with(
+            $subject,
+            WardrobeActivationEvent::DRAFT_ACCEPTED,
+            hash('sha256', '42'),
+            [
+                'actorKind' => 'self',
+                'entryPoint' => 'batch',
+                'source' => 'manual_correction',
+                'durationBucket' => '1_5m',
+                'correction' => true,
+                'autofillAccepted' => false,
+            ],
+        );
+
+        (new WardrobeActivationService($events))->draftAccepted($subject, $subject, 42, 'manual_correction', '1_5m', true, false);
+    }
+
+    public function testRejectsFreeTextDraftMetadata(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new WardrobeActivationService($this->createStub(WardrobeActivationEventRepository::class)))
+            ->draftAccepted($this->userWithId(10), $this->userWithId(10), 42, 'email@example.test', '1_5m', true, false);
     }
 
     /** @return iterable<string, array{string,string,string}> */
