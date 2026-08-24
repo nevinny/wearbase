@@ -2135,6 +2135,10 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [ ] Добавить экспорт/удаление AI-истории и раздельные consent на персонализацию, общий опыт,
   публичные фото и обучение весов.
 - [ ] Ввести продуктовые метрики: bought→worn, повторная носка, возвраты, zero-wear и correction rate.
+- [x] Добавить минимальную privacy-safe activation-воронку: onboarding started → first item →
+  first outfit → repeat wear. Milestone уникален на профиль; metadata ограничена `actorKind`
+  (`self|family_manager`) и low-cardinality `entryPoint`, без email, URL, фото, текста и параметров вещей.
+  Исторический backfill намеренно не выполняется: когорта начинается с даты выкладки миграции.
 - [ ] Не начинать fine-tuning до достаточного подтверждённого корпуса, privacy-review и offline eval;
   выпускать LoRA только через A/B по повторным носкам и снижению неудачных покупок.
 

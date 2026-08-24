@@ -23,6 +23,7 @@ final class WardrobeDraftPromotionService
         private readonly ManagerRegistry $doctrine,
         private readonly FamilyService $families,
         private readonly StorageInterface $storage,
+        private readonly ?WardrobeActivationService $activation = null,
     ) {}
 
     /**
@@ -32,15 +33,19 @@ final class WardrobeDraftPromotionService
     public function promote(User $actor, int $draftId, array $overrides): array
     {
         try {
-            return $this->attempt($actor->getId(), $draftId, $overrides);
+            $result = $this->attempt($actor->getId(), $draftId, $overrides);
         } catch (UniqueConstraintViolationException) {
             $this->doctrine->resetManager();
 
-            return $this->attempt($actor->getId(), $draftId, $overrides);
+            $result = $this->attempt($actor->getId(), $draftId, $overrides);
         } catch (\Throwable $exception) {
             $this->doctrine->resetManager();
             throw $exception;
         }
+
+        $this->activation?->firstItemAdded($actor, $result['item']->getUser(), 'batch');
+
+        return $result;
     }
 
     /**

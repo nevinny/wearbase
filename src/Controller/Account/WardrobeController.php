@@ -17,6 +17,7 @@ use App\Repository\WardrobeItemLifecycleEventRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeActivationService;
 use App\Service\Wardrobe\WardrobeManager;
 use App\Service\Wardrobe\WardrobePhotoManager;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
@@ -243,6 +244,7 @@ class WardrobeController extends AbstractController
         Request $request,
         WardrobeItemRepository $repo,
         ManagerRegistry $doctrine,
+        WardrobeActivationService $activation,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
@@ -294,6 +296,8 @@ class WardrobeController extends AbstractController
                 $em->persist($item);
                 $em->flush();
             }
+
+            $activation->firstItemAdded($user, $currentMember, 'manual');
 
             // Вещь на этот момент уже сохранена, поэтому падение загрузчика нельзя пускать
             // в 500: пользователь увидел бы ошибку и решил, что не сохранилось ничего.

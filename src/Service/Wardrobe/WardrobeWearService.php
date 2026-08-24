@@ -26,6 +26,7 @@ final class WardrobeWearService
         private readonly WardrobeOutfitRepository $outfits,
         private readonly WardrobeWearEventRepository $events,
         private readonly EntityManagerInterface $em,
+        private readonly ?WardrobeActivationService $activation = null,
     ) {}
 
     /** @param array<int, array{item:WardrobeItem,confidence:?string}> $candidates */
@@ -69,6 +70,9 @@ final class WardrobeWearService
             $event->revise($type, $itemIds);
         }
         $this->em->flush();
+        if ($type === WardrobeWearEvent::TYPE_WORN && $this->events->hasRepeatedItem($subject)) {
+            $this->activation?->repeatWearRecorded($actor, $subject, 'wear_review');
+        }
     }
 
     public function recordOutfitWorn(User $actor, User $subject, int $outfitId): WardrobeWearEvent
@@ -101,6 +105,9 @@ final class WardrobeWearService
             $outfit->react(WardrobeOutfit::REACTION_WORN);
             $this->em->persist($event);
             $this->em->flush();
+            if ($this->events->hasRepeatedItem($subject)) {
+                $this->activation?->repeatWearRecorded($actor, $subject, 'outfit');
+            }
             return $event;
         });
     }

@@ -51,6 +51,24 @@ final class WardrobeWearEventRepository extends ServiceEntityRepository
         ], $rows);
     }
 
+    public function hasRepeatedItem(User $subject): bool
+    {
+        return $this->createQueryBuilder('event')
+            ->select('COUNT(event.id)')
+            ->join('event.items', 'eventItem')
+            ->andWhere('event.profileSubject = :subject')
+            ->andWhere('event.status = :status')
+            ->andWhere('event.type = :type')
+            ->andWhere('eventItem.confirmed = true')
+            ->setParameter('subject', $subject)
+            ->setParameter('status', WardrobeWearEvent::STATUS_CONFIRMED)
+            ->setParameter('type', WardrobeWearEvent::TYPE_WORN)
+            ->groupBy('eventItem.item')
+            ->having('COUNT(event.id) >= 2')
+            ->setMaxResults(1)
+            ->getQuery()->getOneOrNullResult() !== null;
+    }
+
     /** @return WardrobeWearEvent[] */
     public function findRecentConfirmed(User $subject, int $limit = 20): array
     {
