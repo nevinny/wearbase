@@ -81,12 +81,15 @@ class WardrobeOutfitShare
 
     public function __construct(WardrobeOutfit $outfit, User $createdBy, string $ttl = self::DEFAULT_TTL)
     {
+        // 256 бит энтропии — паттерн репо (BrandInvite/FamilyInvite), поиск по уникальному индексу.
+        $this->token = bin2hex(random_bytes(32));
         $this->outfit = $outfit;
         $this->createdBy = $createdBy;
         $this->setTtl($ttl);
-    }
 
+    }
     public function getId(): ?int { return $this->id; }
+
     public function getOutfit(): WardrobeOutfit { return $this->outfit; }
     public function getToken(): string { return $this->token; }
     public function getCreatedBy(): User { return $this->createdBy; }
