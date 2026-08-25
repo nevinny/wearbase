@@ -9,6 +9,7 @@ use App\Entity\User;
 use App\Entity\WardrobeOutfit;
 use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeItemRepository;
+use App\Repository\WardrobeOutfitShareRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiException;
@@ -35,6 +36,7 @@ class WardrobeOutfitController extends AbstractController
         WardrobeOutfitService $outfits,
         WardrobeOutfitLearningService $learning,
         WardrobeConsentRepository $consents,
+        WardrobeOutfitShareRepository $shareRepo,
         RateLimiterFactory $wardrobeAiLimiter,
         AiUsageTracker $usageTracker,
     ): Response {
@@ -83,6 +85,8 @@ class WardrobeOutfitController extends AbstractController
             'itemCount' => count($wardrobeItems),
             'personalizationGranted' => $consents->isPersonalizationGranted($member),
             'canControlPersonalization' => $member->getFamilyRole() !== User::FAMILY_ROLE_CHILD || $actor->isFamilyParent(),
+            'outfitShares' => $shareRepo->findForWardrobeOwner($member),
+            'canApproveShares' => $actor->isFamilyParent(),
         ]);
     }
 

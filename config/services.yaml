@@ -345,6 +345,12 @@ services:
             $projectDir: '%kernel.project_dir%'
             $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'
 
+    # OG-карта лука 1200x630 («Поделиться луком»): GD-рендер в приватное хранилище.
+    App\Service\Look\LookShareOgCardRenderer:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'
+
     # Нормализация фото брендов в слайды одного холста (IG кадрирует всю карусель по первому
     # слайду) + слайд с логотипом для A/B «логотип первым/последним».
     App\Service\Social\GallerySlideRenderer:

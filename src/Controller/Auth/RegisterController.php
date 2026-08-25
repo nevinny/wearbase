@@ -12,6 +12,7 @@ use App\Form\Auth\BrandRegistrationFormType;
 use App\Form\Auth\RegistrationFormType;
 use App\Notification\AdminNotifier;
 use App\Notification\EmailNotifier;
+use App\Service\Look\LookShareReferralService;
 use App\Service\SubscriptionFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -39,6 +40,7 @@ class RegisterController extends AbstractController
         EmailNotifier $emailNotifier,
         SubscriptionFactory $subscriptionFactory,
         AdminNotifier $adminNotifier,
+        LookShareReferralService $lookShareReferrals,
     ): Response {
         if ($this->getUser()) {
             return $this->redirectToRoute(
@@ -103,6 +105,7 @@ class RegisterController extends AbstractController
                 $em->persist($user);
             }
 
+
             // Generate email verification token
             $token = bin2hex(random_bytes(32));
             $user->setEmailVerificationToken($token);
@@ -116,6 +119,14 @@ class RegisterController extends AbstractController
                 ['token' => $token],
             );
 
+
+            // Referral-хук «Поделиться луком» (спец §7): одно событие атрибуции после
+            // успешной регистрации; возврат на лук — через target_path сессии (LoginSuccessHandler).
+            $lookShareReferrals->recordFromSession($request, $user);
+            $lookShareTarget = $this->validatedLookShareTarget($request);
+            if ($lookShareTarget !== null) {
+                $request->getSession()->set('_security.main.target_path', $lookShareTarget);
+            }
             return $userAuthenticator->authenticateUser(
                 $user,
                 $authenticator,
@@ -125,8 +136,31 @@ class RegisterController extends AbstractController
 
         return $this->render(
             $isBrand ? 'auth/register_brand.html.twig' : 'auth/register.html.twig',
-            ['form' => $form, 'isBrand' => $isBrand]
+            [
+                'form' => $form,
+                'isBrand' => $isBrand,
+                // Скрытые поля CTA лендинга: переживают POST при ошибках валидации формы.
+                'look_share_ref' => $this->lookShareParam($request),
+                'look_share_target' => $this->validatedLookShareTarget($request),
+            ]
         );
+    }
+
+    /** ?ref= / скрытое поле ref: сырая строка для проброса через форму. */
+    private function lookShareParam(Request $request): string
+    {
+        return (string) ($request->request->get('ref') ?? $request->query->get('ref') ?? '');
+    }
+
+    /**
+     * CTA-параметр target: принимаем только абсолютный путь на гостевую страницу лука
+     * (анти-open-redirect, паттерн LoginSuccessHandler).
+     */
+    private function validatedLookShareTarget(Request $request): ?string
+    {
+        $target = (string) ($request->request->get('target') ?? $request->query->get('target') ?? '');
+
+        return preg_match('#^/l/[0-9a-f]{64}$#', $target) === 1 ? $target : null;
     }
 
     private function generateUniqueSlug(SluggerInterface $slugger, EntityManagerInterface $em, string $title): string

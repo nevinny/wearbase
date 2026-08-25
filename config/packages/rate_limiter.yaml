@@ -53,6 +53,12 @@ framework:
             limit: 30
             interval: '1 minute'
 
+        # Гостевые ссылки луков /l/{token}: анти-брутфорс секретного токена по IP.
+        look_share:
+            policy: sliding_window
+            limit: 60
+            interval: '1 minute'
+
 # В тестах дневное окно wardrobe_ai живёт в var/cache/test МЕЖДУ прогонами
 # (тест-БД одноразовая → user id повторяются) — после ~30 прогонов сьют
 # начинает флейкать 429. Лимитер в тестах отключаем.
@@ -66,4 +72,6 @@ when@test:
             native_auth_login:
                 policy: no_limit
             native_auth_refresh:
+                policy: no_limit
+            look_share:
                 policy: no_limit
