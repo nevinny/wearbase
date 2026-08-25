@@ -59,6 +59,11 @@ parameters:
     env(SITE_BASE_URL): 'https://wearbase.ru'
     app.site_base_url: '%env(SITE_BASE_URL)%'
 
+    # News pipeline (парсер → рерайт → модерация): ollama и предохранитель автопубликации
+    env(OLLAMA_URL): 'http://127.0.0.1:11434'
+    env(OLLAMA_MODEL): 'qwen3.5:27b'
+    env(NEWS_AUTO_PUBLISH): '0'
+
 services:
     # default configuration for services in *this* file
     _defaults:
@@ -87,7 +92,16 @@ services:
             $privateKey: '%env(WEB_PUSH_PRIVATE_KEY)%'
             $subject: '%env(WEB_PUSH_SUBJECT)%'
 
-    # add more service definitions when explicit configuration is needed
+    # News pipeline: ollama HTTP-клиент (URL/модель — env, см. параметры выше)
+    App\Service\News\OllamaClient:
+        arguments:
+            $ollamaUrl: '%env(OLLAMA_URL)%'
+            $model: '%env(OLLAMA_MODEL)%'
+
+    App\Command\NewsProcessCommand:
+        arguments:
+            $autoPublish: '%env(bool:NEWS_AUTO_PUBLISH)%'
+
     # please note that last definitions always *replace* previous ones
 
     App\Service\LlmService:
