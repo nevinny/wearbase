@@ -85,4 +85,27 @@ class WardrobeOutfitShareRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /**
+     * Последняя действующая ссылка, созданная пользователем, — персональная
+     * реферальная ссылка дашборда (?ref={token} ведёт на лендинг /l/{token}).
+     */
+    public function findLatestViewableByCreator(User $creator): ?WardrobeOutfitShare
+    {
+        $shares = $this->createQueryBuilder('s')
+            ->where('s.createdBy = :creator')
+            ->setParameter('creator', $creator)
+            ->orderBy('s.id', 'DESC')
+            ->setMaxResults(20)
+            ->getQuery()
+            ->getResult();
+
+        foreach ($shares as $share) {
+            if ($share->isViewable()) {
+                return $share;
+            }
+        }
+
+        return null;
+    }
 }
