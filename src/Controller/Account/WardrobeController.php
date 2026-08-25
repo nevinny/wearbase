@@ -37,7 +37,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\RateLimiter\RateLimiterFactory;
+use App\Service\WardrobeAiAllowance;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\Constraints\Image;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -382,7 +382,7 @@ class WardrobeController extends AbstractController
     public function aiPhoto(
         Request $request,
         WardrobeAiService $ai,
-        RateLimiterFactory $wardrobeAiLimiter,
+        WardrobeAiAllowance $aiAllowance,
         WardrobeItemRepository $repo,
         StorageInterface $vichStorage,
         AiUsageTracker $usageTracker,
@@ -397,7 +397,7 @@ class WardrobeController extends AbstractController
 
         /** @var User $user */
         $user = $this->getUser();
-        if (!$wardrobeAiLimiter->create((string) $user->getId())->consume()->isAccepted()) {
+        if (!$aiAllowance->consume($user)) {
             $usageTracker->recordError($user, AiUsageLog::FEATURE_WARDROBE_PHOTO, 'Лимит AI-подсказок на сегодня');
             $wardrobeAiLogger->error('Лимит AI-подсказок на сегодня', ['feature' => AiUsageLog::FEATURE_WARDROBE_PHOTO, 'user_id' => $user->getId()]);
             return $this->json(['ok' => false, 'error' => 'Лимит AI-подсказок на сегодня'], Response::HTTP_TOO_MANY_REQUESTS);
@@ -517,7 +517,7 @@ class WardrobeController extends AbstractController
     public function aiUrl(
         Request $request,
         WardrobeAiService $ai,
-        RateLimiterFactory $wardrobeAiLimiter,
+        WardrobeAiAllowance $aiAllowance,
         AiUsageTracker $usageTracker,
         LoggerInterface $wardrobeAiLogger,
     ): JsonResponse {
@@ -527,7 +527,7 @@ class WardrobeController extends AbstractController
 
         /** @var User $user */
         $user = $this->getUser();
-        if (!$wardrobeAiLimiter->create((string) $user->getId())->consume()->isAccepted()) {
+        if (!$aiAllowance->consume($user)) {
             $usageTracker->recordError($user, AiUsageLog::FEATURE_WARDROBE_URL, 'Лимит AI-подсказок на сегодня');
             $wardrobeAiLogger->error('Лимит AI-подсказок на сегодня', ['feature' => AiUsageLog::FEATURE_WARDROBE_URL, 'user_id' => $user->getId()]);
             return $this->json(['ok' => false, 'error' => 'Лимит AI-подсказок на сегодня'], Response::HTTP_TOO_MANY_REQUESTS);

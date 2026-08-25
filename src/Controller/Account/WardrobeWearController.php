@@ -14,11 +14,11 @@ use App\Service\Wardrobe\WardrobeConsentService;
 use App\Service\Wardrobe\WardrobeImageSanitizer;
 use App\Service\Wardrobe\WardrobeWearRecognitionService;
 use App\Service\Wardrobe\WardrobeWearService;
+use App\Service\WardrobeAiAllowance;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\Constraints\Image;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -38,7 +38,7 @@ final class WardrobeWearController extends AbstractController
         WardrobeConsentService $consentService,
         WardrobeImageSanitizer $sanitizer,
         ValidatorInterface $validator,
-        RateLimiterFactory $wardrobeAiLimiter,
+        WardrobeAiAllowance $aiAllowance,
     ): Response {
         /** @var User $actor */
         $actor = $this->getUser();
@@ -82,7 +82,7 @@ final class WardrobeWearController extends AbstractController
                     }
                     $consentService->grantPhotoProcessing($actor, $subject);
                 }
-                if (!$wardrobeAiLimiter->create((string) $actor->getId())->consume()->isAccepted()) {
+                if (!$aiAllowance->consume($actor)) {
                     $this->addFlash('error', 'Лимит AI-распознаваний на сегодня');
                     return $this->redirectToRoute('account_wardrobe_wear_index', $this->memberParams($actor, $subject));
                 }
