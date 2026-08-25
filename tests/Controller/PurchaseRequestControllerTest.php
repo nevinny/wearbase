@@ -78,6 +78,73 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->assertSame(0, $this->em()->getRepository(PurchaseRequest::class)->count(['subject' => $child]));
     }
 
+    public function testProductUrlAcceptsPastedTextWithMarketplaceShareLink(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('paste-parent'));
+        $child = $this->families()->createChild($parent, 'Аня');
+        $client->loginUser($child);
+
+        $crawler = $client->request('GET', '/account/purchases/new');
+        $client->submit($crawler->filter('form')->form([
+            'purchase_request_form[subject]' => '0',
+            'purchase_request_form[productUrl]' => 'Пуховик зимний https://www.wildberries.ru/catalog/999/detail.aspx',
+            'purchase_request_form[comment]' => 'Ссылка из приложения WB',
+        ]));
+
+        /** @var PurchaseRequest $purchaseRequest */
+        $purchaseRequest = $this->em()->getRepository(PurchaseRequest::class)->findOneBy(['subject' => $child]);
+        $this->assertNotNull($purchaseRequest);
+        $this->assertResponseRedirects('/account/purchases/'.$purchaseRequest->getId());
+        $this->assertSame('https://www.wildberries.ru/catalog/999/detail.aspx', $purchaseRequest->getProductUrl());
+    }
+
+    public function testAdditionalUrlsExtractLinksFromMessySharedLines(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('paste-multi-parent'));
+        $child = $this->families()->createChild($parent, 'Мила');
+        $client->loginUser($child);
+
+        $crawler = $client->request('GET', '/account/purchases/new');
+        $client->submit($crawler->filter('form')->form([
+            'purchase_request_form[subject]' => '0',
+            'purchase_request_form[productUrl]' => 'https://one.example.test/item/1',
+            'purchase_request_form[additionalUrls]' => "Куртка https://two.example.test/item/2 со скидкой\nДжинсы синие https://three.example.test/item/3 распродажа",
+        ]));
+
+        /** @var PurchaseRequest $purchaseRequest */
+        $purchaseRequest = $this->em()->getRepository(PurchaseRequest::class)->findOneBy(['subject' => $child]);
+        $this->assertNotNull($purchaseRequest);
+        $urls = array_map(
+            static fn (PurchaseRequestItem $item): string => $item->getSourceUrl(),
+            $purchaseRequest->getItems()->toArray(),
+        );
+        $this->assertSame(
+            ['https://one.example.test/item/1', 'https://two.example.test/item/2', 'https://three.example.test/item/3'],
+            $urls,
+        );
+    }
+
+    public function testAdditionalUrlsLineWithoutUrlStillRejected(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('paste-invalid-parent'));
+        $child = $this->families()->createChild($parent, 'Вера');
+        $client->loginUser($child);
+
+        $crawler = $client->request('GET', '/account/purchases/new');
+        $client->submit($crawler->filter('form')->form([
+            'purchase_request_form[subject]' => '0',
+            'purchase_request_form[productUrl]' => 'https://shop.example.test/item/1',
+            'purchase_request_form[additionalUrls]' => "просто текст без ссылки",
+        ]));
+
+        $this->assertResponseStatusCodeSame(422);
+        $this->assertSelectorTextContains('body', 'Каждая строка должна содержать безопасную HTTPS-ссылку.');
+        $this->assertSame(0, $this->em()->getRepository(PurchaseRequest::class)->count(['subject' => $child]));
+    }
+
     public function testChildCreatesMultiItemRequestAndParentDecidesEachItem(): void
     {
         $client = static::createClient();

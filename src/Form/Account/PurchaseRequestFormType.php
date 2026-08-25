@@ -11,6 +11,8 @@ use Symfony\Component\Form\Extension\Core\Type\MoneyType;
 use Symfony\Component\Form\Extension\Core\Type\TextareaType;
 use Symfony\Component\Form\Extension\Core\Type\UrlType;
 use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\Form\FormEvent;
+use Symfony\Component\Form\FormEvents;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 use Symfony\Component\Validator\Constraints\Length;
 use Symfony\Component\Validator\Constraints\GreaterThanOrEqual;
@@ -21,12 +23,31 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 class PurchaseRequestFormType extends AbstractType
 {
+    /** Ссылка внутри вставленного текста («Название товара https://…» из шеринга WB/Ozon). */
+    private const PASTE_URL_PATTERN = '~https?://[^\s<>"\']+~iu';
+
     public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         $choices = [];
         foreach ($options['subjects'] as $subject) {
             $choices[$subject->getFirstName() ?: $subject->getFullName()] = $subject;
         }
+
+        // Нормализуем вставку «текст + ссылка» ДО трансформеров и валидации.
+        $builder->addEventListener(FormEvents::PRE_SUBMIT, static function (FormEvent $event): void {
+            $data = $event->getData();
+            if (!\is_array($data)) {
+                return;
+            }
+            if (isset($data['productUrl']) && \is_string($data['productUrl'])) {
+                $data['productUrl'] = self::extractFirstUrl($data['productUrl']);
+            }
+            if (isset($data['additionalUrls']) && \is_string($data['additionalUrls'])) {
+                $lines = preg_split('/\R/', $data['additionalUrls']) ?: [];
+                $data['additionalUrls'] = implode("\n", array_map(self::extractFirstUrl(...), $lines));
+            }
+            $event->setData($data);
+        });
 
         $builder
             ->add('subject', ChoiceType::class, [
@@ -79,6 +100,12 @@ class PurchaseRequestFormType extends AbstractType
                 'required' => false,
                 'constraints' => [new Length(['max' => 2000])],
             ]);
+    }
+
+    /** Вытаскиваем первый URL из строки; если ссылки нет — строка остаётся как была (валидация покажет ошибку). */
+    private static function extractFirstUrl(string $value): string
+    {
+        return preg_match(self::PASTE_URL_PATTERN, $value, $m) === 1 ? $m[0] : $value;
     }
 
     public function configureOptions(OptionsResolver $resolver): void
