@@ -13,12 +13,16 @@ use App\Entity\WardrobeItemPhoto;
 use App\Repository\WardrobeCircleInviteRepository;
 use App\Repository\WardrobeCircleMemberRepository;
 use App\Repository\WardrobeOutfitShareRepository;
+use App\Entity\WardrobeOutfitShare;
+use App\Entity\WardrobeShareReaction;
+use App\Service\Circle\CircleReactionService;
 use App\Service\Circle\CircleService;
 use App\Service\FamilyService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -41,6 +45,7 @@ class CircleController extends AbstractController
 {
     public function __construct(
         private readonly EntityManagerInterface $em,
+        private readonly CircleReactionService $reactions,
         private readonly CircleService $circles,
         private readonly FamilyService $families,
         private readonly WardrobeCircleMemberRepository $memberships,
@@ -57,8 +62,8 @@ class CircleController extends AbstractController
     {
         /** @var User $actor */
         $actor = $this->getUser();
-
         return $this->render('account/wardrobe/circles.html.twig', [
+            'fires' => $this->authorFires($actor),
             'memberships' => $this->visibleMemberships($actor),
             'pendingForParent' => $actor->isFamilyParent() && $actor->getFamily() !== null
                 ? $this->memberships->findPendingParentFor($actor)
@@ -102,8 +107,15 @@ class CircleController extends AbstractController
         }
         $membership = $this->memberships->findOneBy(['circle' => $circle, 'user' => $actor]);
 
+        $feedShares = $this->shares->findActiveForCircle($circle);
+
+        // Суммы огней одним GROUP BY запросом по share_id IN (:ids) — ON READ,
+        // без денормализации (docs/ratings-spec.md §5, инвариант №3 circles-spec §4).
+        $fires = $this->em->getRepository(WardrobeShareReaction::class)
+            ->countsByShareIds(array_map(static fn (WardrobeOutfitShare $s): int => (int) $s->getId(), $feedShares));
+
         $cards = [];
-        foreach ($this->shares->findActiveForCircle($circle) as $share) {
+        foreach ($feedShares as $share) {
             $cards[] = [
                 'id' => $share->getId(),
                 'outfitId' => $share->getOutfit()->getId(),
@@ -113,6 +125,9 @@ class CircleController extends AbstractController
                     ?? $share->getOutfit()->getWardrobeOwner()?->getFirstName(),
                 'grantedAt' => $share->getGrantedAt(),
                 'items' => $this->feedItems($share),
+                // Кнопка «🔥 N» — только не-автору; у автора сумма видна без кнопки.
+                'fires' => $fires[(int) $share->getId()] ?? 0,
+                'canReact' => !$this->isAuthorOf($actor, $share),
             ];
         }
 
@@ -126,6 +141,40 @@ class CircleController extends AbstractController
             'cards' => $cards,
             'canKick' => in_array($membership?->getRole(), [WardrobeCircleMember::ROLE_OWNER, WardrobeCircleMember::ROLE_MODERATOR], true),
         ]);
+    }
+
+
+    /**
+     * «Огонь» на карточку ленты (docs/ratings-spec.md §4–5). JSON-эндпоинт под
+     * CSRF per-action; вся авторизация — в CircleReactionService. Идемпотентный
+     * повтор и проигравшая гонка uniq возвращают 200 + текущее состояние.
+     */
+    #[Route('/{circleId}/shares/{shareId}/react', name: 'account_circles_share_react', requirements: ['circleId' => '\\d+', 'shareId' => '\\d+'], methods: ['POST'])]
+    public function react(int $circleId, int $shareId, Request $request, RateLimiterFactory $circleReactionLimiter): JsonResponse
+    {
+        /** @var User $actor */
+        $actor = $this->getUser();
+
+        if (!$this->isCsrfTokenValid('circle_react_'.$circleId.'_'.$shareId, (string) $request->request->get('_token'))) {
+            return $this->json(['ok' => false, 'error' => 'Недействительный токен'], Response::HTTP_BAD_REQUEST);
+        }
+
+        // Sliding 60/день per-user (§4.3); no_limit в тестах.
+        if (!$circleReactionLimiter->create('u'.$actor->getId())->consume()->isAccepted()) {
+            return $this->json(['ok' => false, 'error' => 'Слишком много реакций — попробуйте завтра'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
+        try {
+            $state = $this->reactions->react($actor, $circleId, $shareId);
+        } catch (\DomainException) {
+            // Нейтральный 404: не существует / чужой кружок / грант истёк или отозван.
+            throw $this->createNotFoundException();
+        } catch (AccessDeniedException) {
+            // Своё — или нет живого членства: отказ без деталей.
+            return $this->json(['ok' => false, 'error' => 'Реакция недоступна'], Response::HTTP_FORBIDDEN);
+        }
+
+        return $this->json(['ok' => true] + $state);
     }
 
     // ── Выход / кик / подтверждение родителя ─────────────────────────────────
@@ -417,6 +466,55 @@ class CircleController extends AbstractController
         }
 
         return $result;
+    }
+
+    /** §4.1 спеки рейтингов: автор лука — владелец (outfit.user) или создатель гранта. */
+    private function isAuthorOf(User $actor, WardrobeOutfitShare $share): bool
+    {
+        return $share->getOutfit()->getUser()?->getId() === $actor->getId()
+            || $share->getCreatedBy()->getId() === $actor->getId();
+    }
+
+    /**
+     * Блок автора «Огни на твои луки» (ЛК): per-share суммы по ВСЕМ кружковым
+     * грантам автора — включая истёкшие/отозванные, сумма остаётся видимой
+     * (решение PO №5). Персональные бейджи вместо лидерборда: пороги 5/25/100
+     * суммарных огней, видит только автор (§3.3).
+     *
+     * @return array{total: int, badge: int|null, shares: list<array{shareId: int, outfitTitle: string, circleTitle: string, circleId: int, fires: int, live: bool}>}
+     */
+    private function authorFires(User $author): array
+    {
+        $shares = $this->shares->findCircleSharesAuthoredBy($author);
+        $counts = $this->em->getRepository(WardrobeShareReaction::class)
+            ->countsByShareIds(array_map(static fn (WardrobeOutfitShare $s): int => (int) $s->getId(), $shares));
+
+        $rows = [];
+        $total = 0;
+        foreach ($shares as $share) {
+            $fires = $counts[(int) $share->getId()] ?? 0;
+            $total += $fires;
+            $live = $share->getStatus() === WardrobeOutfitShare::STATUS_ACTIVE
+                && ($share->getExpiresAt() === null || $share->getExpiresAt() > new \DateTimeImmutable());
+            $rows[] = [
+                'shareId' => (int) $share->getId(),
+                'outfitTitle' => $share->getOutfit()->getTitle(),
+                'circleTitle' => $share->getCircle()?->getTitle() ?? '',
+                'circleId' => (int) $share->getCircle()?->getId(),
+                'fires' => $fires,
+                'live' => $live,
+            ];
+        }
+
+        $badge = null;
+        foreach ([100, 25, 5] as $threshold) {
+            if ($total >= $threshold) {
+                $badge = $threshold;
+                break;
+            }
+        }
+
+        return ['total' => $total, 'badge' => $badge, 'shares' => $rows];
     }
 
     /** @return list<array{category:?string,color:?string,coverPhotoId:?int}> */

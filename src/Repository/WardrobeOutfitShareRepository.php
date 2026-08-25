@@ -87,6 +87,25 @@ class WardrobeOutfitShareRepository extends ServiceEntityRepository
     }
 
     /**
+     * Кружковые гранты луков автора для блока «Огни на твои луки» (docs/ratings-spec.md
+     * §5): включая истёкшие и отозванные — сумма огней автору видна всегда (решение PO №5).
+     * Автор по предикату §4.1: владелец лука (outfit.user) или создатель гранта.
+     *
+     * @return list<WardrobeOutfitShare>
+     */
+    public function findCircleSharesAuthoredBy(User $author): array
+    {
+        return $this->createQueryBuilder('s')
+            ->innerJoin('s.outfit', 'o')
+            ->where('s.circle IS NOT NULL')
+            ->andWhere('o.user = :author OR s.createdBy = :author')
+            ->setParameter('author', $author)
+            ->orderBy('s.id', 'DESC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * Последняя действующая ссылка, созданная пользователем, — персональная
      * реферальная ссылка дашборда (?ref={token} ведёт на лендинг /l/{token}).
      */
