@@ -232,6 +232,21 @@ class CircleService
         $this->em->flush();
     }
 
+    // ── Лента ────────────────────────────────────────────────────────────────
+
+    /** Живое членство (active) на каждый запрос: выход/кик лишают доступа мгновенно (§3.3). */
+    public function canViewFeed(User $actor, WardrobeCircle $circle): bool
+    {
+        return $this->memberRepo()->findActive($actor, $circle) !== null;
+    }
+
+    public function requireFeedAccess(User $actor, WardrobeCircle $circle): void
+    {
+        if (!$this->canViewFeed($actor, $circle)) {
+            throw new AccessDeniedException('Нет доступа к ленте этого кружка');
+        }
+    }
+
     // ── Шеринг лука в кружок ────────────────────────────────────────────────
     /**
      * Кружковый грант: та же строка wardrobe_outfit_share, circle_id заполнен,

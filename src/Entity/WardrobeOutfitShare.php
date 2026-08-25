@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\WardrobeOutfitShareRepository;
+use App\Entity\WardrobeCircle;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
@@ -16,6 +17,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: WardrobeOutfitShareRepository::class)]
 #[ORM\Table(name: 'wardrobe_outfit_share')]
 #[ORM\Index(columns: ['outfit_id'], name: 'idx_share_outfit')]
+#[ORM\Index(columns: ['circle_id'], name: 'idx_share_circle')]
 #[ORM\UniqueConstraint(name: 'uniq_share_token', columns: ['token'])]
 class WardrobeOutfitShare
 {
@@ -79,6 +81,14 @@ class WardrobeOutfitShare
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $lastViewedAt = null;
 
+    /**
+     * Кружковый грант (docs/circles-spec.md §2): nullable — строка либо гостевая
+     * (circle_id IS NULL), либо кружковая (токен генерируется, но никогда не выдаётся).
+     */
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(onDelete: 'CASCADE')]
+    private ?WardrobeCircle $circle = null;
+
     public function __construct(WardrobeOutfit $outfit, User $createdBy, string $ttl = self::DEFAULT_TTL)
     {
         // 256 бит энтропии — паттерн репо (BrandInvite/FamilyInvite), поиск по уникальному индексу.
@@ -92,6 +102,8 @@ class WardrobeOutfitShare
 
     public function getOutfit(): WardrobeOutfit { return $this->outfit; }
     public function getToken(): string { return $this->token; }
+    public function getCircle(): ?WardrobeCircle { return $this->circle; }
+    public function setCircle(?WardrobeCircle $circle): static { $this->circle = $circle; return $this; }
     public function getCreatedBy(): User { return $this->createdBy; }
     public function getStatus(): string { return $this->status; }
     public function getTtl(): ?string { return $this->ttl; }
@@ -132,12 +144,17 @@ class WardrobeOutfitShare
         $this->revokedAt = new \DateTimeImmutable();
     }
 
-    /** Гостевая страница доступна только для active и неистёкшей ссылки (§1.4, решение PO №3). */
+    /**
+     * Гостевая страница доступна только для active и неистёкшей ГОСТЕВОЙ ссылки
+     * (§1.4, решение PO №3). Кружковый грант гостевого доступа не даёт никогда:
+     * его токен генерируется, но не выдаётся (§2 спеки кружков).
+     */
     public function isViewable(?\DateTimeImmutable $now = null): bool
     {
         $now ??= new \DateTimeImmutable();
 
         return $this->status === self::STATUS_ACTIVE
+            && $this->circle === null
             && ($this->expiresAt === null || $this->expiresAt > $now);
     }
 

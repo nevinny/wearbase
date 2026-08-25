@@ -6,8 +6,10 @@ namespace App\Controller\Account;
 
 use App\Entity\AiUsageLog;
 use App\Entity\User;
+use App\Entity\WardrobeCircleMember;
 use App\Entity\WardrobeOutfit;
 use App\Repository\WardrobeConsentRepository;
+use App\Repository\WardrobeCircleMemberRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Repository\WardrobeOutfitShareRepository;
 use App\Service\AiUsageTracker;
@@ -39,6 +41,7 @@ class WardrobeOutfitController extends AbstractController
         WardrobeOutfitShareRepository $shareRepo,
         RateLimiterFactory $wardrobeAiLimiter,
         AiUsageTracker $usageTracker,
+        WardrobeCircleMemberRepository $circles,
     ): Response {
         /** @var User $actor */
         $actor = $this->getUser();
@@ -87,6 +90,11 @@ class WardrobeOutfitController extends AbstractController
             'canControlPersonalization' => $member->getFamilyRole() !== User::FAMILY_ROLE_CHILD || $actor->isFamilyParent(),
             'outfitShares' => $shareRepo->findForWardrobeOwner($member),
             'canApproveShares' => $actor->isFamilyParent(),
+            // Кружки actor'а для блока «Показать в кружке» (docs/circles-spec.md §2).
+            'circleMemberships' => array_values(array_filter(
+                $circles->findBy(['user' => $actor, 'status' => WardrobeCircleMember::STATUS_ACTIVE]),
+                static fn (WardrobeCircleMember $m) => !$m->getCircle()->isDissolved(),
+            )),
         ]);
     }
 
