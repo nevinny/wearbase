@@ -89,6 +89,20 @@ class WardrobeCircleMember
         $this->status = self::STATUS_ACTIVE;
     }
 
+    /** Преемник владельца при его выходе. */
+    public function promoteToOwner(): void
+    {
+        if ($this->status !== self::STATUS_ACTIVE) {
+            throw new \DomainException('Преемником может быть только активный участник');
+        }
+        $this->role = self::ROLE_OWNER;
+    }
+
+    public function demoteFromOwner(): void
+    {
+        $this->role = self::ROLE_MEMBER;
+    }
+
     /** leave/kick: мгновенная потеря доступа, строка остаётся (uniq circle+user). */
     public function markLeft(): void { $this->status = self::STATUS_LEFT; }
     public function markKicked(): void { $this->status = self::STATUS_KICKED; }

@@ -69,4 +69,7 @@ class WardrobeCircle
     {
         return $this->dissolvedAt !== null;
     }
+
+    /** Передача владения при выходе владельца (решение PO №5). */
+    public function setOwner(User $owner): static { $this->owner = $owner; return $this; }
 }
