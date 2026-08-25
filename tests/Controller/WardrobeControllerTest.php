@@ -777,6 +777,131 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertNull($stillActive->getDeletedAt());
     }
 
+    public function testRotatePhotoReturnsJsonAndRotatesFile(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+
+        [$item, $photo1] = $this->createItemWithTwoPhotos($em, $user, 600);
+        $id = $item->getId();
+
+        $absPath = $storage->resolvePath($photo1, 'file');
+        @mkdir(dirname($absPath), 0777, true);
+        $im = imagecreatetruecolor(8, 4);
+        imagejpeg($im, $absPath, 90);
+        imagedestroy($im);
+        $this->tmpFiles[] = $absPath;
+        $originalSize = filesize($absPath);
+        $photo1->setFileSize($originalSize)->setUpdatedAt(new \DateTimeImmutable('2020-01-01'));
+        $em->flush();
+
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photo_' . $photo1->getId());
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos/' . $photo1->getId() . '/rotate',
+            ['_token' => $token, 'degrees' => '90'],
+            [],
+            ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
+        );
+        $this->assertResponseIsSuccessful();
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertTrue($data['ok']);
+        $this->assertStringContainsString('v=', $data['uri']);
+
+        $imNew = @imagecreatefromstring(file_get_contents($absPath));
+        $this->assertNotFalse($imNew);
+        $this->assertSame(4, imagesx($imNew));
+        $this->assertSame(8, imagesy($imNew));
+        imagedestroy($imNew);
+
+        $em->clear();
+        /** @var WardrobeItemPhoto $reloaded */
+        $reloaded = $em->find(WardrobeItemPhoto::class, $photo1->getId());
+        $this->assertNotNull($reloaded->getFileSize());
+        $this->assertNotSame('2020-01-01', $reloaded->getUpdatedAt()->format('Y-m-d'));
+    }
+
+    public function testRotatePhotoWithInvalidCsrfReturns403(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1] = $this->createItemWithTwoPhotos($em, $user, 601);
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $item->getId() . '/photos/' . $photo1->getId() . '/rotate',
+            ['_token' => 'bad-token', 'degrees' => '90'],
+            [],
+            ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
+        );
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    public function testRotatePhotoReturns404ForForeignItem(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$foreignItem, $foreignPhoto] = $this->createItemWithTwoPhotos($em, UserFactory::brandOwner(static::getContainer()), 602);
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $foreignItem->getId() . '/photos/' . $foreignPhoto->getId() . '/rotate',
+            ['_token' => 'x', 'degrees' => '90'],
+            [],
+            ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
+        );
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testRotatePhotoRejectsInvalidDegrees(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1] = $this->createItemWithTwoPhotos($em, $user, 603);
+
+        $client->request('GET', '/account/wardrobe/' . $item->getId());
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photo_' . $photo1->getId());
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $item->getId() . '/photos/' . $photo1->getId() . '/rotate',
+            ['_token' => $token, 'degrees' => '45'],
+            [],
+            ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
+        );
+        $this->assertResponseStatusCodeSame(400);
+    }
+
+    public function testShowPageContainsRotateButtonsForGalleryPhotos(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1] = $this->createItemWithTwoPhotos($em, $user, 604);
+
+        $crawler = $client->request('GET', '/account/wardrobe/' . $item->getId());
+        $this->assertResponseIsSuccessful();
+        $this->assertGreaterThanOrEqual(2, $crawler->filter('[data-rotate-btn]')->count());
+        $this->assertGreaterThanOrEqual(2, $crawler->filter('[data-rotate-target]')->count());
+    }
+
     /**
      * Регресс на 🔴: раньше замена photoFile через «Редактировать» физически удаляла
      * старый файл (Vich delete_on_update) и не заводила для него строку галереи —

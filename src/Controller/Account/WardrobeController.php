@@ -203,6 +203,34 @@ class WardrobeController extends AbstractController
         return $this->redirectToRoute('account_wardrobe_show', ['id' => $id] + $this->memberQuery($user, $currentMember));
     }
 
+    #[Route('/{id}/photos/{photoId}/rotate', name: 'photo_rotate', requirements: ['id' => '\d+', 'photoId' => '\d+'], methods: ['POST'])]
+    public function rotatePhoto(
+        int $id,
+        int $photoId,
+        Request $request,
+        WardrobeItemRepository $repo,
+        EntityManagerInterface $em,
+    ): Response {
+        [$user, $currentMember, $item, $photo] = $this->resolvePhotoAction($id, $photoId, $request, $repo, $em);
+        if (!$this->isCsrfTokenValid('wardrobe_photo_'.$photoId, $request->request->get('_token'))) {
+            return $this->json(['ok' => false, 'error' => 'Недействительный токен'], Response::HTTP_FORBIDDEN);
+        }
+        $degrees = $request->request->getInt('degrees');
+        if (!in_array($degrees, [90, -90], true)) {
+            return $this->json(['ok' => false, 'error' => 'Неверный угол'], Response::HTTP_BAD_REQUEST);
+        }
+        try {
+            $this->photoManager->rotate($photo, $degrees);
+        } catch (\InvalidArgumentException|\RuntimeException $exception) {
+            return $this->json(['ok' => false, 'error' => $exception->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $this->json([
+            'ok' => true,
+            'uri' => $this->generateUrl('account_wardrobe_media_photo', ['id' => $photo->getId()]).'?v='.$photo->getUpdatedAt()->getTimestamp(),
+        ]);
+    }
+
     #[Route('/{id}/archive', name: 'archive', requirements: ['id' => '\d+'], methods: ['POST'])]
     public function archive(int $id, Request $request, WardrobeItemRepository $repo): Response
     {
