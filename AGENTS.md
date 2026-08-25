@@ -60,7 +60,7 @@ One logical change = one branch = one PR. Don't stack unrelated work on the same
 
 ### Entities — запланированные (ЛК Бренда + ЛК Клиента)
 
-Создать в `src/Entity/` (подробная схема в `_docs/lk-design.md`):
+Создать в `src/Entity/` (подробная схема в `docs/lk-design.md`):
 
 | Entity | Назначение |
 |--------|-----------|
@@ -355,8 +355,7 @@ src/
 ├── Repository/        # Doctrine repositories
 └── Service/           # Business logic
 
-_docs/                 # Архитектурная документация
-├── lk-design.md       # Дизайн ЛК Бренда + ЛК Клиента
+docs/                  # Документация и база знаний (включая lk-design.md)
 _sql/                  # SQL-файлы и данные для импорта
 
 tests/                 # PHPUnit tests
