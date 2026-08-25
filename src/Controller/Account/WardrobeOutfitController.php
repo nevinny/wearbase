@@ -24,7 +24,7 @@ use App\Service\Wardrobe\WardrobeWearService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\RateLimiter\RateLimiterFactory;
+use App\Service\WardrobeAiAllowance;
 use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/account/wardrobe/outfits')]
@@ -39,7 +39,7 @@ class WardrobeOutfitController extends AbstractController
         WardrobeOutfitLearningService $learning,
         WardrobeConsentRepository $consents,
         WardrobeOutfitShareRepository $shareRepo,
-        RateLimiterFactory $wardrobeAiLimiter,
+        WardrobeAiAllowance $aiAllowance,
         AiUsageTracker $usageTracker,
         WardrobeCircleMemberRepository $circles,
     ): Response {
@@ -60,7 +60,7 @@ class WardrobeOutfitController extends AbstractController
             } elseif (!in_array($weatherCondition, WardrobeStylistContextBuilder::WEATHER_CONDITIONS, true)
                 || !in_array($temperatureBand, WardrobeStylistContextBuilder::TEMPERATURE_BANDS, true)) {
                 $error = 'Выберите текущую погоду и температуру';
-            } elseif (!$wardrobeAiLimiter->create((string) $actor->getId())->consume()->isAccepted()) {
+            } elseif (!$aiAllowance->consume($actor)) {
                 $error = 'Лимит AI-подсказок на сегодня';
                 $usageTracker->recordError($actor, AiUsageLog::FEATURE_WARDROBE_OUTFIT, $error);
             } else {

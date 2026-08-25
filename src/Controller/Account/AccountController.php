@@ -10,6 +10,7 @@ use App\Entity\User;
 use App\Form\Account\AddressFormType;
 use App\Form\Account\ProfileFormType;
 use App\Notification\EmailNotifier;
+use App\Service\Referral\ReferralRewardService;
 use App\Repository\OrderRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -22,7 +23,7 @@ use Symfony\Component\Routing\Attribute\Route;
 class AccountController extends AbstractController
 {
     #[Route('', name: 'dashboard')]
-    public function dashboard(OrderRepository $orderRepo): Response
+    public function dashboard(OrderRepository $orderRepo, ReferralRewardService $referralRewards): Response
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -35,9 +36,13 @@ class AccountController extends AbstractController
             $allOrders
         ));
 
+        // Блок «Приглашай подруг» (спец §4): ссылка, счётчик, бонус, прогресс к бейджу.
+        $referral = $this->isGranted('ROLE_CUSTOMER') ? $referralRewards->dashboardSummary($user) : null;
+
         return $this->render('account/dashboard.html.twig', [
             'user'          => $user,
             'recentOrders'  => array_slice($allOrders, 0, 5),
+            'referral'      => $referral,
             'stats'         => [
                 'totalOrders'  => count($allOrders),
                 'activeOrders' => count($activeOrders),
