@@ -29,7 +29,7 @@ ssh regru 'cd wearbase.ru \
 # 3. Если добавлены НОВЫЕ console-команды и их надо запустить в этом же деплое:
 #    cache:clear ОБЯЗАН идти ДО их запуска (no-debug контейнер кэширует список команд).
 
-# 4. Если добавлены новые статьи блога (манифест в PublishBlogDraftsCommand + HTML в _docs/blog-drafts/):
+# 4. Если добавлены новые статьи блога (манифест в PublishBlogDraftsCommand + HTML в docs/blog-drafts/):
 ssh regru 'cd wearbase.ru && php bin/console app:blog:publish-drafts'
 
 # 5. Смоук

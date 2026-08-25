@@ -9,7 +9,7 @@
 [`proof_pack.md`](proof_pack.md); позиционирование/враг — [`marketing_strategy.md`](marketing_strategy.md);
 reality-check (0 платящих, willingness-to-pay не доказан) — [`marketing_reality_check.md`](marketing_reality_check.md);
 ФЗ-38-нюансы рассылки — [`marketing_email.md`](marketing_email.md).
-Список первых кандидатов — `_docs/cold-sales-candidates.csv` (критерии в §7).
+Список первых кандидатов — `docs/cold-sales-candidates.csv` (критерии в §7).
 
 > **Принцип v2:** продаём ТРУД и реальные поверхности видимости, а не фантазии. Ни одного пункта,
 > который платформа не может выполнить сегодня. Где возможности нет (готовая ссылка на оплату
@@ -183,9 +183,9 @@ reality-check (0 платящих, willingness-to-pay не доказан) — [
 
 ---
 
-## 7. Список кандидатов (`_docs/cold-sales-candidates.csv`)
+## 7. Список кандидатов (`docs/cold-sales-candidates.csv`)
 
-Критерии отбора (запрос в `_docs/export_candidates.php`):
+Критерии отбора (запрос в `docs/export_candidates.php`):
 `status='new'` (лид, не зарегистрирован) · `contact_status='enriched'` + есть email ·
 RAG-контент `done` + `grounded=1` (карточка реально готова к показу) · есть свой сайт ·
 **источников 4–15** (отсекает и тощие, и брендов-гигантов) · есть соцсеть (IG/VK/TG — признак DTC) ·
@@ -198,7 +198,7 @@ free-mail/несовпадение (проверить адрес перед о�
 ⚠️ **Ручная вычитка 3–5 строк** — автофильтр не ловит не-одежду (Remington) и иностранцев (Ancient
 Greek Sandals, INSULAR). Выкинуть перед отправкой. Иностранные бренды не публикуем (foreign-политика).
 ```bash
-php _docs/export_candidates.php   # перегенерить/расширить (критерии внутри; пишет _docs/candidates.csv)
+php docs/export_candidates.php   # перегенерить/расширить (критерии внутри; пишет docs/candidates.csv)
 ```
 
 ---

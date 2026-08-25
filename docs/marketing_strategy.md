@@ -6,7 +6,7 @@
 скучных товаров делают культы» к продвижению самого wearbase.ru.
 
 Каналы — в отдельных файлах: [SEO/GEO](marketing_seo.md) · [Email/воронка](marketing_email.md) · [Instagram/соцсети](marketing_instagram.md).
-Монетизация и риски chicken-and-egg — [`../_docs/strategy-notes.md`](../_docs/strategy-notes.md).
+Монетизация и риски chicken-and-egg — [`strategy-notes.md`](strategy-notes.md).
 Конкурент и moat 0% — [`competitors.md`](competitors.md).
 
 ---
