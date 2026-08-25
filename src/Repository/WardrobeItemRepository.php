@@ -454,4 +454,20 @@ class WardrobeItemRepository extends ServiceEntityRepository
 
         return array_map('strval', $qb->getQuery()->getSingleColumnResult());
     }
+
+    /** Сколько вещей пользователь завёл в окне [from, to) — бар квалификации реферальной награды (любые статусы, кроме удалённых). */
+    public function countCreatedByUserBetween(User $user, \DateTimeImmutable $from, \DateTimeImmutable $to): int
+    {
+        return (int) $this->createQueryBuilder('w')
+            ->select('COUNT(w.id)')
+            ->where('w.user = :user')
+            ->andWhere('w.createdAt >= :from')
+            ->andWhere('w.createdAt < :to')
+            ->andWhere('w.deletedAt IS NULL')
+            ->setParameter('user', $user)
+            ->setParameter('from', $from)
+            ->setParameter('to', $to)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
 }

@@ -13,6 +13,7 @@ use App\Form\Auth\RegistrationFormType;
 use App\Notification\AdminNotifier;
 use App\Notification\EmailNotifier;
 use App\Service\Look\LookShareReferralService;
+use App\Service\Referral\ReferralRewardService;
 use App\Service\SubscriptionFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -41,6 +42,7 @@ class RegisterController extends AbstractController
         SubscriptionFactory $subscriptionFactory,
         AdminNotifier $adminNotifier,
         LookShareReferralService $lookShareReferrals,
+        ReferralRewardService $referralRewards,
     ): Response {
         if ($this->getUser()) {
             return $this->redirectToRoute(
@@ -122,7 +124,11 @@ class RegisterController extends AbstractController
 
             // Referral-хук «Поделиться луком» (спец §7): одно событие атрибуции после
             // успешной регистрации; возврат на лук — через target_path сессии (LoginSuccessHandler).
-            $lookShareReferrals->recordFromSession($request, $user);
+            $referralEvent = $lookShareReferrals->recordFromSession($request, $user);
+            // Welcome-награда приглашённому (решение PO №2): +10/день×30д сразу при регистрации.
+            if ($referralEvent !== null) {
+                $referralRewards->grantOnWelcome($referralEvent);
+            }
             $lookShareTarget = $this->validatedLookShareTarget($request);
             if ($lookShareTarget !== null) {
                 $request->getSession()->set('_security.main.target_path', $lookShareTarget);

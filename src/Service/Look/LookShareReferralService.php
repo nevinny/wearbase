@@ -31,22 +31,23 @@ final class LookShareReferralService
      * Резолвит look_share_ref из сессии и пишет одно referral_event
      * (inviter = создатель share). Идемпотентно: уникальный индекс
      * uniq_referral_once + удаление ключа из сессии гарантируют «ровно один раз».
+     * Возвращает записанное событие или NULL — на нём строится выдача welcome-награды.
      */
-    public function recordFromSession(Request $request, User $invitee): void
+    public function recordFromSession(Request $request, User $invitee): ?ReferralEvent
     {
         $ref = (string) $request->getSession()->remove(self::SESSION_KEY);
         if (preg_match('/^[0-9a-f]{64}$/', $ref) !== 1) {
-            return;
+            return null;
         }
 
         $share = $this->shares->findByToken($ref);
         if ($share === null || !$share->isViewable()) {
-            return;
+            return null;
         }
 
         $inviter = $share->getCreatedBy();
         if ($inviter->getId() === $invitee->getId()) {
-            return; // самоприглашение не считаем
+            return null; // самоприглашение не считаем
         }
 
         $exists = $this->referrals->count([
@@ -55,15 +56,18 @@ final class LookShareReferralService
             'shareId' => $share->getId(),
         ]) > 0;
         if ($exists) {
-            return;
+            return null;
         }
 
-        $this->em->persist(new ReferralEvent(
+        $event = new ReferralEvent(
             $inviter,
             $invitee,
             ReferralEvent::SOURCE_LOOK_SHARE,
             $share->getId(),
-        ));
+        );
+        $this->em->persist($event);
         $this->em->flush();
+
+        return $event;
     }
 }
