@@ -1,0 +1,61 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}{{ item.rewrittenTitle }} | WEARBASE{% endblock %}
+
+{% block meta_description %}{{ item.rewrittenBody|striptags|slice(0, 155) }}{% endblock %}
+
+{% block og_title %}{{ item.rewrittenTitle }} | WEARBASE{% endblock %}
+
+{% block og_description %}{{ item.rewrittenBody|striptags|slice(0, 155) }}{% endblock %}
+
+{# Self-canonical: страница индексируема (без noindex) #}
+{% block canonical_url %}{{ url('news_show', {slug: item.slug}) }}{% endblock %}
+
+{% block structured_data %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "headline": {{ item.rewrittenTitle|json_encode|raw }},
+        "datePublished": "{{ (item.readyAt ?: item.createdAt)|date('c') }}",
+        "inLanguage": "ru",
+        "mainEntityOfPage": "{{ url('news_show', {slug: item.slug}) }}",
+        "author": {"@type": "Organization", "name": "WEARBASE", "url": "https://wearbase.ru"},
+        "publisher": {"@type": "Organization", "name": "WEARBASE", "url": "https://wearbase.ru"},
+        "isBasedOn": {{ item.sourceUrl|json_encode|raw }}
+    }
+    </script>
+{% endblock %}
+
+{% block body %}
+    <div class="container mx-auto px-4 py-10 max-w-3xl">
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: 'ru'}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <a href="{{ path('news_index') }}" class="text-gray-500 hover:text-gray-900">Новости</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">{{ item.rewrittenTitle|slice(0, 60) }}</span>
+        </nav>
+
+        <article>
+            <header class="mb-8">
+                <p class="text-xs uppercase tracking-wide text-gray-400">{{ item.rubric.value }}</p>
+                <h1 class="text-3xl md:text-4xl font-bold mt-2">{{ item.rewrittenTitle }}</h1>
+                <time datetime="{{ (item.readyAt ?: item.createdAt)|date('Y-m-d') }}" class="block text-sm text-gray-400 mt-3">
+                    {{ (item.readyAt ?: item.createdAt)|date('d.m.Y') }}
+                </time>
+                {# Обязательная атрибуция первоисточника: постоянный dofollow #}
+                <p class="text-sm text-gray-500 mt-3">
+                    По материалам
+                    <a href="{{ item.sourceUrl }}" rel="noopener" class="underline hover:text-gray-800">{{ item.sourceName }}</a>
+                </p>
+            </header>
+
+            <div class="prose prose-lg max-w-none [&_p]:mt-4">
+                {% for paragraph in item.rewrittenBody|split("\n\n") %}
+                    <p>{{ paragraph }}</p>
+                {% endfor %}
+            </div>
+        </article>
+    </div>
+{% endblock %}

@@ -7,6 +7,7 @@ use App\Entity\AdvisorIdea;
 use App\Entity\AdvisorRun;
 use App\Entity\AiUsageLog;
 use App\Entity\Article;
+use App\Entity\NewsItem;
 use App\Entity\Author;
 use App\Entity\Brand;
 use App\Entity\BrandAudience;
@@ -84,6 +85,8 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToRoute('Клики по брендам', 'fas fa-arrow-up-right-from-square', 'admin_clicks');
         yield MenuItem::linkToRoute('Динамика Яндекс', 'fas fa-chart-line', 'admin_yandex_dynamics');
         yield MenuItem::linkToCrud('Статьи блога', 'fas fa-newspaper', Article::class);
+        yield MenuItem::linkToCrud('Новости (модерация)', 'fas fa-rss', NewsItem::class)
+            ->setController(NewsItemCrudController::class);
         yield MenuItem::linkToCrud('Авторы', 'fas fa-user-pen', Author::class);
         yield MenuItem::linkToCrud('SEO города (хабы)', 'fas fa-city', CityHub::class);
 

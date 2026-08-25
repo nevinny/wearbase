@@ -1,0 +1,53 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% block title %}Новости моды и гардероба | WEARBASE{% endblock %}
+
+{% block meta_description %}Свежие новости моды, детской одежды и гардероба — кратко и по фактам.{% endblock %}
+
+{% block og_title %}Новости моды и гардероба | WEARBASE{% endblock %}
+
+{# Self-canonical: первая страница без ?page, пагинация — со страницей #}
+{% block canonical_url %}{{ url('news_index') ~ (page > 1 ? '?page=' ~ page : '') }}{% endblock %}
+
+{% block body %}
+    <div class="container mx-auto px-4 py-10 max-w-3xl">
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: 'ru'}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">Новости</span>
+        </nav>
+
+        <h1 class="text-3xl md:text-4xl font-bold">Новости</h1>
+
+        {% if items is empty %}
+            <p class="text-gray-500 mt-8">Пока пусто — новости появятся совсем скоро.</p>
+        {% else %}
+            <div class="mt-8 space-y-8">
+                {% for item in items %}
+                    <article>
+                        <p class="text-xs uppercase tracking-wide text-gray-400">
+                            {{ item.rubric.value }} · {{ (item.readyAt ?: item.createdAt)|date('d.m.Y') }}
+                        </p>
+                        <h2 class="text-xl font-semibold mt-1">
+                            <a href="{{ path('news_show', {slug: item.slug}) }}" class="hover:underline">{{ item.rewrittenTitle }}</a>
+                        </h2>
+                        <p class="text-gray-600 mt-2">{{ item.rewrittenBody|striptags|slice(0, 180) }}…</p>
+                        <p class="text-sm text-gray-400 mt-1">По материалам {{ item.sourceName }}</p>
+                    </article>
+                {% endfor %}
+            </div>
+
+            {% if totalPages > 1 %}
+                <nav class="flex gap-3 mt-10 text-sm" aria-label="Страницы">
+                    {% for p in 1..totalPages %}
+                        {% if p == page %}
+                            <span class="font-bold text-gray-900">{{ p }}</span>
+                        {% else %}
+                            <a href="{{ path('news_index', {page: p}) }}" class="text-gray-500 hover:text-gray-900">{{ p }}</a>
+                        {% endif %}
+                    {% endfor %}
+                </nav>
+            {% endif %}
+        {% endif %}
+    </div>
+{% endblock %}
