@@ -66,6 +66,13 @@ framework:
             limit: 60
             interval: '1 minute'
 
+        # Реакция «огонь» в кружке (POST /account/circles/{circleId}/shares/{shareId}/react):
+        # per-user дневной потолок (docs/ratings-spec.md §4.3).
+        circle_reaction:
+            policy: sliding_window
+            limit: 60
+            interval: '1 day'
+
 # В тестах дневное окно wardrobe_ai живёт в var/cache/test МЕЖДУ прогонами
 # (тест-БД одноразовая → user id повторяются) — после ~30 прогонов сьют
 # начинает флейкать 429. Лимитер в тестах отключаем.
@@ -83,4 +90,6 @@ when@test:
             look_share:
                 policy: no_limit
             circle_join:
+                policy: no_limit
+            circle_reaction:
                 policy: no_limit

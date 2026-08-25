@@ -75,6 +75,33 @@
     </form>
 </section>
 
+{# Блок автора «Огни на твои луки» (docs/ratings-spec.md §2–3): per-share суммы +
+   персональные бейджи 5/25/100 вместо лидерборда; видит только автор.
+   Истёкшие/отозванные гранты в ленте скрыты, но сумма автору остаётся видимой (PO №5). #}
+{% if fires and fires.shares %}
+    <section class="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="font-bold">Огни на твои луки</h2>
+            {% if fires.badge %}
+                <span class="rounded-full bg-orange-100 px-4 py-1.5 text-xs font-bold text-orange-700">🔥 бейдж {{ fires.badge }}</span>
+            {% endif %}
+        </div>
+        <p class="mt-1 text-xs text-gray-500">Сколько «огней» участники поставили твоим лукам в кружках. Всего: {{ fires.total }}.</p>
+        <ul class="mt-3 space-y-2">
+            {% for row in fires.shares %}
+                <li class="flex items-center justify-between gap-2 rounded-xl border border-gray-100 p-3 text-sm">
+                    <span class="min-w-0 truncate">
+                        {{ row.outfitTitle }}
+                        <span class="text-xs text-gray-400">· кружок «{{ row.circleTitle }}»</span>
+                        {% if not row.live %}<span class="text-xs text-gray-400">(публикация скрыта)</span>{% endif %}
+                    </span>
+                    <span class="shrink-0 font-semibold text-gray-700">🔥 {{ row.fires }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    </section>
+{% endif %}
+
 {# Отзыв родительского согласия на кружковые публикации детских луков (§3.1) #}
 {% if managedChildren %}
     <section class="mb-6 rounded-2xl bg-white p-5 shadow-sm">
