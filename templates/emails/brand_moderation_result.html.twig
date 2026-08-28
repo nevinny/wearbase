@@ -1,0 +1,52 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Бренд «{{ brand.title }}» — WEARBASE{% endblock %}
+{% block email_content %}
+{% set missing = moderation_missing(moderation.missing) %}
+{% set flags = moderation_flags(moderation.redFlags) %}
+
+{% if moderation.status == 'approved' %}
+    <h2 style="margin-top:0;font-size:18px;">✅ Бренд «{{ brand.title }}» одобрен</h2>
+    <p style="color:#555;line-height:1.6;">
+        Карточка встала в очередь публикации и появится в каталоге в течение часа.
+    </p>
+{% elseif moderation.status == 'rejected' %}
+    <h2 style="margin-top:0;font-size:18px;">Карточка «{{ brand.title }}» отклонена</h2>
+    <p style="color:#555;line-height:1.6;">
+        {{ moderation.adminNote ?: 'К сожалению, мы не смогли опубликовать карточку.' }}
+    </p>
+    <p style="color:#555;line-height:1.6;">
+        Если считаете это ошибкой — ответьте на это письмо или напишите
+        <a href="https://t.me/zyablik">@zyablik</a> в Telegram, разберёмся вручную.
+    </p>
+{% else %}
+    <h2 style="margin-top:0;font-size:18px;">Осталось дополнить карточку «{{ brand.title }}»</h2>
+    <p style="color:#555;line-height:1.6;">
+        Мы проверили заявку. Карточку публикуем вручную — так в каталог не попадают пустые
+        и чужие бренды. Чтобы опубликовать вашу, не хватает вот чего:
+    </p>
+    {% if missing %}
+        <ul style="color:#555;line-height:1.7;">
+            {% for item in missing %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+    {% endif %}
+    {% if flags %}
+        <p style="color:#555;line-height:1.6;margin-bottom:4px;"><strong>Обратите внимание:</strong></p>
+        <ul style="color:#555;line-height:1.7;">
+            {% for item in flags %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+    {% endif %}
+    <p style="color:#555;line-height:1.6;">
+        Всё заполняется в личном кабинете — после этого напишите нам, и мы вернёмся к проверке.
+    </p>
+{% endif %}
+
+<p style="text-align:center;">
+    <a href="{{ url('brand_dashboard') }}" class="btn">Открыть кабинет бренда</a>
+</p>
+
+<p style="color:#555;line-height:1.6;">
+    Если удобнее голосом или в мессенджере — пишите напрямую основателю площадки:
+    <a href="https://t.me/zyablik">@zyablik</a> в Telegram. Отвечаем быстро и поможем
+    довести карточку до публикации.
+</p>
+{% endblock %}

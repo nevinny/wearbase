@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace App\Twig;
 
 use App\Entity\Brand;
+use App\Entity\BrandModeration;
 use App\Entity\BrandUser;
 use App\Entity\OfferDocument;
 use App\Entity\Order;
 use App\Entity\User;
+use App\Repository\BrandModerationRepository;
 use App\Repository\BrandUserRepository;
 use App\Repository\NotificationRepository;
 use App\Repository\OfferAcceptanceRepository;
 use App\Repository\OfferDocumentRepository;
 use App\Repository\OrderRepository;
+use App\Service\Moderation\ModerationLabels;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Twig\Extension\AbstractExtension;
@@ -23,6 +26,8 @@ use Twig\TwigFunction;
  * Счётчики для навигации ЛК бренда:
  *   {{ brand_new_orders_count() }}            → новых заказов активного бренда
  *   {{ brand_unread_notifications_count() }}  → непрочитанных уведомлений пользователя
+ *   {{ brand_moderation() }}                  → заявка на премодерацию активного бренда (или null)
+ *   {{ moderation_missing(mod.missing) }}     → коды премодерации человеческим языком
  *
  * Резолвят активный бренд/пользователя сами (через Security), поэтому работают
  * в layout без проброса данных из каждого контроллера. Кешируют на запрос.
@@ -35,6 +40,7 @@ class BrandLkExtension extends AbstractExtension
     public function __construct(
         private readonly Security $security,
         private readonly BrandUserRepository $brandUsers,
+        private readonly BrandModerationRepository $moderations,
         private readonly OrderRepository $orders,
         private readonly NotificationRepository $notifications,
         private readonly OfferDocumentRepository $offers,
@@ -48,7 +54,22 @@ class BrandLkExtension extends AbstractExtension
             new TwigFunction('brand_new_orders_count', [$this, 'newOrdersCount']),
             new TwigFunction('brand_unread_notifications_count', [$this, 'unreadNotificationsCount']),
             new TwigFunction('brand_seller_offer_pending', [$this, 'sellerOfferPending']),
+            new TwigFunction('brand_moderation', [$this, 'moderation']),
+            new TwigFunction('moderation_missing', [ModerationLabels::class, 'missing']),
+            new TwigFunction('moderation_flags', [ModerationLabels::class, 'flags']),
         ];
+    }
+
+    /**
+     * Заявка на премодерацию активного бренда — чтобы ЛК показывал владельцу,
+     * на какой стадии его карточка и что от него нужно. Null, если бренд
+     * заведён не через самрег (у каталожных карточек заявки нет).
+     */
+    public function moderation(): ?BrandModeration
+    {
+        $brand = $this->activeBrand();
+
+        return $brand !== null ? $this->moderations->findOneBy(['brand' => $brand]) : null;
     }
 
     /** Должен ли владелец принять действующую оферту продавца (не принял текущую редакцию). */
