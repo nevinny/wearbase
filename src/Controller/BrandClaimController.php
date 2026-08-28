@@ -56,7 +56,11 @@ class BrandClaimController extends AbstractController
             return $this->redirectToRoute('brand_dashboard');
         }
 
-        $claim = $this->getOrCreateClaim($brand, $user);
+        // Строку заявки НЕ создаём на просмотре формы: раньше каждый заход
+        // плодил pending-claim (админ видел «заявку», которую никто не подавал).
+        // Персист происходит только при действии — см. getOrCreateClaim() в POST-роутах.
+        $claim = $this->claimRepo->findPendingByBrandAndUser($brand, $user)
+            ?? (new BrandClaim())->setBrand($brand)->setUser($user);
 
         return $this->renderForm($brand, $claim);
     }
@@ -340,6 +344,12 @@ class BrandClaimController extends AbstractController
 
         if ($this->claimService->isAutoGrant($method)) {
             $this->claimService->grantOwnership($claim, null, $via);
+            $this->adminNotifier->send(sprintf(
+                "✅ <b>Бренд забрали</b> «%s»\nВладелец: %s (%s, авто-выдача)",
+                htmlspecialchars((string) $brand->getTitle(), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars((string) $user->getEmail(), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($via, ENT_QUOTES, 'UTF-8'),
+            ));
             $this->addFlash('success', "Владение подтверждено! Вы стали владельцем бренда «{$brand->getTitle()}».");
             return $this->redirectToRoute('brand_dashboard');
         }
