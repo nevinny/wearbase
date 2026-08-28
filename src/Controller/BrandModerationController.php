@@ -19,7 +19,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * Быстрые модерационные действия по подписанной ссылке из TG-уведомления
  * (кнопка «🚫 Скрыть» под дрип-публикацией, либо approve/request-changes/reject
  * под досье премодерации самрег-бренда). Авторизация — не сессия, а подпись
- * key = HMAC(action:id[:exp], APP_SECRET) через BrandActionSigner: кликается
+ * key = HMAC(action:id[:exp], AGENT_API_SECRET) через BrandActionSigner: кликается
  * прямо из Telegram, подделать нельзя. Замена сломанных callback-кнопок
  * (вебхук Telegram→прод таймаутит).
  *
