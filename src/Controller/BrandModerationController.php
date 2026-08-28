@@ -8,6 +8,7 @@ use App\Entity\Brand;
 use App\Entity\BrandModeration;
 use App\Service\Agent\BrandUnpublisher;
 use App\Service\BrandActionSigner;
+use App\Service\Moderation\ModerationOwnerNotifier;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -32,6 +33,7 @@ class BrandModerationController extends AbstractController
         BrandActionSigner $signer,
         BrandUnpublisher $unpublisher,
         EntityManagerInterface $em,
+        ModerationOwnerNotifier $ownerNotifier,
     ): Response {
         $action = (string) $request->query->get('action', '');
         $id     = (int) $request->query->get('id', 0);
@@ -44,9 +46,9 @@ class BrandModerationController extends AbstractController
 
         return match ($action) {
             'unpublish'       => $this->doUnpublish($id, $unpublisher),
-            'approve'         => $this->doApprove($id, $em),
-            'request-changes' => $this->doRequestChanges($id, $em),
-            'reject'          => $this->doReject($id, $em),
+            'approve'         => $this->doApprove($id, $em, $ownerNotifier),
+            'request-changes' => $this->doRequestChanges($id, $em, $ownerNotifier),
+            'reject'          => $this->doReject($id, $em, $ownerNotifier),
             default           => $this->page('Неизвестное действие', "Действие «{$action}» не поддерживается.", false),
         };
     }
@@ -67,7 +69,7 @@ class BrandModerationController extends AbstractController
      * опубликует publish-tick по расписанию). origin_status='unknown' навсегда блокирует
      * publish-tick (см. PublishTickCommand) — при approve считаем сомнение снятым.
      */
-    private function doApprove(int $id, EntityManagerInterface $em): Response
+    private function doApprove(int $id, EntityManagerInterface $em, ModerationOwnerNotifier $ownerNotifier): Response
     {
         $brand = $em->find(Brand::class, $id);
         if ($brand === null) {
@@ -78,26 +80,26 @@ class BrandModerationController extends AbstractController
         if ($brand->getOriginStatus() === 'unknown') {
             $brand->markOrigin('ru', 'auto: одобрено премодерацией самрега', new \DateTime());
         }
-        $this->decide($em, $brand, BrandModeration::STATUS_APPROVED, 'publish');
+        $this->decide($em, $brand, BrandModeration::STATUS_APPROVED, 'publish', null, $ownerNotifier);
 
         return $this->page('✅ Одобрено', sprintf('«%s» поставлен в очередь публикации.', $brand->getTitle()), true);
     }
 
     /** Вернуть владельцу на доработку: статус заявки меняется, карточку не трогаем. */
-    private function doRequestChanges(int $id, EntityManagerInterface $em): Response
+    private function doRequestChanges(int $id, EntityManagerInterface $em, ModerationOwnerNotifier $ownerNotifier): Response
     {
         $brand = $em->find(Brand::class, $id);
         if ($brand === null) {
             return $this->page("#{$id}", "Бренд #{$id} не найден.", false);
         }
 
-        $this->decide($em, $brand, BrandModeration::STATUS_CHANGES_REQUESTED, 'request_changes');
+        $this->decide($em, $brand, BrandModeration::STATUS_CHANGES_REQUESTED, 'request_changes', null, $ownerNotifier);
 
         return $this->page('✏️ Запрошены правки', sprintf('«%s» — заявка возвращена на доработку.', $brand->getTitle()), true);
     }
 
     /** Отклонить: soft-hide (disabled — политика проекта, без физического DELETE) + заметка. */
-    private function doReject(int $id, EntityManagerInterface $em): Response
+    private function doReject(int $id, EntityManagerInterface $em, ModerationOwnerNotifier $ownerNotifier): Response
     {
         $brand = $em->find(Brand::class, $id);
         if ($brand === null) {
@@ -105,13 +107,19 @@ class BrandModerationController extends AbstractController
         }
 
         $brand->unpublish(); // идемпотентно: new|active|disabled → disabled
-        $this->decide($em, $brand, BrandModeration::STATUS_REJECTED, 'reject', 'Отклонено модератором (TG)');
+        $this->decide($em, $brand, BrandModeration::STATUS_REJECTED, 'reject', 'Отклонено модератором (TG)', $ownerNotifier);
 
         return $this->page('🚫 Отклонено', sprintf('«%s» отклонён.', $brand->getTitle()), true);
     }
 
-    private function decide(EntityManagerInterface $em, Brand $brand, string $status, string $verdict, ?string $adminNote = null): void
-    {
+    private function decide(
+        EntityManagerInterface $em,
+        Brand $brand,
+        string $status,
+        string $verdict,
+        ?string $adminNote = null,
+        ?ModerationOwnerNotifier $ownerNotifier = null,
+    ): void {
         $moderation = $em->getRepository(BrandModeration::class)->findOneBy(['brand' => $brand]);
         if ($moderation !== null) {
             $moderation->setStatus($status);
@@ -121,6 +129,9 @@ class BrandModerationController extends AbstractController
             if ($adminNote !== null) {
                 $moderation->setAdminNote($adminNote);
             }
+            // Решение без уведомления владельца бессмысленно: он не знает ни что от него
+            // ждут, ни что карточку одобрили. Ставим в outbox до flush — уйдёт одним коммитом.
+            $ownerNotifier?->notify($brand, $moderation);
         }
         $em->flush();
     }

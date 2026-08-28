@@ -65,6 +65,8 @@
 
         {# Флеши показываются глобально в tailwind/app.html.twig #}
 
+        {% include 'brand_lk/_moderation_banner.html.twig' %}
+
         {% if app.request.attributes.get('_route') != 'brand_offer' and brand_seller_offer_pending() %}
             <div class="mb-5 flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <div>📝 Примите оферту продавца, чтобы продолжить работу с площадкой.</div>

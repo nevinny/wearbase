@@ -38,9 +38,12 @@ class SubscriptionFactory
         $subscription->setBrand($brand);
         $subscription->setTariff($tariff);
         $subscription->setStatus(Subscription::STATUS_TRIAL);
+        // Период подписки и триал должны кончаться вместе: раньше период был жёстко
+        // «+1 month», и при триале длиннее месяца они расходились.
+        $trialEnd = $now->modify(\sprintf('+%d days', $tariff->getTrialDays()));
         $subscription->setCurrentPeriodStart($now);
-        $subscription->setCurrentPeriodEnd($now->modify('+1 month'));
-        $subscription->setTrialEndsAt($now->modify(\sprintf('+%d days', $tariff->getTrialDays())));
+        $subscription->setCurrentPeriodEnd($trialEnd);
+        $subscription->setTrialEndsAt($trialEnd);
 
         $this->em->persist($subscription);
 

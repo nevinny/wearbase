@@ -1,0 +1,56 @@
+{# Статус премодерации самрег-карточки. До этого владелец не видел вообще ничего:
+   карточка не в каталоге, причина неизвестна, что делать — непонятно. #}
+{% set mod = brand_moderation() %}
+{% if mod and brand.status != 'active' %}
+    {% set missing = moderation_missing(mod.missing) %}
+    {% set flags = moderation_flags(mod.redFlags) %}
+    {% set needs_work = mod.status in ['reviewed', 'changes_requested'] and (missing or flags) %}
+
+    {% if mod.status == 'approved' %}
+        <div class="mb-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            ✅ Карточка одобрена и встала в очередь публикации — появится в каталоге в течение часа.
+        </div>
+    {% elseif mod.status == 'rejected' %}
+        <div class="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">
+            <div class="font-semibold">Карточка отклонена</div>
+            {% if mod.adminNote %}<div class="mt-1">{{ mod.adminNote }}</div>{% endif %}
+            <div class="mt-2">Считаете, что это ошибка? Напишите нам — <a href="https://t.me/zyablik" class="underline">@zyablik</a>.</div>
+        </div>
+    {% elseif needs_work %}
+        <div class="mb-5 rounded-xl bg-amber-50 px-4 py-4 text-sm text-amber-900">
+            <div class="font-semibold">Карточка пока не опубликована — не хватает данных</div>
+            <p class="mt-1 text-amber-800">
+                Заполните пункты ниже, и мы вернёмся к проверке. Публикуем вручную, чтобы в каталог
+                не попадали пустые и чужие карточки.
+            </p>
+
+            {% if missing %}
+                <ul class="mt-3 list-disc space-y-1 pl-5">
+                    {% for item in missing %}<li>{{ item }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+
+            {% if flags %}
+                <div class="mt-3 font-semibold">Обратите внимание:</div>
+                <ul class="mt-1 list-disc space-y-1 pl-5">
+                    {% for item in flags %}<li>{{ item }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <a href="{{ path('brand_profile') }}"
+                   class="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black transition">Заполнить профиль</a>
+                <a href="{{ path('brand_products') }}"
+                   class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition">Товары</a>
+                <span class="text-xs text-amber-800">
+                    Вопросы — <a href="https://t.me/zyablik" class="underline">@zyablik</a> в Telegram.
+                </span>
+            </div>
+        </div>
+    {% else %}
+        <div class="mb-5 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-800">
+            🕓 Карточка на проверке — пока её не видно в каталоге. Чем полнее профиль, логотип и товары,
+            тем быстрее проходит модерация. Вопросы — <a href="https://t.me/zyablik" class="underline">@zyablik</a>.
+        </div>
+    {% endif %}
+{% endif %}
