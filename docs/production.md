@@ -123,3 +123,22 @@ Auto-Submitted; (3) e2e-тест форвардера — синтетическ
 - `php bin/console app:report:daily` — дайджест (публикации + GSC) в Telegram, запускать с Mac.
 - ⚠️ 2026-06-12: дубль-хост `www.wearbase.ru` закрыт 301 www→apex (`public_html/.htaccess`, деплой 2026-06-12) + canonical/hreflang/sitemap от `SITE_BASE_URL`.
 - ⚠️ `gsc_index_status`/`gsc_page_stats` на проде **пусты** (GSC синкается на Mac/.43). Поэтому index-guard и drip-health в `app:brand:publish-tick`, а также приоритизация `app:seo:meta-repair` по показам — на проде fail-open/без приоритета, пока индекс-данные GSC не попадут на прод. Логика готова, ждёт данных (push в агент-API или отдельный sync-таргет). `app:seo:meta-repair` на проде всё равно полезна: дефекты по длине meta она ловит без GSC.
+
+## Часовой пояс: CLI vs php-fpm (поймано 2026-08-28)
+
+На проде (и на Mac) **php-fpm идёт в `Europe/Moscow`, а PHP CLI — в `UTC`** (`date.timezone=UTC`).
+MySQL живёт по системному времени, то есть по МСК. Пояса в репозитории никто не задавал — расхождение
+приехало из ini хостинга.
+
+Последствие: веб пишет в БД московское время, консольные команды сравнивают его с UTC-«сейчас» и
+**отстают на три часа**. Симптом, на котором поймали: `external_notification_outbox.available_at`
+ставит веб-запрос, а `app:notification:deliver-outbox` (ежеминутный крон) считал такую строку
+«ещё не доступной» — письмо владельцу бренда по решению премодерации ушло бы через 3 часа после клика.
+Задеть могло любую логику «за последние N часов», если событие пишет веб, а читает консоль.
+
+Лечится в приложении, а не в ini: `App\Kernel::__construct()` вызывает
+`date_default_timezone_set('Europe/Moscow')` — один пояс для обоих SAPI и обеих машин, совпадает
+с MySQL. Проверяется тестом `tests/KernelTimezoneTest.php`.
+
+⚠️ Диагностика: `php -r 'echo (new DateTime())->format("c");'` в консоли против `SELECT NOW()` —
+если расходятся, ищите не «пропавшие» записи, а пояс.
