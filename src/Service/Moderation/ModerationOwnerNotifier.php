@@ -10,6 +10,7 @@ use App\Entity\BrandUser;
 use App\Entity\Notification;
 use App\Notification\NotificationDispatcher;
 use App\Repository\BrandUserRepository;
+use App\Repository\NotificationRepository;
 
 /**
  * Сообщает владельцу самрег-бренда решение премодерации.
@@ -23,6 +24,7 @@ final class ModerationOwnerNotifier
     public function __construct(
         private readonly NotificationDispatcher $notifier,
         private readonly BrandUserRepository $brandUsers,
+        private readonly NotificationRepository $notifications,
     ) {}
 
     public function notify(Brand $brand, BrandModeration $moderation): void
@@ -42,6 +44,15 @@ final class ModerationOwnerNotifier
             return; // queued/reviewed — решения ещё нет, владельцу писать не о чем
         }
 
+        // Ссылки-кнопки в TG бессрочные, так что повторный клик — обычное дело.
+        // У notification и external_notification_outbox уникальный (recipient, dedupe_key),
+        // поэтому второй dispatch с тем же ключом уронил бы flush, а вместе с ним
+        // и запись решения. Проверяем ключ заранее.
+        $dedupeKey = sprintf('moderation:%d:%s', (int) $moderation->getId(), $moderation->getStatus());
+        if ($this->notifications->findOneBy(['recipient' => $owner, 'dedupeKey' => $dedupeKey]) !== null) {
+            return;
+        }
+
         $this->notifier->dispatch(
             $owner,
             Notification::TYPE_SYSTEM,
@@ -50,8 +61,7 @@ final class ModerationOwnerNotifier
             ['brand_id' => $brand->getId(), 'moderation_id' => $moderation->getId()],
             'brand_moderation_result',
             ['brand' => $brand, 'moderation' => $moderation],
-            // Одно письмо на решение: повторный клик по той же кнопке не задваивает.
-            sprintf('moderation:%d:%s', (int) $moderation->getId(), $moderation->getStatus()),
+            $dedupeKey,
         );
     }
 
