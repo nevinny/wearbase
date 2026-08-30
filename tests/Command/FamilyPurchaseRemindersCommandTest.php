@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Tests\Command;
 
 use App\Entity\FittingFeedback;
+use App\Entity\ExternalNotificationOutbox;
 use App\Entity\Notification;
 use App\Entity\PurchaseRequest;
 use App\Entity\PurchaseRequestItem;
 use App\Entity\User;
+use App\Entity\WardrobeWearEvent;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
+use App\Service\Wardrobe\PurchaseToWardrobeService;
 use App\Tests\Controller\UserFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
@@ -98,6 +101,64 @@ final class FamilyPurchaseRemindersCommandTest extends KernelTestCase
         self::assertSame(Command::INVALID, $this->execute(['--now' => 'tomorrow'])->getStatusCode());
     }
 
+    public function testWearRemindersUseTwoStableStagesAndNeverCreateWearEvents(): void
+    {
+        $firstParent = $this->user('wear-first');
+        $secondParent = $this->user('wear-second');
+        $this->families->acceptInvite($secondParent, $this->families->createInvite($firstParent, User::FAMILY_ROLE_PARENT));
+        $child = $this->families->createChild($firstParent, 'Соня');
+        $child->setEmail($this->email('wear-child'))->setClaimedAt(new \DateTimeImmutable());
+        $sibling = $this->families->createChild($firstParent, 'Вера');
+        $request = $this->deliveredRequest($firstParent, $child);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchases->recordFitting($child, $request, $item, FittingFeedback::OUTCOME_BOUGHT, null, null, [], null);
+        self::getContainer()->get(PurchaseToWardrobeService::class)->add($firstParent, $request, $item);
+        $this->em->getConnection()->update('fitting_feedback', ['created_at' => '2026-08-10 09:00:00'], ['id' => $item->getFittingFeedback()?->getId()]);
+        $this->em->refresh($item->getFittingFeedback());
+
+        $this->execute(['--now' => '2026-08-17T23:59:00+03:00', '--dry-run' => true]);
+        self::assertSame(0, $this->reminderCount($child, Notification::TYPE_PURCHASE_WEAR_REMINDER));
+        $this->execute(['--now' => '2026-08-17T23:59:00+03:00']);
+        $this->execute(['--now' => '2026-08-18T09:00:00+03:00']);
+        foreach ([$firstParent, $secondParent, $child] as $recipient) {
+            self::assertSame(1, $this->reminderCount($recipient, Notification::TYPE_PURCHASE_WEAR_REMINDER));
+            self::assertSame(1, $this->outboxCount($recipient, Notification::TYPE_PURCHASE_WEAR_REMINDER));
+        }
+        self::assertSame(0, $this->reminderCount($sibling, Notification::TYPE_PURCHASE_WEAR_REMINDER));
+        self::assertSame(0, $this->em->getRepository(WardrobeWearEvent::class)->count(['profileSubject' => $child]));
+
+        $this->execute(['--now' => '2026-08-25T09:00:00+03:00']);
+        self::assertSame(1, $this->reminderCount($child, Notification::TYPE_PURCHASE_WEAR_REMINDER));
+
+        $this->execute(['--now' => '2026-09-09T09:00:00+03:00']);
+        $this->execute(['--now' => '2026-09-10T09:00:00+03:00']);
+        foreach ([$firstParent, $secondParent, $child] as $recipient) {
+            self::assertSame(2, $this->reminderCount($recipient, Notification::TYPE_PURCHASE_WEAR_REMINDER));
+            self::assertSame(2, $this->outboxCount($recipient, Notification::TYPE_PURCHASE_WEAR_REMINDER));
+        }
+        self::assertSame(0, $this->em->getRepository(WardrobeWearEvent::class)->count(['profileSubject' => $child]));
+    }
+
+    public function testReturnedPurchaseIsNotEligibleForWearReminder(): void
+    {
+        $parent = $this->user('wear-return-parent');
+        $child = $this->families->createChild($parent, 'Катя');
+        $request = $this->deliveredRequest($parent, $child);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->purchases->recordFitting($parent, $request, $item, FittingFeedback::OUTCOME_BOUGHT, null, null, [], null);
+        self::getContainer()->get(PurchaseToWardrobeService::class)->add($parent, $request, $item);
+        $this->em->getConnection()->update('fitting_feedback', ['created_at' => '2026-08-01 09:00:00'], ['id' => $item->getFittingFeedback()?->getId()]);
+        $this->em->refresh($item->getFittingFeedback());
+        $this->purchases->markReturned($parent, $request, $item);
+
+        $this->execute(['--now' => '2026-09-01T09:00:00+03:00']);
+
+        self::assertSame(0, $this->reminderCount($parent, Notification::TYPE_PURCHASE_WEAR_REMINDER));
+        self::assertSame(0, $this->em->getRepository(WardrobeWearEvent::class)->count(['profileSubject' => $child]));
+    }
+
     private function deliveredRequest(User $parent, User $child): PurchaseRequest
     {
         $request = $this->purchases->create($child, $child, 'https://shop.example.test/reminder/fitting', null);
@@ -128,6 +189,11 @@ final class FamilyPurchaseRemindersCommandTest extends KernelTestCase
     private function reminderCount(User $recipient, string $type): int
     {
         return $this->em->getRepository(Notification::class)->count(['recipient' => $recipient, 'type' => $type]);
+    }
+
+    private function outboxCount(User $recipient, string $type): int
+    {
+        return $this->em->getRepository(ExternalNotificationOutbox::class)->count(['recipient' => $recipient, 'notificationType' => $type]);
     }
 
     private function user(string $prefix): User

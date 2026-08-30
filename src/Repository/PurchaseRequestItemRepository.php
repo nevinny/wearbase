@@ -32,4 +32,23 @@ class PurchaseRequestItemRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /** @return PurchaseRequestItem[] */
+    public function findBoughtForWearReminder(\DateTimeImmutable $before): array
+    {
+        return $this->createQueryBuilder('item')
+            ->addSelect('request', 'subject', 'family', 'feedback', 'wardrobeItem')
+            ->join('item.purchaseRequest', 'request')
+            ->join('request.subject', 'subject')
+            ->join('request.family', 'family')
+            ->join('item.fittingFeedback', 'feedback')
+            ->join('item.wardrobeItem', 'wardrobeItem')
+            ->andWhere('item.status = :status')
+            ->andWhere('feedback.createdAt < :before')
+            ->setParameter('status', PurchaseRequestItem::STATUS_BOUGHT)
+            ->setParameter('before', $before)
+            ->orderBy('item.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
 }

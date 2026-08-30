@@ -29,6 +29,7 @@ class Notification
     public const TYPE_PURCHASE_RETURNED = 'purchase_returned';
     public const TYPE_PURCHASE_DECISION_REMINDER = 'purchase_decision_reminder';
     public const TYPE_PURCHASE_FITTING_REMINDER = 'purchase_fitting_reminder';
+    public const TYPE_PURCHASE_WEAR_REMINDER = 'purchase_wear_reminder';
 
     // Каналы доставки
     public const CHANNEL_INAPP = 'inapp';
@@ -118,7 +119,7 @@ class Notification
     {
         $url = $this->data['url'] ?? null;
 
-        return is_string($url) && preg_match('#^/account/purchases/\d+$#', $url) ? $url : null;
+        return is_string($url) && preg_match('#^/account/(?:purchases/\d+|wardrobe/wear(?:\?member=\d+)?)$#', $url) ? $url : null;
     }
 
     public function setData(?array $data): static

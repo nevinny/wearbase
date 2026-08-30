@@ -91,6 +91,26 @@ class NotificationSecurityTest extends AuthenticatedWebTestCase
         $this->assertSelectorNotExists('a[href="/account/../admin"]');
     }
 
+    public function testAllowlistedWearJournalDeepLinkIsRendered(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'notification-wear-url@test.local');
+        $notification = (new Notification())
+            ->setRecipient($user)
+            ->setType(Notification::TYPE_PURCHASE_WEAR_REMINDER)
+            ->setTitle('Оцените вещь')
+            ->setData(['url' => '/account/wardrobe/wear?member=123']);
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $em->persist($notification);
+        $em->flush();
+        $client->loginUser($user);
+
+        $client->request('GET', '/account/notifications');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorExists('a[href="/account/wardrobe/wear?member=123"]');
+    }
+
     public function testReminderSettingsExposeOnlyInAppChannel(): void
     {
         $client = static::createClient();
@@ -107,5 +127,8 @@ class NotificationSecurityTest extends AuthenticatedWebTestCase
         $this->assertSelectorNotExists('input[name="settings[purchase_fitting_reminder][channelTelegram]"]');
         $this->assertSelectorExists('input[name="settings[purchase_fitting_reminder][channelInapp]"]');
         $this->assertSelectorExists('input[name="settings[purchase_bought][channelTelegram]"]');
+        $this->assertSelectorExists('input[name="settings[purchase_wear_reminder][channelEmail]"]');
+        $this->assertSelectorExists('input[name="settings[purchase_wear_reminder][channelTelegram]"]');
+        $this->assertSelectorExists('input[name="settings[purchase_wear_reminder][channelPush]"]');
     }
 }
