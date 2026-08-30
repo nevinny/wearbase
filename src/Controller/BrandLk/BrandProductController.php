@@ -15,6 +15,7 @@ use App\Repository\ProductRepository;
 use App\Repository\ProductTranslationRepository;
 use App\Service\ProductImportService;
 use Doctrine\ORM\EntityManagerInterface;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -306,11 +307,11 @@ class BrandProductController extends BrandDashboardController
         $brand = $this->getActiveBrand();
         $this->denyUnlessOwns($product, $brand);
 
-        $newStatus = $product->getStatus() === 'active' ? 'draft' : 'active';
+        $newStatus = $product->getStatus() === Statuses::Active ? Statuses::Disabled : Statuses::Active;
         $product->setStatus($newStatus);
         $em->flush();
 
-        $this->addFlash('success', $newStatus === 'active' ? 'Товар опубликован' : 'Товар снят с публикации');
+        $this->addFlash('success', $newStatus === Statuses::Active ? 'Товар опубликован' : 'Товар скрыт');
         return $this->redirectToRoute('brand_products');
     }
 
