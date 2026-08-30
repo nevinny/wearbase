@@ -99,6 +99,8 @@ class BrandModerationResubmitControllerTest extends AuthenticatedWebTestCase
         $client->request('POST', '/brand/moderation/resubmit', ['_token' => $token]);
 
         $this->assertResponseRedirects('/brand/dashboard');
+        $client->followRedirect();
+        $this->assertSelectorTextContains('body', 'не требует повторной проверки');
 
         $em->clear();
         $moderation = $em->getRepository(BrandModeration::class)->findOneBy(['brand' => $brand]);
