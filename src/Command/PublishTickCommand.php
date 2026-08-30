@@ -16,21 +16,27 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Дрип-публикация (прод): системный cron раз в час. Постепенный вывод новой базы
- * брендов, имитирующий ручную работу — резкий скачок числа страниц вредит Google
- * (content velocity / SpamBrain).
+ * Дрип-публикация (прод): системный cron раз в 5 минут (диспетчер scheduled_command,
+ * app:cron:run-scheduled). Постепенный вывод новой базы брендов, имитирующий ручную работу —
+ * резкий скачок числа страниц вредит Google (content velocity / SpamBrain).
  *
- *   0 * * * * cd /path && php bin/console app:brand:publish-tick --no-debug >> var/log/publish.log 2>&1
+ *   0,5,10,15,20,25,30,35,40,45,50,55 * * * * cd /path && php bin/console app:brand:publish-tick --no-debug >> var/log/publish.log 2>&1
  *
  * Логика тика:
  *  1. Окно бодрствования 9–23 МСК (явная TZ — прод-сервер может жить в UTC).
- *  2. sleep(rand(0..45мин)) — публикации не по ровным часам (--no-wait для теста).
- *  3. Ramp-up БЕЗ хранимого состояния: w = недель с PUBLISH_LAUNCH_DATE (env);
+ *  2. Джиттер БЕЗ sleep (PublishTickJitter + var/publish_tick_state.json): на первом тике часа
+ *     намечается случайная минута публикации в пределах 45 мин от начала часа — то же
+ *     распределение :00–:45, что раньше давал sleep(rand(0..2700)) ПРЯМО ВНУТРИ команды. Тот
+ *     sleep держал весь интервал под глобальным флоком диспетчера (RunScheduledCommandsCommand
+ *     держит его на весь проход) — стояли все прочие кроны, включая ежеминутную доставку писем.
+ *     Теперь каждый тик мгновенно завершается SUCCESS, пока намеченная минута не наступит;
+ *     ровно одна публикация в час. `--now` публикует немедленно, игнорируя джиттер (отладка/ручной прогон).
+ *  3. Ramp-up БЕЗ хранимого состояния таргета: w = недель с PUBLISH_LAUNCH_DATE (env);
  *     дневной таргет T(w) = min(CAP, round(START * (1+G)^w)) — старт 10/день,
  *     +22%/нед, потолок 80/день (разгон под живой индекс Яндекса, см. RATE_* ниже).
- *  4. Самокоррекция: p = (T - published_today) / оставшихся_тиков;
- *     за тик публикуем n = floor(p) + Bernoulli(frac(p)) — иначе CAP недостижим
- *     (15 тиков/день < 28 публикаций при «1 за тик»).
+ *  4. Самокоррекция: p = (T - published_today) / оставшихся ЧАСОВ окна (не 5-минутных тиков —
+ *     публикация всё ещё максимум раз в час); за час публикуем n = floor(p) + Bernoulli(frac(p))
+ *     — иначе CAP недостижим.
  *  5. Выбор СЛУЧАЙНЫХ готовых брендов (status='new' AND publish_pending=1,
  *     по СПРОСУ-НА-ПОКУПКУ: имя бренда + коммерч.модификатор) → active + published_at (в каталог/sitemap).
  */
@@ -42,8 +48,7 @@ class PublishTickCommand extends Command
 {
     private const TZ          = 'Europe/Moscow';
     private const HOUR_FROM   = 9;    // первый тик дня
-    private const HOUR_TO     = 22;   // последний тик дня (sleep до 45м удержит публикацию до ~23)
-    private const MAX_SLEEP   = 2700; // 45 мин
+    private const HOUR_TO     = 22;   // последний час дня (джиттер до 45м удержит публикацию до ~23)
     // Разгон 02.07: Яндекс усваивает страницы (pages-in-search 339→494 май→июль, показы ×2),
     // покрытие НЕ заморожено (в отличие от Google), а в очереди дрипа ~3000 grounded-брендов.
     // Подняли потолок 28→80 и ускорили ramp — под наблюдением yandex_history/панели «Динамика Яндекс».
@@ -65,6 +70,7 @@ class PublishTickCommand extends Command
         private readonly \App\Service\BrandActionSigner $actionSigner,
         private readonly \App\Repository\BrandRepository $brands,
         private readonly NotificationDispatcher $userNotifier,
+        private readonly \App\Service\PublishTickJitter $jitter,
         #[Autowire('%env(default::PUBLISH_LAUNCH_DATE)%')]
         private readonly ?string $launchDate,
         #[Autowire('%kernel.project_dir%')]
@@ -77,22 +83,22 @@ class PublishTickCommand extends Command
     {
         $this
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Посчитать T(w)/p/n, ничего не публиковать')
-            ->addOption('no-wait', null, InputOption::VALUE_NONE, 'Без случайной задержки (для теста)')
+            ->addOption('now', null, InputOption::VALUE_NONE, 'Публиковать сейчас же, игнорируя джиттер (ручной прогон/отладка)')
         ;
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io     = new SymfonyStyle($input, $output);
-        $dryRun = (bool) $input->getOption('dry-run');
-        $noWait = (bool) $input->getOption('no-wait');
+        $io        = new SymfonyStyle($input, $output);
+        $dryRun    = (bool) $input->getOption('dry-run');
+        $immediate = (bool) $input->getOption('now');
 
         if (trim((string) $this->launchDate) === '') {
             $io->error('PUBLISH_LAUNCH_DATE не задан (env, формат YYYY-MM-DD) — дрип выключен.');
             return Command::FAILURE;
         }
 
-        // Защита от перекрытия тиков (cron + 45-минутный sleep)
+        // Защита от перекрытия тиков (тик может занять время — IndexNow/письма/ТГ — а cron дёргает раз в 5 мин)
         $lock = fopen($this->projectDir . '/var/publish_tick.lock', 'c');
         if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
             $io->warning('Предыдущий тик ещё работает — выходим.');
@@ -108,73 +114,39 @@ class PublishTickCommand extends Command
             return Command::SUCCESS;
         }
 
-        // --- Ramp-up ---
-        $launch = new \DateTime($this->launchDate, $tz);
-        $week   = max(0, (int) floor(($now->getTimestamp() - $launch->getTimestamp()) / (7 * 86400)));
-        $target = (int) min(self::RATE_CAP, round(self::RATE_START * (1 + self::RATE_GROWTH) ** $week));
-
-        // Drip-health (СТРОГО fail-open, ТОЛЬКО торможение): если когорта опубликованных
-        // 7-21 день назад плохо индексируется (по данным gsc_index_status) — снижаем темп.
-        // Нет данных / мало когорты / GSC не настроен → множитель 1.0, публикация не тормозится.
-        $health = $this->dripHealthMultiplier();
-        if ($health < 1.0) {
-            $target = max(1, (int) floor($target * $health));
-        }
-
-        // Авто-guard на ЖИВОЙ индекс Яндекса (Mac→прод через drip_health): усваивает ли Яндекс
-        // новые страницы (динамика pages-in-search). Растёт → ×1.0, стоит → ×0.5, падает → ×0.25.
-        // Заменяет инертный GSC-guard (покрытие Google заморожено). Fail-open: нет/протух сигнал → 1.0.
-        $yaHealth = $this->yandexDripMultiplier();
-        if ($yaHealth < 1.0) {
-            $target = max(1, (int) floor($target * $yaHealth));
-        }
-
-        // Hard index-guard (доктрина пакета _seo / LESSONS_FROM_HISTORY: index-guards
-        // indexed-ratio <5% → 0 new, <10% → cap 1): когорта показывает динамику свежих,
-        // а это — здоровье ВСЕГО домена. На слабом index-rate новые страницы лишь растят
-        // «discovered/crawled - not indexed». Жёсткий ПОТОЛОК (не множитель): 0 = полный
-        // стоп. Fail-open: нет GSC-данных / проверено мало → null, дрип не трогаем.
-        $indexCap = $this->indexHealthCap();
-        if ($indexCap !== null && $indexCap < $target) {
-            $target = $indexCap;
-        }
-
-        $todayStart = (clone $now)->setTime(0, 0);
-        $publishedToday = (int) $this->em->getConnection()->fetchOne(
-            'SELECT COUNT(*) FROM brand WHERE published_at >= :start',
-            ['start' => $todayStart->format('Y-m-d H:i:s')],
-        );
-
-        $remaining = max(0, $target - $publishedToday);
-        $ticksLeft = self::HOUR_TO - $hour + 1;
-        $p = $ticksLeft > 0 ? $remaining / $ticksLeft : 0.0;
-        $n = (int) floor($p) + ((mt_rand() / mt_getrandmax()) < fmod($p, 1.0) ? 1 : 0);
-
-        $note = '';
-        if ($indexCap !== null) {
-            $note = sprintf(' (index-guard: потолок %d — индексация домена < %d%%)', $indexCap, $indexCap === 0 ? 5 : 10);
-        } elseif ($health < 1.0) {
-            $note = sprintf(' (заторможен ×%.2f: индексация когорты проседает)', $health);
-        } elseif ($yaHealth < 1.0) {
-            $note = sprintf(' (Яндекс-guard ×%.2f: страницы в поиске не растут)', $yaHealth);
-        }
-
-        $io->text(sprintf(
-            '[%s МСК] неделя %d · таргет %d/день%s · опубликовано сегодня %d · тиков осталось %d · p=%.2f → n=%d',
-            $now->format('H:i'), $week, $target, $note,
-            $publishedToday, $ticksLeft, $p, $n,
-        ));
-
-        if ($dryRun || $n === 0) {
-            $dryRun ? $io->note('dry-run — без публикации') : $io->text('В этот тик не публикуем.');
+        if ($dryRun) {
+            $this->planHour($now, $hour, $io);
+            $io->note('dry-run — без публикации');
             return Command::SUCCESS;
         }
 
-        // Человеческий паттерн: публикация не по ровным часам
-        if (!$noWait) {
-            $delay = random_int(0, self::MAX_SLEEP);
-            $io->text(sprintf('Задержка %d мин %d сек…', intdiv($delay, 60), $delay % 60));
-            sleep($delay);
+        // Джиттер: намеченная минута публикации решается раз в час (var/publish_tick_state.json),
+        // тяжёлый расчёт таргета/n ($this->planHour) вызывается только на первом тике часа —
+        // см. докстринг класса и PublishTickJitter.
+        $stateFile = $this->projectDir . '/var/publish_tick_state.json';
+        $state = is_file($stateFile) ? (json_decode((string) file_get_contents($stateFile), true) ?: null) : null;
+
+        $decision = $this->jitter->evaluate(
+            $now,
+            $state,
+            fn () => $this->planHour($now, $hour, $io),
+            $immediate,
+        );
+        file_put_contents($stateFile, json_encode($decision['state'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        if (!$decision['publish']) {
+            $io->text(sprintf(
+                '[%s МСК] %s.',
+                $now->format('H:i'),
+                ($decision['state']['done'] ?? false) ? 'час уже обработан' : 'ждём намеченную минуту публикации',
+            ));
+            return Command::SUCCESS;
+        }
+
+        $n = (int) ($decision['state']['n'] ?? 0);
+        if ($n === 0) {
+            $io->text('В этот час не публикуем.');
+            return Command::SUCCESS;
         }
 
         // --- Готовые бренды ПО СПРОСу (drip-by-demand), владельческие — первыми ---
@@ -279,6 +251,76 @@ class PublishTickCommand extends Command
         $io->success(sprintf('Опубликовано брендов: %d', $published));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Ramp-up + самокоррекция часа: сколько брендов публиковать (n). Тяжёлый расчёт (health-
+     * множители, published_today) — вызывается РАЗ в час (см. PublishTickJitter::evaluate()
+     * $onNewHour), а также из --dry-run для превью; побочных эффектов, кроме чтения БД и
+     * вывода в $io, не имеет — публикацию и state пишет вызывающий execute().
+     *
+     * @return array{n:int,done:bool}
+     */
+    private function planHour(\DateTime $now, int $hour, SymfonyStyle $io): array
+    {
+        // --- Ramp-up ---
+        $launch = new \DateTime($this->launchDate, new \DateTimeZone(self::TZ));
+        $week   = max(0, (int) floor(($now->getTimestamp() - $launch->getTimestamp()) / (7 * 86400)));
+        $target = (int) min(self::RATE_CAP, round(self::RATE_START * (1 + self::RATE_GROWTH) ** $week));
+
+        // Drip-health (СТРОГО fail-open, ТОЛЬКО торможение): если когорта опубликованных
+        // 7-21 день назад плохо индексируется (по данным gsc_index_status) — снижаем темп.
+        // Нет данных / мало когорты / GSC не настроен → множитель 1.0, публикация не тормозится.
+        $health = $this->dripHealthMultiplier();
+        if ($health < 1.0) {
+            $target = max(1, (int) floor($target * $health));
+        }
+
+        // Авто-guard на ЖИВОЙ индекс Яндекса (Mac→прод через drip_health): усваивает ли Яндекс
+        // новые страницы (динамика pages-in-search). Растёт → ×1.0, стоит → ×0.5, падает → ×0.25.
+        // Заменяет инертный GSC-guard (покрытие Google заморожено). Fail-open: нет/протух сигнал → 1.0.
+        $yaHealth = $this->yandexDripMultiplier();
+        if ($yaHealth < 1.0) {
+            $target = max(1, (int) floor($target * $yaHealth));
+        }
+
+        // Hard index-guard (доктрина пакета _seo / LESSONS_FROM_HISTORY: index-guards
+        // indexed-ratio <5% → 0 new, <10% → cap 1): когорта показывает динамику свежих,
+        // а это — здоровье ВСЕГО домена. На слабом index-rate новые страницы лишь растят
+        // «discovered/crawled - not indexed». Жёсткий ПОТОЛОК (не множитель): 0 = полный
+        // стоп. Fail-open: нет GSC-данных / проверено мало → null, дрип не трогаем.
+        $indexCap = $this->indexHealthCap();
+        if ($indexCap !== null && $indexCap < $target) {
+            $target = $indexCap;
+        }
+
+        $todayStart = (clone $now)->setTime(0, 0);
+        $publishedToday = (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM brand WHERE published_at >= :start',
+            ['start' => $todayStart->format('Y-m-d H:i:s')],
+        );
+
+        $remaining = max(0, $target - $publishedToday);
+        $ticksLeft = self::HOUR_TO - $hour + 1;
+        $p = $ticksLeft > 0 ? $remaining / $ticksLeft : 0.0;
+        $n = (int) floor($p) + ((mt_rand() / mt_getrandmax()) < fmod($p, 1.0) ? 1 : 0);
+
+        $note = '';
+        if ($indexCap !== null) {
+            $note = sprintf(' (index-guard: потолок %d — индексация домена < %d%%)', $indexCap, $indexCap === 0 ? 5 : 10);
+        } elseif ($health < 1.0) {
+            $note = sprintf(' (заторможен ×%.2f: индексация когорты проседает)', $health);
+        } elseif ($yaHealth < 1.0) {
+            $note = sprintf(' (Яндекс-guard ×%.2f: страницы в поиске не растут)', $yaHealth);
+        }
+
+        $io->text(sprintf(
+            '[%s МСК] неделя %d · таргет %d/день%s · опубликовано сегодня %d · часов осталось %d · p=%.2f → n=%d',
+            $now->format('H:i'), $week, $target, $note,
+            $publishedToday, $ticksLeft, $p, $n,
+        ));
+
+        return ['n' => $n, 'done' => $n === 0];
     }
 
     /**
