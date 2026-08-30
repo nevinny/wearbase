@@ -83,6 +83,14 @@ class BrandLkControllerTest extends AuthenticatedWebTestCase
 
         $em = static::getContainer()->get('doctrine.orm.entity_manager');
         $brand->setStatus(\Nevinny\AdminCoreBundle\Enum\Statuses::New);
+
+        // Баннер модерации рендерится только если у бренда есть заявка (brand_moderation() иначе null).
+        $moderation = $em->getRepository(\App\Entity\BrandModeration::class)->findOneBy(['brand' => $brand]);
+        if ($moderation === null) {
+            $moderation = (new \App\Entity\BrandModeration())->setBrand($brand);
+            $em->persist($moderation);
+        }
+        $moderation->setStatus(\App\Entity\BrandModeration::STATUS_QUEUED);
         $em->flush();
 
         $client->request('GET', '/brand/dashboard');

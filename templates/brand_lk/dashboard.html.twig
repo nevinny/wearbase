@@ -8,17 +8,6 @@
     <span class="text-sm text-gray-500">{{ 'now'|date('d.m.Y') }}</span>
 </div>
 
-{# ── Премодерация: карточка ещё не в каталоге ── #}
-{% if not brand.isPublished %}
-<div class="mb-5 rounded-xl bg-gray-100 px-4 py-3 text-sm text-gray-700">
-    🕓
-    <strong>Карточка на проверке — в каталоге её пока нет.</strong>
-    Заполните описание, город и ссылки на свой сайт и соцсети, добавьте товары — после проверки
-    мы опубликуем карточку и отправим её на индексацию. Кабинет работает полностью, ждать не нужно.
-    <a href="{{ path('brand_setting') }}" class="ml-1 font-semibold underline hover:text-gray-900">Заполнить карточку</a>
-</div>
-{% endif %}
-
 {# ── Готовность приёма оплаты ── #}
 {% if not payment_ready %}
 <div class="mb-5 flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
