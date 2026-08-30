@@ -564,4 +564,44 @@ class BrandRepository extends ServiceEntityRepository
     {
         return $this->pipelineQueue->countReadyToPush($maxAttempts, $includePushed);
     }
+
+    /**
+     * Кандидаты дрип-публикации (app:brand:publish-tick, PR4 "владельческие бренды первыми").
+     * niche_status='off' (app:brand:niche-check) НЕ публикуем — чужая ниша. NULL/'in' проходят
+     * (иначе гейт застопорит дрип до прогона классификатора). origin_status 'foreign'/'unknown'
+     * (app:brand:origin-check, docs/foreign_brands_policy.md) НЕ публикуем — иностранный бренд
+     * или сомнение (ручной review). NULL/'ru' проходят.
+     *
+     * Порядок:
+     *  1. Владельческие бренды (саморег — есть строка brand_user role='owner') ПЕРВЫМИ:
+     *     у них нет собранных ключевиков (SUM спроса = 0 у всех одинаково), поэтому раньше
+     *     они тонули в хвосте очереди из ~2-3 тыс. каталожных брендов на недели.
+     *  2. Спрос НА ПОКУПКУ = SUM(monthly_shows) по ключам, где имя бренда СОЧЕТАЕТСЯ
+     *     с коммерческим модификатором (одежда/бренд/купить/магазин/сайт). Так отсекается
+     *     фейковый спрос общесловных имён, а distinctive-бренды выходят в индекс первыми.
+     *  3. RAND() — рвёт ничьи.
+     *
+     * @return int[]
+     */
+    public function findDripCandidateIds(int $limit): array
+    {
+        return $this->getEntityManager()->getConnection()->fetchFirstColumn(
+            "SELECT b.id FROM brand b
+              LEFT JOIN brand_keyword k ON k.brand_id = b.id
+             WHERE b.status = 'new' AND b.publish_pending = 1
+               AND (b.niche_status IS NULL OR b.niche_status <> 'off')
+               AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign', 'unknown'))
+             GROUP BY b.id
+             ORDER BY
+                 EXISTS(SELECT 1 FROM brand_user bu WHERE bu.brand_id = b.id AND bu.role = 'owner') DESC,
+                 SUM(CASE WHEN LOWER(k.keyword) LIKE CONCAT('%', LOWER(b.title), '%')
+                        AND (k.keyword LIKE '%одежд%' OR k.keyword LIKE '%бренд%' OR k.keyword LIKE '%купить%'
+                          OR k.keyword LIKE '%магазин%' OR k.keyword LIKE '%официальн%' OR k.keyword LIKE '%сайт%')
+                       THEN k.monthly_shows ELSE 0 END) DESC,
+                 RAND()
+             LIMIT :limit",
+            ['limit' => $limit],
+            ['limit' => \PDO::PARAM_INT],
+        );
+    }
 }

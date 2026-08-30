@@ -3,6 +3,9 @@
 namespace App\Command;
 
 use App\Entity\Brand;
+use App\Entity\BrandUser;
+use App\Entity\Notification;
+use App\Notification\NotificationDispatcher;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -60,6 +63,8 @@ class PublishTickCommand extends Command
         private readonly \App\Service\BrandLinkGraphService $linkGraph,
         private readonly \App\Notification\AdminNotifier $notifier,
         private readonly \App\Service\BrandActionSigner $actionSigner,
+        private readonly \App\Repository\BrandRepository $brands,
+        private readonly NotificationDispatcher $userNotifier,
         #[Autowire('%env(default::PUBLISH_LAUNCH_DATE)%')]
         private readonly ?string $launchDate,
         #[Autowire('%kernel.project_dir%')]
@@ -172,29 +177,10 @@ class PublishTickCommand extends Command
             sleep($delay);
         }
 
-        // --- Готовые бренды ПО СПРОСу (drip-by-demand) ---
-        // niche_status='off' (app:brand:niche-check) НЕ публикуем — чужая ниша. NULL/'in' проходят
-        // (иначе гейт застопорит дрип до прогона классификатора → порядок cron: niche-check → publish-tick).
-        // origin_status 'foreign'/'unknown' (app:brand:origin-check, docs/foreign_brands_policy.md)
-        // НЕ публикуем — иностранный бренд или сомнение (ручной review). NULL/'ru' проходят.
-        // Порядок: спрос НА ПОКУПКУ бренда = SUM(monthly_shows) по ключам, где имя бренда СОЧЕТАЕТСЯ
-        // с коммерческим модификатором (одежда/бренд/купить/магазин/сайт). Так отсекается фейковый
-        // спрос общесловных имён («яндекс браузер», «форма для выпечки»), а distinctive-бренды
-        // (LIME/Sela/Zarina/Befree) выходят в индекс первыми — максимум трафика на страницу.
-        // Раньше был чистый RAND() → публиковали вслепую. RAND() теперь рвёт ничьи.
-        $ids = $this->em->getConnection()->fetchFirstColumn(
-            "SELECT b.id FROM brand b
-              LEFT JOIN brand_keyword k ON k.brand_id = b.id
-             WHERE b.status = 'new' AND b.publish_pending = 1
-               AND (b.niche_status IS NULL OR b.niche_status <> 'off')
-               AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign', 'unknown'))
-             GROUP BY b.id
-             ORDER BY SUM(CASE WHEN LOWER(k.keyword) LIKE CONCAT('%', LOWER(b.title), '%')
-                        AND (k.keyword LIKE '%одежд%' OR k.keyword LIKE '%бренд%' OR k.keyword LIKE '%купить%'
-                          OR k.keyword LIKE '%магазин%' OR k.keyword LIKE '%официальн%' OR k.keyword LIKE '%сайт%')
-                       THEN k.monthly_shows ELSE 0 END) DESC, RAND()
-             LIMIT " . $n,
-        );
+        // --- Готовые бренды ПО СПРОСу (drip-by-demand), владельческие — первыми ---
+        // Выборка и её порядок — BrandRepository::findDripCandidateIds() (гейты ниши/происхождения,
+        // приоритет саморег-владельцев, спрос по ключевикам, RAND() рвёт ничьи).
+        $ids = $this->brands->findDripCandidateIds($n);
 
         if ($ids === []) {
             $io->text('Очередь публикации пуста (нет new + publish_pending).');
@@ -213,6 +199,32 @@ class PublishTickCommand extends Command
             // Доменный переход new → active. МСК, как и граница дня в published_today —
             // иначе на UTC-проде счёт published_today съезжает на 3ч.
             $brand->publish(new \DateTime('now', $tz));
+            $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
+
+            // Письмо владельцу саморег-бренда (brand_user role=owner) — «карточка опубликована».
+            // Каталожные бренды без владельца просто не находят получателя — dispatch не идёт.
+            // dedupe встроен в dispatchOnce (recipient+dedupeKey) — повторный тик по той же
+            // карточке письмо не задублирует. Fail-open: сбой уведомления публикацию не ломает
+            // (тот же паттерн, что и ТГ-уведомление ниже).
+            try {
+                $owner = $this->em->getRepository(BrandUser::class)
+                    ->findOneBy(['brand' => $brand, 'role' => BrandUser::ROLE_OWNER])
+                    ?->getUser();
+                if ($owner !== null) {
+                    $this->userNotifier->dispatchOnce(
+                        $owner,
+                        Notification::TYPE_SYSTEM,
+                        sprintf('brand_published:%d', $brand->getId()),
+                        sprintf('Бренд «%s» опубликован', $brand->getTitle()),
+                        'Карточка появилась в каталоге WEARBASE и теперь видна покупателям.',
+                        ['brand_id' => $brand->getId()],
+                        'brand_published',
+                        ['brand' => $brand, 'brandUrl' => $url, 'dashboardUrl' => 'https://wearbase.ru/brand/dashboard'],
+                    );
+                }
+            } catch (\Throwable) {
+            }
+
             $this->em->flush();
 
             // Вплетение в жёсткий граф перелинковки: исходящие рёбра + гарантия
@@ -225,7 +237,6 @@ class PublishTickCommand extends Command
             }
 
             $io->text(sprintf('  ✓ опубликован: %s (id %d)', $brand->getTitle(), $brand->getId()));
-            $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
             $newUrls[] = $url;
             // Сниппет описания (несколько предложений) — чтобы сразу было видно, про что бренд
             // (ловим чужие сущности глазами: «…пневмоэлементы автоподвески» → жмём «Скрыть»).
