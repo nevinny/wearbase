@@ -296,7 +296,7 @@
     <div class="flex items-start gap-4">
         {% if brand.logo %}
         <div class="w-20 h-20 rounded-lg overflow-hidden bg-gray-50 flex-shrink-0">
-            <img src="{{ asset('images/brands/' ~ brand.logo) }}"
+            <img src="{{ asset('images/logos/' ~ brand.logo) }}"
                  alt="{{ brand.title }}"
                  class="w-full h-full object-contain">
         </div>
@@ -311,9 +311,9 @@
             {% if brand.anons %}
             <p class="text-gray-600 mt-1 text-sm">{{ brand.anons }}</p>
             {% endif %}
-            {% if brand.links|length > 0 %}
+            {% if brand.uniqueLinks|length > 0 %}
             <div class="flex flex-wrap gap-2 mt-3">
-                {% for link in brand.links %}
+                {% for link in brand.uniqueLinks %}
                 <a href="{{ path('brand_outbound_click', {id: link.id}) }}" target="_blank" rel="nofollow noopener"
                    class="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition">
                     {% if link.linkType == 'website' %}🌐{% elseif link.linkType == 'instagram' %}📷{% elseif link.linkType == 'telegram' %}✈️{% elseif link.linkType == 'vk' %}💙{% elseif link.linkType == 'youtube' %}▶️{% elseif link.linkType == 'tiktok' %}🎵{% else %}🔗{% endif %}

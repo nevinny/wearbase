@@ -75,7 +75,7 @@
                 "name": "{{ _bt }}",
                 "description": "{{ (_ba ?: _bd ?: (brand.isForeignOrigin ? 'Бренд одежды' : 'Российский бренд'))|striptags|slice(0,500)|escape('js') }}",{% if _price_range %}
                 "priceRange": "{{ _price_range }}",{% endif %}
-                "url": "{{ brand.links|first.linkUrl ?? '' }}",
+                "url": "{{ brand.uniqueLinks|first.linkUrl ?? '' }}",
                 {% if brand.foundingYear %}
                 "foundingDate": "{{ brand.foundingYear }}",
                 {% endif %}
@@ -516,7 +516,7 @@
                 {% endif %}
 
                 {# Социальные сети и ссылки #}
-                {% if brand.links|length > 0 %}
+                {% if brand.uniqueLinks|length > 0 %}
                 {% include 'tailwind/brand/links.html.twig' %}
                 {% endif %}
 
@@ -549,8 +549,8 @@
                     Российский бренд {{ _bt }} предлагает актуальную уличную одежду и аксессуары.
                     Следите за обновлениями коллекции на официальных страницах бренда.
                 </p>
-                {% if brand.links|length > 0 %}
-                    {% for link in brand.links|filter(l => l.linkUrl) %}
+                {% if brand.uniqueLinks|length > 0 %}
+                    {% for link in brand.uniqueLinks|filter(l => l.linkUrl) %}
                         {% if loop.first %}
                             <a href="{{ path('brand_outbound_click', {id: link.id}) }}" target="_blank" rel="nofollow noopener"
                                class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
