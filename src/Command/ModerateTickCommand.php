@@ -28,6 +28,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
@@ -110,6 +111,8 @@ class ModerateTickCommand extends Command
         private readonly ?string $prodApiUrl,
         private readonly ?string $apiToken,
         private readonly ?string $apiSecret,
+        #[Autowire('%kernel.project_dir%')]
+        private readonly string $projectDir,
     ) {
         parent::__construct();
     }
@@ -162,20 +165,63 @@ class ModerateTickCommand extends Command
 
         $io->title(sprintf('Премодерация: %d заявок в очереди%s', count($items), $dryRun ? ' (dry-run)' : ''));
 
-        $processed = 0;
+        $processed    = 0;
+        $verdictsSent = 0;
+        $errors       = [];
         foreach ($items as $item) {
             if ($processed >= $max) {
                 break;
             }
             try {
-                $this->processItem($item, $io, $dryRun);
+                if ($this->processItem($item, $io, $dryRun)) {
+                    $verdictsSent++;
+                }
             } catch (\Throwable $e) {
+                $errors[] = sprintf('%s: %s', $item['title'] ?? '?', $e->getMessage());
                 $io->warning(sprintf('  ошибка на "%s": %s', $item['title'] ?? '?', $e->getMessage()));
             }
             $processed++;
         }
 
+        // Очередь непуста, но за прогон не улетело ни одного вердикта — конвейер премодерации
+        // встал (поиск+прод одновременно недоступны или иная системная причина). Красный exit-код
+        // — намеренно: должен быть виден в scheduled_command, пока не починят.
+        if (!$dryRun && $verdictsSent === 0) {
+            $this->alertStalled(count($items), $errors);
+            return Command::FAILURE;
+        }
+
         return Command::SUCCESS;
+    }
+
+    /**
+     * TG-пинг о том, что премодерация стоит — троттлится 1 раз/сутки через state-файл
+     * (тот же паттерн анти-спама, что HealthEnvCommand::execute() / var/health_env_state.json).
+     *
+     * @param string[] $errors сообщения исключений, пойманных в цикле execute() (если были)
+     */
+    private function alertStalled(int $queueSize, array $errors): void
+    {
+        $stateFile = $this->projectDir . '/var/moderate_tick_state.json';
+        $state     = is_file($stateFile) ? (json_decode((string) file_get_contents($stateFile), true) ?: []) : [];
+        $today     = (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d');
+
+        if (($state['alerted_on'] ?? '') === $today) {
+            return;
+        }
+
+        $reason = $errors === []
+            ? 'все заявки пропущены без явных ошибок (вероятно, исчерпан лимит автопопыток анализа)'
+            : implode('; ', array_slice($errors, 0, 3));
+
+        $this->notifier->send(sprintf(
+            "🚨 <b>Премодерация стоит</b>\nВ очереди %d заявок, обработано 0.\nПричина: %s",
+            $queueSize,
+            htmlspecialchars($reason, ENT_QUOTES, 'UTF-8'),
+        ));
+
+        $state['alerted_on'] = $today;
+        file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     }
 
     /** @return array<int,array<string,mixed>> */
@@ -196,7 +242,7 @@ class ModerateTickCommand extends Command
         return is_array($data['items'] ?? null) ? $data['items'] : [];
     }
 
-    private function processItem(array $item, SymfonyStyle $io, bool $dryRun): void
+    private function processItem(array $item, SymfonyStyle $io, bool $dryRun): bool
     {
         $title = (string) ($item['title'] ?? '');
         $slug  = (string) ($item['slug'] ?? '');
@@ -204,11 +250,22 @@ class ModerateTickCommand extends Command
 
         if ((int) ($item['analyze_attempts'] ?? 0) >= self::MAX_ATTEMPTS) {
             $io->warning(sprintf('Превышен лимит автопопыток анализа (%d) — нужна ручная модерация, пропуск.', self::MAX_ATTEMPTS));
-            return;
+            return false;
         }
 
         $brandStub = (new Brand())->setTitle($title)->setSlug($slug !== '' ? $slug : 'stub')->setCity((string) ($item['city'] ?? ''));
-        $discovered = $this->sourceFinder->discoverTiered($brandStub, 20);
+
+        // Поиск (SearXNG+Yandex) недоступен целиком — не скипаем бренд: probeDomainCandidates()
+        // (зонд {slug}.ru/.com и домена из email) и discoverByContacts() (её searchAnyEngine уже
+        // сам глотает сбои движков) ниже работают без поиска. Вердикт постится ВСЕГДА, только с
+        // пометкой $searchDown в summary/TG — человек видит, что анализ был неполным.
+        $searchDown = false;
+        try {
+            $discovered = $this->sourceFinder->discoverTiered($brandStub, 20);
+        } catch (SearxUnavailableException) {
+            $discovered = [];
+            $searchDown = true;
+        }
 
         $ownSite = null;
         foreach ($discovered as $d) {
@@ -257,7 +314,7 @@ class ModerateTickCommand extends Command
 
         [$nicheStatus, $originStatus, $note] = $this->classifyOnMacIfMirrored($slug);
         $verdict = $this->decideVerdict($match, $redFlags, $nicheStatus, $originStatus);
-        $summary = $this->buildSummary($match, $missing, $redFlags, $note);
+        $summary = $this->buildSummary($match, $missing, $redFlags, $note, $searchDown);
         $links   = $this->buildLinksPayload($match, $pages);
 
         $io->text(sprintf('  identity=%s control=%s verdict=%s', $match['identity_match'], $match['control_proof'], $verdict));
@@ -271,12 +328,12 @@ class ModerateTickCommand extends Command
             $io->text('  links: ' . implode(', ', array_map(static fn (array $l) => "{$l['link_type']}:{$l['link_url']}", $links)));
         }
 
-        $tgText = $this->buildTgText($title, $match, $missing, $redFlags, $summary);
+        $tgText = $this->buildTgText($title, $match, $missing, $redFlags, $summary, $searchDown);
 
         if ($dryRun) {
             $io->text('--- TG (dry-run, не отправлено) ---');
             $io->text($tgText);
-            return;
+            return false;
         }
 
         $this->postVerdict($slug, $match, $redFlags, $missing, $summary, $nicheStatus, $originStatus, $verdict, $links);
@@ -286,6 +343,8 @@ class ModerateTickCommand extends Command
         } catch (\Throwable $e) {
             $io->warning('TG не отправлен: ' . $e->getMessage());
         }
+
+        return true;
     }
 
     /**
@@ -607,10 +666,6 @@ class ModerateTickCommand extends Command
         if (empty($item['has_priced_product'])) {
             $missing[] = 'price';
         }
-        // ИНН и место производства на этапе самрега не собираются вовсе (юр.лицо оформляется
-        // позже, при онбординге оплаты — SellerLegalEntity) — всегда missing на этой стадии.
-        $missing[] = 'inn';
-        $missing[] = 'production_place';
         if (empty($item['founding_year'])) {
             $missing[] = 'founding_year';
         }
@@ -720,8 +775,11 @@ class ModerateTickCommand extends Command
     }
 
     /** @param string[] $missing @param string[] $redFlags */
-    private function buildSummary(array $match, array $missing, array $redFlags, string $note): string
+    private function buildSummary(array $match, array $missing, array $redFlags, string $note, bool $searchDown = false): string
     {
+        if ($searchDown) {
+            $note = trim('⚠️ поиск недоступен, анализ только по зонду доменов. ' . $note);
+        }
         if ($match['identity_match'] === 'no_trace') {
             $note = trim('нужна ссылка на сайт/соцсеть — кандидата не нашли. ' . $note);
         }
@@ -737,12 +795,15 @@ class ModerateTickCommand extends Command
     }
 
     /** @param string[] $missing @param string[] $redFlags */
-    private function buildTgText(string $title, array $match, array $missing, array $redFlags, string $summary): string
+    private function buildTgText(string $title, array $match, array $missing, array $redFlags, string $summary, bool $searchDown = false): string
     {
         $lines = [
             sprintf('🔎 <b>Премодерация:</b> %s', htmlspecialchars($title !== '' ? $title : '(без названия)', ENT_QUOTES, 'UTF-8')),
             sprintf('Личность: %s · Контроль сайта: %s', $match['identity_match'], $match['control_proof']),
         ];
+        if ($searchDown) {
+            $lines[] = '⚠️ поиск недоступен, анализ только по зонду доменов';
+        }
         if ($missing !== []) {
             $lines[] = 'Не хватает: ' . implode(', ', $missing);
         }
