@@ -40,6 +40,28 @@ class ProductRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * Товары для публичной страницы бренда: только активные, с фото первыми.
+     *
+     * @return Product[]
+     */
+    public function findForBrandPage(Brand $brand, int $limit = 12): array
+    {
+        return $this->createQueryBuilder('p')
+            ->leftJoin('p.productImages', 'pi', 'WITH', 'pi.isMain = true')
+            ->addSelect('pi')
+            ->addSelect('CASE WHEN pi.id IS NULL THEN 1 ELSE 0 END AS HIDDEN noPhoto')
+            ->where('p.status = :status')
+            ->andWhere('p.brand = :brand')
+            ->setParameter('status', 'active')
+            ->setParameter('brand', $brand)
+            ->orderBy('noPhoto', 'ASC')
+            ->addOrderBy('p.id', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     public function findByBrandAndStatus(Brand $brand, string $status = 'active'): array
     {
         return $this->createQueryBuilder('p')

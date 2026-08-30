@@ -3,7 +3,6 @@
 namespace App\Controller\Brands;
 
 use App\Entity\Brand;
-use App\Entity\Product;
 use App\Repository\BrandRepository;
 use App\Repository\BrandStyleRepository;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -351,7 +350,7 @@ class BrandsController extends AbstractController
         name: 'brand_show',
         requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'],
         defaults: ['_locale' => 'ru'])]
-    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo, \App\Service\CitySlugger $citySlugger, \App\Service\AdminAccess $adminAccess): Response
+    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo, \App\Repository\ProductRepository $productRepo, \App\Service\CitySlugger $citySlugger, \App\Service\AdminAccess $adminAccess): Response
     {
         // Является ли текущий пользователь участником команды ИМЕННО этого бренда
         $isMemberOfThisBrand = false;
@@ -375,7 +374,7 @@ class BrandsController extends AbstractController
             throw $this->createNotFoundException('Бренд не опубликован');
         }
 
-        $demoProducts = $this->createDemoProducts($brand);
+        $brandProducts = $productRepo->findForBrandPage($brand);
         // Жёсткий граф перелинковки (только active-таргеты). Если граф дал недобор
         // (часть рёбер ведёт на ещё не опубликованные new-бренды → отфильтрованы),
         // добиваем до минимума active-кандидатами, чтобы страница не становилась
@@ -462,7 +461,7 @@ class BrandsController extends AbstractController
 
         return $this->render('tailwind/brand/show.html.twig', [
             'brand' => $brand,
-            'products' => $demoProducts,
+            'products' => $brandProducts,
             'similarBrands' => $similarBrands,
             'styles' => $styles,
             'cities' => $cities,
@@ -779,85 +778,4 @@ class BrandsController extends AbstractController
         ]);
     }
 
-    /**
-     * Создает демо-товары для бренда
-     */
-    private function createDemoProducts(Brand $brand): array
-    {
-        $demoProducts = [];
-        return $demoProducts;
-        // Товар 1
-        $product1 = new Product();
-        $product1->setTitle('Оверсайз худи "Shadow"');
-        $product1->setSlug('oversize-hudi-shadow');
-        $product1->setPrice(4990);
-        $product1->setBrand($brand);
-        $product1->setDescription('Черное оверсайз худи из хлопка с капюшоном. Увеличенный крой для комфортной носки.');
-        $demoProducts[] = $product1;
-
-        // Товар 2
-        $product2 = new Product();
-        $product2->setTitle('Футболка оверсайз "Minimal"');
-        $product2->setSlug('oversize-t-shirt-minimal');
-        $product2->setPrice(2990);
-        $product2->setBrand($brand);
-        $product2->setDescription('Белая футболка оверсайз с минималистичным принтом. 100% хлопок.');
-        $demoProducts[] = $product2;
-
-        // Товар 3
-        $product3 = new Product();
-        $product3->setTitle('Бомбер "Urban"');
-        $product3->setSlug('bomber-urban');
-        $product3->setPrice(8990);
-        $product3->setBrand($brand);
-        $product3->setDescription('Легкий бомбер из нейлона с градиентной отделкой. Для прохладных вечеров.');
-        $demoProducts[] = $product3;
-
-        // Товар 4
-        $product4 = new Product();
-        $product4->setTitle('Штаны карго "Utility"');
-        $product4->setSlug('cargo-pants-utility');
-        $product4->setPrice(5990);
-        $product4->setBrand($brand);
-        $product4->setDescription('Штаны карго с множеством карманов. Удобство и функциональность.');
-        $demoProducts[] = $product4;
-
-        // Товар 5
-        $product5 = new Product();
-        $product5->setTitle('Кепка "Logo"');
-        $product5->setSlug('cap-logo');
-        $product5->setPrice(1990);
-        $product5->setBrand($brand);
-        $product5->setDescription('Бейсболка с вышитым логотипом бренда. Регулируемая посадка.');
-        $demoProducts[] = $product5;
-
-        // Товар 6
-        $product6 = new Product();
-        $product6->setTitle('Рюкзак "City"');
-        $product6->setSlug('backpack-city');
-        $product6->setPrice(7590);
-        $product6->setBrand($brand);
-        $product6->setDescription('Городской рюкзак с отделением для ноутбука. Водоотталкивающий материал.');
-        $demoProducts[] = $product6;
-
-        // Товар 7
-        $product7 = new Product();
-        $product7->setTitle('Лонгслив "Oversize"');
-        $product7->setSlug('longsleeve-oversize');
-        $product7->setPrice(3990);
-        $product7->setBrand($brand);
-        $product7->setDescription('Длинный рукав оверсайз кроя. Идеально для слоинга.');
-        $demoProducts[] = $product7;
-
-        // Товар 8
-        $product8 = new Product();
-        $product8->setTitle('Ветровка "Rain"');
-        $product8->setSlug('windbreaker-rain');
-        $product8->setPrice(6990);
-        $product8->setBrand($brand);
-        $product8->setDescription('Ветровка с защитой от ветра и воды. Складной дизайн.');
-        $demoProducts[] = $product8;
-
-        return $demoProducts;
-    }
 }
