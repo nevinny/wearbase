@@ -49,8 +49,8 @@
                 "name": "{{ product.brand.title }}",
                 "url": "{{ url('brand_show', {slug: product.brand.slug}) }}"
             },
-            {% if mainImage and (mainImage.preview or mainImage.image) %}
-            "image": "{{ absolute_url(asset('images/products/' ~ (mainImage.preview ?? mainImage.image))) }}",
+            {% if mainImage and product_image_url(mainImage) %}
+            "image": "{{ absolute_url(product_image_url(mainImage)) }}",
             {% endif %}
             "offers": {
                 "@type": "AggregateOffer",
@@ -84,7 +84,7 @@
         {# ── Галерея ── #}
         <div>
             {% if product.productImages|length > 0 %}
-                {% set mainImgSrc = product.mainImage ? asset('images/products/' ~ (product.mainImage.image ?? product.mainImage.preview)) : null %}
+                {% set mainImgSrc = product_image_url(product.mainImage, 'image') %}
                 <div class="bg-white rounded-xl overflow-hidden shadow-sm mb-3 relative group cursor-pointer"
                      id="main-image-container">
                     <img id="main-image"
@@ -101,9 +101,9 @@
                     <button type="button"
                             class="thumbnail-btn w-20 h-20 rounded-lg overflow-hidden border-2 flex-shrink-0 transition cursor-pointer
                                    {{ image.isMain ? 'border-gray-900' : 'border-transparent hover:border-gray-400' }}"
-                            data-src="{{ asset('images/products/' ~ (image.image ?? image.preview)) }}"
-                            data-full="{{ asset('images/products/' ~ (image.image ?? image.preview)) }}">
-                        <img src="{{ asset('images/products/' ~ (image.preview ?? image.image)) }}"
+                            data-src="{{ product_image_url(image, 'image') }}"
+                            data-full="{{ product_image_url(image, 'image') }}">
+                        <img src="{{ product_image_url(image) }}"
                              alt="" class="w-full h-full object-cover">
                     </button>
                     {% endfor %}
@@ -335,9 +335,10 @@
         <a href="{{ path('product_show', {uuid: similar.uuid}) }}"
            class="group bg-white rounded-xl overflow-hidden border border-gray-100 hover:shadow-md transition">
             {% set simImg = similar.mainImage %}
-            {% if simImg and (simImg.preview or simImg.image) %}
+            {% set simImgSrc = product_image_url(simImg) %}
+            {% if simImgSrc %}
             <div class="aspect-[3/4] overflow-hidden bg-gray-50">
-                <img src="{{ asset('images/products/' ~ (simImg.preview ?? simImg.image)) }}"
+                <img src="{{ simImgSrc }}"
                      alt="{{ similar.title }}"
                      class="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                      loading="lazy">

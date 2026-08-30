@@ -444,8 +444,9 @@
                                 {% set mainImg = product.mainImage %}
                                 {% set minPrice = product.minPrice ?: product.price %}
                                 <div class="bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition transform hover:-translate-y-1 border">
-                                    {% if mainImg and (mainImg.preview or mainImg.image) %}
-                                        <img src="{{ asset('images/products/' ~ (mainImg.preview ?? mainImg.image)) }}"
+                                    {% set mainImgSrc = product_image_url(mainImg) %}
+                                    {% if mainImgSrc %}
+                                        <img src="{{ mainImgSrc }}"
                                              alt="{{ product.title }} - {{ _bt }}"
                                              width="300"
                                              height="300"
