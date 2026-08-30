@@ -35,6 +35,7 @@ class NotificationController extends AbstractController
         Notification::TYPE_PURCHASE_RETURNED => 'Вещь возвращена',
         Notification::TYPE_PURCHASE_DECISION_REMINDER => 'Напоминание о решении',
         Notification::TYPE_PURCHASE_FITTING_REMINDER => 'Напоминание о примерке',
+        Notification::TYPE_PURCHASE_WEAR_REMINDER => 'Оценка новой вещи после носки',
     ];
 
     private const CHANNELS = ['channelEmail', 'channelInapp', 'channelTelegram', 'channelPush'];

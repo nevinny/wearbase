@@ -20,7 +20,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-#[AsCommand(name: 'app:family:purchase-reminders', description: 'Создаёт in-app напоминания по семейным покупкам, требующим действия')]
+#[AsCommand(name: 'app:family:purchase-reminders', description: 'Создаёт напоминания по семейным покупкам, требующим действия')]
 final class FamilyPurchaseRemindersCommand extends Command
 {
     private const TIMEZONE = 'Europe/Moscow';
@@ -58,9 +58,11 @@ final class FamilyPurchaseRemindersCommand extends Command
             ->setTimezone(new \DateTimeZone('UTC'));
         $pending = $this->requests->findPendingCreatedBefore($cutoff);
         $delivered = $this->items->findDeliveredBefore($cutoff);
+        $wearCandidates = $this->items->findBoughtForWearReminder($cutoff->modify('-6 days'));
+        $wearReminders = $this->wearReminders($wearCandidates, $cutoff);
 
         if ($input->getOption('dry-run')) {
-            $io->success(sprintf('Будет обработано: pending requests %d, delivered items %d', count($pending), count($delivered)));
+            $io->success(sprintf('Будет обработано: pending requests %d, delivered items %d, wear reminders %d', count($pending), count($delivered), count($wearReminders)));
             return Command::SUCCESS;
         }
 
@@ -70,9 +72,12 @@ final class FamilyPurchaseRemindersCommand extends Command
         foreach ($delivered as $item) {
             $this->remindFitting($item, $localDay);
         }
+        foreach ($wearReminders as [$item, $stage]) {
+            $this->remindWear($item, $stage);
+        }
         $this->em->flush();
 
-        $io->success(sprintf('Обработано: pending requests %d, delivered items %d', count($pending), count($delivered)));
+        $io->success(sprintf('Обработано: pending requests %d, delivered items %d, wear reminders %d', count($pending), count($delivered), count($wearReminders)));
         return Command::SUCCESS;
     }
 
@@ -115,6 +120,62 @@ final class FamilyPurchaseRemindersCommand extends Command
                 sprintf('Пора отметить результат примерки для %s', $subject->getFirstName() ?: 'ребёнка'),
                 null,
                 ['url' => '/account/purchases/'.$request->getId()],
+            );
+        }
+    }
+
+    /**
+     * @param PurchaseRequestItem[] $items
+     * @return array<int, array{PurchaseRequestItem, int}>
+     */
+    private function wearReminders(array $items, \DateTimeImmutable $localDayStart): array
+    {
+        $result = [];
+        foreach ($items as $item) {
+            $boughtAt = $item->getFittingFeedback()?->getCreatedAt();
+            if ($boughtAt === null) {
+                continue;
+            }
+            $age = (int) $boughtAt->setTimezone(new \DateTimeZone(self::TIMEZONE))->setTime(0, 0)
+                ->diff($localDayStart->setTimezone(new \DateTimeZone(self::TIMEZONE)))->format('%r%a');
+            if ($age >= 30) {
+                $result[] = [$item, 30];
+            } elseif ($age >= 7 && $age <= 14) {
+                $result[] = [$item, 7];
+            }
+        }
+
+        return $result;
+    }
+
+    private function remindWear(PurchaseRequestItem $item, int $stage): void
+    {
+        $request = $item->getPurchaseRequest();
+        $subject = $request?->getSubject();
+        if (!$request instanceof PurchaseRequest || !$subject instanceof User
+            || $subject->getFamily()?->getId() !== $request->getFamily()?->getId()) {
+            return;
+        }
+
+        foreach ($this->families->membersFor($subject) as $recipient) {
+            if (!$recipient->isFamilyParent() && ($recipient->getId() !== $subject->getId() || $recipient->isManaged())) {
+                continue;
+            }
+            $url = $recipient->getId() === $subject->getId()
+                ? '/account/wardrobe/wear'
+                : '/account/wardrobe/wear?member='.$subject->getId();
+            $title = $stage === 30 ? 'Как вещь показала себя за месяц?' : 'Удалось поносить новую вещь?';
+            $body = 'Добавьте только реальные носки и коротко оцените удобство, посадку и состояние вещи.';
+            $dedupeKey = sprintf('purchase-reminder:wear:%d:%d:recipient:%d', $item->getId(), $stage, $recipient->getId());
+            $this->notifications->dispatchOnce(
+                $recipient,
+                Notification::TYPE_PURCHASE_WEAR_REMINDER,
+                $dedupeKey,
+                $title,
+                $body,
+                ['url' => $url],
+                'family_notification',
+                ['title' => $title, 'body' => $body, 'url' => $url],
             );
         }
     }
