@@ -2019,17 +2019,19 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [x] Добавить lifecycle семьи: leave/remove, owner transfer, last-parent invariant и переход
   активированного детского профиля в самостоятельный adult без смены User ID/истории.
 - [ ] Расширить уже реализованный consent на private photo processing/revoke-at-adulthood отдельными
-  grant/revoke для personalization, shared learning и публичных snapshot-фото.
+  grant/revoke для shared learning и публичных snapshot-фото (personalization уже закрыт отдельным
+  consent для стилиста).
 - [x] Закрыть remote-стилиста и персональный learning context отдельным personalization consent:
   взрослый управляет своим consent, для child нужен parent; revoke сразу убирает history context,
   а local failure без consent не делает silent remote fallback. Remote wardrobe payload ограничен
   одноразовыми ID и category/color/season/styles без фото, названий, материалов, URL и DB ID.
 - [x] Добавить KISS structured context стилиста: исключать cleaning/repair/unavailable вещи,
   мягко ротировать подтверждённые носки за 7 дней, принимать event только из allowlist и ограничить
-  explanation одной строкой/240 символами. Weather оставить interface + null implementation без
-  внешнего API, геоданных и location в prompt.
-- [ ] Для native iOS добавить revocable per-device access/refresh tokens; не переиспользовать
-  X-Agent-Token/HMAC и не доверять user/member ID из клиента.
+  explanation одной строкой/240 символами. Погода задаётся явно (условие + температурный диапазон),
+  без внешнего API, геоданных и location в prompt.
+- [x] Для native API добавить revocable per-device access/refresh tokens: opaque access/rotating
+  refresh, отзыв одной/всех сессий, device management и cleanup; не переиспользовать X-Agent-Token/HMAC
+  и не доверять user/member ID из клиента.
 
 ### Фаза 0B — activation существующего гардероба
 
@@ -2058,7 +2060,7 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   parent grant для child, строгая image validation, EXIF re-encode и subject-aware AI context.
 - [x] Перенести legacy `/images/wardrobe*` в private storage идемпотентной deploy-командой;
   после успешного переноса публичные каталоги удаляются, конфликтующие файлы останавливают деплой.
-- [ ] Добавить IndexedDB retry только как foreground-resume при следующем online/open; не обещать
+- [x] Добавить IndexedDB retry только как foreground-resume при следующем online/open; не обещать
   iOS background upload, пока платформа не даёт надёжную гарантию.
 
 ### Фаза 1 — запрос ребёнка и решение родителя
@@ -2087,8 +2089,8 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   offline 503 без кеширования приватных HTML/API/фото.
 - [x] Отдавать manifest через Symfony с `application/manifest+json`, ограничить SW scope `/account/`
   и автоматизировать mobile E2E для install metadata, камеры, offline shell и privacy cache policy.
-- [x] Проверить Twig/manifest/JS, профильные tests (67/375) и полный PHPUnit: 611 tests,
-  1974 assertions; только 7 существующих deprecation.
+- [x] Проверить Twig/manifest/JS, профильные PHPUnit и mobile Playwright acceptance; полный CI на
+  актуальном main проходит (объём тестов меняется вместе с независимыми фичами).
 - [x] Перевести экраны покупок, lifecycle вещи и дневника образов на mobile-first family shell.
 - [x] Синхронизировать возврат после выкупа с гардеробом: связанная вещь атомарно получает
   терминальный статус «Возвращена продавцу», повторный return не дублирует событие.
@@ -2166,7 +2168,9 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 ### Фаза 6 — iOS и дополнительные каналы
 
 - [ ] До нативной разработки проверить activation/retention PWA и проблемы камеры/push интервью.
-- [ ] Добавить для native API короткоживущий access token, refresh/revoke и управление устройствами.
+- [x] Добавить для native API короткоживущий access token, rotating refresh/revoke и управление
+  устройствами (opaque public id, отзыв одного устройства и всех устройств, cleanup просроченных
+  сессий).
 - [ ] Реализовать iOS-клиент как presentation layer `/api/v1`, без бизнес-логики в приложении.
 - [ ] Подключить APNs и фоновые загрузки фото; PWA оставить полноценным fallback.
 - [x] Telegram подключён как необязательный канал семейных уведомлений через transactional outbox;
@@ -2182,12 +2186,16 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 получает опыт лишь после явного согласия. Семейный гардероб — ключевая продуктовая фича: отдельные
 профили взрослых и детей, вещи «на вырост», передача и семейная ротация без смешивания вкусов.
 
-### Уже реализовано в feature-ветке (не production-ready)
+### Уже реализовано в production web/PWA slice
 
 - [x] Vision-распознавание вещи и AI-подбор до трёх образов только из активных вещей.
 - [x] Проверка ID вещей, локальная Gemma first с OpenRouter fallback.
 - [x] Сохранение образов и реакций `Нравится / Не моё / Я это надел`.
 - [x] Простая персональная память по категориям, цветам и стилям; миграция и тесты feedback-loop.
+- [x] Явный погодный контекст запроса (условие + температурный диапазон) без геолокации и
+  скрытых внешних вызовов.
+- [x] Статусы чистоты `clean|dirty|laundry`; грязные вещи и вещи в стирке исключаются из
+  подборок, а изменение статуса защищено семейными правами.
 
 ### P0 — корректная личная память
 
