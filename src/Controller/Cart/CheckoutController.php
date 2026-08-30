@@ -12,10 +12,12 @@ use App\Notification\NotificationDispatcher;
 use App\Repository\BrandUserRepository;
 use App\Repository\CartRepository;
 use App\Repository\CountryRepository;
+use App\Repository\SellerLegalEntityRepository;
 use App\Repository\ShippingRuleRepository;
 use App\Service\DeliveryService;
 use App\Service\PaymentService;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -119,15 +121,17 @@ class CheckoutController extends AbstractController
 
     #[Route('/confirm', name: 'confirm', methods: ['POST'])]
     public function confirm(
-        Request                $request,
-        CartRepository         $cartRepo,
-        CountryRepository      $countryRepo,
-        ShippingRuleRepository $shippingRepo,
-        EntityManagerInterface $em,
-        BrandUserRepository    $brandUserRepo,
-        NotificationDispatcher $notifier,
-        PaymentService         $paymentService,
-        DeliveryService        $delivery,
+        Request                     $request,
+        CartRepository              $cartRepo,
+        CountryRepository           $countryRepo,
+        ShippingRuleRepository      $shippingRepo,
+        EntityManagerInterface      $em,
+        BrandUserRepository         $brandUserRepo,
+        NotificationDispatcher      $notifier,
+        PaymentService              $paymentService,
+        DeliveryService             $delivery,
+        SellerLegalEntityRepository $legalEntities,
+        LoggerInterface             $logger,
     ): Response {
         /** @var \App\Entity\User $user */
         $user = $this->getUser();
@@ -154,6 +158,27 @@ class CheckoutController extends AbstractController
         $customerNote   = $request->request->get('note');
         $countryCode    = strtoupper((string) $request->request->get('country', 'RU'));
 
+        // Дефект 2: проверяем остатки по ВСЕМ позициям ВСЕХ брендовых групп до того, как
+        // создана хоть одна сущность — либо создаются все заказы этого чекаута, либо ни одного.
+        $groups = $cart->groupByBrand();
+        foreach ($groups as ['items' => $items]) {
+            foreach ($items as $cartItem) {
+                $variant = $cartItem->getVariant();
+                if ($variant->getStockQty() < $cartItem->getQty()) {
+                    $this->addFlash('error', sprintf('Недостаточно товара "%s" на складе', $variant->getTitle()));
+                    return $this->redirectToRoute('cart_index');
+                }
+            }
+        }
+
+        // Дефект 3: один платёж YooKassa = один бренд (PaymentService::createOrderPayment
+        // отказывает на заказах разных брендов). Честно предупреждаем ДО создания заказов —
+        // не оплачиваем первый бренд молча, изображая обработку всей корзины.
+        if (count($groups) > 1 && $paymentMethod === Order::PAYMENT_METHOD_CARD) {
+            $this->addFlash('error', 'Оформите заказы по одному бренду: онлайн-оплата пока не поддерживает корзину из нескольких брендов. Выберите оплату при получении либо оформите бренды по отдельности.');
+            return $this->redirectToRoute('cart_index');
+        }
+
         // Определяем стоимость доставки из API (или static fallback)
         $shippingCost = $this->resolveShippingCost(
             $shippingRuleId,
@@ -167,78 +192,86 @@ class CheckoutController extends AbstractController
         );
 
         $createdOrders = [];
-        $redirectResponse = null;
 
-        $em->wrapInTransaction(function (EntityManagerInterface $em) use (
-            $cart,
-            $user,
-            $addressData,
-            $deliveryMethod,
-            $shippingRuleId,
-            $paymentMethod,
-            $customerNote,
-            $shippingCost,
-            $shippingRepo,
-            $brandUserRepo,
-            $notifier,
-            $paymentService,
-            &$createdOrders,
-            &$redirectResponse,
-        ) {
-            // Один заказ на каждый бренд
-            foreach ($cart->groupByBrand() as ['brand' => $brand, 'items' => $items]) {
-                $order = new Order();
-                $order->setOrderNumber($this->generateOrderNumber($em));
-                $order->setCustomer($user);
-                $order->setBrand($brand);
-                $order->setShippingAddress($addressData);
-                $order->setDeliveryMethod($deliveryMethod);
-                $order->setPaymentMethod($paymentMethod);
-                $order->setCustomerNote($customerNote);
+        try {
+            $em->wrapInTransaction(function (EntityManagerInterface $em) use (
+                $cart,
+                $user,
+                $addressData,
+                $deliveryMethod,
+                $shippingRuleId,
+                $paymentMethod,
+                $customerNote,
+                $shippingCost,
+                $shippingRepo,
+                &$createdOrders,
+            ) {
+                // Один заказ на каждый бренд
+                foreach ($cart->groupByBrand() as ['brand' => $brand, 'items' => $items]) {
+                    $order = new Order();
+                    $order->setOrderNumber($this->generateOrderNumber($em));
+                    $order->setCustomer($user);
+                    $order->setBrand($brand);
+                    $order->setShippingAddress($addressData);
+                    $order->setDeliveryMethod($deliveryMethod);
+                    $order->setPaymentMethod($paymentMethod);
+                    $order->setCustomerNote($customerNote);
 
-                $subtotal = 0.0;
-                foreach ($items as $cartItem) {
-                    $variant = $cartItem->getVariant();
-                    $requestedQty = $cartItem->getQty();
+                    $subtotal = 0.0;
+                    foreach ($items as $cartItem) {
+                        $variant = $cartItem->getVariant();
+                        $requestedQty = $cartItem->getQty();
 
-                    if ($variant->getStockQty() < $requestedQty) {
-                        $this->addFlash('error', sprintf('Недостаточно товара "%s" на складе', $variant->getTitle()));
-                        $redirectResponse = $this->redirectToRoute('cart_index');
-                        return;
+                        // Гонка: остаток мог измениться между предварительной проверкой выше
+                        // и этим моментом — бросаем исключение, а не return, чтобы
+                        // wrapInTransaction откатил ВСЕ заказы чекаута целиком.
+                        if ($variant->getStockQty() < $requestedQty) {
+                            throw new InsufficientStockException(sprintf('Недостаточно товара "%s" на складе', $variant->getTitle()));
+                        }
+
+                        $orderItem = new OrderItem();
+                        $orderItem->fillFromVariant($variant, $requestedQty);
+                        $order->addOrderItem($orderItem);
+                        $em->persist($orderItem);
+                        $subtotal += (float) $orderItem->getTotal();
+
+                        $variant->setStockQty($variant->getStockQty() - $requestedQty);
                     }
 
-                    $orderItem = new OrderItem();
-                    $orderItem->fillFromVariant($variant, $requestedQty);
-                    $order->addOrderItem($orderItem);
-                    $em->persist($orderItem);
-                    $subtotal += (float) $orderItem->getTotal();
+                    // Бесплатная доставка от порога
+                    $effectiveShipping = $shippingCost;
+                    $rule = $shippingRuleId ? $shippingRepo->find($shippingRuleId) : null;
+                    if ($rule && $rule->getFreeFromRub() !== null && $subtotal >= (float) $rule->getFreeFromRub()) {
+                        $effectiveShipping = 0.0;
+                    }
 
-                    $variant->setStockQty($variant->getStockQty() - $requestedQty);
+                    $order->setSubtotal((string) round($subtotal, 2));
+                    $order->setShippingCost((string) $effectiveShipping);
+                    $order->setTotalAmount((string) round($subtotal + $effectiveShipping, 2));
+
+                    // История статусов
+                    $history = new OrderStatusHistory();
+                    $history->setOrder($order);
+                    $history->setToStatus(Order::STATUS_NEW);
+                    $history->setComment('Заказ создан покупателем');
+                    $em->persist($history);
+
+                    $em->persist($order);
+                    $createdOrders[] = $order;
                 }
+            });
+        } catch (InsufficientStockException $e) {
+            $this->addFlash('error', $e->getMessage());
+            return $this->redirectToRoute('cart_index');
+        }
 
-                // Бесплатная доставка от порога
-                $effectiveShipping = $shippingCost;
-                $rule = $shippingRuleId ? $shippingRepo->find($shippingRuleId) : null;
-                if ($rule && $rule->getFreeFromRub() !== null && $subtotal >= (float) $rule->getFreeFromRub()) {
-                    $effectiveShipping = 0.0;
-                }
-
-                $order->setSubtotal((string) round($subtotal, 2));
-                $order->setShippingCost((string) $effectiveShipping);
-                $order->setTotalAmount((string) round($subtotal + $effectiveShipping, 2));
-
-                // История статусов
-                $history = new OrderStatusHistory();
-                $history->setOrder($order);
-                $history->setToStatus(Order::STATUS_NEW);
-                $history->setComment('Заказ создан покупателем');
-                $em->persist($history);
-
-                $em->persist($order);
-                $createdOrders[] = $order;
-
-                // Notify brand managers
-                $brandUsers = $brandUserRepo->findBy(['brand' => $brand]);
+        // Дефект 1: уведомления — ТОЛЬКО после успешного коммита транзакции, когда у всех
+        // заказов уже есть id (шаблон письма бренду строит ссылку по order.id — до коммита
+        // это всегда null со стратегией IDENTITY). Сбой уведомления не должен ломать уже
+        // созданный заказ — fail-open, каждый блок в своём try/catch.
+        foreach ($createdOrders as $order) {
+            try {
+                $brandUsers = $brandUserRepo->findBy(['brand' => $order->getBrand()]);
                 foreach ($brandUsers as $bu) {
                     $manager = $bu->getUser();
                     if ($manager === $user) continue;
@@ -253,56 +286,54 @@ class CheckoutController extends AbstractController
                         ['order' => $order],
                     );
                 }
+            } catch (\Throwable $e) {
+                $logger->error('Checkout: не удалось уведомить бренд о новом заказе', ['order_id' => $order->getId(), 'exception' => $e]);
             }
 
-            // Notify buyer
-            foreach ($createdOrders as $createdOrder) {
+            try {
                 $notifier->dispatch(
                     $user,
                     Notification::TYPE_ORDER_NEW,
-                    "Заказ #{$createdOrder->getOrderNumber()} оформлен",
-                    "Заказ на сумму {$createdOrder->getTotalAmount()} руб. принят.",
-                    ['order_id' => $createdOrder->getId(), 'order_number' => $createdOrder->getOrderNumber()],
+                    "Заказ #{$order->getOrderNumber()} оформлен",
+                    "Заказ на сумму {$order->getTotalAmount()} руб. принят.",
+                    ['order_id' => $order->getId(), 'order_number' => $order->getOrderNumber()],
                     'order_confirmation',
-                    ['order' => $createdOrder],
+                    ['order' => $order],
                 );
+            } catch (\Throwable $e) {
+                $logger->error('Checkout: не удалось уведомить покупателя о заказе', ['order_id' => $order->getId(), 'exception' => $e]);
             }
+        }
+        $em->flush();
 
-            $em->flush();
-
-            // Если оплата картой — редирект на ЮKassa
-            if ($paymentMethod === 'card_online' && $createdOrders !== []) {
-                $returnUrl = $this->generateUrl('account_orders', [], UrlGeneratorInterface::ABSOLUTE_URL);
-                $paymentUrl = $paymentService->createOrderPayment($createdOrders, $returnUrl);
-                if ($paymentUrl) {
-                    foreach ($cart->getItems() as $item) {
-                        $em->remove($item);
-                    }
-                    $em->flush();
-                    $redirectResponse = $this->redirect($paymentUrl);
-                    return;
+        // Если оплата картой — редирект на ЮKassa (гарантированно один заказ, см. проверку выше)
+        if ($paymentMethod === Order::PAYMENT_METHOD_CARD && $createdOrders !== []) {
+            $returnUrl = $this->generateUrl('account_orders', [], UrlGeneratorInterface::ABSOLUTE_URL);
+            $paymentUrl = $paymentService->createOrderPayment($createdOrders, $returnUrl);
+            if ($paymentUrl) {
+                foreach ($cart->getItems() as $item) {
+                    $em->remove($item);
                 }
-
-                // Платёж не инициализирован — заказ создан, информируем покупателя
-                $this->addFlash('warning', $paymentService->isConfigured()
-                    ? 'Платёжный шлюз временно недоступен — заказ создан, мы свяжемся с вами для оплаты.'
-                    : 'Онлайн-оплата пока не настроена — заказ создан, мы свяжемся с вами.');
+                $em->flush();
+                return $this->redirect($paymentUrl);
             }
 
-            if (count($createdOrders) === 1) {
-                $redirectResponse = $this->redirectToRoute('checkout_success', [
-                    'number' => $createdOrders[0]->getOrderNumber(),
-                ]);
-            } else {
-                $redirectResponse = $this->redirectToRoute('checkout_success_multi');
-            }
-        });
-
-        if ($redirectResponse) {
-            return $redirectResponse;
+            // Дефект 4: диагноз по факту готовности счёта БРЕНДА, а не платформенных
+            // реквизитов подписок (PaymentService::isConfigured() — про другое).
+            $payingOrder = $createdOrders[0];
+            $brandReady = $legalEntities->findActiveForBrand($payingOrder->getBrand())?->getReadyPrimaryAccount() !== null;
+            $this->addFlash('warning', $brandReady
+                ? 'Платёжный шлюз временно недоступен — заказ создан, мы свяжемся с вами для оплаты.'
+                : 'Онлайн-оплата у этого бренда пока не настроена — заказ создан, бренд свяжется с вами.');
         }
 
-        return $this->redirectToRoute('cart_index');
+        if (count($createdOrders) === 1) {
+            return $this->redirectToRoute('checkout_success', [
+                'number' => $createdOrders[0]->getOrderNumber(),
+            ]);
+        }
+
+        return $this->redirectToRoute('checkout_success_multi');
     }
 
     #[Route('/success/{number}', name: 'success')]
