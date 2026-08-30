@@ -334,6 +334,7 @@ class DailyReportCommand extends Command
 
         // --- Публикации с прода (агент-API; TG с прода недоступен — поэтому тянем сюда) ---
         $pub = ['published_today' => '—', 'published_yesterday' => '—', 'published_total' => '—', 'queue_pending' => '—', 'last_published' => '—'];
+        $moderation = null;
         try {
             if (trim((string) $this->prodApiUrl) !== '') {
                 $d = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/publish-stats', [
@@ -341,6 +342,7 @@ class DailyReportCommand extends Command
                     'timeout' => 8,
                 ])->toArray(false);
                 $pub = array_merge($pub, array_intersect_key($d, $pub));
+                $moderation = $d['moderation'] ?? null;
             }
         } catch (\Throwable) {
             // прод недоступен — оставляем «—»
@@ -473,6 +475,22 @@ class DailyReportCommand extends Command
             $aioLine .= '— (нет данных gsc_query_stats или утечки)';
         }
 
+        // --- Модерация: очередь премодерации + заявки на владение (см. app:moderation:timeouts) ---
+        $moderationLine = '';
+        if ($moderation !== null && (
+            ($moderation['queued'] ?? 0) > 0
+            || ($moderation['reviewed_awaiting'] ?? 0) > 0
+            || ($moderation['claims_pending'] ?? 0) > 0
+        )) {
+            $moderationLine = sprintf(
+                "\n\n<b>🛂 Модерация:</b> %d в очереди (старейшая %d дн.), %d ждут решения, %d claim",
+                $moderation['queued'] ?? 0,
+                $moderation['oldest_queued_days'] ?? 0,
+                $moderation['reviewed_awaiting'] ?? 0,
+                $moderation['claims_pending'] ?? 0,
+            );
+        }
+
         $msg = sprintf(
             "<b>📅 Дайджест · %s</b>\n\n" .
             "<b>Публикации (прод):</b> вчера %s · всего %s · ждут %s\n" .
@@ -481,7 +499,7 @@ class DailyReportCommand extends Command
             "Когорта 14д+ в индексе: %s\n" .
             "Последняя проверка: %s\n\n" .
             "<b>Яндекс:</b> в поиске %d (%s) · запросы: %s\n" .
-            "Последняя проверка: %s%s%s%s%s%s",
+            "Последняя проверка: %s%s%s%s%s%s%s",
             (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
             $pub['published_yesterday'], $pub['published_total'], $pub['queue_pending'],
             $pub['last_published'],
@@ -495,6 +513,7 @@ class DailyReportCommand extends Command
             $socialLine,
             $convLine,
             $aioLine,
+            $moderationLine,
         );
 
         $io->text(strip_tags($msg));
