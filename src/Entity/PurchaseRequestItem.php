@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\PurchaseRequestItemRepository;
+use App\ValueObject\ExternalProductUrl;
 use App\ValueObject\MoneyAmount;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
@@ -82,8 +83,7 @@ class PurchaseRequestItem
     public function getSourceUrl(): string { return $this->sourceUrl; }
     public function setSourceUrl(string $sourceUrl): static
     {
-        PurchaseRequest::assertSafeProductUrl($sourceUrl);
-        $this->sourceUrl = $sourceUrl;
+        $this->sourceUrl = ExternalProductUrl::fromString($sourceUrl)->toString();
         return $this;
     }
     public function getEstimatedPrice(): ?string { return $this->estimatedPrice; }
