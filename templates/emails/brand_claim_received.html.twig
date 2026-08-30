@@ -1,0 +1,12 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Заявка принята — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">📝 Заявка на управление брендом «{{ claim.brand.title }}» принята</h2>
+<p style="color:#555;line-height:1.6;">
+    Мы получили вашу заявку на управление брендом <strong>{{ claim.brand.title }}</strong>.
+    Проверим и ответим в течение 2 рабочих дней.
+</p>
+<p style="text-align:center;">
+    <a href="{{ url('brand_dashboard') }}" class="btn">Открыть кабинет</a>
+</p>
+{% endblock %}

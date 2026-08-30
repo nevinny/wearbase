@@ -44,4 +44,17 @@ class BrandClaimRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /** pending/email_verified старше $cutoff — админ не решил вовремя (app:moderation:timeouts). @return BrandClaim[] */
+    public function findOverduePending(\DateTimeInterface $cutoff): array
+    {
+        return $this->createQueryBuilder('c')
+            ->where('c.status IN (:statuses)')
+            ->andWhere('c.createdAt < :cutoff')
+            ->setParameter('statuses', [BrandClaim::STATUS_PENDING, BrandClaim::STATUS_EMAIL_VERIFIED])
+            ->setParameter('cutoff', $cutoff)
+            ->orderBy('c.createdAt', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
 }

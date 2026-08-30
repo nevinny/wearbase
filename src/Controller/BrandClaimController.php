@@ -418,13 +418,16 @@ class BrandClaimController extends AbstractController
         $user  = $claim->getUser();
         $label = $claim->isEmailDomainMatch() ? '✅ домен совпадает' : '⚠️ требуется проверка';
 
+        // Адресовано ЗАЯВИТЕЛЮ (в его кабинет + на почту) — до этой правки здесь по ошибке
+        // уходил админский текст/шаблон brand_claim_admin («Пользователь X подал заявку…»),
+        // адресованный как будто самому заявителю. Каналы админу — ниже, отдельно.
         $this->notifier->dispatch(
             $user,
             Notification::TYPE_SYSTEM,
-            "Новая заявка на бренд «{$brand->getTitle()}» — {$label}",
-            "Пользователь {$user->getEmail()} подал заявку на владение брендом. Комментарий: " . ($claim->getComment() ?? '—'),
+            "Заявка на бренд «{$brand->getTitle()}» принята",
+            'Мы получили вашу заявку на управление брендом. Проверим и ответим в течение 2 рабочих дней.',
             ['brand_id' => $brand->getId(), 'claim_id' => $claim->getId()],
-            'brand_claim_admin',
+            'brand_claim_received',
             ['claim' => $claim],
         );
         // dispatch только persist'ит in-app — коммитим

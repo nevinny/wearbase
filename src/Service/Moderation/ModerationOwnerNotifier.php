@@ -38,6 +38,7 @@ final class ModerationOwnerNotifier
             BrandModeration::STATUS_APPROVED          => "Бренд «{$brand->getTitle()}» одобрен",
             BrandModeration::STATUS_CHANGES_REQUESTED => "Бренд «{$brand->getTitle()}»: нужно дополнить карточку",
             BrandModeration::STATUS_REJECTED          => "Бренд «{$brand->getTitle()}»: карточка отклонена",
+            BrandModeration::STATUS_ARCHIVED          => "Бренд «{$brand->getTitle()}»: заявка отложена",
             default                                   => null,
         };
         if ($title === null) {
@@ -70,6 +71,7 @@ final class ModerationOwnerNotifier
         return match ($moderation->getStatus()) {
             BrandModeration::STATUS_APPROVED => 'Карточка встала в очередь публикации и появится в каталоге в течение часа.',
             BrandModeration::STATUS_REJECTED => $moderation->getAdminNote() ?? 'Карточка отклонена модератором.',
+            BrandModeration::STATUS_ARCHIVED => 'Заявку можно вернуть на проверку в любой момент — кнопка «Отправить на повторную проверку» есть в кабинете бренда.',
             default => 'Чтобы опубликовать карточку, дополните её: '
                 . implode('; ', ModerationLabels::missing($moderation->getMissing())),
         };

@@ -69,6 +69,23 @@ class ModerationOwnerNotifierTest extends TestCase
         $notifier->notify(new Brand(), $this->moderation(BrandModeration::STATUS_APPROVED));
     }
 
+    public function testArchivedTellsOwnerItCanBeResubmitted(): void
+    {
+        [$notifier, $dispatcher] = $this->notifierFor((new User())->setEmail('owner@brand.ru'));
+        $brand = (new Brand())->setTitle('АХ!');
+
+        $dispatcher->expects($this->once())->method('dispatch')->with(
+            $this->anything(),
+            Notification::TYPE_SYSTEM,
+            $this->stringContains('заявка отложена'),
+            $this->stringContains('повторную проверку'),
+            $this->anything(),
+            'brand_moderation_result',
+        );
+
+        $notifier->notify($brand, $this->moderation(BrandModeration::STATUS_ARCHIVED));
+    }
+
     public function testUndecidedStatusesStaySilent(): void
     {
         [$notifier, $dispatcher] = $this->notifierFor((new User())->setEmail('owner@brand.ru'));

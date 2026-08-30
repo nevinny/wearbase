@@ -84,6 +84,10 @@ class BrandModeration
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTimeInterface $decidedAt = null;
 
+    /** Когда админу последний раз ушло TG-напоминание про эту заявку (app:moderation:timeouts) — троттлинг. */
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $remindedAt = null;
+
     #[ORM\Column(length: 10, nullable: true)]
     private ?string $decidedVia = null;
 
@@ -149,6 +153,9 @@ class BrandModeration
 
     public function getDecidedAt(): ?\DateTimeInterface { return $this->decidedAt; }
     public function setDecidedAt(?\DateTimeInterface $at): static { $this->decidedAt = $at; return $this; }
+
+    public function getRemindedAt(): ?\DateTimeInterface { return $this->remindedAt; }
+    public function setRemindedAt(?\DateTimeInterface $at): static { $this->remindedAt = $at; return $this; }
 
     public function getDecidedVia(): ?string { return $this->decidedVia; }
     public function setDecidedVia(?string $via): static { $this->decidedVia = $via; return $this; }
