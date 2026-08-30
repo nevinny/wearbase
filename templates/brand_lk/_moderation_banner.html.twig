@@ -1,7 +1,7 @@
 {# Статус премодерации самрег-карточки. До этого владелец не видел вообще ничего:
    карточка не в каталоге, причина неизвестна, что делать — непонятно. #}
 {% set mod = brand_moderation() %}
-{% if mod and brand.status != 'active' %}
+{% if mod and not brand.isPublished %}
     {% set missing = moderation_missing(mod.missing) %}
     {% set flags = moderation_flags(mod.redFlags) %}
     {% set needs_work = mod.status in ['reviewed', 'changes_requested'] and (missing or flags) %}
@@ -42,10 +42,26 @@
                    class="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black transition">Заполнить профиль</a>
                 <a href="{{ path('brand_products') }}"
                    class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition">Товары</a>
+                {% if mod.status == 'changes_requested' %}
+                    <form method="post" action="{{ path('brand_moderation_resubmit') }}">
+                        <input type="hidden" name="_token" value="{{ csrf_token('moderation_resubmit') }}">
+                        <button type="submit"
+                                class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 transition">Отправить на повторную проверку</button>
+                    </form>
+                {% endif %}
                 <span class="text-xs text-amber-800">
                     Вопросы — <a href="https://t.me/zyablik" class="underline">@zyablik</a> в Telegram.
                 </span>
             </div>
+        </div>
+    {% elseif mod.status == 'archived' %}
+        <div class="mb-5 rounded-xl bg-amber-50 px-4 py-4 text-sm text-amber-900">
+            <div class="font-semibold">Заявка отложена — можно вернуть на проверку</div>
+            <form method="post" action="{{ path('brand_moderation_resubmit') }}" class="mt-3">
+                <input type="hidden" name="_token" value="{{ csrf_token('moderation_resubmit') }}">
+                <button type="submit"
+                        class="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black transition">Отправить на повторную проверку</button>
+            </form>
         </div>
     {% else %}
         <div class="mb-5 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-800">

@@ -29,6 +29,9 @@ class BrandModeration
     public const STATUS_APPROVED          = 'approved';
     public const STATUS_CHANGES_REQUESTED = 'changes_requested';
     public const STATUS_REJECTED          = 'rejected';
+    // Писатель этого статуса (кто и когда архивирует заявку) появится в следующем PR —
+    // здесь только заводим значение, чтобы resubmit-гард уже мог на него ссылаться.
+    public const STATUS_ARCHIVED          = 'archived';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
