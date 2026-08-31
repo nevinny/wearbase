@@ -13,7 +13,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class SitemapController extends AbstractController
 {
     #[Route('/sitemap.xml', name: 'sitemap_xml', defaults: ['_format' => 'xml'])]
-    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Repository\AuthorRepository $authorRepo, \App\Repository\CityHubRepository $cityHubRepo, \App\Service\CitySlugger $citySlugger, UrlGeneratorInterface $urlGenerator): Response
+    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Repository\AuthorRepository $authorRepo, \App\Repository\CityHubRepository $cityHubRepo, \App\Service\CitySlugger $citySlugger, \App\Service\RegionMap $regionMap, UrlGeneratorInterface $urlGenerator): Response
     {
         $urls = [];
 
@@ -119,6 +119,40 @@ class SitemapController extends AbstractController
                 'loc' => $this->generateUrl('brand_city', [
                     '_locale' => 'ru',
                     'slug' => $citySlug,
+                ], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'weekly',
+                'priority' => '0.7',
+            ];
+        }
+
+        // Регионы: тот же гейт, что у городов, но считаем по сумме брендов региона — так
+        // тонкие города (Ростов Великий, Рыбинск) складываются в индексируемый хаб области.
+        // Города вне карты RegionMap не участвуют (fail-closed) — см. RegionMap.
+        $regionCounts = [];
+        foreach ($cityCounts as $cityRow) {
+            $region = $regionMap->regionOf($cityRow['city']);
+            if ($region === null) {
+                continue;
+            }
+            $regionCounts[$region] = ($regionCounts[$region] ?? 0) + (int) $cityRow['cnt'];
+        }
+
+        if ($regionCounts !== []) {
+            $urls[] = [
+                'loc' => $this->generateUrl('brand_regions', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'weekly',
+                'priority' => '0.7',
+            ];
+        }
+
+        foreach ($regionCounts as $region => $cnt) {
+            if ($cnt < \App\Controller\Brands\BrandsController::MIN_INDEXABLE_BRANDS) {
+                continue;
+            }
+            $urls[] = [
+                'loc' => $this->generateUrl('brand_region', [
+                    '_locale' => 'ru',
+                    'slug' => $regionMap->slugOf($region),
                 ], UrlGeneratorInterface::ABSOLUTE_URL),
                 'changefreq' => 'weekly',
                 'priority' => '0.7',

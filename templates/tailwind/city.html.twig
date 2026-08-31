@@ -111,8 +111,11 @@
             </a>
         </div>
 
-        <div class="mt-8 flex gap-4 text-sm">
+        <div class="mt-8 flex flex-wrap gap-4 text-sm">
             <a href="{{ path('brand_cities', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">← Все города</a>
+            {% if region is defined and region %}
+                <a href="{{ path('brand_region', {_locale: page_locale, slug: regionSlug}) }}" class="text-gray-500 hover:text-gray-900">Все бренды — {{ region }}</a>
+            {% endif %}
             <a href="{{ path('brand_index', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Все бренды</a>
         </div>
     </div>

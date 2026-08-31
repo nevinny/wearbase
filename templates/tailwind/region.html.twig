@@ -1,0 +1,125 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+
+{# Склонение по-русски: «1 марка / 2 марки / 7 марок». Без этого получается «1 марок» —
+   ровно тот баг шаблонов, за который мы критикуем конкурента (docs/competitor_provybor.md §6). #}
+{% macro plural(n, one, few, many) %}{% set n10 = n % 10 %}{% set n100 = n % 100 %}{{ (n10 == 1 and n100 != 11) ? one : ((n10 >= 2 and n10 <= 4 and (n100 < 12 or n100 > 14)) ? few : many) }}{% endmacro %}
+{% import _self as ru %}
+
+{% block title %}Бренды и производители одежды — {{ region }}: {{ brands|length }} {{ ru.plural(brands|length, 'марка', 'марки', 'марок') }} с контактами | WEARBASE{% endblock %}
+
+{% block meta_description %}{{ brands|length }} {{ ru.plural(brands|length, 'бренд', 'бренда', 'брендов') }} и производителей одежды из {{ region }}{% if cities|length > 1 %} — {{ cities|length }} {{ ru.plural(cities|length, 'город', 'города', 'городов') }} региона{% endif %}. Сайты, соцсети и контакты напрямую: покупайте у производителя без комиссии маркетплейсов.{% endblock %}
+
+{% block meta_keywords %}бренды одежды {{ region|lower }}, производители одежды {{ region|lower }}, поставщики одежды {{ region|lower }}, швейное производство {{ region|lower }}, российские бренды одежды{% endblock %}
+
+{% block og_title %}Бренды одежды — {{ region }} | WEARBASE{% endblock %}
+
+{% block og_description %}{{ brands|length }} брендов и производителей одежды из {{ region }} — с сайтами и контактами.{% endblock %}
+
+{% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
+
+{# Тонкие регионы (< MIN_INDEXABLE_BRANDS) — noindex,follow: шаблон «[бренды]+[регион]» без
+   содержания не нужен ни поиску, ни нам. Логика та же, что у городов. #}
+{% block meta_robots %}{% if not indexable %}<meta name="robots" content="noindex, follow">{% endif %}{% endblock %}
+
+{% block body %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": "{{ url('brand_region', {_locale: page_locale, slug: slug}) }}#webpage",
+                "url": "{{ url('brand_region', {_locale: page_locale, slug: slug}) }}",
+                "name": "Бренды одежды {{ region }} | WEARBASE",
+                "breadcrumb": {"@id": "{{ url('brand_region', {_locale: page_locale, slug: slug}) }}#breadcrumb"}
+            },
+            {
+                "@type": "BreadcrumbList",
+                "@id": "{{ url('brand_region', {_locale: page_locale, slug: slug}) }}#breadcrumb",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 2, "name": "Регионы", "item": "{{ url('brand_regions', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 3, "name": {{ region|json_encode|raw }}, "item": "{{ url('brand_region', {_locale: page_locale, slug: slug}) }}"}
+                ]
+            },
+            {
+                "@type": "ItemList",
+                "itemListElement": [
+                    {% for brand in brands|slice(0, 30) %}
+                    {"@type": "ListItem", "position": {{ loop.index }}, "url": "{{ url('brand_show', {_locale: page_locale, slug: brand.slug}) }}", "name": {{ brand.title|json_encode|raw }}}{{ loop.last ? '' : ',' }}
+                    {% endfor %}
+                ]
+            }
+        ]
+    }
+    </script>
+
+    <div class="container mx-auto px-4 py-10">
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <a href="{{ path('brand_regions', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Регионы</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">{{ region }}</span>
+        </nav>
+
+        <h1 class="text-3xl md:text-4xl font-bold mb-3">Бренды одежды — {{ region }}</h1>
+
+        <p class="text-gray-600 max-w-2xl mb-8">{{ brands|length }} {{ ru.plural(brands|length, 'бренд', 'бренда', 'брендов') }} одежды местного производства из {{ region }}{% if cities|length > 1 %}, в {{ cities|length }} {{ ru.plural(cities|length, 'городе', 'городах', 'городах') }} региона{% endif %}. У каждого — сайт, соцсети и контакты: пишите производителю напрямую, без комиссии маркетплейсов.</p>
+
+        {% if cities|length > 1 %}
+            <div class="mb-10">
+                <h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-3">Города региона</h2>
+                <div class="flex flex-wrap gap-2">
+                    {% for c in cities %}
+                        <a href="{{ path('brand_city', {_locale: page_locale, slug: c.slug}) }}"
+                           class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm hover:border-gray-900 transition">
+                            <span class="text-gray-900">{{ c.city }}</span>
+                            <span class="text-gray-400">{{ c.cnt }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {% for brand in brands %}
+                <article class="group bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                    <a href="{{ path('brand_show', {_locale: page_locale, slug: brand.slug}) }}" class="flex flex-col items-center p-4 text-center">
+                        <div class="w-24 h-24 flex items-center justify-center mb-3">
+                            {% if brand.logo %}
+                                <img src="{{ asset('images/logos/' ~ brand.logo) }}" alt="{{ brand.title }} — бренд одежды, {{ region }}" loading="lazy" width="96" height="96"
+                                     class="object-contain w-full h-full transition-transform group-hover:scale-105 duration-300">
+                            {% else %}
+                                <div class="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
+                                    {{ brand.title|slice(0, 1) }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <h2 class="text-sm font-semibold mb-1 truncate w-full">{{ brand.title }}</h2>
+                        {% if brand.city %}
+                            <p class="text-xs text-gray-400">{{ brand.city }}</p>
+                        {% endif %}
+                    </a>
+                </article>
+            {% endfor %}
+        </div>
+
+        <div class="mt-12 p-6 bg-gray-50 rounded-xl text-center">
+            <p class="font-semibold mb-2">Знаете производителя из {{ region }}, которого здесь нет?</p>
+            <p class="text-sm text-gray-600 mb-4">Размещение в каталоге — без комиссии с продаж, деньги за заказы идут напрямую бренду.</p>
+            <a href="{{ path('landing_for_brands', {_locale: page_locale}) }}"
+               class="inline-block px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition">
+                Добавить бренд
+            </a>
+        </div>
+
+        <div class="mt-8 flex gap-4 text-sm">
+            <a href="{{ path('brand_regions', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">← Все регионы</a>
+            <a href="{{ path('brand_cities', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Бренды по городам</a>
+            <a href="{{ path('brand_index', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Все бренды</a>
+        </div>
+    </div>
+{% endblock %}
