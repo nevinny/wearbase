@@ -251,17 +251,27 @@
 
             {# Add to cart button #}
             {% set firstVariant = product.variants|filter(v => v.isInStock and v.status == 'active')|first %}
-            {% if firstVariant %}
+            {% if not firstVariant %}
+                <div class="mt-6 bg-gray-100 text-gray-500 py-3 px-6 rounded-xl text-center font-semibold">
+                    Нет в наличии
+                </div>
+            {% elseif not brand_can_sell(product.brand) %}
+                <form method="post" action="{{ path('product_intent_click', {uuid: product.uuid}) }}" class="mt-6">
+                    <input type="hidden" name="_token" value="{{ csrf_token('product_intent') }}">
+                    <button type="submit" class="w-full bg-gray-900 text-white py-3 px-6 rounded-xl font-semibold hover:bg-gray-800 transition">
+                        Хочу купить
+                    </button>
+                </form>
+                <p class="mt-2 text-xs text-gray-500 text-center">
+                    Бренд пока не принимает оплату на WEARBASE — оставьте сигнал, и мы попросим его подключить приём заказов.
+                </p>
+            {% else %}
             <form method="post" action="{{ path('cart_add', {variantId: firstVariant.id}) }}"
                   class="mt-6" id="add-to-cart-form">
                 <button type="submit" class="w-full bg-gray-900 text-white py-3 px-6 rounded-xl font-semibold hover:bg-gray-800 transition">
                     В корзину
                 </button>
             </form>
-            {% else %}
-                <div class="mt-6 bg-gray-100 text-gray-500 py-3 px-6 rounded-xl text-center font-semibold">
-                    Нет в наличии
-                </div>
             {% endif %}
         </div>
     </div>

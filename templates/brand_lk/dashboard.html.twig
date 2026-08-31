@@ -18,6 +18,11 @@
     </div>
     <a href="{{ path('brand_payment_index') }}" class="ml-3 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black transition">Настроить</a>
 </div>
+{% if intent_count > 0 %}
+<div class="mb-5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+    🛒 <strong>{{ intent_count }}</strong> {{ intent_count == 1 ? 'покупатель хотел' : 'покупателей хотели' }} купить ваши товары, но не смогли оплатить.
+</div>
+{% endif %}
 {% endif %}
 
 {# ── Подписка (триал) ── #}

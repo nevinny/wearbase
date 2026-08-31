@@ -4,6 +4,7 @@ namespace App\Repository;
 
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use App\Entity\Brand;
+use App\Entity\BrandUser;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
@@ -603,5 +604,27 @@ class BrandRepository extends ServiceEntityRepository
             ['limit' => $limit],
             ['limit' => \PDO::PARAM_INT],
         );
+    }
+
+    /**
+     * Кандидаты для напоминаний о реквизитах (app:brand:payment-reminders): опубликованные
+     * активные бренды с владельцем (brand_user role='owner') и хотя бы одним активным
+     * товаром. Готовность приёма оплаты и день с публикации — не денормализованы,
+     * фильтруются в команде (DATEDIFF не портируется на тестовый SQLite).
+     *
+     * @return list<Brand>
+     */
+    public function findActiveOwnedWithProducts(): array
+    {
+        return $this->createQueryBuilder('b')
+            ->andWhere('b.status = :status')
+            ->andWhere('b.publishedAt IS NOT NULL')
+            ->andWhere('EXISTS (SELECT 1 FROM App\Entity\BrandUser bu WHERE bu.brand = b AND bu.role = :owner)')
+            ->andWhere('EXISTS (SELECT 1 FROM App\Entity\Product p WHERE p.brand = b AND p.status = :pstatus)')
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('owner', BrandUser::ROLE_OWNER)
+            ->setParameter('pstatus', Statuses::Active)
+            ->getQuery()
+            ->getResult();
     }
 }
