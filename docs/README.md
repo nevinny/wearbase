@@ -80,6 +80,7 @@
 | Документ | О чём |
 |---|---|
 | [onboarding.md](onboarding.md) | **Локальный запуск с нуля для нового разработчика**: `.env.local.example` → `.env.local`, MySQL (не SQLite), миграции; что LAN-only (LLM-сервер/RAG) и не нужно для разработки. От 2026-07-22 |
+| [claude-code-multiple-accounts.md](claude-code-multiple-accounts.md) | Настройка нескольких изолированных аккаунтов Claude Code через `CLAUDE_CONFIG_DIR`: Zsh/Bash, Fish, PowerShell, проверка авторизации и безопасность MCP. От 2026-08-20 |
 | [production.md](production.md) | Прод-окружение (reg.ru): env-карта, деплой, известные проблемы |
 | [commands.md](commands.md) | Справочник всех console-команд (зачем/как часто/где + cron) |
 | [llm_infra_handoff.md](llm_infra_handoff.md) | Домашний AI-сервер: snapshot железа, Gemma, vision TBD, embedder, Qdrant и LAN-доступ |
