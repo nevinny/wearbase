@@ -2150,7 +2150,9 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 ### Фаза 5 — персональная память и controlled learning
 
 - [ ] Свести контракт событий с `wardrobe_ai_learning.md` после мержа AI feature-ветки.
-- [ ] Формировать редактируемые MySQL memory facts из подтверждённых примерок и носок.
+- [x] Формировать profile-scoped редактируемые MySQL memory facts из подтверждённых примерок и
+  носок только при personalization consent; хранить actor/signalSource, дать JSON export и
+  необратимое для backfill удаление текста через audit tombstone. Qdrant/embeddings не подключать.
 - [ ] Подключить scoped embeddings по `profileSubjectId` и идемпотентную переиндексацию.
 - [ ] Добавить экспорт/удаление AI-истории и раздельные consent на персонализацию, общий опыт,
   публичные фото и обучение весов.
