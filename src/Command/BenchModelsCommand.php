@@ -45,6 +45,8 @@ class BenchModelsCommand extends Command
         private readonly HttpClientInterface $httpClient,
         #[Autowire('%env(LOCAL_LLM_URL)%')]
         private readonly string $ollamaUrl,
+        #[Autowire('%env(LOCAL_LLM_JUDGE_URL)%')]
+        private readonly string $judgeUrl,
         #[Autowire('%env(OPENROUTER_API_KEY)%')]
         private readonly string $openrouterKey,
     ) {
@@ -238,7 +240,7 @@ class BenchModelsCommand extends Command
             . "от 0 до 100 (100 = всё опирается на факты, ничего не выдумано; 0 = сплошь домыслы вне контекста). "
             . 'Ответь ТОЛЬКО числом 0–100.';
         try {
-            $r = $this->httpClient->request('POST', $this->ollamaUrl, [
+            $r = $this->httpClient->request('POST', $this->judgeUrl !== '' ? $this->judgeUrl : $this->ollamaUrl, [
                 'json' => [
                     'model' => self::JUDGE, 'stream' => false, 'think' => false,
                     'messages' => [['role' => 'system', 'content' => $sys], ['role' => 'user', 'content' => $user]],
