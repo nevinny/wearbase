@@ -35,6 +35,7 @@ class BrandKeywordRepository extends ServiceEntityRepository
     {
         return $this->createQueryBuilder('k')
             ->where('k.brand = :brand')
+            ->andWhere('k.blockedAt IS NULL')  // отсеянные минус-словами не отдаём
             ->setParameter('brand', $brand)
             ->orderBy('k.type', 'ASC')        // origin < related
             ->addOrderBy('k.monthlyShows', 'DESC')
@@ -48,6 +49,7 @@ class BrandKeywordRepository extends ServiceEntityRepository
     {
         return $this->createQueryBuilder('k')
             ->where('k.brand = :brand')
+            ->andWhere('k.blockedAt IS NULL')  // отсеянные минус-словами не отдаём
             ->setParameter('brand', $brand)
             ->orderBy('k.monthlyShows', 'DESC')
             ->setMaxResults(1)
