@@ -51,9 +51,8 @@ class BrandClaimController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
 
-        if ($this->brandUserRepo->findOneBy(['brand' => $brand, 'user' => $user])) {
-            $this->addFlash('info', 'Вы уже являетесь участником команды этого бренда');
-            return $this->redirectToRoute('brand_dashboard');
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
         }
 
         // Строку заявки НЕ создаём на просмотре формы: раньше каждый заход
@@ -79,7 +78,12 @@ class BrandClaimController extends AbstractController
         }
 
         /** @var User $user */
-        $user  = $this->getUser();
+        $user = $this->getUser();
+
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
+        }
+
         $claim = $this->getOrCreateClaim($brand, $user);
 
         $result = $this->claimService->startEmailCode($claim);
@@ -106,7 +110,12 @@ class BrandClaimController extends AbstractController
         }
 
         /** @var User $user */
-        $user  = $this->getUser();
+        $user = $this->getUser();
+
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
+        }
+
         $claim = $this->getOrCreateClaim($brand, $user);
 
         $code   = trim((string) $request->request->get('code', ''));
@@ -143,7 +152,12 @@ class BrandClaimController extends AbstractController
         }
 
         /** @var User $user */
-        $user  = $this->getUser();
+        $user = $this->getUser();
+
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
+        }
+
         $claim = $this->getOrCreateClaim($brand, $user);
 
         $verifier = $this->vkVerifier->generateCodeVerifier();
@@ -209,7 +223,12 @@ class BrandClaimController extends AbstractController
         }
 
         /** @var User $user */
-        $user  = $this->getUser();
+        $user = $this->getUser();
+
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
+        }
+
         $claim = $this->getOrCreateClaim($brand, $user);
 
         $claim->setComment(trim((string) $request->request->get('comment', '')) ?: null);
@@ -303,6 +322,22 @@ class BrandClaimController extends AbstractController
         if ($brand->isForeignOrigin()) {
             throw $this->createNotFoundException('Заявка на владение недоступна для этого бренда');
         }
+    }
+
+    /**
+     * Участник команды бренда заявку подавать не может: раньше guard стоял только на
+     * GET-форме, а POST-роуты его не имели → повторный сабмит уже после авто-выдачи
+     * плодил pending-claim на свой же бренд (и отправлял бренду лишний код).
+     */
+    private function alreadyMemberRedirect(Brand $brand, User $user): ?Response
+    {
+        if (!$this->brandUserRepo->findOneBy(['brand' => $brand, 'user' => $user])) {
+            return null;
+        }
+
+        $this->addFlash('info', 'Вы уже являетесь участником команды этого бренда');
+
+        return $this->redirectToRoute('brand_dashboard');
     }
 
     private function getOrCreateClaim(Brand $brand, User $user): BrandClaim
