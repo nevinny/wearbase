@@ -149,6 +149,10 @@ services:
         arguments:
             $extraExcludedDomains: '%env(SCRAPE_EXCLUDED_DOMAINS)%'
 
+    App\Service\Keyword\KeywordBlocklist:
+        arguments:
+            $extraStopwords: '%env(KEYWORD_STOPWORDS)%'
+
     App\Service\MarketplaceExitContext:
         arguments:
             $projectDir: '%kernel.project_dir%'

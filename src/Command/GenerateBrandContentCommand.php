@@ -62,6 +62,7 @@ class GenerateBrandContentCommand extends Command
         private readonly NearDuplicateDetector $nearDup,
         private readonly SeoMetaService $seoMeta,
         private readonly BrandContentVersioner $versioner,
+        private readonly \App\Service\Keyword\KeywordBlocklist $keywordBlocklist,
     ) {
         parent::__construct();
         $this->em = $this->managerRegistry->getManager();
@@ -78,6 +79,9 @@ class GenerateBrandContentCommand extends Command
             return null;
         }
         $phrases = array_map(static fn(\App\Entity\BrandKeyword $k) => $k->getKeyword(), $rows);
+        // Второй контур минус-слов: выборка уже фильтрует blocked_at, но в БД без
+        // прогона app:brand:keywords-purge метки ещё нет, а мусор в промпт пускать нельзя.
+        $phrases = $this->keywordBlocklist->filter($phrases);
         $phrases = $this->filterRelevantKeywords($brand, $phrases);
         if ($phrases === []) {
             return null; // всё отсеяли (одноимённый шум) → пусть meta.keywords даст LLM
