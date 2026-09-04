@@ -358,6 +358,19 @@ class BrandsController extends AbstractController
             $isMemberOfThisBrand = $brandUserRepo->findOneBy(['brand' => $brand, 'user' => $this->getUser()]) !== null;
         }
 
+        // Дубль склеен в другой бренд → 301 на выжившую карточку. Проверка до статуса и
+        // без исключения для привилегированных: склейка окончательна, и владелец должен
+        // попадать туда же, куда все остальные (иначе правит страницу, которой нет).
+        if (($survivor = $brand->getMergedInto()) !== null && $survivor->getId() !== $brand->getId()) {
+            // _locale не передаём: генератор берёт его из RequestContext → посетитель
+            // остаётся в своей локали, а не выбрасывается в дефолтную.
+            return $this->redirectToRoute(
+                'brand_show',
+                ['slug' => $survivor->getSlug()],
+                Response::HTTP_MOVED_PERMANENTLY,
+            );
+        }
+
         // HTTP-семантика по статусу. Привилегированным (участник бренда / админ) — превью любого.
         $isPrivileged = $isMemberOfThisBrand || $adminAccess->isAdmin();
         $status = $brand->getStatus();
