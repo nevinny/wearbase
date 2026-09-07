@@ -114,3 +114,7 @@ docs/*.scratch.md
 # Черновики тёплой рассылки — реальные email лидов + прод-токены, никогда не в git
 /docs/warm-outreach-*.md
 /public_html/images/products
+
+# Транскрипты YouTube из yt-ingest — рабочие файлы, в репозиторий не нужны
+# (07.09.2026 семь штук уехали в main через `git add -A` при разрешении конфликта)
+transcript_*.txt
