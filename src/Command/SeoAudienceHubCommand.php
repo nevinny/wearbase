@@ -44,6 +44,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class SeoAudienceHubCommand extends Command
 {
+    /** Русский корень темы для проверки дословных фраз: slug английский, он тут бесполезен. */
+    private const TOPIC_ROOTS = [
+        'female'  => 'женск',
+        'male'    => 'мужск',
+        'kids'    => 'детск',
+        'unisex'  => 'унисекс',
+    ];
+
     private const MAX_BRANDS_IN_FACTS = 20;   // сколько брендов перечислить в фактах для LLM
     private const MAX_ANONS_LEN       = 160;  // обрезка anons/description в фактах
     private const MAX_PHRASES         = 12;   // поисковых фраз в промпт
@@ -499,8 +507,18 @@ class SeoAudienceHubCommand extends Command
             $phrases,
             static fn(string $p) => count(preg_split('/\s+/u', trim($p)) ?: []) >= 3,
         ));
-        $verbatim = $this->gate->findVerbatimPhrase($haystackLower, $checkable, mb_strtolower($slug))
-            ?? $this->gate->findVerbatimPhrase($haystackLower, $checkable, mb_strtolower($topicPhrase));
+        // Анкор — русский корень аудитории, а НЕ slug и не полный h1. Слаги здесь
+        // английские ('female'/'male'/'kids'), а h1 — целая фраза; ни то, ни другое
+        // практически никогда не совпадает с живой русской речью, и проверка не
+        // срабатывала вовсе: в мужской текст прошла склейка «бренды мужской одежды спб»
+        // — запросный порядок слов с «спб» без предлога.
+        $verbatim = null;
+        foreach ([self::TOPIC_ROOTS[$slug] ?? null, mb_strtolower($slug), mb_strtolower($topicPhrase)] as $anchor) {
+            if ($anchor === null) {
+                continue;
+            }
+            $verbatim ??= $this->gate->findVerbatimPhrase($haystackLower, $checkable, $anchor);
+        }
         if ($verbatim !== null) {
             return $this->gateFail([sprintf('дословная поисковая фраза в тексте: «%s»', $verbatim)], $len);
         }
