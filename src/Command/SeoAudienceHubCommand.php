@@ -56,9 +56,12 @@ class SeoAudienceHubCommand extends Command
     private const MAX_JACCARD = 0.35;
 
     /**
-     * Маски для поиска фраз в gsc_query_stats/yandex_query_stats — те же корни,
-     * что в BackfillBrandAudienceCommand::RULES (детская — тем же узким правилом,
-     * без голого «детск», иначе ловит риторику, а не тему страницы).
+     * Маски для поиска фраз в gsc_query_stats/yandex_query_stats. В отличие от
+     * BackfillBrandAudienceCommand::RULES (там голый корень «детск» ложно ловит
+     * риторику вроде «детские воспоминания» в свободной прозе бренда), здесь это
+     * маска ПОИСКОВОГО ЗАПРОСА — там свободной прозы нет, риск многословных ложных
+     * срабатываний намного ниже, а узкое правило только теряло бы реальные фразы
+     * («детская одежда», «бренд детской одежды»).
      */
     private const AUDIENCE_ALIASES = [
         'female'  => ['женск', 'для женщин'],

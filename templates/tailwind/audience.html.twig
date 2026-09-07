@@ -41,7 +41,7 @@
                 "itemListElement": [
                     {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: page_locale}) }}"},
                     {"@type": "ListItem", "position": 2, "name": "Бренды", "item": "{{ url('brand_index', {_locale: page_locale}) }}"},
-                    {"@type": "ListItem", "position": 3, "name": {{ page_h1|json_encode|raw }}, "item": "{{ url('brand_audience_show', {_locale: page_locale, slug: slug}) }}"}
+                    {"@type": "ListItem", "position": 3, "name": {{ audience.title|json_encode|raw }}, "item": "{{ url('brand_audience_show', {_locale: page_locale, slug: slug}) }}"}
                 ]
             },
             {
