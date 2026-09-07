@@ -1,10 +1,15 @@
 {% extends 'tailwind/base.html.twig' %}
 
+{# Русское согласование числительного: 1 бренд / 2-4 бренда / 5+ брендов.
+   Шаблон умел только «1 / много», из-за чего extractable-предложение,
+   которое мы отдаём в сниппет, звучало как «опубликовано 94 брендов». #}
+{% macro plural(n, one, few, many) %}{{ n % 10 == 1 and n % 100 != 11 ? one : (n % 10 >= 2 and n % 10 <= 4 and (n % 100 < 12 or n % 100 > 14) ? few : many) }}{% endmacro %}
+
 {% set page_locale = app.request.locale|default('ru') %}
 
-{% block title %}{% if hub and hub.metaTitle %}{{ hub.metaTitle }}{% else %}Бренды одежды {{ city }} — {{ brands|length }} местных марок с сайтами и контактами | WEARBASE{% endif %}{% endblock %}
+{% block title %}{% if hub and hub.metaTitle %}{{ hub.metaTitle }}{% else %}Бренды одежды {{ city }} — {{ brands|length }} {{ _self.plural(brands|length, 'местная марка', 'местные марки', 'местных марок') }} с сайтами и контактами | WEARBASE{% endif %}{% endblock %}
 
-{% block meta_description %}{% if hub and hub.metaDescription %}{{ hub.metaDescription }}{% else %}Местные бренды одежды из города {{ city }}: {{ brands|length }} марок с сайтами, соцсетями и контактами. Покупайте у производителей города {{ city }} напрямую, без наценки маркетплейсов.{% endif %}{% endblock %}
+{% block meta_description %}{% if hub and hub.metaDescription %}{{ hub.metaDescription }}{% else %}Местные бренды одежды из города {{ city }}: {{ brands|length }} {{ _self.plural(brands|length, 'марка', 'марки', 'марок') }} с сайтами, соцсетями и контактами. Покупайте у производителей города {{ city }} напрямую, без наценки маркетплейсов.{% endif %}{% endblock %}
 
 {% block meta_keywords %}бренды одежды {{ city|lower }}, бренд одежды {{ city|lower }}, местные бренды одежды {{ city|lower }}, локальные бренды {{ city|lower }}, российские бренды одежды{% endblock %}
 
@@ -14,7 +19,7 @@
 
 {% block og_title %}Бренды одежды {{ city }} | WEARBASE{% endblock %}
 
-{% block og_description %}{{ brands|length }} местных брендов одежды из города {{ city }} — с сайтами и контактами.{% endblock %}
+{% block og_description %}{{ brands|length }} {{ _self.plural(brands|length, 'местный бренд', 'местных бренда', 'местных брендов') }} одежды из города {{ city }} — с сайтами и контактами.{% endblock %}
 
 {% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
 
@@ -81,7 +86,7 @@
         {% if hub and hub.intro %}
             <div class="prose prose-sm text-gray-600 max-w-2xl mb-10">{{ hub.intro|raw }}</div>
         {% else %}
-            <p class="text-gray-600 max-w-2xl mb-10">{{ brands|length }} {{ brands|length == 1 ? 'местный бренд' : 'местных брендов' }} одежды из города {{ city }} в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей своего города напрямую: без комиссии маркетплейсов цена честнее, а в шоуруме можно примерить.</p>
+            <p class="text-gray-600 max-w-2xl mb-10">{{ brands|length }} {{ _self.plural(brands|length, 'местный бренд', 'местных бренда', 'местных брендов') }} одежды из города {{ city }} в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей своего города напрямую: без комиссии маркетплейсов цена честнее, а в шоуруме можно примерить.</p>
         {% endif %}
 
         {# Extractable-блок (docs/drmax_seo_2026_digest.md §1/§9): H2-вопрос + самодостаточный
@@ -91,7 +96,7 @@
             <section class="max-w-2xl mb-10">
                 <h2 class="text-lg font-semibold mb-2">Какие бренды одежды представлены в городе {{ city }}?</h2>
                 <p class="text-gray-700 text-sm leading-relaxed">
-                    В городе {{ city }} в каталоге WEARBASE опубликовано {{ brands|length }} {{ brands|length == 1 ? 'бренд' : 'брендов' }} одежды местного производства{% if topStyles|length %}, преобладающие стили — {% for s in topStyles %}{{ s.title }} ({{ s.cnt }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif %}. Каждый бренд представлен на сайте с контактами и соцсетями, а купить вещи можно напрямую у производителя — без комиссии маркетплейсов и с более честной ценой, чем в масс-маркете.
+                    В городе {{ city }} в каталоге WEARBASE опубликовано {{ brands|length }} {{ _self.plural(brands|length, 'бренд', 'бренда', 'брендов') }} одежды местного производства{% if topStyles|length %}, преобладающие стили — {% for s in topStyles %}{{ s.title }} ({{ s.cnt }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif %}. Каждый бренд представлен на сайте с контактами и соцсетями, а купить вещи можно напрямую у производителя — без комиссии маркетплейсов и с более честной ценой, чем в масс-маркете.
                 </p>
             </section>
         {% endif %}
@@ -131,9 +136,16 @@
                                 </div>
                             {% endif %}
                         </div>
-                        <h2 class="text-sm font-semibold mb-1 truncate w-full">{{ brand.title }}</h2>
-                        {% if brand.anons %}
-                            <p class="text-xs text-gray-500 line-clamp-2">{{ brand.anons|slice(0, 80) }}</p>
+                        <h3 class="text-sm font-semibold mb-1 truncate w-full">{{ brand.title }}</h3>
+                        {# Текст карточки: anons, а при его отсутствии — начало description.
+                           На СПб 45 карточек из 98 не имеют anons, но у 83 брендов есть описание
+                           длиннее 200 символов (на Москве 125 пустых из 388 при 357 с описанием) —
+                           то есть текст в базе есть, он просто не выводился. Обрезок в 80 символов
+                           поднят до 160: подборки, которые обходят нас в выдаче, дают на бренд
+                           3–5 предложений, а мы показывали логотип и имя. #}
+                        {% set card_text = brand.anons ?: brand.description %}
+                        {% if card_text %}
+                            <p class="text-xs text-gray-500 line-clamp-3">{{ card_text|striptags|slice(0, 160)|trim }}{% if card_text|striptags|length > 160 %}…{% endif %}</p>
                         {% endif %}
                     </a>
                 </article>
