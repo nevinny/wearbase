@@ -204,9 +204,23 @@ class SeoStyleHubCommand extends Command
             // Ниша-гейт: страница пока показывает и off-niche, но в ФАКТЫ для LLM их
             // пускать нельзя (см. тот же приём в SeoCityHubCommand::processCity).
             ->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != 'off'")
+            // Для ФАКТОВ требуем ПОДТВЕРЖДЁННОЕ российское происхождение, а не просто
+            // «не foreign», как в листингах. Причина: проза утверждает то, чего сетка
+            // карточек не утверждает. С мягким фильтром в текст про «российские бренды
+            // спортивной одежды» попал Ziener — немецкая семейная компания с 80-летней
+            // историей, у которой origin_status стоял 'unknown'. У стилей таких брендов
+            // треть (sport 119 из 367, streetwear 137 из 473), материала хватает и без них.
+            ->andWhere("b.originStatus = 'ru'")
             ->setParameter('status', Statuses::Active)
             ->setParameter('slug', $slug)
-            ->orderBy('b.title', 'ASC');
+            // Порядок для ФАКТОВ — по длине описания, а НЕ по алфавиту. У стиля сотни
+            // брендов, в факты попадают первые 20, и при сортировке по title текст
+            // получался про начало алфавита: «A.Karina, Adam Saint, Alberto.A, 2211GATE»
+            // — не представители стиля, а случайная выборка. По длине описания наверх
+            // всплывают бренды с самым богатым фактическим материалом, из которого
+            // и строится grounded-текст (тот же приём в findListicleCompetitors).
+            ->orderBy('LENGTH(b.description)', 'DESC')
+            ->addOrderBy('b.title', 'ASC');
         $repo->excludeForeignOrigin($brandsQb);
         $brands = $brandsQb->getQuery()->getResult();
 
@@ -444,8 +458,19 @@ class SeoStyleHubCommand extends Command
         // Аналог «города в именительном» у SeoCityHubCommand: фраза проверяется на
         // дословное вхождение, только если содержит slug ИЛИ title стиля отдельным
         // словом — иначе живая речь («спортивные бренды одежды») ложно бракуется.
-        $verbatim = $this->gate->findVerbatimPhrase($haystackLower, $phrases, mb_strtolower($slug))
-            ?? $this->gate->findVerbatimPhrase($haystackLower, $phrases, mb_strtolower((string) $style->getTitle()));
+        //
+        // Дополнительно отбрасываем короткие фразы (≤2 слов): у стиля его название —
+        // существительное, и естественный способ назвать тему совпадает с запросом.
+        // «стиль архив» (212 показов в Яндексе) — это и запрос, и единственная живая
+        // формулировка; текст про стиль «Архив» физически не может её обойти, и стиль
+        // не проходил гейт вообще. Признак настоящего переспама — склейка из трёх и
+        // более слов без предлогов («архив стиль одежды»), её и проверяем.
+        $checkable = array_values(array_filter(
+            $phrases,
+            static fn(string $p) => count(preg_split('/\s+/u', trim($p)) ?: []) >= 3,
+        ));
+        $verbatim = $this->gate->findVerbatimPhrase($haystackLower, $checkable, mb_strtolower($slug))
+            ?? $this->gate->findVerbatimPhrase($haystackLower, $checkable, mb_strtolower((string) $style->getTitle()));
         if ($verbatim !== null) {
             return $this->gateFail([sprintf('дословная поисковая фраза в тексте: «%s»', $verbatim)], $len);
         }
