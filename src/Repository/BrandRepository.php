@@ -38,6 +38,25 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Сколько брендов реально публично доступно — ТОТ ЖЕ предикат, что каталог
+     * (BrandsController::index/a-z: status=active + excludeForeignOrigin), а НЕ
+     * COUNT(published_at IS NOT NULL). Те два числа расходятся в обе стороны:
+     * легаси-бренды status=active БЕЗ published_at (залиты до дрипа) недосчитаны
+     * published_at-фильтром, а снятые с публикации status=disabled, у которых
+     * published_at так и остался проставлен, им наоборот попадают — то и другое
+     * искажало плитку «опубликовано» на дашборде (см. PR admin-dashboard).
+     */
+    public function countPubliclyVisible(): int
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->select('COUNT(b.id)')
+            ->andWhere('b.status = :active')
+            ->setParameter('active', Statuses::Active);
+
+        return (int) $this->excludeForeignOrigin($qb)->getQuery()->getSingleScalarResult();
+    }
+
+    /**
      * Найти бренды по букве
      */
     public function findBrandsByLetter(string $letter): array

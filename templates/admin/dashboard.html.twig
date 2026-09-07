@@ -38,8 +38,11 @@
     <div class="rounded-2xl bg-white shadow-sm p-4">
         <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Публикации</div>
         {% if tiles.publications.available %}
-            <div class="mb-1">{{ dash.num(tiles.publications.publishedTotal, false) }} <span class="text-gray-500" style="font-size:.8rem">опубликовано всего</span></div>
+            <div class="mb-1">{{ dash.num(tiles.publications.publishedTotal, false) }} <span class="text-gray-500" style="font-size:.8rem" title="status=active, тот же предикат, что каталог">опубликовано всего{% if tiles.publications.legacyNoDate > 0 %} (из них {{ tiles.publications.legacyNoDate }} легаси без даты публикации){% endif %}</span></div>
             <div class="mb-1" style="font-size:.85rem">+{{ tiles.publications.published7d }} за 7 дней</div>
+            {% if tiles.publications.unpublished > 0 %}
+                <div class="mb-1 text-gray-500" style="font-size:.8rem">снято с публикации: {{ tiles.publications.unpublished }}</div>
+            {% endif %}
             <div class="mb-1" style="font-size:.85rem">
                 Последняя публикация:
                 <span class="{{ tiles.publications.lastPublishedStale ? 'text-red-600 font-semibold' : '' }}">{{ tiles.publications.lastPublishedAt ?: '—' }}</span>

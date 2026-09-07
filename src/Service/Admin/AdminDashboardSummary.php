@@ -108,7 +108,11 @@ class AdminDashboardSummary
     private function publicationsTile(): array
     {
         try {
-            $publishedTotal = (int) $this->db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at IS NOT NULL');
+            // «Опубликовано» = публично доступно ПРЯМО СЕЙЧАС — тот же предикат, что каталог
+            // (BrandRepository::countPubliclyVisible), а НЕ published_at IS NOT NULL: тот
+            // одновременно недосчитывает легаси (status=active без published_at, залиты до
+            // дрипа) и досчитывает снятые с публикации (status=disabled, published_at остался).
+            $publishedTotal = $this->brands->countPubliclyVisible();
             $since7d = (new \DateTimeImmutable('-7 days'))->format('Y-m-d H:i:s');
             $published7d = (int) $this->db->fetchOne(
                 'SELECT COUNT(*) FROM brand WHERE published_at >= ?',
@@ -116,11 +120,20 @@ class AdminDashboardSummary
             );
             $lastPublishedAt = $this->db->fetchOne('SELECT MAX(published_at) FROM brand') ?: null;
             $lastPublishedDays = $lastPublishedAt !== null ? $this->daysSince(new \DateTimeImmutable((string) $lastPublishedAt)) : null;
+            // Отдельные сигналы, которых раньше не было видно вообще:
+            $unpublished = (int) $this->db->fetchOne(
+                "SELECT COUNT(*) FROM brand WHERE status = 'disabled' AND published_at IS NOT NULL",
+            );
+            $legacyNoDate = (int) $this->db->fetchOne(
+                "SELECT COUNT(*) FROM brand WHERE status = 'active' AND published_at IS NULL",
+            );
 
             return [
                 'available'         => true,
                 'publishedTotal'    => $publishedTotal,
                 'published7d'       => $published7d,
+                'unpublished'       => $unpublished,
+                'legacyNoDate'      => $legacyNoDate,
                 'lastPublishedAt'   => $lastPublishedAt,
                 'lastPublishedStale' => $lastPublishedDays !== null && $lastPublishedDays >= self::OVERDUE_DAYS,
                 // Реально НОВЫЕ карточки (никогда не пушенные) — не смешивать с re-push уже
