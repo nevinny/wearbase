@@ -6,8 +6,11 @@ namespace App\Command;
 
 use App\Entity\BrandContentRevision;
 use App\Entity\BrandRagPipeline;
+use App\Entity\CityHubRevision;
 use App\Repository\BrandContentRevisionRepository;
+use App\Repository\CityHubRevisionRepository;
 use App\Service\BrandContentVersioner;
+use App\Service\ClosedLoopJudge;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -35,10 +38,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 #[AsCommand(name: 'app:seo:evaluate-experiments', description: 'Closed-loop: оценить эксперименты контента по GSC → keep/откат/реген')]
 class EvaluateExperimentsCommand extends Command
 {
-    private const MIN_SAMPLE      = 10;   // меньше показов → судить нельзя (вероятно не в индексе)
-    private const DELTA_REL       = 0.2;  // относит. порог срабатывания (шум)
-    private const DELTA_ABS_CLK   = 2;    // абсолютный пол по кликам
-    private const DELTA_ABS_IMPR  = 10;   // абсолютный пол по показам
     private const MAX_ATTEMPT     = 3;    // после стольких попыток — откат, не реген
     private const RE_MEASURE_DAYS = 14;   // not_indexed: через сколько перепроверить (ждём index-ping)
     private const MAX_INDEX_WAIT_DAYS = 60; // дольше не ждём индексацию → терминальный not_indexed
@@ -50,6 +49,8 @@ class EvaluateExperimentsCommand extends Command
         private readonly Connection $db,
         private readonly BrandContentRevisionRepository $revisions,
         private readonly BrandContentVersioner $versioner,
+        private readonly CityHubRevisionRepository $cityRevisions,
+        private readonly ClosedLoopJudge $judge,
     ) {
         parent::__construct();
     }
@@ -89,10 +90,9 @@ class EvaluateExperimentsCommand extends Command
         }
 
         $due = $this->revisions->findDueForEvaluation(new \DateTime(), $limit);
-        $io->title(sprintf('Closed-loop: ревизий к оценке %d', count($due)));
+        $io->title(sprintf('Closed-loop (бренды): ревизий к оценке %d', count($due)));
         if ($due === []) {
-            $io->success('Нет экспериментов с истёкшим окном.');
-            return Command::SUCCESS;
+            $io->text('Нет экспериментов брендов с истёкшим окном.');
         }
 
         $tally = ['win' => 0, 'loss' => 0, 'neutral' => 0, 'not_indexed' => 0, 'regen' => 0, 'rollback' => 0, 'remeasure' => 0, 'loss_tentative' => 0];
@@ -112,7 +112,14 @@ class EvaluateExperimentsCommand extends Command
             $brandId = (int) $brand->getId();
             [$impr, $clicks, $indexed] = $this->versioner->gscSnapshot($brandId);
 
-            $verdict = $this->judge($rev, $impr, $clicks, $indexed);
+            $verdict = $this->judge->verdict(
+                $rev->getGscImprBefore() ?? 0,
+                $rev->getGscClicksBefore() ?? 0,
+                $rev->getGscIndexedBefore() ?? false,
+                $impr,
+                $clicks,
+                $indexed,
+            );
             $tally[$verdict]++;
 
             $action = '';
@@ -193,44 +200,115 @@ class EvaluateExperimentsCommand extends Command
                 $io->text(sprintf('%s: %d', $k, $v));
             }
         }
+
+        // Городская ветка: тот же крон, тот же гвард свежести (уже проверен выше),
+        // тот же судья (ClosedLoopJudge) — второй цикл в ОДНОЙ команде, не новая.
+        $this->evaluateCityHubs($io, $dryRun, $limit);
+
         $io->success('Оценка завершена.');
 
         return Command::SUCCESS;
     }
 
-    private function judge(BrandContentRevision $rev, int $impr, int $clicks, bool $indexed): string
+    /**
+     * Closed-loop для городских хабов (см. CityHubRevision/CityHubRevisionRepository).
+     * Проще бренд-ветки: без антифлаппинга/регена/remeasure — тексты хаба короткие
+     * и переписываются человеком-куратором заново, а не автоматическим ретраем RAG.
+     * win/neutral/not_indexed — просто фиксируем вердикт. loss → откат к предыдущей
+     * ревизии; если предыдущей нет (первая генерация) — откат = выключить хаб
+     * (CityHub::isActive=false), страница возвращается на формульный fallback.
+     * Физического DELETE нет ни в каком случае.
+     */
+    private function evaluateCityHubs(SymfonyStyle $io, bool $dryRun, int $limit): void
     {
-        // 1. Можно ли вообще судить? Не в индексе → контент не виноват, поиск не дал шанс.
-        if (!$indexed) {
-            return BrandContentRevision::VERDICT_NOT_INDEXED;
-        }
-        $newlyIndexed = !($rev->getGscIndexedBefore() ?? false);
-        if ($impr < self::MIN_SAMPLE && ($rev->getGscImprBefore() ?? 0) < self::MIN_SAMPLE) {
-            // Трафика не было и нет, но страница ВОШЛА в индекс после ревизии — это и есть
-            // главный исход эксперимента (in_search Яндекса — живой критерий, покрытие
-            // Google заморожено). Иначе (была в индексе, показов нет) — судить нечем.
-            // Если baseline ≥ MIN_SAMPLE — НЕ сюда: обвал показов в ~0 должен судиться
-            // порогами ниже как loss, а не проскакивать в win по факту входа в индекс.
-            return $newlyIndexed ? BrandContentRevision::VERDICT_WIN : BrandContentRevision::VERDICT_NOT_INDEXED;
+        $due = $this->cityRevisions->findDueForEvaluation(new \DateTime(), $limit);
+        $io->title(sprintf('Closed-loop (города): ревизий к оценке %d', count($due)));
+        if ($due === []) {
+            $io->text('Нет экспериментов городских хабов с истёкшим окном.');
+            return;
         }
 
-        $imprBefore = $rev->getGscImprBefore() ?? 0;
-        $clkBefore  = $rev->getGscClicksBefore() ?? 0;
-        $imprThr = max(self::DELTA_ABS_IMPR, (int) round($imprBefore * self::DELTA_REL));
-        $clkThr  = max(self::DELTA_ABS_CLK, (int) round($clkBefore * self::DELTA_REL));
+        $tally = ['win' => 0, 'loss' => 0, 'neutral' => 0, 'not_indexed' => 0, 'rollback' => 0, 'deactivated' => 0];
 
-        $clicksDropped = $clicks < $clkBefore - $clkThr;
-        $imprDropped   = $impr   < $imprBefore - $imprThr;
-        $imprUp        = $impr   > $imprBefore + $imprThr;
+        $dueIds = array_map(static fn(CityHubRevision $r) => (int) $r->getId(), $due);
+        $this->em->clear();
 
-        if ($clicksDropped || $imprDropped) {
-            return BrandContentRevision::VERDICT_LOSS;
+        foreach ($dueIds as $revId) {
+            $rev = $this->em->find(CityHubRevision::class, $revId);
+            $hub = $rev?->getHub();
+            if ($rev === null || $hub === null) {
+                continue;
+            }
+            [$impr, $clicks, $indexed] = $this->cityRevisions->citySnapshot($rev->getSlug());
+
+            $verdict = $this->judge->verdict(
+                $rev->getGscImprBefore() ?? 0,
+                $rev->getGscClicksBefore() ?? 0,
+                $rev->getGscIndexedBefore() ?? false,
+                $impr,
+                $clicks,
+                $indexed,
+            );
+            $tally[$verdict]++;
+
+            $io->writeln(sprintf(
+                '  #%d %s: %s · impr %d→%d, clk %d→%d, idx %s',
+                $rev->getId(), $hub->getSlug(), strtoupper($verdict),
+                $rev->getGscImprBefore() ?? 0, $impr,
+                $rev->getGscClicksBefore() ?? 0, $clicks,
+                $indexed ? 'да' : 'нет',
+            ));
+
+            if ($dryRun) {
+                continue;
+            }
+
+            $rev->setGscImprAfter($impr)->setGscClicksAfter($clicks)->setVerdict($verdict);
+
+            if ($verdict === BrandContentRevision::VERDICT_LOSS) {
+                $prev = $this->cityRevisions->findPrevious($rev);
+                if ($prev === null || trim((string) $prev->getIntro()) === '') {
+                    // Истории до этого эксперимента нет (первая генерация, ровно случай
+                    // 7 новых городов) — откатывать некуда, просто выключаем хаб.
+                    $hub->setIsActive(false);
+                    $rev->setNote('closed-loop: loss, прошлой ревизии нет → хаб выключен (fallback)');
+                    $tally['deactivated']++;
+                } else {
+                    $rollback = (new CityHubRevision())
+                        ->setHub($hub)
+                        ->setSlug($rev->getSlug())
+                        ->setH1($prev->getH1())
+                        ->setMetaTitle($prev->getMetaTitle())
+                        ->setMetaDescription($prev->getMetaDescription())
+                        ->setIntro($prev->getIntro())
+                        ->setFaq($prev->getFaq())
+                        ->setSource(CityHubRevision::SOURCE_ROLLBACK)
+                        ->setQaOverall($prev->getQaOverall())
+                        ->setActive(true)
+                        ->setPrevRevisionId($prev->getId())
+                        ->setVerdict(BrandContentRevision::VERDICT_WIN) // откат к известному рабочему — не эксперимент
+                        ->setNote('closed-loop: loss → откат к ревизии #' . $prev->getId());
+                    $this->em->persist($rollback);
+                    $rev->setActive(false);
+
+                    $hub->setH1($prev->getH1())
+                        ->setMetaTitle($prev->getMetaTitle())
+                        ->setMetaDescription($prev->getMetaDescription())
+                        ->setIntro($prev->getIntro())
+                        ->setFaq($prev->getFaq());
+                    $tally['rollback']++;
+                }
+            }
+
+            $this->em->flush();
+            $this->em->clear();
         }
-        if (!$clicksDropped && ($imprUp || $newlyIndexed)) {
-            return BrandContentRevision::VERDICT_WIN;
-        }
 
-        return BrandContentRevision::VERDICT_NEUTRAL;
+        foreach ($tally as $k => $v) {
+            if ($v > 0) {
+                $io->text(sprintf('города · %s: %d', $k, $v));
+            }
+        }
     }
 
     private function hasGroundedCorpus(int $brandId): bool

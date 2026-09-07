@@ -4,9 +4,9 @@
 > изменения затрутся. Правьте шапку самой задачи, затем
 > `python3 tools/tasks/task.py index`.
 
-Всего задач: 8 · обновлено 2026-09-07
+Всего задач: 9 · обновлено 2026-09-07
 
-## новая (5)
+## новая (6)
 
 | # | Задача | Владелец | Обновлена |
 |---|---|---|---|
@@ -15,6 +15,7 @@
 | 0005 | [18 брендов с мусорными фразами в FAQ — нужен app:brand:faq --force](0005-18-brendov-s-musornymi-frazami-v-faq-nuzhen-app-brand-faq-fo.md) | не назначен | 2026-09-07 |
 | 0006 | [Дрейф version-таблицы миграций на Mac: 22 непримененные + 3 незарегистрированные](0006-dreyf-version-tablicy-migraciy-na-mac-22-neprimenennye-3-nez.md) | не назначен | 2026-09-07 |
 | 0008 | [Очередь Inspection в GSC разгружается медленнее, чем пополняется](0008-ochered-inspection-v-gsc-razgruzhaetsya-medlennee-chem-popol.md) | не назначен | 2026-09-07 |
+| 0009 | [Дублирующийся baseline в closed-loop: ensureBaseline+record без flush между ними подменяет снимок «до» на новый контент](0009-dubliruyuschiysya-baseline-v-closed-loop-ensurebaseline-reco.md) | не назначен | 2026-09-07 |
 
 ## ждёт решения (3)
 

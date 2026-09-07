@@ -3,10 +3,14 @@
 namespace App\Command;
 
 use App\Entity\Brand;
+use App\Entity\BrandContentRevision;
 use App\Entity\CityHub;
+use App\Entity\CityHubRevision;
 use App\Repository\BrandRepository;
 use App\Repository\CityHubRepository;
+use App\Repository\CityHubRevisionRepository;
 use App\Service\ArticleQaService;
+use App\Service\BrandContentVersioner;
 use App\Service\CitySlugger;
 use App\Service\LlmService;
 use App\Service\NearDuplicateDetector;
@@ -52,6 +56,19 @@ class SeoCityHubCommand extends Command
     private const MIN_INTRO_PLAIN_LEN = 450;
     private const MAX_INTRO_PLAIN_LEN = 2500;
     private const MIN_FAQ_PAIRS       = 2;
+
+    /**
+     * Мусор, который локальная модель выдаёт регулярно и который дороже ловить глазами,
+     * чем регуляркой (все три случая — из первого прогона по 7 городам):
+     *   - пересказ семантики в теле текста («пользователи часто ищут одежду abda в Казани»),
+     *   - символы чужих алфавитов посреди слова («в катало지가 WEARBASE»),
+     *   - артефакты экранирования из anons («Master Of Chillin'''»).
+     */
+    private const JUNK_PATTERNS = [
+        'пересказ поисковых запросов' => '/поисковы[ех]\s+запрос|популярн\w+\s+запрос|пользовател\w+\s+(часто\s+)?ищ|многие\s+ищ\w*\s+.{0,30}(через\s+)?наш|добавля\w+\s+к\s+запрос/iu',
+        'символы чужих алфавитов'     => '/[\x{0370}-\x{03FF}\x{0530}-\x{058F}\x{0590}-\x{05FF}\x{0600}-\x{06FF}\x{0E00}-\x{0E7F}\x{1100}-\x{11FF}\x{3040}-\x{30FF}\x{3130}-\x{318F}\x{4E00}-\x{9FFF}\x{AC00}-\x{D7AF}]/u',
+        'артефакт экранирования'      => "/'{3,}|\\\\{2,}/u",
+    ];
 
     /**
      * Блокирующий порог — ЭТО overall, НЕ $qa['passed'] сервиса. Прогон
@@ -121,6 +138,7 @@ class SeoCityHubCommand extends Command
         private readonly CitySlugger $slugger,
         private readonly ArticleQaService $articleQa,
         private readonly NearDuplicateDetector $nearDup,
+        private readonly CityHubRevisionRepository $hubRevisions,
     ) {
         parent::__construct();
     }
@@ -326,6 +344,54 @@ class SeoCityHubCommand extends Command
         }
 
         $hub = $existing ?? new CityHub();
+
+        // closed-loop (см. docs/geo_city_demand_2026_09.md §8): overall — не гейт входа
+        // для коротких intro хабов, реальная приёмка — исход по GSC/Яндексу с откатом.
+        // Снимаем baseline (если истории ещё нет) СНАЧАЛА, контентом хаба ДО перезаписи —
+        // для новых городов он пуст, это нормально: фиксирует, что тут был формульный fallback.
+        $hasHistory = $existing !== null && $this->hubRevisions->hasAny($existing);
+        $prevActive = $hasHistory ? $this->hubRevisions->findActive($existing) : null;
+        if ($hasHistory) {
+            $prevActive?->setActive(false);
+        } else {
+            $baseline = (new CityHubRevision())
+                ->setHub($hub)
+                ->setSlug($slug)
+                ->setH1($hub->getH1())
+                ->setMetaTitle($hub->getMetaTitle())
+                ->setMetaDescription($hub->getMetaDescription())
+                ->setIntro($hub->getIntro())
+                ->setFaq($hub->getFaq())
+                ->setSource(CityHubRevision::SOURCE_MANUAL)
+                ->setActive(false)
+                ->setVerdict(BrandContentRevision::VERDICT_WIN) // baseline — не эксперимент
+                ->setMeasureAfter(null);
+            $this->em->persist($baseline);
+        }
+
+        [$imprBefore, $clicksBefore, $indexedBefore] = $this->hubRevisions->citySnapshot($slug);
+        $attempt = $existing !== null ? $this->hubRevisions->countGenerated($existing) + 1 : 1;
+
+        $revision = (new CityHubRevision())
+            ->setHub($hub)
+            ->setSlug($slug)
+            ->setH1($result['h1'])
+            ->setMetaTitle($result['meta_title'])
+            ->setMetaDescription($result['meta_description'])
+            ->setIntro($result['intro'])
+            ->setFaq($result['faq'])
+            ->setSource(CityHubRevision::SOURCE_GENERATED)
+            ->setQaOverall($gate['overall'])
+            ->setActive(true)
+            ->setAttempt($attempt)
+            ->setPrevRevisionId($prevActive?->getId())
+            ->setVerdict(BrandContentRevision::VERDICT_PENDING)
+            ->setMeasureAfter((new \DateTime())->modify('+' . BrandContentVersioner::windowDays($attempt) . ' days'))
+            ->setGscImprBefore($imprBefore)
+            ->setGscClicksBefore($clicksBefore)
+            ->setGscIndexedBefore($indexedBefore);
+        $this->em->persist($revision);
+
         $hub->setSlug($slug)
             ->setTitle($city)
             ->setH1($result['h1'])
@@ -436,7 +502,12 @@ class SeoCityHubCommand extends Command
             ));
         }
 
-        return implode("\n", $lines);
+        // Артефакты экранирования встречаются в самих данных (был бренд с title
+        // «Master Of Chillin'''»). Их нельзя показывать модели: она перепишет артефакт
+        // в текст, и его отбракует junk-гейт — то есть город застрянет из-за одного
+        // битого поля. Чистим на входе, гейт остаётся страховкой на случай, когда мусор
+        // сгенерировала уже сама модель.
+        return preg_replace(["/'{2,}/u", '/\\\\{2,}/u'], ["'", '\\'], implode("\n", $lines)) ?? implode("\n", $lines);
     }
 
     /**
@@ -564,6 +635,27 @@ class SeoCityHubCommand extends Command
                 $plainLen,
                 count($faq),
             );
+        }
+
+        // Мусорные паттерны — по всему, что уедет на страницу, не только по intro.
+        $everything = implode(' ', array_filter([
+            $intro,
+            $result['h1'] ?? null,
+            $result['meta_title'] ?? null,
+            $result['meta_description'] ?? null,
+            implode(' ', array_column($faq, 'question')),
+            implode(' ', array_column($faq, 'answer')),
+        ]));
+        foreach (self::JUNK_PATTERNS as $label => $re) {
+            if (preg_match($re, $everything, $m) === 1) {
+                return [
+                    'passed'   => false,
+                    'reasons'  => [sprintf('%s: «%s»', $label, mb_substr(trim($m[0]), 0, 40))],
+                    'plainLen' => $plainLen,
+                    'faqCount' => count($faq),
+                    'overall'  => null,
+                ];
+            }
         }
 
         if (count($faq) < self::MIN_FAQ_PAIRS) {
