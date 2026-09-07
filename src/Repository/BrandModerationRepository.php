@@ -81,4 +81,36 @@ class BrandModerationRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /**
+     * Снимок очереди премодерации для админ-дашборда: сколько ждёт первичного разбора
+     * (queued), сколько ждёт РЕШЕНИЯ администратора (reviewed без decided_at) и сколько
+     * из них с красными флагами. redFlags — JSON-массив; ApplicationMatcher пишет '[]'
+     * (не NULL), когда ничего не нашёл (см. setRedFlags в BrandIngestController), поэтому
+     * непустоту проверяем длиной сериализации (> 2 символа '[]'), а не IS NOT NULL.
+     *
+     * @return array{queued:int, oldestQueuedAt:?\DateTimeImmutable, reviewedAwaiting:int, redFlagged:int}
+     */
+    public function dashboardSnapshot(): array
+    {
+        $db = $this->getEntityManager()->getConnection();
+
+        $queued = $db->fetchAssociative(
+            "SELECT COUNT(*) c, MIN(created_at) oldest FROM brand_moderation WHERE status = ?",
+            [BrandModeration::STATUS_QUEUED],
+        ) ?: ['c' => 0, 'oldest' => null];
+
+        $reviewed = $db->fetchAssociative(
+            "SELECT COUNT(*) c, SUM(red_flags IS NOT NULL AND LENGTH(red_flags) > 2) flagged
+             FROM brand_moderation WHERE status = ? AND decided_at IS NULL",
+            [BrandModeration::STATUS_REVIEWED],
+        ) ?: ['c' => 0, 'flagged' => 0];
+
+        return [
+            'queued'           => (int) $queued['c'],
+            'oldestQueuedAt'   => $queued['oldest'] ? new \DateTimeImmutable((string) $queued['oldest']) : null,
+            'reviewedAwaiting' => (int) $reviewed['c'],
+            'redFlagged'       => (int) ($reviewed['flagged'] ?? 0),
+        ];
+    }
 }

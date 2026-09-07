@@ -31,4 +31,26 @@ class SubscriptionRepository extends ServiceEntityRepository
             ->getQuery()
             ->getOneOrNullResult();
     }
+
+    /**
+     * Действующие подписки (см. Subscription::isActive: статус trial/active И период ещё
+     * не истёк) сгруппированные по названию тарифа — для админ-дашборда.
+     *
+     * @return array<string, int> имя тарифа => количество
+     */
+    public function countActiveGroupedByTariff(): array
+    {
+        $rows = $this->createQueryBuilder('s')
+            ->select('t.name AS tariff', 'COUNT(s.id) AS c')
+            ->join('s.tariff', 't')
+            ->andWhere('s.status IN (:statuses)')
+            ->andWhere('s.currentPeriodEnd >= :now')
+            ->setParameter('statuses', [Subscription::STATUS_TRIAL, Subscription::STATUS_ACTIVE])
+            ->setParameter('now', new \DateTimeImmutable())
+            ->groupBy('t.name')
+            ->getQuery()
+            ->getArrayResult();
+
+        return array_column($rows, 'c', 'tariff');
+    }
 }

@@ -33,4 +33,16 @@ class ScheduledCommandRepository extends ServiceEntityRepository
             ->getQuery()
             ->getOneOrNullResult();
     }
+
+    /** Включённые задачи, последний прогон которых упал (lastExitCode != 0) — для админ-дашборда. @return ScheduledCommand[] */
+    public function findFailing(): array
+    {
+        return $this->createQueryBuilder('c')
+            ->andWhere('c.enabled = true')
+            ->andWhere('c.lastExitCode IS NOT NULL')
+            ->andWhere('c.lastExitCode != 0')
+            ->orderBy('c.lastRunAt', 'DESC')
+            ->getQuery()
+            ->getResult();
+    }
 }

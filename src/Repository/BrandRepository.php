@@ -38,6 +38,25 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Сколько брендов реально публично доступно — ТОТ ЖЕ предикат, что каталог
+     * (BrandsController::index/a-z: status=active + excludeForeignOrigin), а НЕ
+     * COUNT(published_at IS NOT NULL). Те два числа расходятся в обе стороны:
+     * легаси-бренды status=active БЕЗ published_at (залиты до дрипа) недосчитаны
+     * published_at-фильтром, а снятые с публикации status=disabled, у которых
+     * published_at так и остался проставлен, им наоборот попадают — то и другое
+     * искажало плитку «опубликовано» на дашборде (см. PR admin-dashboard).
+     */
+    public function countPubliclyVisible(): int
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->select('COUNT(b.id)')
+            ->andWhere('b.status = :active')
+            ->setParameter('active', Statuses::Active);
+
+        return (int) $this->excludeForeignOrigin($qb)->getQuery()->getSingleScalarResult();
+    }
+
+    /**
      * Найти бренды по букве
      */
     public function findBrandsByLetter(string $letter): array
@@ -603,6 +622,23 @@ class BrandRepository extends ServiceEntityRepository
              LIMIT :limit",
             ['limit' => $limit],
             ['limit' => \PDO::PARAM_INT],
+        );
+    }
+
+    /**
+     * Сколько брендов реально ждут дрип-публикации — ТОТ ЖЕ WHERE, что findDripCandidateIds
+     * (без ранжирующих JOIN/ORDER BY, они на COUNT не влияют). Для дашборда: НЕ путать с
+     * `queue_pending` из /api/v1/publish-stats (status='new' AND publish_pending=1 БЕЗ
+     * niche/origin-гейтов) — та цифра маскировала простой дрипа niche_status='off' мусором
+     * (396 «в очереди» при 0 реально публикабельных, см. PR admin-dashboard).
+     */
+    public function countDripCandidates(): int
+    {
+        return (int) $this->getEntityManager()->getConnection()->fetchOne(
+            "SELECT COUNT(*) FROM brand b
+             WHERE b.status = 'new' AND b.publish_pending = 1
+               AND (b.niche_status IS NULL OR b.niche_status <> 'off')
+               AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign', 'unknown'))",
         );
     }
 

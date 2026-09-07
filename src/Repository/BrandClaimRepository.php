@@ -57,4 +57,36 @@ class BrandClaimRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /**
+     * Снимок очереди заявок на владение для админ-дашборда: сколько ждут решения
+     * (pending/email_verified) и когда создана самая старая — один COUNT вместо
+     * загрузки сущностей (findPending() тянет их пачкой, для дашборда лишнее).
+     *
+     * @return array{pending:int, oldestAt:?\DateTimeImmutable}
+     */
+    public function dashboardSnapshot(): array
+    {
+        $row = $this->createQueryBuilder('c')
+            ->select('COUNT(c.id) AS pending', 'MIN(c.createdAt) AS oldestAt')
+            ->where('c.status IN (:statuses)')
+            ->setParameter('statuses', [BrandClaim::STATUS_PENDING, BrandClaim::STATUS_EMAIL_VERIFIED])
+            ->getQuery()
+            ->getSingleResult();
+
+        // MIN() de datetime: Doctrine hidrata согласно типу поля на одних платформах (объект),
+        // на других отдаёт сырую строку — обрабатываем оба случая.
+        $oldestRaw = $row['oldestAt'];
+        $oldestAt = match (true) {
+            $oldestRaw instanceof \DateTimeImmutable => $oldestRaw,
+            $oldestRaw instanceof \DateTimeInterface => \DateTimeImmutable::createFromInterface($oldestRaw),
+            $oldestRaw !== null => new \DateTimeImmutable((string) $oldestRaw),
+            default => null,
+        };
+
+        return [
+            'pending'  => (int) $row['pending'],
+            'oldestAt' => $oldestAt,
+        ];
+    }
 }
