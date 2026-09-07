@@ -124,7 +124,7 @@ class BackfillBrandAudienceCommandTest extends KernelTestCase
 
         $untagged = $this->brand('not-tagged-yet', 'Женская одежда для стильных девушек.');
 
-        $this->tester->execute(['--limit' => '500']);
+        $this->tester->execute(['--limit' => '100000']);
         $this->tester->assertCommandIsSuccessful();
 
         $this->em->refresh($tagged);

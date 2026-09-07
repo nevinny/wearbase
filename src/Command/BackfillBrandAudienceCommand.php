@@ -32,8 +32,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * правки правил) — только ДОБАВЛЯЕТ недостающие связи, ничего не снимает (в отличие от
  * app:brand:tag-styles, здесь удаление данных по действию пользователя запрещено).
  *
+ * ⚠️ Выборка отсортирована по id и не исключает «без сигнала» — при дефолтном
+ * --limit=500 бренды без совпадений остаются в очереди навсегда и за несколько
+ * прогонов забивают всё окно (та же ловушка, что в findForContactEnrichment).
+ * Боевой прогон делать ОДИН раз с запасом (--limit покрывает все активные бренды),
+ * не полагаться на дефолт и повторные запуски мелкими лимитами.
+ *
  *   php -d memory_limit=512M bin/console app:brand:audience-backfill --dry-run --limit=30
- *   php -d memory_limit=512M bin/console app:brand:audience-backfill --limit=4000
+ *   php -d memory_limit=512M bin/console app:brand:audience-backfill --limit=3200
  */
 #[AsCommand(
     name: 'app:brand:audience-backfill',
@@ -107,7 +113,10 @@ class BackfillBrandAudienceCommand extends Command
 
         foreach ($brands as $brand) {
             $processed++;
-            $text = mb_strtolower(trim(($brand->getDescription() ?? '') . ' ' . ($brand->getAnons() ?? '')));
+            // Схлопываем переносы строк/двойные пробелы: иначе «для\nженщин» не матчится,
+            // а сниппет в dry-run разъезжается на несколько строк таблицы.
+            $text = ($brand->getDescription() ?? '') . ' ' . ($brand->getAnons() ?? '');
+            $text = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $text)));
 
             $matchedAny = false;
             foreach ($audiences as $title => $audience) {
