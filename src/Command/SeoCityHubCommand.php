@@ -341,7 +341,24 @@ class SeoCityHubCommand extends Command
             $io->text(sprintf('  орфография: исправлено %d', $spellFixes));
         }
 
-        $gate = $this->checkGate($result, $phrases, $facts);
+        $nameFixes = 0;
+        foreach (['intro', 'meta_description', 'h1', 'meta_title'] as $field) {
+            if (($result[$field] ?? null) !== null) {
+                $fixed = $this->fixDistortedNames((string) $result[$field], $facts, $nameFixes);
+                $result[$field] = $this->fixCityName($fixed, $city, $nameFixes);
+            }
+        }
+        foreach ($result['faq'] as $i => $pair) {
+            foreach (['question', 'answer'] as $key) {
+                $fixed = $this->fixDistortedNames($pair[$key], $facts, $nameFixes);
+                $result['faq'][$i][$key] = $this->fixCityName($fixed, $city, $nameFixes);
+            }
+        }
+        if ($nameFixes > 0) {
+            $io->text(sprintf('  названия брендов: исправлено %d', $nameFixes));
+        }
+
+        $gate = $this->checkGate($result, $phrases, $facts, $city);
         $overallStr = $gate['overall'] !== null ? sprintf('%.1f', $gate['overall']) : '?';
         if (!$gate['passed']) {
             $io->warning(sprintf(
@@ -666,6 +683,80 @@ class SeoCityHubCommand extends Command
      * ловит случайный шум).
      */
     /**
+     * Чинит искажённое название САМОГО города в составных именах: «Ростове-на-лону»
+     * вместо «Ростове-на-Дону». Модель ошибается тут систематически (две генерации
+     * подряд дали одно и то же), поэтому перегенерация не помогает, а общий детектор
+     * по кириллице неприменим — там склонение даёт ту же дистанцию, что опечатка.
+     * Правим узко: только хвост после «-на-», только если он почти совпадает с верным.
+     */
+    private function fixCityName(string $value, string $city, int &$fixes): string
+    {
+        $parts = preg_split('/-на-/u', $city);
+        if (!is_array($parts) || count($parts) !== 2) {
+            return $value; // город без составного имени — чинить нечего
+        }
+        $tail = $parts[1]; // «Дону», «Амуре»
+
+        return preg_replace_callback(
+            '/-на-([\p{Cyrillic}]+)/u',
+            static function (array $m) use ($tail, &$fixes): string {
+                if (mb_strtolower($m[1]) === mb_strtolower($tail)) {
+                    return $m[0];
+                }
+                if (levenshtein(mb_strtolower($m[1]), mb_strtolower($tail)) <= 2) {
+                    $fixes++;
+
+                    return '-на-' . $tail;
+                }
+
+                return $m[0];
+            },
+            $value,
+        ) ?? $value;
+    }
+
+    /**
+     * Чинит искажённые названия: латинское слово, которое почти совпадает с чем-то из
+     * ФАКТОВ, заменяем на написание из ФАКТОВ. Браковать генерацию целиком из-за
+     * удвоенной буквы («Seventtouch» вместо Seventouch) — расточительно и зацикливается:
+     * модель повторяет одну и ту же опечатку прогон за прогоном. Замена безопасна,
+     * потому что подставляем строку, которая пришла из фактов, а не выдуманную.
+     * Детектор findDistortedName() остаётся страховкой для того, что не починилось.
+     */
+    private function fixDistortedNames(string $value, string $facts, int &$fixes): string
+    {
+        $vocab = [];
+        preg_match_all(self::LATIN_WORD_RE, $facts, $fm);
+        foreach ($fm[0] as $w) {
+            $vocab[mb_strtolower($w)] = $w;
+        }
+        if ($vocab === []) {
+            return $value;
+        }
+
+        return preg_replace_callback(
+            self::LATIN_WORD_RE,
+            static function (array $m) use ($vocab, &$fixes): string {
+                $lower = mb_strtolower($m[0]);
+                if (isset($vocab[$lower])) {
+                    return $m[0];
+                }
+                foreach ($vocab as $key => $original) {
+                    $d = levenshtein($lower, $key);
+                    if ($d >= 1 && $d <= 2 && abs(mb_strlen($lower) - mb_strlen($key)) <= 2) {
+                        $fixes++;
+
+                        return $original;
+                    }
+                }
+
+                return $m[0];
+            },
+            $value,
+        ) ?? $value;
+    }
+
+    /**
      * Ищет латинское слово текста, которое ПОЧТИ совпадает с чем-то из ФАКТОВ, но не
      * совпадает точно, — то есть модель переписала название с ошибкой («KUL\'TARS»
      * вместо KUL\'TURA, «Drobyschena» вместо Drobysheva).
@@ -792,8 +883,9 @@ class SeoCityHubCommand extends Command
     /**
      * @param string[] $phrases     фразы, отданные модели: дословных вхождений быть не должно
      * @param string   $facts       факты, отданные модели: латиница текста должна совпадать с ними
+     * @param string   $city        название города — по нему отличаем запросную склейку от живой речи
      */
-    private function checkGate(array $result, array $phrases = [], string $facts = ''): array
+    private function checkGate(array $result, array $phrases = [], string $facts = '', string $city = ''): array
     {
         $intro = $result['intro'];
         $faq   = $result['faq'];
@@ -822,11 +914,21 @@ class SeoCityHubCommand extends Command
             implode(' ', array_column($faq, 'answer')),
         ]));
         // Дословное вхождение поисковой фразы = переспам («Поиск abda одежда казань
-        // приводит к знакомству с местными мастерами»). Промпт это запрещает, но
-        // модель срывается, поэтому проверяем механически по тем же фразам, что дали.
+        // приводит к знакомству с местными мастерами»). Но проверять так ВСЕ фразы
+        // нельзя: «новосибирские бренды одежды» — и запрос, и нормальная русская фраза,
+        // которую текст про бренды Новосибирска обойти не может (Новосибирск падал на
+        // ней три попытки подряд — ложное срабатывание, не брак модели).
+        // Различаем по форме города: прилагательное («новосибирские бренды одежды») —
+        // живая речь, а название в именительном, приклеенное к существительному без
+        // предлога («бренд одежды новосибирск»), — порядок слов поискового запроса.
         $haystack = mb_strtolower(preg_replace('/\s+/u', ' ', $everything) ?? $everything);
+        $cityNominative = mb_strtolower($city);
         foreach ($phrases as $phrase) {
             $needle = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $phrase) ?? $phrase));
+            // Только фразы с городом в именительном падеже отдельным словом.
+            if (!preg_match('/(^|\s)' . preg_quote($cityNominative, '/') . '(\s|$)/u', $needle)) {
+                continue;
+            }
             if (mb_strlen($needle) >= 10 && str_word_count($needle, 0, 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя') >= 2
                 && str_contains($haystack, $needle)) {
                 return [
