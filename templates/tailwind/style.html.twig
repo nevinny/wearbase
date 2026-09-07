@@ -61,7 +61,18 @@
         </nav>
 
         <h1 class="text-3xl md:text-4xl font-bold mb-3">Бренды одежды в стиле {{ style.title }}</h1>
-        <p class="text-gray-600 max-w-2xl mb-10">{% if style.description %}{{ style.description }}{% else %}{{ brands|length }} {{ brands|length == 1 ? 'российский бренд' : 'российских брендов' }} одежды в стиле «{{ style.title }}» в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей напрямую: без комиссии маркетплейсов цена честнее.{% endif %}</p>
+        {% if style.description %}
+            {# Генератор (app:seo:style-hub) отдаёт 2–3 абзаца, разделённых пустой строкой.
+               Без разбивки они схлопывались в один блок: поле выводится как обычный текст,
+               без |raw и без nl2br. Каждый абзац — свой <p>, чтобы текст читался. #}
+            <div class="text-gray-600 max-w-2xl mb-10 space-y-3">
+                {% for para in style.description|split('\n\n') %}
+                    {% if para|trim %}<p>{{ para|trim }}</p>{% endif %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-gray-600 max-w-2xl mb-10">{{ brands|length }} {{ brands|length == 1 ? 'российский бренд' : 'российских брендов' }} одежды в стиле «{{ style.title }}» в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей напрямую: без комиссии маркетплейсов цена честнее.</p>
+        {% endif %}
 
         {# Extractable-блок (docs/drmax_seo_2026_digest.md §1/§9): H2-вопрос + самодостаточный
            ответ первым предложением, только grounded-данные из контроллера. Только для

@@ -9,12 +9,10 @@ use App\Entity\CityHubRevision;
 use App\Repository\BrandRepository;
 use App\Repository\CityHubRepository;
 use App\Repository\CityHubRevisionRepository;
-use App\Service\ArticleQaService;
 use App\Service\BrandContentVersioner;
 use App\Service\CitySlugger;
 use App\Service\LlmService;
-use App\Service\Seo\SpellChecker;
-use App\Service\NearDuplicateDetector;
+use App\Service\Seo\GeneratedTextGate;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -33,8 +31,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * Факты — ТОЛЬКО из БД (число брендов, их title/anons, топ-5 стилей), без скрейпа.
  * Поисковые фразы — из gsc_query_stats/yandex_query_stats по алиасам города, вплетаются
- * в промпт (LlmService::generateCityHub). QA-гейт — тот же ArticleQaService, что
- * использует app:brand:generate-content (article-qa-toolkit, fail-open).
+ * в промпт (LlmService::generateCityHub). Проверки контента (орфография, искажённые
+ * названия, штампы/мусор, QA-балл, near-dup) — в App\Service\Seo\GeneratedTextGate,
+ * общем с app:seo:style-hub; здесь остаются только специфика города (алиасы,
+ * fixCityName, длины/пороги полей intro/meta/FAQ) и оркестровка порядка проверок.
  *
  *   php bin/console app:seo:city-hub --city=Новосибирск --dry-run
  *   php bin/console app:seo:city-hub 10 --min-brands=5 --no-debug
@@ -57,48 +57,6 @@ class SeoCityHubCommand extends Command
     private const MIN_INTRO_PLAIN_LEN = 450;
     private const MAX_INTRO_PLAIN_LEN = 2500;
     private const MIN_FAQ_PAIRS       = 2;
-
-    /**
-     * Штампы, которые промпт запрещает, а модель всё равно вставляет («широкий
-     * ассортимент» пролез при overall 90.6 — модуль AI-почерка тулкита их не блокирует,
-     * только снижает балл).
-     */
-    private const CLICHES = [
-        'широкий ассортимент', 'мир моды', 'идеальный выбор', 'на любой вкус',
-        'уникальный стиль', 'своя специфика', 'важная часть локальной индустрии',
-    ];
-
-    /**
-     * Латинский токен от 5 символов: апостроф и цифры внутри сохраняем, иначе
-     * KUL'TURA рвётся на «KUL»/«TURA», а DE4444TH — на «DE»/«TH» (все короче порога),
-     * и подмены «KUL'TARS»/«DE444TH» проскакивают.
-     */
-    private const LATIN_WORD_RE = "/[A-Za-z][A-Za-z0-9']{4,}/";
-
-    /**
-     * Мусор, который локальная модель выдаёт регулярно и который дороже ловить глазами,
-     * чем регуляркой (все три случая — из первого прогона по 7 городам):
-     *   - пересказ семантики в теле текста («пользователи часто ищут одежду abda в Казани»),
-     *   - символы чужих алфавитов посреди слова («в катало지가 WEARBASE»),
-     *   - артефакты экранирования из anons («Master Of Chillin'''»).
-     */
-    private const JUNK_PATTERNS = [
-        'пересказ поисковых запросов' => '/поисковы[ех]\s+запрос|популярн\w+\s+запрос|пользовател\w+\s+(часто\s+)?ищ|многие\s+ищ\w*\s+.{0,30}(через\s+)?наш|добавля\w+\s+к\s+запрос|поиск\s+\S+\s+.{0,40}приводит|запрос\w*\s+(касается|звучит)/iu',
-        'символы чужих алфавитов'     => '/[\x{0370}-\x{03FF}\x{0530}-\x{058F}\x{0590}-\x{05FF}\x{0600}-\x{06FF}\x{0E00}-\x{0E7F}\x{1100}-\x{11FF}\x{3040}-\x{30FF}\x{3130}-\x{318F}\x{4E00}-\x{9FFF}\x{AC00}-\x{D7AF}]/u',
-        'артефакт экранирования'      => "/'{3,}|\\\\{2,}/u",
-    ];
-
-    /**
-     * Блокирующий порог — ЭТО overall, НЕ $qa['passed'] сервиса. Прогон
-     * tools/article-qa-toolkit на 4 живых хабах (docs/geo_city_demand_2026_09.md §8)
-     * показал passed=false у ВСЕХ них (Human-likeness 7.0 < порога сервиса 8.0),
-     * включая sankt-peterburg — ту самую страницу с 2329 показов/поз.8.4. Сервис
-     * откалиброван на длинные описания брендов (~1900 симв., HL 8.2–8.5), а не на
-     * 500–800-символьные intro хабов. Гейтить их по $qa['passed'] значит отбраковывать
-     * контент лучше уже работающего. MIN_QA_OVERALL — эмпирический пол по замеру:
-     * живые хабы 77.9–84.3, описания брендов 86.7–87.7. Не возвращай сюда $qa['passed'].
-     */
-    private const MIN_QA_OVERALL = 80.0;
 
     /** 1.5× запас над худшим intro-Jaccard текущего корпуса (0.235, см. docs). */
     private const MAX_JACCARD = 0.35;
@@ -123,9 +81,6 @@ class SeoCityHubCommand extends Command
      * content живёт в intro, и там порог не тронут.
      */
     private const MAX_JACCARD_FAQ = 0.45;
-
-    /** Короче — детектор на 3-граммах слеп (пересечение пустое), считаем униграммами. */
-    private const SHORT_TEXT_WORDS = 15;
 
     /**
      * Алиасы для поиска фраз в gsc_query_stats/yandex_query_stats: пользователи пишут
@@ -166,9 +121,7 @@ class SeoCityHubCommand extends Command
         private readonly EntityManagerInterface $em,
         private readonly LlmService $llm,
         private readonly CitySlugger $slugger,
-        private readonly ArticleQaService $articleQa,
-        private readonly SpellChecker $speller,
-        private readonly NearDuplicateDetector $nearDup,
+        private readonly GeneratedTextGate $gate,
         private readonly CityHubRevisionRepository $hubRevisions,
     ) {
         parent::__construct();
@@ -330,11 +283,11 @@ class SeoCityHubCommand extends Command
             if (($result[$field] ?? null) === null) {
                 continue;
             }
-            $result[$field] = $this->spellFix((string) $result[$field], $protected, $spellFixes);
+            $result[$field] = $this->gate->spellFix((string) $result[$field], $protected, $spellFixes);
         }
         foreach ($result['faq'] as $i => $pair) {
             foreach (['question', 'answer'] as $key) {
-                $result['faq'][$i][$key] = $this->spellFix($pair[$key], $protected, $spellFixes);
+                $result['faq'][$i][$key] = $this->gate->spellFix($pair[$key], $protected, $spellFixes);
             }
         }
         if ($spellFixes > 0) {
@@ -344,13 +297,13 @@ class SeoCityHubCommand extends Command
         $nameFixes = 0;
         foreach (['intro', 'meta_description', 'h1', 'meta_title'] as $field) {
             if (($result[$field] ?? null) !== null) {
-                $fixed = $this->fixDistortedNames((string) $result[$field], $facts, $nameFixes);
+                $fixed = $this->gate->fixDistortedNames((string) $result[$field], $facts, $nameFixes);
                 $result[$field] = $this->fixCityName($fixed, $city, $nameFixes);
             }
         }
         foreach ($result['faq'] as $i => $pair) {
             foreach (['question', 'answer'] as $key) {
-                $fixed = $this->fixDistortedNames($pair[$key], $facts, $nameFixes);
+                $fixed = $this->gate->fixDistortedNames($pair[$key], $facts, $nameFixes);
                 $result['faq'][$i][$key] = $this->fixCityName($fixed, $city, $nameFixes);
             }
         }
@@ -389,13 +342,13 @@ class SeoCityHubCommand extends Command
         $dup      = $this->checkNearDup($slug, $gate['plain'], $metaText, $faqText);
         $io->text(sprintf(
             '  near-dup: intro %.2f (%s), meta %.2f (%s), FAQ %.2f (%s)',
-            $dup['intro']['score'], $dup['intro']['slug'] ?? '—',
-            $dup['meta_description']['score'], $dup['meta_description']['slug'] ?? '—',
-            $dup['FAQ']['score'], $dup['FAQ']['slug'] ?? '—',
+            $dup['intro']['score'], $dup['intro']['key'] ?? '—',
+            $dup['meta_description']['score'], $dup['meta_description']['key'] ?? '—',
+            $dup['FAQ']['score'], $dup['FAQ']['key'] ?? '—',
         ));
         if ($dup['failedField'] !== null) {
             $f = $dup['failedField'];
-            $io->warning(sprintf('  near-dup: %s совпал с «%s» (Jaccard %.2f) — пропуск', $f, $dup[$f]['slug'], $dup[$f]['score']));
+            $io->warning(sprintf('  near-dup: %s совпал с «%s» (Jaccard %.2f) — пропуск', $f, $dup[$f]['key'], $dup[$f]['score']));
             $this->gateFailed++;
             return;
         }
@@ -483,63 +436,24 @@ class SeoCityHubCommand extends Command
     /**
      * Near-dup гейт (блокирующий): попарно против ВСЕХ существующих CityHub (кроме
      * самого себя — важно при --force) и против хабов, уже принятых в этом прогоне,
-     * отдельно по intro/meta_description/склейке вопросов FAQ. Короткие тексты (< 15
-     * слов, чаще всего meta_description) детектор на 3-граммах не видит — считаем
-     * униграммами для той стороны пары, что короче. Считает МАКСИМУМ по каждому полю
-     * (не выходит по первому совпадению) — чтобы печатать реальные цифры и на проходе,
-     * не только на провале.
+     * отдельно по intro/meta_description/склейке вопросов FAQ. Алгоритм сравнения
+     * (пулы, униграммы для коротких текстов, максимум по полю) — в GeneratedTextGate,
+     * здесь только пороги (MAX_JACCARD*) и пулы конкретно городских хабов.
      *
      * @return array{
-     *     intro: array{score: float, slug: ?string},
-     *     meta_description: array{score: float, slug: ?string},
-     *     FAQ: array{score: float, slug: ?string},
+     *     intro: array{score: float, key: ?string},
+     *     meta_description: array{score: float, key: ?string},
+     *     FAQ: array{score: float, key: ?string},
      *     failedField: ?string,
      * }
      */
     private function checkNearDup(string $ownSlug, string $introPlain, string $meta, string $faqText): array
     {
-        $fields = [
-            'intro'            => [$introPlain, $this->existingIntro, $this->generatedIntro],
-            'meta_description' => [$meta, $this->existingMeta, $this->generatedMeta],
-            'FAQ'              => [$faqText, $this->existingFaq, $this->generatedFaq],
-        ];
-
-        $result      = [];
-        $failedField = null;
-        foreach ($fields as $field => [$text, $existingPool, $generatedPool]) {
-            $best     = 0.0;
-            $bestSlug = null;
-            foreach ([$existingPool, $generatedPool] as $pool) {
-                foreach ($pool as $slug => $other) {
-                    if ($slug === $ownSlug || trim($other) === '') {
-                        continue;
-                    }
-                    $size  = min($this->wordCount($text), $this->wordCount($other)) < self::SHORT_TEXT_WORDS ? 1 : 3;
-                    $score = $this->nearDup->similarity($text, $other, $size);
-                    if ($score > $best) {
-                        $best     = $score;
-                        $bestSlug = $slug;
-                    }
-                }
-            }
-            $result[$field] = ['score' => $best, 'slug' => $bestSlug];
-            $limit = match ($field) {
-                'meta_description' => self::MAX_JACCARD_META,
-                'FAQ'              => self::MAX_JACCARD_FAQ,
-                default            => self::MAX_JACCARD,
-            };
-            if ($failedField === null && $best >= $limit) {
-                $failedField = $field;
-            }
-        }
-        $result['failedField'] = $failedField;
-
-        return $result;
-    }
-
-    private function wordCount(string $text): int
-    {
-        return count(preg_split('/\s+/u', trim(strip_tags($text)), -1, PREG_SPLIT_NO_EMPTY) ?: []);
+        return $this->gate->checkNearDup($ownSlug, [
+            'intro'            => [$introPlain, $this->existingIntro, $this->generatedIntro, self::MAX_JACCARD],
+            'meta_description' => [$meta, $this->existingMeta, $this->generatedMeta, self::MAX_JACCARD_META],
+            'FAQ'              => [$faqText, $this->existingFaq, $this->generatedFaq, self::MAX_JACCARD_FAQ],
+        ]);
     }
 
     /**
@@ -715,147 +629,6 @@ class SeoCityHubCommand extends Command
         ) ?? $value;
     }
 
-    /**
-     * Чинит искажённые названия: латинское слово, которое почти совпадает с чем-то из
-     * ФАКТОВ, заменяем на написание из ФАКТОВ. Браковать генерацию целиком из-за
-     * удвоенной буквы («Seventtouch» вместо Seventouch) — расточительно и зацикливается:
-     * модель повторяет одну и ту же опечатку прогон за прогоном. Замена безопасна,
-     * потому что подставляем строку, которая пришла из фактов, а не выдуманную.
-     * Детектор findDistortedName() остаётся страховкой для того, что не починилось.
-     */
-    private function fixDistortedNames(string $value, string $facts, int &$fixes): string
-    {
-        $vocab = [];
-        preg_match_all(self::LATIN_WORD_RE, $facts, $fm);
-        foreach ($fm[0] as $w) {
-            $vocab[mb_strtolower($w)] = $w;
-        }
-        if ($vocab === []) {
-            return $value;
-        }
-
-        return preg_replace_callback(
-            self::LATIN_WORD_RE,
-            static function (array $m) use ($vocab, &$fixes): string {
-                $lower = mb_strtolower($m[0]);
-                if (isset($vocab[$lower])) {
-                    return $m[0];
-                }
-                foreach ($vocab as $key => $original) {
-                    $d = levenshtein($lower, $key);
-                    if ($d >= 1 && $d <= 2 && abs(mb_strlen($lower) - mb_strlen($key)) <= 2) {
-                        $fixes++;
-
-                        return $original;
-                    }
-                }
-
-                return $m[0];
-            },
-            $value,
-        ) ?? $value;
-    }
-
-    /**
-     * Ищет латинское слово текста, которое ПОЧТИ совпадает с чем-то из ФАКТОВ, но не
-     * совпадает точно, — то есть модель переписала название с ошибкой («KUL\'TARS»
-     * вместо KUL\'TURA, «Drobyschena» вместо Drobysheva).
-     *
-     * Словарь строим по всему тексту фактов, а не только по названиям брендов: имена
-     * товаров из anons («свитшоты BEIGE FOG») — тоже законная латиница, и по словарю
-     * из одних названий BEIGE ловился как искажение BRIGHT. Расстояние 1–2: на 3 в
-     * ложные срабатывания попадают обычные термины. Кириллицу не проверяем — там
-     * склонения дают ту же дистанцию, что и опечатки.
-     *
-     * @return array{0: string, 1: string}|null [искажение, как было в фактах]
-     */
-    /**
-     * Вычитка орфографии по абзацам. HTML целиком в Speller отдавать нельзя: теги
-     * склеиваются со словами («<p>В» → один токен), API возвращает НОЛЬ ошибок и
-     * вычитка молча становится пустышкой (проверено: тот же текст без тегов даёт
-     * «каталога» → «каталоге»). Поэтому правим текст внутри каждого <p>.
-     *
-     * @param string[] $protected названия брендов — не автоправятся
-     */
-    private function spellFix(string $value, array $protected, int &$fixes): string
-    {
-        $fix = function (string $text) use ($protected, &$fixes): string {
-            if (trim($text) === '') {
-                return $text;
-            }
-            $checked = $this->speller->proofread($text, $protected);
-            $applied = count(array_filter($checked['flags'], static fn(array $f) => $f['applied']));
-            if ($applied === 0) {
-                return $text;
-            }
-            $fixes += $applied;
-
-            return $checked['fixed'];
-        };
-
-        if (!str_contains($value, '<p')) {
-            return $fix($value);
-        }
-
-        return preg_replace_callback(
-            '/(<p[^>]*>)(.*?)(<\/p>)/su',
-            static fn(array $m) => $m[1] . $fix($m[2]) . $m[3],
-            $value,
-        ) ?? $value;
-    }
-
-    /**
-     * Слово, в котором смешаны кириллица и латиница. Разрешено только если ровно так
-     * написано в ФАКТАХ (бывают названия вида «YUGE ЮДЖ»).
-     */
-    private function findMixedScriptWord(string $text, string $facts): ?string
-    {
-        $allowed = [];
-        preg_match_all('/\S*[A-Za-z]\S*[\x{0400}-\x{04FF}]\S*|\S*[\x{0400}-\x{04FF}]\S*[A-Za-z]\S*/u', $facts, $fm);
-        foreach ($fm[0] as $w) {
-            $allowed[mb_strtolower(trim($w, " \t\n.,;:!?()«»\"'"))] = true;
-        }
-
-        preg_match_all('/[\p{L}\x{0027}]{3,}/u', $text, $m);
-        foreach (array_unique($m[0]) as $word) {
-            $hasLatin = preg_match('/[A-Za-z]/', $word) === 1;
-            $hasCyr   = preg_match('/[\x{0400}-\x{04FF}]/u', $word) === 1;
-            if ($hasLatin && $hasCyr && !isset($allowed[mb_strtolower($word)])) {
-                return $word;
-            }
-        }
-
-        return null;
-    }
-
-    private function findDistortedName(string $text, string $facts): ?array
-    {
-        $vocab = [];
-        preg_match_all(self::LATIN_WORD_RE, $facts, $fm);
-        foreach ($fm[0] as $w) {
-            $vocab[mb_strtolower($w)] = $w;
-        }
-        if ($vocab === []) {
-            return null;
-        }
-
-        preg_match_all(self::LATIN_WORD_RE, $text, $m);
-        foreach (array_unique($m[0]) as $word) {
-            $lower = mb_strtolower($word);
-            if (isset($vocab[$lower])) {
-                continue; // ровно то, что дали в фактах
-            }
-            foreach ($vocab as $key => $original) {
-                $d = levenshtein($lower, $key);
-                if ($d >= 1 && $d <= 2 && abs(mb_strlen($lower) - mb_strlen($key)) <= 2) {
-                    return [$word, $original];
-                }
-            }
-        }
-
-        return null;
-    }
-
     private function defaultAlias(string $city): string
     {
         $word = mb_strtolower(trim(explode(' ', trim($city))[0] ?? ''));
@@ -896,12 +669,8 @@ class SeoCityHubCommand extends Command
 
         $plain    = trim(preg_replace('/\s+/u', ' ', strip_tags($intro)) ?? '');
         $plainLen = mb_strlen($plain);
-        if ($plainLen < self::MIN_INTRO_PLAIN_LEN || $plainLen > self::MAX_INTRO_PLAIN_LEN) {
-            return $this->gateFail(
-                [sprintf('длина текста %d вне диапазона %d–%d', $plainLen, self::MIN_INTRO_PLAIN_LEN, self::MAX_INTRO_PLAIN_LEN)],
-                $plainLen,
-                count($faq),
-            );
+        if ($lengthReason = $this->gate->checkLength($plainLen, self::MIN_INTRO_PLAIN_LEN, self::MAX_INTRO_PLAIN_LEN)) {
+            return $this->gateFail([$lengthReason], $plainLen, count($faq));
         }
 
         // Мусорные паттерны — по всему, что уедет на страницу, не только по intro.
@@ -923,22 +692,14 @@ class SeoCityHubCommand extends Command
         // предлога («бренд одежды новосибирск»), — порядок слов поискового запроса.
         $haystack = mb_strtolower(preg_replace('/\s+/u', ' ', $everything) ?? $everything);
         $cityNominative = mb_strtolower($city);
-        foreach ($phrases as $phrase) {
-            $needle = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $phrase) ?? $phrase));
-            // Только фразы с городом в именительном падеже отдельным словом.
-            if (!preg_match('/(^|\s)' . preg_quote($cityNominative, '/') . '(\s|$)/u', $needle)) {
-                continue;
-            }
-            if (mb_strlen($needle) >= 10 && str_word_count($needle, 0, 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя') >= 2
-                && str_contains($haystack, $needle)) {
-                return [
-                    'passed'   => false,
-                    'reasons'  => [sprintf('дословная поисковая фраза в тексте: «%s»', $phrase)],
-                    'plainLen' => $plainLen,
-                    'faqCount' => count($faq),
-                    'overall'  => null,
-                ];
-            }
+        if ($verbatim = $this->gate->findVerbatimPhrase($haystack, $phrases, $cityNominative)) {
+            return [
+                'passed'   => false,
+                'reasons'  => [sprintf('дословная поисковая фраза в тексте: «%s»', $verbatim)],
+                'plainLen' => $plainLen,
+                'faqCount' => count($faq),
+                'overall'  => null,
+            ];
         }
 
         // Искажённые названия брендов («KUL'TARS» вместо KUL'TURA, «Drobyschena»
@@ -950,7 +711,7 @@ class SeoCityHubCommand extends Command
         // порчи, что символы чужих алфавитов, но внутри латинского названия, поэтому
         // предыдущая проверка его не видит. Точные вхождения из ФАКТОВ разрешаем:
         // название бренда действительно может быть смешанным.
-        if ($mixed = $this->findMixedScriptWord($everything, $facts)) {
+        if ($mixed = $this->gate->findMixedScriptWord($everything, $facts)) {
             return [
                 'passed'   => false,
                 'reasons'  => [sprintf('смешанный алфавит в слове: «%s»', $mixed)],
@@ -960,7 +721,7 @@ class SeoCityHubCommand extends Command
             ];
         }
 
-        if ($distorted = $this->findDistortedName($everything, $facts)) {
+        if ($distorted = $this->gate->findDistortedName($everything, $facts)) {
             return [
                 'passed'   => false,
                 'reasons'  => [sprintf('искажённое название: «%s» вместо «%s»', $distorted[0], $distorted[1])],
@@ -970,46 +731,40 @@ class SeoCityHubCommand extends Command
             ];
         }
 
-        foreach (self::CLICHES as $cliche) {
-            if (mb_stripos($everything, $cliche) !== false) {
-                return [
-                    'passed'   => false,
-                    'reasons'  => [sprintf('рекламный штамп: «%s»', $cliche)],
-                    'plainLen' => $plainLen,
-                    'faqCount' => count($faq),
-                    'overall'  => null,
-                ];
-            }
+        if ($cliche = $this->gate->findCliche($everything)) {
+            return [
+                'passed'   => false,
+                'reasons'  => [sprintf('рекламный штамп: «%s»', $cliche)],
+                'plainLen' => $plainLen,
+                'faqCount' => count($faq),
+                'overall'  => null,
+            ];
         }
 
-        foreach (self::JUNK_PATTERNS as $label => $re) {
-            if (preg_match($re, $everything, $m) === 1) {
-                return [
-                    'passed'   => false,
-                    'reasons'  => [sprintf('%s: «%s»', $label, mb_substr(trim($m[0]), 0, 40))],
-                    'plainLen' => $plainLen,
-                    'faqCount' => count($faq),
-                    'overall'  => null,
-                ];
-            }
+        if ($junk = $this->gate->findJunkPattern($everything)) {
+            return [
+                'passed'   => false,
+                'reasons'  => [sprintf('%s: «%s»', $junk[0], $junk[1])],
+                'plainLen' => $plainLen,
+                'faqCount' => count($faq),
+                'overall'  => null,
+            ];
         }
 
         if (count($faq) < self::MIN_FAQ_PAIRS) {
             return $this->gateFail([sprintf('FAQ %d пар(ы) < %d', count($faq), self::MIN_FAQ_PAIRS)], $plainLen, count($faq));
         }
 
-        $qa      = $this->articleQa->check($plain);
-        $overall = $qa['metrics']['overall'] ?? null;
-        $passed  = !$qa['checked'] || ($overall !== null && $overall >= self::MIN_QA_OVERALL);
+        $qa = $this->gate->qaOverall($plain);
 
         return [
-            'passed'   => $passed,
-            'reasons'  => $passed ? [] : [sprintf('overall %.1f < %.1f', $overall ?? 0.0, self::MIN_QA_OVERALL)],
+            'passed'   => $qa['passed'],
+            'reasons'  => $qa['passed'] ? [] : [sprintf('overall %.1f < %.1f', $qa['overall'] ?? 0.0, GeneratedTextGate::MIN_QA_OVERALL)],
             'plainLen' => $plainLen,
             'faqCount' => count($faq),
-            'overall'  => $overall,
+            'overall'  => $qa['overall'],
             'plain'    => $plain,
-            'qa'       => $qa,
+            'qa'       => $qa['qa'],
         ];
     }
 
