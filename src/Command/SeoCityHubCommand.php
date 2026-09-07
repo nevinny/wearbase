@@ -13,6 +13,7 @@ use App\Service\ArticleQaService;
 use App\Service\BrandContentVersioner;
 use App\Service\CitySlugger;
 use App\Service\LlmService;
+use App\Service\Seo\SpellChecker;
 use App\Service\NearDuplicateDetector;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -58,6 +59,23 @@ class SeoCityHubCommand extends Command
     private const MIN_FAQ_PAIRS       = 2;
 
     /**
+     * Штампы, которые промпт запрещает, а модель всё равно вставляет («широкий
+     * ассортимент» пролез при overall 90.6 — модуль AI-почерка тулкита их не блокирует,
+     * только снижает балл).
+     */
+    private const CLICHES = [
+        'широкий ассортимент', 'мир моды', 'идеальный выбор', 'на любой вкус',
+        'уникальный стиль', 'своя специфика', 'важная часть локальной индустрии',
+    ];
+
+    /**
+     * Латинский токен от 5 символов: апостроф и цифры внутри сохраняем, иначе
+     * KUL'TURA рвётся на «KUL»/«TURA», а DE4444TH — на «DE»/«TH» (все короче порога),
+     * и подмены «KUL'TARS»/«DE444TH» проскакивают.
+     */
+    private const LATIN_WORD_RE = "/[A-Za-z][A-Za-z0-9']{4,}/";
+
+    /**
      * Мусор, который локальная модель выдаёт регулярно и который дороже ловить глазами,
      * чем регуляркой (все три случая — из первого прогона по 7 городам):
      *   - пересказ семантики в теле текста («пользователи часто ищут одежду abda в Казани»),
@@ -65,7 +83,7 @@ class SeoCityHubCommand extends Command
      *   - артефакты экранирования из anons («Master Of Chillin'''»).
      */
     private const JUNK_PATTERNS = [
-        'пересказ поисковых запросов' => '/поисковы[ех]\s+запрос|популярн\w+\s+запрос|пользовател\w+\s+(часто\s+)?ищ|многие\s+ищ\w*\s+.{0,30}(через\s+)?наш|добавля\w+\s+к\s+запрос/iu',
+        'пересказ поисковых запросов' => '/поисковы[ех]\s+запрос|популярн\w+\s+запрос|пользовател\w+\s+(часто\s+)?ищ|многие\s+ищ\w*\s+.{0,30}(через\s+)?наш|добавля\w+\s+к\s+запрос|поиск\s+\S+\s+.{0,40}приводит|запрос\w*\s+(касается|звучит)/iu',
         'символы чужих алфавитов'     => '/[\x{0370}-\x{03FF}\x{0530}-\x{058F}\x{0590}-\x{05FF}\x{0600}-\x{06FF}\x{0E00}-\x{0E7F}\x{1100}-\x{11FF}\x{3040}-\x{30FF}\x{3130}-\x{318F}\x{4E00}-\x{9FFF}\x{AC00}-\x{D7AF}]/u',
         'артефакт экранирования'      => "/'{3,}|\\\\{2,}/u",
     ];
@@ -93,6 +111,18 @@ class SeoCityHubCommand extends Command
      * живёт в intro (там порог общий, и фактические значения 0.01–0.02).
      */
     private const MAX_JACCARD_META = 0.55;
+
+    /**
+     * FAQ — тоже мягче intro, но строже меты. Три вопроса про бренды одного города
+     * лексически пересекаются по устройству задачи («что шьёт X», «какие ещё марки
+     * города есть»), и на пороге 0.35 Краснодар давал 0.35–0.36 три попытки подряд,
+     * хотя intro у него 0.01. Рукописного корпуса FAQ для сравнения нет вообще (у
+     * четырёх живых хабов FAQ не было), так что эмпирический ориентир — сами прогоны:
+     * принятые тексты давали 0.15–0.32. Порог 0.45 оставляет запас над ними и всё
+     * ещё ловит настоящие дубли (полностью шаблонный набор даёт >0.6). Риск scaled
+     * content живёт в intro, и там порог не тронут.
+     */
+    private const MAX_JACCARD_FAQ = 0.45;
 
     /** Короче — детектор на 3-граммах слеп (пересечение пустое), считаем униграммами. */
     private const SHORT_TEXT_WORDS = 15;
@@ -137,6 +167,7 @@ class SeoCityHubCommand extends Command
         private readonly LlmService $llm,
         private readonly CitySlugger $slugger,
         private readonly ArticleQaService $articleQa,
+        private readonly SpellChecker $speller,
         private readonly NearDuplicateDetector $nearDup,
         private readonly CityHubRevisionRepository $hubRevisions,
     ) {
@@ -255,6 +286,11 @@ class SeoCityHubCommand extends Command
             ->andWhere('b.city = :city')
             ->setParameter('status', Statuses::Active)
             ->setParameter('city', $city)
+            // Ниша-гейт: страница пока показывает и off-niche (кондитерские фабрики
+            // среди одежды — известная проблема бэкафилла), но в ФАКТЫ для LLM их
+            // пускать нельзя: модель добросовестно опишет «производство сладостей»
+            // в тексте про бренды одежды.
+            ->andWhere("b.nicheStatus IS NULL OR b.nicheStatus != 'off'")
             ->orderBy('b.title', 'ASC');
         $repo->excludeForeignOrigin($brandsQb);
         $brands = $brandsQb->getQuery()->getResult();
@@ -284,7 +320,28 @@ class SeoCityHubCommand extends Command
             return;
         }
 
-        $gate = $this->checkGate($result);
+        // Детерминированная вычитка (Yandex Speller) до гейта: модель регулярно даёт
+        // согласование вида «в каталога представлены», а это не ловится ни баллом
+        // тулкита, ни регуляркой. Названия брендов отдаём в protected — их автоправка
+        // не касается. Тот же приём, что в app:seo:replace-listicle.
+        $protected = array_map(static fn(Brand $b) => (string) $b->getTitle(), $brands);
+        $spellFixes = 0;
+        foreach (['intro', 'meta_description', 'h1', 'meta_title'] as $field) {
+            if (($result[$field] ?? null) === null) {
+                continue;
+            }
+            $result[$field] = $this->spellFix((string) $result[$field], $protected, $spellFixes);
+        }
+        foreach ($result['faq'] as $i => $pair) {
+            foreach (['question', 'answer'] as $key) {
+                $result['faq'][$i][$key] = $this->spellFix($pair[$key], $protected, $spellFixes);
+            }
+        }
+        if ($spellFixes > 0) {
+            $io->text(sprintf('  орфография: исправлено %d', $spellFixes));
+        }
+
+        $gate = $this->checkGate($result, $phrases, $facts);
         $overallStr = $gate['overall'] !== null ? sprintf('%.1f', $gate['overall']) : '?';
         if (!$gate['passed']) {
             $io->warning(sprintf(
@@ -449,7 +506,11 @@ class SeoCityHubCommand extends Command
                 }
             }
             $result[$field] = ['score' => $best, 'slug' => $bestSlug];
-            $limit = $field === 'meta_description' ? self::MAX_JACCARD_META : self::MAX_JACCARD;
+            $limit = match ($field) {
+                'meta_description' => self::MAX_JACCARD_META,
+                'FAQ'              => self::MAX_JACCARD_FAQ,
+                default            => self::MAX_JACCARD,
+            };
             if ($failedField === null && $best >= $limit) {
                 $failedField = $field;
             }
@@ -475,6 +536,11 @@ class SeoCityHubCommand extends Command
         $lines = [sprintf('Активных брендов одежды в городе: %d', count($brands))];
 
         foreach (array_slice($brands, 0, self::MAX_BRANDS_IN_FACTS) as $b) {
+            // Битые названия («YUGE ЮДЖ *Y-----W )))») в факты не отдаём: модель их
+            // перепишет в текст как есть. Признак — серия небуквенных символов подряд.
+            if (preg_match('/[^\p{L}\p{N}\s]{3,}/u', (string) $b->getTitle()) === 1) {
+                continue;
+            }
             $anons = trim((string) $b->getAnons());
             $line  = (string) $b->getTitle();
             if ($anons !== '') {
@@ -555,13 +621,18 @@ class SeoCityHubCommand extends Command
         // Навигационные фразы («молотов одежда пермь») отсекаем: их закрывает карточка
         // бренда, а не хаб. В городах с тощим спросом такие фразы занимают половину пула
         // (Пермь: 2 из 4) — LLM их вставляла в intro почти дословно, получался переспам.
-        $brandTitles = [];
-        foreach ($brands as $b) {
-            $t = mb_strtolower(trim((string) $b->getTitle()));
-            if (mb_strlen($t) >= 4) {
-                $brandTitles[] = $t;
-            }
-        }
+        // Сверяем со ВСЕМ каталогом, а не только с брендами города: у бренда Abda город
+        // не заполнен, поэтому фраза «abda казань» проходила фильтр по городу и уезжала
+        // в текст Казани.
+        $brandTitles = array_values(array_filter(
+            array_map(
+                static fn(array $r) => mb_strtolower(trim((string) $r['title'])),
+                $conn->fetchAllAssociative(
+                    "SELECT DISTINCT title FROM brand WHERE status = 'active' AND CHAR_LENGTH(title) >= 4",
+                ),
+            ),
+            static fn(string $t) => $t !== '',
+        ));
 
         $seen = [];
         $phrases = [];
@@ -594,6 +665,106 @@ class SeoCityHubCommand extends Command
      * слово целиком; короче 4 символов после обрезки — тоже целиком (иначе алиас
      * ловит случайный шум).
      */
+    /**
+     * Ищет латинское слово текста, которое ПОЧТИ совпадает с чем-то из ФАКТОВ, но не
+     * совпадает точно, — то есть модель переписала название с ошибкой («KUL\'TARS»
+     * вместо KUL\'TURA, «Drobyschena» вместо Drobysheva).
+     *
+     * Словарь строим по всему тексту фактов, а не только по названиям брендов: имена
+     * товаров из anons («свитшоты BEIGE FOG») — тоже законная латиница, и по словарю
+     * из одних названий BEIGE ловился как искажение BRIGHT. Расстояние 1–2: на 3 в
+     * ложные срабатывания попадают обычные термины. Кириллицу не проверяем — там
+     * склонения дают ту же дистанцию, что и опечатки.
+     *
+     * @return array{0: string, 1: string}|null [искажение, как было в фактах]
+     */
+    /**
+     * Вычитка орфографии по абзацам. HTML целиком в Speller отдавать нельзя: теги
+     * склеиваются со словами («<p>В» → один токен), API возвращает НОЛЬ ошибок и
+     * вычитка молча становится пустышкой (проверено: тот же текст без тегов даёт
+     * «каталога» → «каталоге»). Поэтому правим текст внутри каждого <p>.
+     *
+     * @param string[] $protected названия брендов — не автоправятся
+     */
+    private function spellFix(string $value, array $protected, int &$fixes): string
+    {
+        $fix = function (string $text) use ($protected, &$fixes): string {
+            if (trim($text) === '') {
+                return $text;
+            }
+            $checked = $this->speller->proofread($text, $protected);
+            $applied = count(array_filter($checked['flags'], static fn(array $f) => $f['applied']));
+            if ($applied === 0) {
+                return $text;
+            }
+            $fixes += $applied;
+
+            return $checked['fixed'];
+        };
+
+        if (!str_contains($value, '<p')) {
+            return $fix($value);
+        }
+
+        return preg_replace_callback(
+            '/(<p[^>]*>)(.*?)(<\/p>)/su',
+            static fn(array $m) => $m[1] . $fix($m[2]) . $m[3],
+            $value,
+        ) ?? $value;
+    }
+
+    /**
+     * Слово, в котором смешаны кириллица и латиница. Разрешено только если ровно так
+     * написано в ФАКТАХ (бывают названия вида «YUGE ЮДЖ»).
+     */
+    private function findMixedScriptWord(string $text, string $facts): ?string
+    {
+        $allowed = [];
+        preg_match_all('/\S*[A-Za-z]\S*[\x{0400}-\x{04FF}]\S*|\S*[\x{0400}-\x{04FF}]\S*[A-Za-z]\S*/u', $facts, $fm);
+        foreach ($fm[0] as $w) {
+            $allowed[mb_strtolower(trim($w, " \t\n.,;:!?()«»\"'"))] = true;
+        }
+
+        preg_match_all('/[\p{L}\x{0027}]{3,}/u', $text, $m);
+        foreach (array_unique($m[0]) as $word) {
+            $hasLatin = preg_match('/[A-Za-z]/', $word) === 1;
+            $hasCyr   = preg_match('/[\x{0400}-\x{04FF}]/u', $word) === 1;
+            if ($hasLatin && $hasCyr && !isset($allowed[mb_strtolower($word)])) {
+                return $word;
+            }
+        }
+
+        return null;
+    }
+
+    private function findDistortedName(string $text, string $facts): ?array
+    {
+        $vocab = [];
+        preg_match_all(self::LATIN_WORD_RE, $facts, $fm);
+        foreach ($fm[0] as $w) {
+            $vocab[mb_strtolower($w)] = $w;
+        }
+        if ($vocab === []) {
+            return null;
+        }
+
+        preg_match_all(self::LATIN_WORD_RE, $text, $m);
+        foreach (array_unique($m[0]) as $word) {
+            $lower = mb_strtolower($word);
+            if (isset($vocab[$lower])) {
+                continue; // ровно то, что дали в фактах
+            }
+            foreach ($vocab as $key => $original) {
+                $d = levenshtein($lower, $key);
+                if ($d >= 1 && $d <= 2 && abs(mb_strlen($lower) - mb_strlen($key)) <= 2) {
+                    return [$word, $original];
+                }
+            }
+        }
+
+        return null;
+    }
+
     private function defaultAlias(string $city): string
     {
         $word = mb_strtolower(trim(explode(' ', trim($city))[0] ?? ''));
@@ -618,7 +789,11 @@ class SeoCityHubCommand extends Command
      *
      * @return array{passed: bool, reasons: string[], plainLen: int, faqCount: int, overall: ?float, plain: string, qa: ?array}
      */
-    private function checkGate(array $result): array
+    /**
+     * @param string[] $phrases     фразы, отданные модели: дословных вхождений быть не должно
+     * @param string   $facts       факты, отданные модели: латиница текста должна совпадать с ними
+     */
+    private function checkGate(array $result, array $phrases = [], string $facts = ''): array
     {
         $intro = $result['intro'];
         $faq   = $result['faq'];
@@ -646,6 +821,65 @@ class SeoCityHubCommand extends Command
             implode(' ', array_column($faq, 'question')),
             implode(' ', array_column($faq, 'answer')),
         ]));
+        // Дословное вхождение поисковой фразы = переспам («Поиск abda одежда казань
+        // приводит к знакомству с местными мастерами»). Промпт это запрещает, но
+        // модель срывается, поэтому проверяем механически по тем же фразам, что дали.
+        $haystack = mb_strtolower(preg_replace('/\s+/u', ' ', $everything) ?? $everything);
+        foreach ($phrases as $phrase) {
+            $needle = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $phrase) ?? $phrase));
+            if (mb_strlen($needle) >= 10 && str_word_count($needle, 0, 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя') >= 2
+                && str_contains($haystack, $needle)) {
+                return [
+                    'passed'   => false,
+                    'reasons'  => [sprintf('дословная поисковая фраза в тексте: «%s»', $phrase)],
+                    'plainLen' => $plainLen,
+                    'faqCount' => count($faq),
+                    'overall'  => null,
+                ];
+            }
+        }
+
+        // Искажённые названия брендов («KUL'TARS» вместо KUL'TURA, «Drobyschena»
+        // вместо Drobysheva). Промпт требует копировать названия символ в символ, но
+        // модель их «дописывает». Проверяем только латиницу: в русском тексте латинское
+        // слово — это почти всегда название, а склонения (которые ломали бы такую
+        // проверку на кириллице) там не работают.
+        // Смешанный алфавит внутри одного слова («Irina DrobysЛОysheva») — тот же класс
+        // порчи, что символы чужих алфавитов, но внутри латинского названия, поэтому
+        // предыдущая проверка его не видит. Точные вхождения из ФАКТОВ разрешаем:
+        // название бренда действительно может быть смешанным.
+        if ($mixed = $this->findMixedScriptWord($everything, $facts)) {
+            return [
+                'passed'   => false,
+                'reasons'  => [sprintf('смешанный алфавит в слове: «%s»', $mixed)],
+                'plainLen' => $plainLen,
+                'faqCount' => count($faq),
+                'overall'  => null,
+            ];
+        }
+
+        if ($distorted = $this->findDistortedName($everything, $facts)) {
+            return [
+                'passed'   => false,
+                'reasons'  => [sprintf('искажённое название: «%s» вместо «%s»', $distorted[0], $distorted[1])],
+                'plainLen' => $plainLen,
+                'faqCount' => count($faq),
+                'overall'  => null,
+            ];
+        }
+
+        foreach (self::CLICHES as $cliche) {
+            if (mb_stripos($everything, $cliche) !== false) {
+                return [
+                    'passed'   => false,
+                    'reasons'  => [sprintf('рекламный штамп: «%s»', $cliche)],
+                    'plainLen' => $plainLen,
+                    'faqCount' => count($faq),
+                    'overall'  => null,
+                ];
+            }
+        }
+
         foreach (self::JUNK_PATTERNS as $label => $re) {
             if (preg_match($re, $everything, $m) === 1) {
                 return [
