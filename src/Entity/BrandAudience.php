@@ -25,6 +25,14 @@ class BrandAudience
     private ?string $description = null;
 
     /**
+     * Человеко-читаемая формулировка H1/title публичной страницы /audience/{slug}
+     * (docs/geo_city_demand_2026_09.md §11) — дословные формулировки из Wordstat
+     * («Российские бренды женской одежды»), а не «Бренды одежды для аудитории Женщины».
+     */
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $h1 = null;
+
+    /**
      * @var Collection<int, Brand>
      */
     #[ORM\ManyToMany(targetEntity: Brand::class, inversedBy: 'audiences')]
@@ -48,6 +56,18 @@ class BrandAudience
     public function setDescription(?string $description): static
     {
         $this->description = $description;
+
+        return $this;
+    }
+
+    public function getH1(): ?string
+    {
+        return $this->h1;
+    }
+
+    public function setH1(?string $h1): static
+    {
+        $this->h1 = $h1;
 
         return $this;
     }
