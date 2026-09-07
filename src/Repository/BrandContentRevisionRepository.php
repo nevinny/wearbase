@@ -38,6 +38,11 @@ class BrandContentRevisionRepository extends ServiceEntityRepository
     {
         return $this->createQueryBuilder('r')
             ->andWhere('r.verdict = :pending')
+            // Только АКТИВНАЯ ревизия описывает то, что реально лежит на странице.
+            // Перекрытая (isActive=false) осталась бы pending навсегда, а замер «после»
+            // у неё считался бы по НОВОМУ контенту → ложный вердикт, а на loss ещё и
+            // откат живого текста к предшественнику уже заменённой ревизии.
+            ->andWhere('r.isActive = true')
             ->andWhere('r.measureAfter IS NOT NULL AND r.measureAfter <= :now')
             ->setParameter('pending', BrandContentRevision::VERDICT_PENDING)
             ->setParameter('now', $now)
