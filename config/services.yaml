@@ -54,6 +54,7 @@ parameters:
     env(LOCAL_LLM_URL): ''
     env(QDRANT_URL): ''
     env(QDRANT_API_KEY): ''
+    env(QDRANT_COLLECTION): ''
     env(SEARXNG_URL): ''
     # Канонический хост сайта для canonical/hreflang (не зависит от request-хоста)
     env(SITE_BASE_URL): 'https://wearbase.ru'
