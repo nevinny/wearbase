@@ -3,6 +3,7 @@
 namespace App\Controller\Brands;
 
 use App\Entity\Brand;
+use App\Repository\BrandAudienceRepository;
 use App\Repository\BrandRepository;
 use App\Repository\BrandStyleRepository;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -715,6 +716,85 @@ class BrandsController extends AbstractController
             'slug' => $slug,
             'brands' => $brands,
             'indexable' => $indexable,
+            'topCities' => $topCities,
+            'locale' => $request->getLocale(),
+        ]);
+    }
+
+    /**
+     * Фасетная страница аудитории /{_locale}/audience/{slug} (Женщины/Мужчины/Дети/
+     * Унисекс — docs/geo_city_demand_2026_09.md §11: «российские бренды женской
+     * одежды» и т.п. — спрос ≈4400 показов/мес, наших показов не было вообще, т.к.
+     * публичной страницы не существовало). Копирует гейты styleShow один в один.
+     */
+    #[Route('/{_locale}/audience/{slug}', name: 'brand_audience_show', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
+    public function audienceShow(string $slug, BrandRepository $repo, BrandAudienceRepository $audienceRepo, Request $request): Response
+    {
+        $audience = $audienceRepo->findOneBy(['slug' => $slug]);
+        if (!$audience || !$audience->isPublished()) {
+            throw $this->createNotFoundException('Аудитория не найдена');
+        }
+
+        $brandsQb = $repo->createQueryBuilder('b')
+            ->join('b.audiences', 'a')
+            ->where('b.status = :status')
+            ->andWhere('a.slug = :slug')
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('slug', $slug)
+            ->orderBy('b.title', 'ASC');
+        $repo->excludeForeignOrigin($brandsQb);
+        $brands = $brandsQb->getQuery()->getResult();
+
+        // Пустая аудитория (0 опубликованных брендов) = нет контента → 404, как у стилей.
+        if ($brands === []) {
+            throw $this->createNotFoundException('В этой аудитории пока нет опубликованных брендов');
+        }
+
+        // Гейт индексации тонких хабов (docs/seo_sitewide_backlog.md HIGH-1): кураторское
+        // description (заполняет app:seo:audience-hub) индексируется независимо от числа
+        // брендов — тот же приём, что cityShow делает для кураторского CityHub.
+        $indexable = count($brands) >= self::MIN_INDEXABLE_BRANDS || trim((string) $audience->getDescription()) !== '';
+
+        // Grounded extractable-блок: топ-5 стилей и топ-5 городов среди брендов аудитории.
+        $topStyles = [];
+        $topCities = [];
+        if ($indexable) {
+            $topStylesQb = $repo->createQueryBuilder('b')
+                ->select('s.title, COUNT(DISTINCT b.id) as cnt')
+                ->join('b.audiences', 'a')
+                ->join('b.styles', 's')
+                ->where('b.status = :status')
+                ->andWhere('a.slug = :slug')
+                ->setParameter('status', Statuses::Active)
+                ->setParameter('slug', $slug)
+                ->groupBy('s.id')
+                ->orderBy('cnt', 'DESC')
+                ->setMaxResults(5);
+            $repo->excludeForeignOrigin($topStylesQb);
+            $topStyles = $topStylesQb->getQuery()->getResult();
+
+            $topCitiesQb = $repo->createQueryBuilder('b')
+                ->select('b.city, COUNT(DISTINCT b.id) as cnt')
+                ->join('b.audiences', 'a')
+                ->where('b.status = :status')
+                ->andWhere('a.slug = :slug')
+                ->andWhere('b.city IS NOT NULL')
+                ->andWhere('b.city != \'\'')
+                ->setParameter('status', Statuses::Active)
+                ->setParameter('slug', $slug)
+                ->groupBy('b.city')
+                ->orderBy('cnt', 'DESC')
+                ->setMaxResults(5);
+            $repo->excludeForeignOrigin($topCitiesQb);
+            $topCities = $topCitiesQb->getQuery()->getResult();
+        }
+
+        return $this->render('tailwind/audience.html.twig', [
+            'audience' => $audience,
+            'slug' => $slug,
+            'brands' => $brands,
+            'indexable' => $indexable,
+            'topStyles' => $topStyles,
             'topCities' => $topCities,
             'locale' => $request->getLocale(),
         ]);

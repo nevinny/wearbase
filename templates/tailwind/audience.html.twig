@@ -1,0 +1,133 @@
+{% extends 'tailwind/base.html.twig' %}
+
+{# Русское согласование числительного: 1 бренд / 2-4 бренда / 5+ брендов (тот же
+   макрос, что в city.html.twig/style.html.twig). #}
+{% macro plural(n, one, few, many) %}{{ n % 10 == 1 and n % 100 != 11 ? one : (n % 10 >= 2 and n % 10 <= 4 and (n % 100 < 12 or n % 100 > 14) ? few : many) }}{% endmacro %}
+
+{% set page_locale = app.request.locale|default('ru') %}
+{% set page_h1 = audience.h1 ?: audience.title %}
+
+{% block title %}{{ page_h1 }} — {{ brands|length }} {{ _self.plural(brands|length, 'марка', 'марки', 'марок') }} | WEARBASE{% endblock %}
+
+{% block meta_description %}{{ page_h1 }}: {{ brands|length }} {{ _self.plural(brands|length, 'марка', 'марки', 'марок') }} с сайтами, соцсетями и контактами. Покупайте напрямую у производителей, без наценки маркетплейсов.{% endblock %}
+
+{% block meta_keywords %}{{ page_h1|lower }}, {{ audience.title|lower }} одежда россия, российские бренды {{ audience.title|lower }}{% endblock %}
+
+{# Гейт индексации тонких хабов (docs/seo_sitewide_backlog.md HIGH-1): < MIN_INDEXABLE_BRANDS
+   и без кураторского description → noindex,follow. #}
+{% block meta_robots %}{% if not indexable %}<meta name="robots" content="noindex, follow">{% endif %}{% endblock %}
+
+{% block og_title %}{{ page_h1 }} | WEARBASE{% endblock %}
+
+{% block og_description %}{{ brands|length }} {{ _self.plural(brands|length, 'российский бренд', 'российских бренда', 'российских брендов') }} одежды — {{ page_h1|lower }}.{% endblock %}
+
+{% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
+
+{% block body %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "CollectionPage",
+                "@id": "{{ url('brand_audience_show', {_locale: page_locale, slug: slug}) }}#webpage",
+                "url": "{{ url('brand_audience_show', {_locale: page_locale, slug: slug}) }}",
+                "name": "{{ page_h1 }} | WEARBASE",
+                "breadcrumb": {"@id": "{{ url('brand_audience_show', {_locale: page_locale, slug: slug}) }}#breadcrumb"}
+            },
+            {
+                "@type": "BreadcrumbList",
+                "@id": "{{ url('brand_audience_show', {_locale: page_locale, slug: slug}) }}#breadcrumb",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "Главная", "item": "{{ url('home_hub', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 2, "name": "Бренды", "item": "{{ url('brand_index', {_locale: page_locale}) }}"},
+                    {"@type": "ListItem", "position": 3, "name": {{ page_h1|json_encode|raw }}, "item": "{{ url('brand_audience_show', {_locale: page_locale, slug: slug}) }}"}
+                ]
+            },
+            {
+                "@type": "ItemList",
+                "itemListElement": [
+                    {% for brand in brands|slice(0, 30) %}
+                    {"@type": "ListItem", "position": {{ loop.index }}, "url": "{{ url('brand_show', {_locale: page_locale, slug: brand.slug}) }}", "name": {{ brand.title|json_encode|raw }}}{{ loop.last ? '' : ',' }}
+                    {% endfor %}
+                ]
+            }
+        ]
+    }
+    </script>
+
+    <div class="container mx-auto px-4 py-10">
+        <nav class="flex mb-6 text-sm" aria-label="Хлебные крошки">
+            <a href="{{ path('home_hub', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Главная</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <a href="{{ path('brand_index', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">Бренды</a>
+            <span class="mx-2 text-gray-400">/</span>
+            <span class="text-gray-900 font-medium">{{ audience.title }}</span>
+        </nav>
+
+        <h1 class="text-3xl md:text-4xl font-bold mb-3">{{ page_h1 }}</h1>
+        {% if audience.description %}
+            {# Генератор (app:seo:audience-hub) отдаёт 2–3 абзаца, разделённых пустой
+               строкой. Поле рендерится без |raw и без nl2br — разбиваем на <p> сами,
+               как в style.html.twig. #}
+            <div class="text-gray-600 max-w-2xl mb-10 space-y-3">
+                {% for para in audience.description|split("\n\n") %}
+                    {% if para|trim %}<p>{{ para|trim }}</p>{% endif %}
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-gray-600 max-w-2xl mb-10">{{ brands|length }} {{ _self.plural(brands|length, 'российский бренд', 'российских бренда', 'российских брендов') }} одежды в каталоге WEARBASE — с сайтами, соцсетями и контактами. Покупайте у производителей напрямую: без комиссии маркетплейсов цена честнее.</p>
+        {% endif %}
+
+        {# Extractable-блок (docs/drmax_seo_2026_digest.md §1/§9): H2-вопрос + самодостаточный
+           ответ первым предложением, только grounded-данные из контроллера. Только для
+           индексируемых хабов — на noindex-страницах это лишний шаблонный текст. #}
+        {% if indexable %}
+            <section class="max-w-2xl mb-10">
+                <h2 class="text-lg font-semibold mb-2">Какие бренды одежды представлены в категории «{{ audience.title }}»?</h2>
+                <p class="text-gray-700 text-sm leading-relaxed">
+                    В каталоге WEARBASE опубликовано {{ brands|length }} {{ _self.plural(brands|length, 'бренд', 'бренда', 'брендов') }} одежды в категории «{{ audience.title }}»{% if topStyles|length %}, преобладающие стили — {% for s in topStyles %}{{ s.title }} ({{ s.cnt }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif %}{% if topCities|length %}, чаще всего бренды базируются в городах {% for c in topCities %}{{ c.city }} ({{ c.cnt }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif %}. Все бренды продают напрямую, без комиссии маркетплейсов и с более честной ценой, чем в масс-маркете.
+                </p>
+            </section>
+        {% endif %}
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {% for brand in brands %}
+                <article class="group bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                    <a href="{{ path('brand_show', {_locale: page_locale, slug: brand.slug}) }}" class="flex flex-col items-center p-4 text-center">
+                        <div class="w-24 h-24 flex items-center justify-center mb-3">
+                            {% if brand.logo %}
+                                <img src="{{ asset('images/logos/' ~ brand.logo) }}" alt="{{ brand.title }} — {{ page_h1|lower }}" loading="lazy" width="96" height="96"
+                                     class="object-contain w-full h-full transition-transform group-hover:scale-105 duration-300">
+                            {% else %}
+                                <div class="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 text-sm">
+                                    {{ brand.title|slice(0, 1) }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <h3 class="text-sm font-semibold mb-1 truncate w-full">{{ brand.title }}</h3>
+                        {# Текст карточки: anons, а при его отсутствии — начало description
+                           (та же логика, что в city.html.twig — обрезок поднят с 80 до 160). #}
+                        {% set card_text = brand.anons ?: brand.description %}
+                        {% if card_text %}
+                            <p class="text-xs text-gray-500 line-clamp-3">{{ card_text|striptags|slice(0, 160)|trim }}{% if card_text|striptags|length > 160 %}…{% endif %}</p>
+                        {% endif %}
+                    </a>
+                </article>
+            {% endfor %}
+        </div>
+
+        <div class="mt-12 p-6 bg-gray-50 rounded-xl text-center">
+            <p class="font-semibold mb-2">Знаете бренд из категории «{{ audience.title }}», которого здесь нет?</p>
+            <p class="text-sm text-gray-600 mb-4">Размещение в каталоге — без комиссии с продаж, деньги за заказы идут напрямую бренду.</p>
+            <a href="{{ path('landing_for_brands', {_locale: page_locale}) }}"
+               class="inline-block px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition">
+                Добавить бренд
+            </a>
+        </div>
+
+        <div class="mt-8 flex gap-4 text-sm">
+            <a href="{{ path('brand_index', {_locale: page_locale}) }}" class="text-gray-500 hover:text-gray-900">← Все бренды</a>
+        </div>
+    </div>
+{% endblock %}

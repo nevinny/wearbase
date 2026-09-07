@@ -74,6 +74,15 @@
             <p class="text-gray-600 text-base md:text-lg">
                 Каталог отечественных fashion-брендов. Streetwear, casual, минимализм и другие направления.
             </p>
+            {# Ссылки на фасетные страницы аудитории (docs/geo_city_demand_2026_09.md §11):
+               «российские бренды женской/мужской/детской одежды» — неотработанный спрос
+               ≈4400 показов/мес до появления /audience/{slug}. #}
+            <div class="flex flex-wrap justify-center gap-3 mt-4 text-sm">
+                <a href="{{ path('brand_audience_show', {_locale: app.request.locale, slug: 'female'}) }}" class="text-indigo-600 hover:text-indigo-800">Женская одежда</a>
+                <a href="{{ path('brand_audience_show', {_locale: app.request.locale, slug: 'male'}) }}" class="text-indigo-600 hover:text-indigo-800">Мужская одежда</a>
+                <a href="{{ path('brand_audience_show', {_locale: app.request.locale, slug: 'kids'}) }}" class="text-indigo-600 hover:text-indigo-800">Детская одежда</a>
+                <a href="{{ path('brand_audience_show', {_locale: app.request.locale, slug: 'unisex'}) }}" class="text-indigo-600 hover:text-indigo-800">Унисекс</a>
+            </div>
         </section>
 
         {# --- Алфавитный указатель --- #}
