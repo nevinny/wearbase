@@ -127,6 +127,27 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Активные бренды без разметки аудитории (app:brand:audience-backfill).
+     * При $force — все активные, включая уже размеченные (для перепроставки регулярок).
+     *
+     * @return Brand[]
+     */
+    public function findWithoutAudience(int $limit, bool $force = false): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->setParameter('status', Statuses::Active)
+            ->orderBy('b.id', 'ASC')
+            ->setMaxResults($limit);
+
+        if (!$force) {
+            $qb->andWhere('b.audiences IS EMPTY');
+        }
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
      * Получить статистику по буквам
      */
     /**
