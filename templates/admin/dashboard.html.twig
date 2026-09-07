@@ -1,7 +1,166 @@
 {% extends '@EasyAdmin/layout.html.twig' %}
 
 {% block main %}
-    <h1>Панель администратора</h1>
+<script src="/js/tailwind-3.4.17.js"></script>
+<script>
+    // preflight выключен: этот скрипт грузится поверх Bootstrap-темы EasyAdmin,
+    // полный reset поломал бы заголовки/кнопки/списки чужого чрома.
+    tailwind.config = { corePlugins: { preflight: false } };
+</script>
 
+<h1 class="mb-4" style="font-size:1.5rem;font-weight:600">Панель администратора</h1>
 
+{% macro num(value, overdue) %}
+    <span class="{{ overdue ? 'text-red-600' : 'text-gray-900' }}" style="font-size:1.75rem;font-weight:700">
+        {{ value is null ? '—' : value }}
+    </span>
+{% endmacro %}
+{% import _self as dash %}
+
+<div class="grid gap-4" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:1rem;margin-bottom:2rem">
+
+    {# 1. Модерация и заявки #}
+    <div class="rounded-2xl bg-white shadow-sm p-4">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Модерация и заявки</div>
+        {% if tiles.moderation.available %}
+            <div class="mb-1">{{ dash.num(tiles.moderation.queued, tiles.moderation.queuedOverdue) }} <span class="text-gray-500" style="font-size:.8rem">премодерация (queued)</span></div>
+            <div class="mb-1" style="font-size:.85rem">{{ tiles.moderation.reviewedAwaiting }} ждут решения администратора{% if tiles.moderation.redFlagged > 0 %}, <span class="text-red-600">{{ tiles.moderation.redFlagged }} с красными флагами</span>{% endif %}</div>
+            <div style="font-size:.85rem">
+                {{ dash.num(tiles.moderation.claimsPending, tiles.moderation.claimsOverdue) }}
+                <a href="{{ tiles.moderation.link }}" class="text-blue-600">заявок на владение брендом →</a>
+            </div>
+        {% else %}
+            <div class="text-gray-400">—</div>
+        {% endif %}
+    </div>
+
+    {# 2. Публикации #}
+    <div class="rounded-2xl bg-white shadow-sm p-4">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Публикации</div>
+        {% if tiles.publications.available %}
+            <div class="mb-1">{{ dash.num(tiles.publications.publishedTotal, false) }} <span class="text-gray-500" style="font-size:.8rem">опубликовано всего</span></div>
+            <div class="mb-1" style="font-size:.85rem">+{{ tiles.publications.published7d }} за 7 дней</div>
+            <div class="mb-1" style="font-size:.85rem">
+                Последняя публикация:
+                <span class="{{ tiles.publications.lastPublishedStale ? 'text-red-600 font-semibold' : '' }}">{{ tiles.publications.lastPublishedAt ?: '—' }}</span>
+            </div>
+            <div class="mb-1" style="font-size:.85rem">
+                Новых карточек готово: <strong class="{{ tiles.publications.readyNeverPushed == 0 ? 'text-red-600' : '' }}">{{ tiles.publications.readyNeverPushed }}</strong>
+                · re-push {{ tiles.publications.readyRePush }}
+            </div>
+            <div style="font-size:.85rem">
+                Очередь дрипа: {{ tiles.publications.dripQueue }}
+                <a href="{{ tiles.publications.link }}" class="text-blue-600">бренды →</a>
+            </div>
+        {% else %}
+            <div class="text-gray-400">—</div>
+        {% endif %}
+    </div>
+
+    {# 3. RAG-конвейер #}
+    <div class="rounded-2xl bg-white shadow-sm p-4">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">RAG-конвейер</div>
+        {% if tiles.rag.available %}
+            <table style="font-size:.85rem;width:100%">
+                <tr><td>discover</td><td style="text-align:right">{{ tiles.rag.awaitingDiscover }}</td></tr>
+                <tr><td>fetch</td><td style="text-align:right">{{ tiles.rag.awaitingFetch }}</td></tr>
+                <tr><td>embed</td><td style="text-align:right">{{ tiles.rag.awaitingEmbed }}</td></tr>
+                <tr><td>generate</td><td style="text-align:right">{{ tiles.rag.awaitingGenerate }}</td></tr>
+                <tr><td>keywords</td><td style="text-align:right">{{ tiles.rag.awaitingKeywords }}</td></tr>
+                <tr><td>deferred</td><td style="text-align:right">{{ tiles.rag.deferred }}</td></tr>
+                <tr><td>generate_failed</td><td style="text-align:right">{{ tiles.rag.generateFailed }}</td></tr>
+            </table>
+            <div class="mt-2"><a href="{{ tiles.rag.link }}" class="text-blue-600" style="font-size:.85rem">живой конвейер →</a></div>
+        {% else %}
+            <div class="text-gray-400">—</div>
+        {% endif %}
+    </div>
+
+    {# 4. Качество каталога #}
+    <div class="rounded-2xl bg-white shadow-sm p-4">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Качество каталога</div>
+        {% if tiles.quality.available %}
+            <table style="font-size:.85rem;width:100%">
+                <tr><td>без контактов</td><td style="text-align:right">{{ tiles.quality.noContacts }}</td></tr>
+                <tr><td>без логотипа</td><td style="text-align:right">{{ tiles.quality.noLogo }}</td></tr>
+                <tr><td>без описания</td><td style="text-align:right">{{ tiles.quality.noDescription }}</td></tr>
+                <tr><td>вне ниши (niche_status=off)</td><td style="text-align:right" class="{{ tiles.quality.nicheOff > 0 ? 'text-red-600 font-semibold' : '' }}">{{ tiles.quality.nicheOff }}</td></tr>
+                <tr><td>иностранное происхождение</td><td style="text-align:right" class="{{ tiles.quality.originBad > 0 ? 'text-red-600 font-semibold' : '' }}">{{ tiles.quality.originBad }}</td></tr>
+            </table>
+            <div class="mt-2 text-gray-500" style="font-size:.75rem">из {{ tiles.quality.total }} опубликованных</div>
+            <div><a href="{{ tiles.quality.link }}" class="text-blue-600" style="font-size:.85rem">бренды →</a></div>
+        {% else %}
+            <div class="text-gray-400">—</div>
+        {% endif %}
+    </div>
+
+    {# 5. Свежесть данных #}
+    <div class="rounded-2xl bg-white shadow-sm p-4">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Свежесть данных</div>
+        <div class="mb-1" style="font-size:.85rem">
+            GSC: <span class="{{ tiles.freshness.gscStale ? 'text-red-600 font-semibold' : '' }}">{{ tiles.freshness.gscLastDay ?: '— (нет данных)' }}</span>
+        </div>
+        <div class="mb-1" style="font-size:.85rem">
+            Яндекс: <span class="{{ tiles.freshness.yandexStale ? 'text-red-600 font-semibold' : '' }}">{{ tiles.freshness.yandexLastCheck ?: '— (нет данных)' }}</span>
+        </div>
+        {% if tiles.freshness.failingCrons|length > 0 %}
+            <div class="text-red-600" style="font-size:.85rem">
+                Падают кроны: {{ tiles.freshness.failingCrons|join(', ') }}
+                {% if tiles.freshness.link is defined %}<a href="{{ tiles.freshness.link }}" class="text-blue-600">→</a>{% endif %}
+            </div>
+        {% else %}
+            <div class="text-gray-500" style="font-size:.85rem">кроны без ошибок</div>
+        {% endif %}
+    </div>
+
+    {# 6. Closed-loop #}
+    <div class="rounded-2xl bg-white shadow-sm p-4">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Closed-loop</div>
+        <div class="mb-1" style="font-size:.85rem">
+            Бренды: {{ tiles.closedLoop.brandPending is null ? '—' : tiles.closedLoop.brandPending }} pending
+            {% if tiles.closedLoop.brandExpired is not null and tiles.closedLoop.brandExpired > 0 %}
+                <span class="text-red-600">· {{ tiles.closedLoop.brandExpired }} просрочено окно замера</span>
+            {% endif %}
+        </div>
+        {% if tiles.closedLoop.cityPending is not null %}
+            <div style="font-size:.85rem">
+                Города: {{ tiles.closedLoop.cityPending }} pending
+                {% if tiles.closedLoop.cityExpired > 0 %}
+                    <span class="text-red-600">· {{ tiles.closedLoop.cityExpired }} просрочено окно замера</span>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    {# 7. Гео-хабы #}
+    <div class="rounded-2xl bg-white shadow-sm p-4">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Гео-хабы</div>
+        {% if tiles.geoHubs.available %}
+            <div>{{ dash.num(tiles.geoHubs.curated, false) }} <span class="text-gray-500" style="font-size:.8rem">кураторских из {{ tiles.geoHubs.totalCities }} городов с активными брендами</span></div>
+            <div><a href="{{ tiles.geoHubs.link }}" class="text-blue-600" style="font-size:.85rem">города →</a></div>
+        {% else %}
+            <div class="text-gray-400">—</div>
+        {% endif %}
+    </div>
+
+    {# 8. Деньги/подписки #}
+    <div class="rounded-2xl bg-white shadow-sm p-4">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Деньги/подписки</div>
+        {% if tiles.money.available %}
+            <div class="mb-1" style="font-size:.85rem">
+                {% for tariff, count in tiles.money.subsByTariff %}
+                    {{ tariff }}: {{ count }}{{ not loop.last ? ' · ' : '' }}
+                {% else %}
+                    нет активных подписок
+                {% endfor %}
+            </div>
+            <div class="{{ tiles.money.saleGated > 0 ? 'text-red-600 font-semibold' : '' }}" style="font-size:.85rem">
+                {{ tiles.money.saleGated }} опубликованных брендов с товаром без готового приёма оплаты
+            </div>
+        {% else %}
+            <div class="text-gray-400">—</div>
+        {% endif %}
+    </div>
+
+</div>
 {% endblock main %}

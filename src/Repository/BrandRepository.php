@@ -607,6 +607,23 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Сколько брендов реально ждут дрип-публикации — ТОТ ЖЕ WHERE, что findDripCandidateIds
+     * (без ранжирующих JOIN/ORDER BY, они на COUNT не влияют). Для дашборда: НЕ путать с
+     * `queue_pending` из /api/v1/publish-stats (status='new' AND publish_pending=1 БЕЗ
+     * niche/origin-гейтов) — та цифра маскировала простой дрипа niche_status='off' мусором
+     * (396 «в очереди» при 0 реально публикабельных, см. PR admin-dashboard).
+     */
+    public function countDripCandidates(): int
+    {
+        return (int) $this->getEntityManager()->getConnection()->fetchOne(
+            "SELECT COUNT(*) FROM brand b
+             WHERE b.status = 'new' AND b.publish_pending = 1
+               AND (b.niche_status IS NULL OR b.niche_status <> 'off')
+               AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign', 'unknown'))",
+        );
+    }
+
+    /**
      * Кандидаты для напоминаний о реквизитах (app:brand:payment-reminders): опубликованные
      * активные бренды с владельцем (brand_user role='owner') и хотя бы одним активным
      * товаром. Готовность приёма оплаты и день с публикации — не денормализованы,

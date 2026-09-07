@@ -7,6 +7,7 @@ namespace App\Repository;
 use App\Entity\Brand;
 use App\Entity\BrandKeyword;
 use App\Entity\BrandRagPipeline;
+use App\Entity\BrandSourceUrl;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -117,6 +118,50 @@ class PipelineQueueRepository
     {
         return (int) $this->applyGates($this->keywordsQueueQb())
             ->select('COUNT(DISTINCT b.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Остаток брендов пайплайна в конкретном статусе (напр. 'scraped' = ждут embed,
+     * 'embedded' = ждут generate, 'deferred', 'generate_failed') — снимок для админ-дашборда.
+     * Гейты niche/origin намеренно НЕ применяются: то же непосредственное соответствие
+     * status='X', что у /admin/rag (RagDashboardController) — там эти числа тоже сырые.
+     */
+    public function countByStatus(string $status): int
+    {
+        return (int) $this->qb()
+            ->select('COUNT(b.id)')
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.status = :status')
+            ->setParameter('status', $status)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Бренды, ещё не прошедшие discover (нет строки пайплайна ИЛИ discovered_at пуст) —
+     * тот же предикат, что «discover (сервер)» на /admin/rag (левый край воронки конвейера).
+     */
+    public function countAwaitingDiscover(): int
+    {
+        return (int) $this->qb()
+            ->select('COUNT(b.id)')
+            ->leftJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('b.status IN (:statuses)')
+            ->andWhere('p.id IS NULL OR p.discoveredAt IS NULL')
+            ->setParameter('statuses', [Statuses::Active, Statuses::New])
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /** Бренды с хотя бы одним ещё не скачанным URL-источником (стадия fetch). */
+    public function countAwaitingFetch(): int
+    {
+        return (int) $this->em->getRepository(BrandSourceUrl::class)->createQueryBuilder('u')
+            ->select('COUNT(DISTINCT u.brand)')
+            ->where('u.status = :status')
+            ->setParameter('status', BrandSourceUrl::STATUS_PENDING)
             ->getQuery()
             ->getSingleScalarResult();
     }
@@ -269,13 +314,63 @@ class PipelineQueueRepository
      * Сколько брендов готовы к доставке на прод — ТОТ ЖЕ предикат, что findReadyToPush.
      * Единый источник правды: дашборд (RagDashboardController) и отчёт (PipelineReportCommand)
      * зовут это вместо собственных raw-SQL-копий, которые расходились с DQL (§2③).
+     *
+     * ⚠️ Фикс 2026-09-07: раньше здесь НЕ вызывался applyGates() (в отличие от findReadyToPush,
+     * который гейты получает через finishStageQuery) — count и find расходились между собой.
+     * На проде это долго маскировало то, что дрип-очередь новых карточек пуста (см.
+     * countNeverPushed): countReadyToPush() без гейтов показывал 19 (включая niche_status='off'
+     * рестарты), с гейтами — 11, из которых 0 никогда не пушенных (все 11 — re-push).
      */
     public function countReadyToPush(int $maxAttempts = 3, bool $includePushed = false): int
     {
-        return (int) $this->readyToPushQb($maxAttempts, $includePushed)
+        return (int) $this->applyGates($this->readyToPushQb($maxAttempts, $includePushed))
             ->select('COUNT(b.id)')
             ->getQuery()
             ->getSingleScalarResult();
+    }
+
+    /**
+     * Готовы к публикации и НИКОГДА не пушились — реальные НОВЫЕ карточки (в отличие от
+     * countReadyToPush(), который смешивает их с re-push уже опубликованных). Для дашборда:
+     * именно это число падает в ноль, когда дрип новых карточек встал, а re-push его маскирует.
+     */
+    public function countNeverPushed(int $maxAttempts = 3): int
+    {
+        return (int) $this->applyGates($this->baseReadyQb($maxAttempts)->andWhere('p.pushedAt IS NULL'))
+            ->select('COUNT(b.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /** Готовы к публикации, уже были на проде, но контент изменился ПОСЛЕ пуша — re-push, не новая карточка. */
+    public function countRePushPending(int $maxAttempts = 3): int
+    {
+        return (int) $this->applyGates($this->baseReadyQb($maxAttempts)->andWhere('p.pushedAt IS NOT NULL AND p.contentChangedAt > p.pushedAt'))
+            ->select('COUNT(b.id)')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Общие условия готовности к публикации БЕЗ фильтра «пушен/не пушен» (вынесено
+     * из readyToPushQb, чтобы countNeverPushed/countRePushPending не дублировали
+     * список условий — см. §2③ про расходящиеся копии).
+     */
+    private function baseReadyQb(int $maxAttempts): QueryBuilder
+    {
+        return $this->qb()
+            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
+            ->where('p.status = :done')
+            ->andWhere('p.pushAttempts < :maxAttempts')
+            ->andWhere('p.faqStatus IN (:faqOk)')
+            ->andWhere('p.keywordsStatus IN (:kwOk)')
+            ->andWhere("b.description IS NOT NULL AND b.description != ''")
+            ->andWhere("b.metaTitle IS NOT NULL AND b.metaTitle != ''")
+            ->andWhere("b.metaDescription IS NOT NULL AND b.metaDescription != ''")
+            ->setParameter('done', BrandRagPipeline::STATUS_DONE)
+            ->setParameter('maxAttempts', $maxAttempts)
+            ->setParameter('faqOk', [BrandRagPipeline::FAQ_DONE, BrandRagPipeline::FAQ_SKIPPED])
+            ->setParameter('kwOk', [BrandRagPipeline::KW_FOUND, BrandRagPipeline::KW_NOT_FOUND]);
     }
 
     /**
@@ -287,20 +382,8 @@ class PipelineQueueRepository
      */
     private function readyToPushQb(int $maxAttempts, bool $includePushed): QueryBuilder
     {
-        return $this->qb()
-            ->innerJoin(BrandRagPipeline::class, 'p', 'WITH', 'p.brand = b')
-            ->where('p.status = :done')
-            ->andWhere('p.pushAttempts < :maxAttempts')
-            ->andWhere($includePushed ? '1=1' : '(p.pushedAt IS NULL OR p.contentChangedAt > p.pushedAt)')
-            ->andWhere('p.faqStatus IN (:faqOk)')
-            ->andWhere('p.keywordsStatus IN (:kwOk)')
-            ->andWhere("b.description IS NOT NULL AND b.description != ''")
-            ->andWhere("b.metaTitle IS NOT NULL AND b.metaTitle != ''")
-            ->andWhere("b.metaDescription IS NOT NULL AND b.metaDescription != ''")
-            ->setParameter('done', BrandRagPipeline::STATUS_DONE)
-            ->setParameter('maxAttempts', $maxAttempts)
-            ->setParameter('faqOk', [BrandRagPipeline::FAQ_DONE, BrandRagPipeline::FAQ_SKIPPED])
-            ->setParameter('kwOk', [BrandRagPipeline::KW_FOUND, BrandRagPipeline::KW_NOT_FOUND]);
+        return $this->baseReadyQb($maxAttempts)
+            ->andWhere($includePushed ? '1=1' : '(p.pushedAt IS NULL OR p.contentChangedAt > p.pushedAt)');
     }
 
     /**

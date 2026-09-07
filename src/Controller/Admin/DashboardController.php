@@ -28,6 +28,7 @@ use App\Entity\SocialPost;
 use App\Entity\BrandMarket;
 use App\Entity\ShippingRule;
 use App\Entity\TaxRule;
+use App\Service\Admin\AdminDashboardSummary;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
@@ -40,9 +41,16 @@ use Symfony\Component\HttpFoundation\Response;
 #[AdminDashboard(routePath: '/admin', routeName: 'admin')]
 class DashboardController extends AbstractDashboardController
 {
+    public function __construct(
+        private readonly AdminDashboardSummary $summary,
+    ) {
+    }
+
     public function index(): Response
     {
-        return $this->render('admin/dashboard.html.twig');
+        return $this->render('admin/dashboard.html.twig', [
+            'tiles' => $this->summary->build(),
+        ]);
 //        return parent::index();
 
         // Option 1. You can make your dashboard redirect to some common page of your backend
