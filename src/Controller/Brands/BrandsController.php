@@ -213,6 +213,11 @@ class BrandsController extends AbstractController
         }
 
         return $this->render('tailwind/brand/index.html.twig', [
+            // Живой счётчик для меты: в шаблоне было зашито «Более 340 брендов»,
+            // при фактических 2778 опубликованных. Мета видна в выдаче по головному
+            // запросу категории («российские бренды одежды», 20 273 показа/мес по
+            // Wordstat), и восьмикратное занижение там работает против нас.
+            'publishedCount' => $repo->countPubliclyVisible(),
             'brands' => $brands,
             'featuredBrands' => $featured,
             'alphabets' => $displayAlphabets,
