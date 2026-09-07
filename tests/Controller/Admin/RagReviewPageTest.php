@@ -24,14 +24,21 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 class RagReviewPageTest extends WebTestCase
 {
     private ?string $originalQdrantCollection = null;
+    private bool $qdrantCollectionEnvTouched = false;
 
     protected function tearDown(): void
     {
-        if ($this->originalQdrantCollection !== null) {
-            putenv('QDRANT_COLLECTION=' . $this->originalQdrantCollection);
-            $_ENV['QDRANT_COLLECTION'] = $this->originalQdrantCollection;
-            $_SERVER['QDRANT_COLLECTION'] = $this->originalQdrantCollection;
-            $this->originalQdrantCollection = null;
+        if ($this->qdrantCollectionEnvTouched) {
+            // Dotenv::bootEnv() по умолчанию НЕ вызывает putenv() (usePutenv=false с 5.1),
+            // значение живёт только в $_ENV/$_SERVER — оттуда его и нужно восстанавливать
+            // (getenv() тут вернёт false, даже когда .env.test задал переменную).
+            if ($this->originalQdrantCollection === null) {
+                unset($_ENV['QDRANT_COLLECTION'], $_SERVER['QDRANT_COLLECTION']);
+            } else {
+                $_ENV['QDRANT_COLLECTION'] = $this->originalQdrantCollection;
+                $_SERVER['QDRANT_COLLECTION'] = $this->originalQdrantCollection;
+            }
+            $this->qdrantCollectionEnvTouched = false;
         }
         parent::tearDown();
     }
@@ -39,7 +46,8 @@ class RagReviewPageTest extends WebTestCase
     /** Точно воспроизводит прод-окружение: QDRANT_COLLECTION нигде не задан. */
     public function testReviewPageRendersWithoutQdrantCollectionEnv(): void
     {
-        $this->originalQdrantCollection = (string) getenv('QDRANT_COLLECTION');
+        $this->originalQdrantCollection = $_SERVER['QDRANT_COLLECTION'] ?? $_ENV['QDRANT_COLLECTION'] ?? null;
+        $this->qdrantCollectionEnvTouched = true;
         putenv('QDRANT_COLLECTION');
         unset($_ENV['QDRANT_COLLECTION'], $_SERVER['QDRANT_COLLECTION']);
 
