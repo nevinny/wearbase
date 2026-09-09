@@ -69,6 +69,8 @@
 | [wardrobe_mvp.md](wardrobe_mvp.md) | Цифровой гардероб: совместимый MVP поверх семейных и AI-функций |
 | [family_purchase_learning.md](family_purchase_learning.md) | **Семейные покупки и обучаемая носка**: provider-agnostic запрос ребёнка → решение родителя → примерка → фото образа → журнал носок → персональная память; PWA/API/iOS, модель данных, privacy и план. От 2026-08-08 |
 | [wardrobe_roadmap.md](wardrobe_roadmap.md) | Семейный гардероб как продуктовая гипотеза/moat: дети, передачи вещей, совместные покупки и AI-стилист |
+| [wardrobe_competitors_2026.md](wardrobe_competitors_2026.md) | **Разбор рынка цифровых гардеробов и AI-стилистов + GAP-лист WEARBASE** (2026-08-20): все 11 приложений из рейтинга beautyai по отдельности, РФ-рынок (GetWardrobe уже продаёт семейный гардероб, RU — его крупнейший рынок), люкс-ассистенты, семейно-детский слой; 78 отсутствующих функций в три яруса (table stakes / семья / HNWI), блок «не делать» и фазовый план |
+| [wardrobe_hnwi_services.md](wardrobe_hnwi_services.md) | **Гардероб HNWI**: что реально делают консьержи, батлеры и private-client сервисы вокруг одежды — Garde Robe by UOVO, NAP EIP, Farfetch Private Client, страхование и провенанс, дресс-коды; 28 сценариев, которых нет в mass-market closet-приложениях. 42 источника |
 | [wardrobe_ai_learning.md](wardrobe_ai_learning.md) | **AI-стилист и обучение**: изоляция личных гардеробов, семейные профили, feedback-loop, embedder/Qdrant, добровольный общий опыт и controlled LoRA. Решение от 2026-08-08 |
 | [antifraud_plan.md](antifraud_plan.md) | Антифрод и верификация брендов — план на будущее |
 | [superpowers/specs/2026-05-24-product-page-redesign.md](superpowers/specs/2026-05-24-product-page-redesign.md) | Спека редизайна карточки товара (по WB) |
