@@ -80,9 +80,10 @@
 | Документ | О чём |
 |---|---|
 | [onboarding.md](onboarding.md) | **Локальный запуск с нуля для нового разработчика**: `.env.local.example` → `.env.local`, MySQL (не SQLite), миграции; что LAN-only (LLM-сервер/RAG) и не нужно для разработки. От 2026-07-22 |
+| [llm_infra_handoff.md](llm_infra_handoff.md) | **Состав и доступы LLM-рига** (ollama + Qdrant + SearXNG): железо и его пределы, порты, модели, конвенции коллекций Qdrant, грабли под нагрузкой. CPU обновлён до i7-2670QM (AVX) — что это разблокировало. От 2026-07-15, апдейт 2026-08-09 |
+| [llm_rig_valuation.md](llm_rig_valuation.md) | Оценка рига в деньгах по вторичке (~130 тыс. ₽, половина — в A4000), сравнение с арендой, почему как демо-стенд не годится. От 2026-08-09 |
 | [production.md](production.md) | Прод-окружение (reg.ru): env-карта, деплой, известные проблемы |
 | [commands.md](commands.md) | Справочник всех console-команд (зачем/как часто/где + cron) |
-| [llm_infra_handoff.md](llm_infra_handoff.md) | Домашний AI-сервер: snapshot железа, Gemma, vision TBD, embedder, Qdrant и LAN-доступ |
 | [llm_relay_handoff.md](llm_relay_handoff.md) | Pull-relay `llmq.php` для локального тестирования вне LAN; production endpoint отдельно |
 
 ## Трекеры и история

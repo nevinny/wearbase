@@ -39,7 +39,8 @@
   **низ** = вся область ног целиком → юбка ложится сплошным силуэтом.
 
 Agnostic-маску строит нода `ClothesSegment` (SCHP-парсинг, 20 классов тела) — выбором классов
-тела, а не одежды. **DensePose/detectron2 НЕ нужны** (и не собираются на Celeron в .43 без AVX).
+тела, а не одежды. **DensePose/detectron2 НЕ нужны** (и не собирались на прежнем Celeron без AVX
+— см. примечание об апгрейде хоста в §2).
 
 ---
 
@@ -48,7 +49,14 @@ Agnostic-маску строит нода `ClothesSegment` (SCHP-парсинг,
 | Компонент | Значение |
 |---|---|
 | GPU | 3× RTX 2060 Super (8 ГБ) + 1× RTX A4000 (16 ГБ); VTON крутится на A4000 — `CUDA_VISIBLE_DEVICES=3` |
-| CPU | Intel Celeron B810 (**нет AVX** — отсюда грабли с kornia-rs, detectron2) |
+| CPU | ~~Intel Celeron B810 (**нет AVX** — отсюда грабли с kornia-rs, detectron2)~~ → **заменён на i7-2670QM** (Sandy Bridge, 4C/8T, **AVX есть**) |
+
+> ⚠️ **Апгрейд CPU снимает главный блокер v3.** Всё, что ниже в этом документе списано на
+> «нет AVX» (kornia-rs, detectron2/DensePose, а с ними IDM-VTON и Leffa), упиралось именно в
+> Celeron B810. У i7-2670QM AVX есть, отдельная машина под это больше не нужна.
+> Сборку detectron2 надо **перепроверить** — AVX был не единственным риском (версии torch/GCC),
+> но документированное препятствие исчезло. Актуальный состав хоста —
+> [llm_infra_handoff.md](llm_infra_handoff.md).
 | ComfyUI | `~/vton/ComfyUI`, venv с torch 2.5.1+cu121 |
 | Запуск | `cd ~/vton/ComfyUI && . venv/bin/activate && CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=3 python main.py --listen 0.0.0.0 --port 8188` |
 | Доступ с мака | порт 8188 закрыт фаерволом снаружи → SSH-туннель: `ssh -N -L 8188:localhost:8188 llm` |
@@ -151,8 +159,9 @@ Agnostic-маску строит нода `ClothesSegment` (SCHP-парсинг,
 
 1. **Атлас/блеск, полный фотореализм низа** — предел CatVTON (обучен в осн. на верхе, VITON-HD).
    Апгрейд: **IDM-VTON** (установлен) или **Leffa** — держат ткань лучше, НО требуют **DensePose**
-   (detectron2), который не собирается на Celeron без AVX. Нужна отдельная GPU-машина с AVX-CPU,
-   либо генерация DensePose на стороне. Это v3.
+   (detectron2), который не собирался на прежнем Celeron без AVX. **С заменой CPU на i7-2670QM
+   (AVX есть) это ограничение снято** — отдельная машина не нужна, надо просто перепробовать
+   сборку detectron2 на самом .43. Это v3, и теперь она разблокирована.
 2. **IC-Light переосвещение** — на полном denoise перерисовывает фон и обесцвечивает одежду.
    В PoC отключён (мастер-фото и так чистое). Для «настоящего студийного света» нужна аккуратная
    настройка denoise + DetailTransfer — отложено.
