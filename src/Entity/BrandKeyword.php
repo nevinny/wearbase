@@ -56,6 +56,19 @@ class BrandKeyword
     #[ORM\Column(length: 16, options: ['default' => self::SOURCE_WORDSTAT])]
     private string $source = self::SOURCE_WORDSTAT;
 
+    /**
+     * Фраза отсеяна минус-словами (KeywordBlocklist). NULL = чистая. Помечаем, а НЕ
+     * удаляем: правило проекта — только soft-delete, плюс список минус-слов правится
+     * (env KEYWORD_STOPWORDS), и по метке видно, что именно он отсёк. Все читающие
+     * выборки фильтруют blocked_at IS NULL.
+     */
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeImmutable $blockedAt = null;
+
+    /** Чем отсеяно: сработавший токен/стем/фраза — чтобы отличить ошибку списка от мусора. */
+    #[ORM\Column(length: 64, nullable: true)]
+    private ?string $blockedReason = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -125,5 +138,38 @@ class BrandKeyword
     {
         $this->source = $source;
         return $this;
+    }
+
+    public function getBlockedAt(): ?\DateTimeImmutable
+    {
+        return $this->blockedAt;
+    }
+
+    public function isBlocked(): bool
+    {
+        return $this->blockedAt !== null;
+    }
+
+    /** Пометить отсеянной (soft). $reason — сработавшее минус-слово. */
+    public function block(string $reason): static
+    {
+        $this->blockedAt     = new \DateTimeImmutable();
+        $this->blockedReason = mb_substr($reason, 0, 64);
+
+        return $this;
+    }
+
+    /** Снять метку (минус-слово оказалось ложным). */
+    public function unblock(): static
+    {
+        $this->blockedAt     = null;
+        $this->blockedReason = null;
+
+        return $this;
+    }
+
+    public function getBlockedReason(): ?string
+    {
+        return $this->blockedReason;
     }
 }

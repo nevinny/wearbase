@@ -7,6 +7,7 @@ use App\Entity\BrandFaq;
 use App\Entity\BrandKeyword;
 use App\Entity\BrandLink;
 use App\Entity\BrandStore;
+use App\Service\Keyword\KeywordBlocklist;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 
@@ -25,6 +26,7 @@ class BrandIngestService
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly string $projectDir,
+        private readonly KeywordBlocklist $keywordBlocklist,
     ) {
     }
 
@@ -271,7 +273,9 @@ class BrandIngestService
         $this->em->getRepository(BrandKeyword::class)->deleteForBrand($brand);
         foreach (array_slice($rows, 0, 200) as $row) {
             $phrase = trim((string) ($row['keyword'] ?? ''));
-            if ($phrase === '') {
+            // Минус-слова и на прод-стороне: Mac мог собрать мусор до появления списка,
+            // а пуш — второй путь записи brand_keyword помимо app:brand:keywords.
+            if ($phrase === '' || $this->keywordBlocklist->isBlocked($phrase)) {
                 continue;
             }
             $this->em->persist((new BrandKeyword())
