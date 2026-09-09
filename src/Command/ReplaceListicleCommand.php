@@ -216,6 +216,13 @@ class ReplaceListicleCommand extends Command
                     $anchorFacts,
                 );
             }
+            // Rename-хук: без этого факта модель не может ответить на «как теперь называется X»
+            // — доминирующий интент по GSC (24% показов профиля приходится на него).
+            if (($cfg['successor_note'] ?? null) !== null) {
+                $anchorFacts = trim($anchorFacts) === ''
+                    ? (string) $cfg['successor_note']
+                    : $anchorFacts . "\n\n" . (string) $cfg['successor_note'];
+            }
             $io->text(sprintf('  · %s (X) — %d симв. фактов', $anchor->getTitle(), mb_strlen($anchorFacts)));
             $llmBrands = [];
             foreach ($replacements as $b) {
@@ -229,7 +236,7 @@ class ReplaceListicleCommand extends Command
             $io->text($faq === [] ? '  нет подходящих фраз/фактов — FAQ пропущен' : sprintf('  %d Q/A пар', count($faq)));
 
             foreach (self::PLATFORMS as $platform) {
-                if ($this->generateForPlatform($anchor, $style, $replacements, $llmBrands, $keywords, $anchorFacts, $faq, $platform, $outDir, $force, $io)) {
+                if ($this->generateForPlatform($anchor, $style, $replacements, $llmBrands, $keywords, $anchorFacts, $faq, $platform, $outDir, $force, $io, $cfg)) {
                     $ok++;
                 } else {
                     $rejected++;
@@ -269,6 +276,7 @@ class ReplaceListicleCommand extends Command
         string $outDir,
         bool $force,
         SymfonyStyle $io,
+        array $cfg = [],
     ): bool {
         $anchorName = (string) $anchor->getTitle();
         $tone       = self::PLATFORM_TONES[$platform];
@@ -278,6 +286,13 @@ class ReplaceListicleCommand extends Command
         // Speller'ом (использовано и в глюк-гейте ниже, и в финальной вычитке).
         $protected = array_map(static fn(Brand $b) => (string) $b->getTitle(), $replacements);
         $protected[] = $anchorName;
+        // Алиас и преемник — тоже имена собственные: Speller/корректор их иначе «исправит»
+        // (ровно те слова, ради которых вводился формат).
+        foreach ([$cfg['alias'] ?? null, $cfg['successor'] ?? null] as $extra) {
+            if ($extra !== null && $extra !== '') {
+                $protected[] = (string) $extra;
+            }
+        }
 
         $io->text(sprintf('Генерация · %s · %s', $platform, $persona));
 
@@ -303,6 +318,11 @@ class ReplaceListicleCommand extends Command
             }
             $raw = $this->softenCliches($raw);
             $issues = $this->qualityGate($raw, $replacements, $anchorName, $keywords);
+            // Title обещает преемника — тело обязано его упомянуть, иначе заголовок-кликбейт.
+            $successor = (string) ($cfg['successor'] ?? '');
+            if ($successor !== '' && mb_stripos($raw, $successor) === false) {
+                $issues[] = "преемник «{$successor}» не упомянут в тексте";
+            }
             // Известный глюк gemma4:26b («му»/«ло»/«лан» внутри слова, docs/tasktracker.md) —
             // проверяем ТОЛЬКО когда остальной гейт уже чист (иначе fixHint и так регенерит,
             // лишний вызов Speller не нужен).
@@ -326,10 +346,10 @@ class ReplaceListicleCommand extends Command
         }
 
         // Корректура — один раз на принятом черновике (+ повторный softenCliches).
-        $body = $this->softenCliches($this->applyProofread($body, $protected, $io));
+        $body = $this->normalizeHeadings($this->softenCliches($this->applyProofread($body, $protected, $io)));
 
         // X в title — по построению (гейт (a) для title закрыт детерминированно).
-        $title    = $this->buildTitle($anchorName, count($replacements), $platform);
+        $title    = $this->buildTitle($anchorName, count($replacements), $platform, $cfg);
         $campaign = sprintf('replace-%s-%s', $anchor->getSlug(), $platform);
 
         // X НЕ входит в $replacements → не линкуется и не попадает в ItemList.
@@ -393,6 +413,13 @@ class ReplaceListicleCommand extends Command
                 'niche'    => isset($a['niche']) && $a['niche'] !== null && $a['niche'] !== '' ? (string) $a['niche'] : null,
                 'count'    => (int) ($a['count'] ?? 6),
                 'keywords' => is_array($a['keywords'] ?? null) ? $a['keywords'] : [],
+                // Кириллическая форма имени X («страдивариус»): спрос в РФ идёт кириллицей,
+                // а title/тело писались латиницей — статья не совпадала с запросом.
+                'alias'     => isset($a['alias']) && $a['alias'] !== '' ? (string) $a['alias'] : null,
+                // Преемник — сеть, открывшаяся на месте магазинов X (Zara→MAAG). Только
+                // курируется вручную: формулировка не «переименование», а смена владельца.
+                'successor' => isset($a['successor']) && $a['successor'] !== '' ? (string) $a['successor'] : null,
+                'successor_note' => isset($a['successor_note']) && $a['successor_note'] !== '' ? (string) $a['successor_note'] : null,
             ];
         }
         if ($out === []) {
@@ -840,12 +867,26 @@ class ReplaceListicleCommand extends Command
     }
 
     /** Оглавление из H2-секций статьи (UX + анкоры). */
+    /**
+     * Схлопывает задвоенный маркер заголовка («## ## 3. ROBE» — артефакт LLM) и выкидывает
+     * пустые заголовки. Без этого «##» утекал и в H2, и в пункт оглавления.
+     */
+    private function normalizeHeadings(string $body): string
+    {
+        $body = preg_replace('/^(#{1,6})[ \t]+#{1,6}[ \t]+/mu', '$1 ', $body) ?? $body;
+
+        return preg_replace('/^#{1,6}[ \t]*$\n?/mu', '', $body) ?? $body;
+    }
+
     private function buildToc(string $body): string
     {
         if (!preg_match_all('/^##\s+(.+?)\s*$/mu', $body, $m) || count($m[1]) < 2) {
             return '';
         }
-        $items = array_map(static fn(string $h) => '- ' . $h, $m[1]);
+        $items = array_map(static fn(string $h) => '- ' . $h, array_filter($m[1], static fn(string $h) => trim($h) !== ''));
+        if (count($items) < 2) {
+            return '';
+        }
 
         return "## Содержание\n\n" . implode("\n", $items);
     }
@@ -869,10 +910,26 @@ class ReplaceListicleCommand extends Command
      * но title тоже должен подтверждаться телом — заголовок без кликбейта). site — SEO-формат
      * с годом; dzen — «живой голос» (позитивная интрига, item 2 ТЗ), НИКАКОГО принижения X.
      */
-    private function buildTitle(string $anchorName, int $count, string $platform): string
+    private function buildTitle(string $anchorName, int $count, string $platform, array $cfg = []): string
     {
         if ($platform === 'dzen') {
             return sprintf('Не бегите за %s: %d российских брендов, которые стоит присмотреть', $anchorName, $count);
+        }
+
+        // Доминирующий запрос — «как теперь называется X» (а не «чем заменить»): по GSC он
+        // даёт кратно больше показов. Ставим его первым, чтобы money-слова пережили обрезку
+        // сниппета (~60 симв.), и добавляем кириллическую форму имени — спрос идёт ею.
+        $successor = (string) ($cfg['successor'] ?? '');
+        $alias     = (string) ($cfg['alias'] ?? '');
+        if ($successor !== '') {
+            return sprintf(
+                'Как теперь называется %s в России — %s. Чем заменить %s: %d российских брендов (%s)',
+                $anchorName,
+                $successor,
+                $alias !== '' ? $alias : $anchorName,
+                $count,
+                date('Y'),
+            );
         }
 
         return sprintf('Чем заменить %s в России: %d российских брендов (%s)', $anchorName, $count, date('Y'));

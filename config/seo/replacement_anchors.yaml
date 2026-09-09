@@ -11,7 +11,10 @@ anchors:
   - foreign: zara          # slug бренда X в БД (origin_status='foreign')
     niche: classic         # slug BrandStyle или null → auto из первого style бренда X
     count: 5               # брендов-замен в статье
-    keywords: []           # доп. фразы к replacement-фразам X из brand_keyword
+    keywords: ["как теперь называется zara", "зара в россии", "вместо zara", "zara в россии", "чем заменить zara"]
+    alias: "зара"
+    successor: "MAAG"
+    successor_note: "В 2022 году Inditex свернул работу в России. В 2023 году магазины сети перешли к новому владельцу (Daher Group) и открылись под вывеской MAAG. Это не переименование Zara и не та же компания: ассортимент и владелец другие."
   - foreign: crocs
     niche: streetwear
     count: 5
@@ -23,11 +26,17 @@ anchors:
   - foreign: stradivarius
     niche: classic
     count: 5
-    keywords: []
+    keywords: ["как теперь называется страдивариус", "страдивариус как называется в россии", "вместо страдивариус", "страдивариус в россии", "stradivarius в россии"]
+    alias: "страдивариус"
+    successor: "VILET"
+    successor_note: "В 2022 году Inditex свернул работу в России. В 2023 году магазины сети перешли к новому владельцу (Daher Group) и открылись под вывеской VILET. Это не переименование Stradivarius и не та же компания: ассортимент и владелец другие."
   - foreign: bershka
     niche: streetwear
     count: 5
-    keywords: []
+    keywords: ["ecru это бершка", "как теперь называется bershka", "бершка в россии", "вместо bershka", "чем заменить bershka"]
+    alias: "бершка"
+    successor: "ECRU"
+    successor_note: "В 2022 году Inditex свернул работу в России. В 2023 году магазины сети перешли к новому владельцу (Daher Group) и открылись под вывеской ECRU. Это не переименование Bershka и не та же компания: ассортимент и владелец другие."
   - foreign: nike
     niche: sport
     count: 5
@@ -35,7 +44,8 @@ anchors:
   - foreign: adidas
     niche: sport
     count: 5
-    keywords: ["adidas в россии", "чем заменить adidas", "аналоги adidas"]
+    keywords: ["adidas в россии", "чем заменить adidas", "аналоги adidas", "адидас ушел из россии", "адидас в россии"]
+    alias: "адидас"
   - foreign: puma
     niche: sport
     count: 5
@@ -99,7 +109,10 @@ anchors:
   - foreign: pull-and-bear
     niche: casual
     count: 5
-    keywords: ["pull&bear в россии", "чем заменить pull&bear", "аналоги pull&bear"]
+    keywords: ["как теперь называется pull and bear", "pull&bear в россии", "чем заменить pull&bear", "аналоги pull&bear", "пул энд бир в россии"]
+    alias: "пул энд бир"
+    successor: "DUB"
+    successor_note: "В 2022 году Inditex свернул работу в России. В 2023 году магазины сети перешли к новому владельцу (Daher Group) и открылись под вывеской DUB. Это не переименование Pull&Bear и не та же компания: ассортимент и владелец другие."
   - foreign: oysho
     niche: casual
     count: 5
@@ -107,7 +120,8 @@ anchors:
   - foreign: massimo-dutti
     niche: classic
     count: 5
-    keywords: ["massimo dutti в россии", "чем заменить massimo dutti", "аналоги massimo dutti"]
+    keywords: ["massimo dutti в россии", "чем заменить massimo dutti", "аналоги massimo dutti", "массимо дутти в россии"]
+    alias: "массимо дутти"
   - foreign: decathlon
     niche: sport
     count: 5
