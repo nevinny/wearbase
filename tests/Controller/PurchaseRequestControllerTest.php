@@ -78,6 +78,25 @@ class PurchaseRequestControllerTest extends AuthenticatedWebTestCase
         $this->assertSame(0, $this->em()->getRepository(PurchaseRequest::class)->count(['subject' => $child]));
     }
 
+    public function testSharedCartModeIsUnavailableWhileFeatureFlagIsOff(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), $this->email('shared-cart-parent'));
+        $child = $this->families()->createChild($parent, 'Лиза');
+        $client->loginUser($child);
+
+        $crawler = $client->request('GET', '/account/purchases/new');
+        $client->request('POST', '/account/purchases/new', ['purchase_request_form' => [
+            'subject' => '0',
+            'importMode' => 'shared_cart',
+            'productUrl' => 'https://shop.example.test/shared/cart/42',
+            '_token' => (string) $crawler->filter('input[name="purchase_request_form[_token]"]')->attr('value'),
+        ]]);
+
+        $this->assertResponseStatusCodeSame(422);
+        $this->assertSame(0, $this->em()->getRepository(PurchaseRequest::class)->count(['subject' => $child]));
+    }
+
     public function testProductUrlAcceptsPastedTextWithMarketplaceShareLink(): void
     {
         $client = static::createClient();

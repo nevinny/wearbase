@@ -1982,14 +1982,14 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 ### Фаза 0 — API/PWA-контракт и provider-agnostic импорт
 
 - [ ] Описать resources/endpoints `/api/v1/family-wardrobe` для PWA и будущего iOS-клиента.
-- [ ] Ввести `ExternalProductProviderInterface`, collection importer, registry и normalized snapshot.
-- [ ] Добавить обязательный `ManualProductProvider`: неизвестный магазин не блокирует запрос.
+- [x] Ввести `ExternalProductProviderInterface`, optional shared-cart capability, registry и normalized snapshot.
+- [x] Добавить обязательный `ManualProductProvider`: неизвестный HTTPS-магазин не блокирует запрос и не fetch'ится.
 - [ ] Перевести `WildberriesAdapter` в первую реализацию общего контракта без WB-полей в domain entities.
 - [ ] Собрать обезличенные примеры ссылок «Поделиться корзиной» из web и приложения WB.
 - [ ] Зафиксировать редиректы, срок жизни и публичный payload интеграционными фикстурами.
 - [ ] Решить, можно ли надёжно извлекать список `/catalog/<nm>` без cookies/авторизации.
-- [ ] Закрепить обязательный fallback: несколько отдельных ссылок/артикулов WB.
-- [ ] Контрактным тестом доказать: второй provider добавляется без миграции purchase entities.
+- [x] Закрепить обязательный fallback: до 10 отдельных ссылок, нормализация и дедупликация.
+- [x] Контрактным тестом доказать: второй provider добавляется без миграции purchase entities.
 
 ### Фаза 0A — family onboarding и wardrobe-app API
 

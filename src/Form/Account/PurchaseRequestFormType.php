@@ -54,6 +54,14 @@ class PurchaseRequestFormType extends AbstractType
                 'label' => 'Для кого',
                 'choices' => $choices,
             ])
+            ->add('importMode', ChoiceType::class, [
+                'label' => 'Как добавить товары',
+                'choices' => $options['shared_cart_enabled'] ? [
+                    'Отдельные ссылки' => 'links',
+                    'Общая корзина (эксперимент)' => 'shared_cart',
+                ] : ['Отдельные ссылки' => 'links'],
+                'data' => 'links',
+            ])
             ->add('productUrl', UrlType::class, [
                 'label' => 'Первая ссылка на товар',
                 'constraints' => [
@@ -111,7 +119,9 @@ class PurchaseRequestFormType extends AbstractType
     public function configureOptions(OptionsResolver $resolver): void
     {
         $resolver->setRequired('subjects');
+        $resolver->setDefault('shared_cart_enabled', false);
         $resolver->setAllowedTypes('subjects', 'array');
+        $resolver->setAllowedTypes('shared_cart_enabled', 'bool');
         $resolver->setAllowedValues('subjects', static function (array $subjects): bool {
             foreach ($subjects as $subject) {
                 if (!$subject instanceof User) {

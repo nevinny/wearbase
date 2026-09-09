@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\PurchaseRequestRepository;
+use App\ValueObject\ExternalProductUrl;
 use App\ValueObject\MoneyAmount;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -90,23 +91,13 @@ class PurchaseRequest
     public function getProductUrl(): string { return $this->productUrl; }
     public function setProductUrl(string $productUrl): static
     {
-        self::assertSafeProductUrl($productUrl);
-        $this->productUrl = $productUrl;
+        $this->productUrl = ExternalProductUrl::fromString($productUrl)->toString();
         return $this;
     }
 
     public static function assertSafeProductUrl(string $productUrl): void
     {
-        $parts = parse_url($productUrl);
-        if (strlen($productUrl) > 2048
-            || $parts === false
-            || ($parts['scheme'] ?? null) !== 'https'
-            || empty($parts['host'])
-            || isset($parts['user'])
-            || preg_match('/[\x00-\x1F\x7F]/', $productUrl)
-        ) {
-            throw new \InvalidArgumentException('Допустима только безопасная HTTPS-ссылка');
-        }
+        ExternalProductUrl::fromString($productUrl);
     }
     public function getComment(): ?string { return $this->comment; }
     public function setComment(?string $comment): static

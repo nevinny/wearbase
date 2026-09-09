@@ -14,8 +14,10 @@ use App\Repository\PurchaseRequestItemRepository;
 use App\Service\FamilyBudgetService;
 use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
+use App\Service\Purchase\PurchaseProductImporter;
 use App\Service\Wardrobe\PurchaseToWardrobeService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Form\FormError;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -56,6 +58,7 @@ class PurchaseRequestController extends AbstractController
         Request $request,
         FamilyService $families,
         PurchaseRequestService $purchaseRequests,
+        PurchaseProductImporter $productImporter,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
@@ -64,20 +67,28 @@ class PurchaseRequestController extends AbstractController
             throw $this->createAccessDeniedException('Сначала добавьте ребёнка в семью');
         }
 
-        $form = $this->createForm(PurchaseRequestFormType::class, null, ['subjects' => $subjects]);
+        $form = $this->createForm(PurchaseRequestFormType::class, null, [
+            'subjects' => $subjects,
+            'shared_cart_enabled' => $productImporter->isSharedCartEnabled(),
+        ]);
         $form->handleRequest($request);
         if ($form->isSubmitted() && $form->isValid()) {
             $data = $form->getData();
-            $purchaseRequest = $purchaseRequests->create(
-                $user,
-                $data['subject'],
-                $data['productUrl'],
-                $data['comment'],
-                $data['estimatedPrice'] !== null ? (string) $data['estimatedPrice'] : null,
-                array_values(array_filter(array_map('trim', preg_split('/\R/', (string) ($data['additionalUrls'] ?? '')) ?: []))),
-            );
+            try {
+                $purchaseRequest = $purchaseRequests->create(
+                    $user,
+                    $data['subject'],
+                    $data['productUrl'],
+                    $data['comment'],
+                    $data['estimatedPrice'] !== null ? (string) $data['estimatedPrice'] : null,
+                    array_values(array_filter(array_map('trim', preg_split('/\R/', (string) ($data['additionalUrls'] ?? '')) ?: []))),
+                    ($data['importMode'] ?? 'links') === 'shared_cart',
+                );
 
-            return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $purchaseRequest->getId()]));
+                return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $purchaseRequest->getId()]));
+            } catch (\DomainException|\InvalidArgumentException $exception) {
+                $form->addError(new FormError($exception->getMessage()));
+            }
         }
 
         return $this->privateResponse($this->render('account/purchase/new.html.twig', [
