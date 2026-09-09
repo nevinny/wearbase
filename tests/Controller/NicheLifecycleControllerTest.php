@@ -12,6 +12,7 @@ use Doctrine\ORM\EntityManagerInterface;
  *  - deleted (мягко удалён)        → 410 Gone
  *  - active + closed_at (tombstone)→ 200 + плашка «прекратил работу»
  *  - new (в очереди дрип-публикации)→ 404
+ *  - merged_into (дубль склеен)     → 301 на выжившую карточку
  *
  * Run: php bin/phpunit --filter NicheLifecycle
  */
@@ -70,6 +71,41 @@ class NicheLifecycleControllerTest extends DatabaseDependentWebTestCase
         $client->request('GET', "/ru/brands/$slug");
 
         $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testMergedBrandRedirectsPermanently(): void
+    {
+        $this->skipIfNoDatabase();
+        $client = static::createClient();
+        $em = $client->getContainer()->get('doctrine.orm.entity_manager');
+
+        $survivorSlug = $this->makeBrand($em, 'niche-test-survivor', static fn (Brand $b) => $b);
+        $survivor = $em->getRepository(Brand::class)->findOneBy(['slug' => $survivorSlug]);
+        $dupeSlug = $this->makeBrand($em, 'niche-test-dupe', static fn (Brand $b) => $b->setMergedInto($survivor));
+
+        $client->request('GET', "/ru/brands/$dupeSlug");
+
+        $this->assertResponseRedirects("/ru/brands/$survivorSlug", 301);
+    }
+
+    /** Склейка сильнее мягкого удаления: дубль всегда 301-ит, а не отдаёт 410. */
+    public function testMergedAndDeletedBrandStillRedirects(): void
+    {
+        $this->skipIfNoDatabase();
+        $client = static::createClient();
+        $em = $client->getContainer()->get('doctrine.orm.entity_manager');
+
+        $survivorSlug = $this->makeBrand($em, 'niche-test-survivor2', static fn (Brand $b) => $b);
+        $survivor = $em->getRepository(Brand::class)->findOneBy(['slug' => $survivorSlug]);
+        $dupeSlug = $this->makeBrand(
+            $em,
+            'niche-test-dupe2',
+            static fn (Brand $b) => $b->setMergedInto($survivor)->softDelete(),
+        );
+
+        $client->request('GET', "/ru/brands/$dupeSlug");
+
+        $this->assertResponseRedirects("/ru/brands/$survivorSlug", 301);
     }
 
     /** Создаёт бренд с уникальным slug, применяет $mutate, сохраняет и регистрирует на очистку. */
