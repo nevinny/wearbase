@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Service\Gsc\GoogleIndexingClient;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -49,6 +50,7 @@ class GoogleIndexPingCommand extends Command
     protected function configure(): void
     {
         $this
+            ->addOption('slug',    null, InputOption::VALUE_REQUIRED, 'Пинговать только указанные slug (через запятую) — вне общего порядка published_at')
             ->addOption('limit',   null, InputOption::VALUE_REQUIRED, 'Дневной cap пингов (потолок ' . self::DAILY_HARD_CAP . ')', '180')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Показать выборку без отправки')
         ;
@@ -79,7 +81,7 @@ class GoogleIndexPingCommand extends Command
             return Command::SUCCESS;
         }
 
-        $targets = $this->selectTargets($quota);
+        $targets = $this->selectTargets($quota, $input->getOption('slug'));
         if ($targets === []) {
             $io->note('Нет URL для пинга (все в пределах cooldown ' . self::COOLDOWN_DAYS . ' дней).');
             return Command::SUCCESS;
@@ -130,11 +132,41 @@ class GoogleIndexPingCommand extends Command
     /**
      * Выборка с re-ping cooldown 14 дней; дедуп по brand_id.
      *
+     * @param string|null $slugs CSV slug'ов точечного пинга (SEO-фиксы вне очереди
+     *                           published_at); cooldown и квота общие — опция меняет только выборку.
+     *
      * @return array<int,string> brand_id => slug
      */
-    private function selectTargets(int $quota): array
+    private function selectTargets(int $quota, ?string $slugs = null): array
     {
-        $since    = (new \DateTime(sprintf('-%d days', self::COOLDOWN_DAYS)))->format('Y-m-d H:i:s');
+        if ($slugs !== null && trim($slugs) !== '') {
+            $wanted = array_values(array_filter(array_map('trim', explode(',', $slugs))));
+            if ($wanted === []) {
+                return [];
+            }
+
+            $rows = $this->db->fetchAllAssociative(
+                "SELECT b.id, b.slug FROM brand b
+                 LEFT JOIN google_index_ping p ON p.url = CONCAT(:base, '/ru/brands/', b.slug)
+                 WHERE b.status = 'active' AND b.slug IN (:slugs)
+                   AND (p.pinged_at IS NULL OR p.pinged_at < :cooldown)",
+                [
+                    'base'     => self::SITE_BASE,
+                    'cooldown' => (new \DateTime(sprintf('-%d days', self::COOLDOWN_DAYS)))->format('Y-m-d H:i:s'),
+                    'slugs'    => $wanted,
+                ],
+                ['slugs' => ArrayParameterType::STRING],
+            );
+
+            $targets = [];
+            foreach ($rows as $row) {
+                $targets[(int) $row['id']] = (string) $row['slug'];
+            }
+
+            return array_slice($targets, 0, $quota, preserve_keys: true);
+        }
+
+        $since = (new \DateTime(sprintf('-%d days', self::COOLDOWN_DAYS)))->format('Y-m-d H:i:s');
         $cooldown = $since; // одно и то же окно: 14 дней
 
         // Приоритет 1: свежеопубликованные дрипом

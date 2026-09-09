@@ -29,4 +29,19 @@ class WardrobeOutfitRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /** Сколько образов пользователь создал в окне [from, to) — бар квалификации реферальной награды. */
+    public function countCreatedByUserBetween(User $user, \DateTimeImmutable $from, \DateTimeImmutable $to): int
+    {
+        return (int) $this->createQueryBuilder('outfit')
+            ->select('COUNT(outfit.id)')
+            ->where('outfit.user = :user')
+            ->andWhere('outfit.createdAt >= :from')
+            ->andWhere('outfit.createdAt < :to')
+            ->setParameter('user', $user)
+            ->setParameter('from', $from)
+            ->setParameter('to', $to)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
 }

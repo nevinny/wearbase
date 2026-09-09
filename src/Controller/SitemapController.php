@@ -13,7 +13,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class SitemapController extends AbstractController
 {
     #[Route('/sitemap.xml', name: 'sitemap_xml', defaults: ['_format' => 'xml'])]
-    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Repository\AuthorRepository $authorRepo, \App\Repository\CityHubRepository $cityHubRepo, \App\Service\CitySlugger $citySlugger, UrlGeneratorInterface $urlGenerator): Response
+    public function sitemap(Request $request, BrandRepository $repo, ArticleRepository $articleRepo, \App\Repository\AuthorRepository $authorRepo, \App\Repository\CityHubRepository $cityHubRepo, \App\Repository\BrandAudienceRepository $brandAudienceRepo, \App\Service\CitySlugger $citySlugger, UrlGeneratorInterface $urlGenerator): Response
     {
         $urls = [];
 
@@ -150,6 +150,37 @@ class SitemapController extends AbstractController
                 'loc' => $this->generateUrl('brand_style', [
                     '_locale' => 'ru',
                     'slug' => $styleSlug,
+                ], UrlGeneratorInterface::ABSOLUTE_URL),
+                'changefreq' => 'weekly',
+                'priority' => '0.7',
+            ];
+        }
+
+        // Аудитории /{_locale}/audience/{slug} — тот же гейт индексации, что стили:
+        // >= MIN_INDEXABLE_BRANDS активных брендов, ИЛИ заполненное кураторское
+        // description (app:seo:audience-hub) индексируется независимо от числа брендов.
+        $audienceCountsQb = $repo->createQueryBuilder('b')
+            ->select('a.slug, COUNT(DISTINCT b.id) as cnt')
+            ->join('b.audiences', 'a')
+            ->where('b.status = :status')
+            ->andWhere('a.status = :status')
+            ->setParameter('status', 'active')
+            ->groupBy('a.id');
+        $repo->excludeForeignOrigin($audienceCountsQb);
+        $audienceCounts = $audienceCountsQb->getQuery()->getResult();
+
+        foreach ($audienceCounts as $audienceRow) {
+            $audienceSlug = (string) $audienceRow['slug'];
+            $audience = $brandAudienceRepo->findOneBy(['slug' => $audienceSlug]);
+            $hasDescription = $audience !== null && trim((string) $audience->getDescription()) !== '';
+            $isIndexable = (int) $audienceRow['cnt'] >= \App\Controller\Brands\BrandsController::MIN_INDEXABLE_BRANDS || $hasDescription;
+            if (!$isIndexable) {
+                continue;
+            }
+            $urls[] = [
+                'loc' => $this->generateUrl('brand_audience_show', [
+                    '_locale' => 'ru',
+                    'slug' => $audienceSlug,
                 ], UrlGeneratorInterface::ABSOLUTE_URL),
                 'changefreq' => 'weekly',
                 'priority' => '0.7',

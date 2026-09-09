@@ -46,6 +46,18 @@ class AccountControllerTest extends AuthenticatedWebTestCase
         $this->assertSelectorTextContains('.account-nav', 'Выйти');
     }
 
+    public function testDashboardShowsReferralBlockForCustomer(): void
+    {
+        $client = static::createClient();
+        $this->loginAsCustomer($client);
+        $client->request('GET', '/account');
+
+        $this->assertResponseIsSuccessful();
+        // Блок «Приглашай подруг» (спец §4): счётчик и подсказка про ссылку до первого лука.
+        $this->assertSelectorTextContains('body', 'Приглашай подруг');
+        $this->assertSelectorTextContains('body', 'Подруг приглашено');
+    }
+
     public function testProfilePageLoads(): void
     {
         $client = static::createClient();

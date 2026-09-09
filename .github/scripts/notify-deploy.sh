@@ -5,7 +5,7 @@
 #
 # Локальный прогон (без секретов и сети, только сборка текста):
 #   JOB_STATUS=success \
-#   OUTCOME_RSYNC=success OUTCOME_PRUNE=success OUTCOME_MIGRATE=success OUTCOME_SMOKE=success \
+#   OUTCOME_RSYNC=success OUTCOME_PRUNE=success OUTCOME_MIGRATE=success OUTCOME_SMOKE=success OUTCOME_INGEST_HEALTH=success \
 #   COMMIT_MESSAGE=$'fix(x): "quotes" <tag> & amp (#12)' \
 #   COMMIT_SHA=abcdef1234567890 COMMIT_AUTHOR=zyablik REPO=key-group/wearbase \
 #   BEFORE_SHA=0000000000000000000000000000000000000000 \
@@ -36,6 +36,7 @@ OUTCOME_RSYNC=${OUTCOME_RSYNC:-}
 OUTCOME_PRUNE=${OUTCOME_PRUNE:-}
 OUTCOME_MIGRATE=${OUTCOME_MIGRATE:-}
 OUTCOME_SMOKE=${OUTCOME_SMOKE:-}
+OUTCOME_INGEST_HEALTH=${OUTCOME_INGEST_HEALTH:-}
 COMMIT_MESSAGE=${COMMIT_MESSAGE:-}
 COMMIT_SHA=${COMMIT_SHA:-0000000000000000000000000000000000000000}
 COMMIT_AUTHOR=${COMMIT_AUTHOR:-unknown}
@@ -61,9 +62,9 @@ if [[ -n "$BEFORE_SHA" && ! "$BEFORE_SHA" =~ ^0+$ ]]; then
 fi
 
 find_failed_step() {
-  local names=(rsync prune migrate smoke)
-  local labels=("Rsync to prod" "Prune deleted code files" "Migrate + clear cache" "Smoke test")
-  local outcomes=("$OUTCOME_RSYNC" "$OUTCOME_PRUNE" "$OUTCOME_MIGRATE" "$OUTCOME_SMOKE")
+  local names=(rsync prune migrate smoke ingest_health)
+  local labels=("Rsync to prod" "Prune deleted code files" "Migrate + clear cache" "Smoke test" "Wardrobe ingest health gate")
+  local outcomes=("$OUTCOME_RSYNC" "$OUTCOME_PRUNE" "$OUTCOME_MIGRATE" "$OUTCOME_SMOKE" "$OUTCOME_INGEST_HEALTH")
   local i
   for i in "${!names[@]}"; do
     if [[ "${outcomes[$i]}" == "failure" ]]; then

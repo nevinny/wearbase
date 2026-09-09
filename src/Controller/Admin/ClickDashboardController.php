@@ -2,8 +2,12 @@
 
 namespace App\Controller\Admin;
 
+use App\Entity\Brand;
 use App\Repository\BrandOutboundClickRepository;
+use App\Repository\ProductIntentClickRepository;
+use App\Twig\BrandSaleExtension;
 use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Option\EA;
 use EasyCorp\Bundle\EasyAdminBundle\Factory\AdminContextFactory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -22,6 +26,9 @@ class ClickDashboardController extends AbstractController
     public function __construct(
         private readonly Connection $db,
         private readonly BrandOutboundClickRepository $clicks,
+        private readonly ProductIntentClickRepository $intentClicks,
+        private readonly BrandSaleExtension $saleGate,
+        private readonly EntityManagerInterface $em,
         private readonly AdminContextFactory $adminContextFactory,
         private readonly DashboardController $dashboard,
     ) {
@@ -75,6 +82,18 @@ class ClickDashboardController extends AbstractController
             $win, ['d' => \PDO::PARAM_INT],
         );
 
+        // Интент «Хочу купить» (гейт продажи для брендов без приёма оплаты): всего / за
+        // 7 дней / топ-10 брендов с пометкой, настроен ли у бренда приём оплаты.
+        $intentTotals = [
+            'all' => $one('SELECT COUNT(*) FROM product_intent_click'),
+            'd7'  => $one('SELECT COUNT(*) FROM product_intent_click WHERE created_at >= NOW() - INTERVAL 7 DAY'),
+        ];
+        $intentTopBrands = [];
+        foreach ($this->intentClicks->topBrands($days, 10) as $row) {
+            $brand = $this->em->find(Brand::class, (int) $row['brand_id']);
+            $intentTopBrands[] = $row + ['payment_ready' => $brand !== null && $this->saleGate->canSell($brand)];
+        }
+
         return $this->render('admin/click_dashboard.html.twig', [
             'days'      => $days,
             'totals'    => $totals,
@@ -82,6 +101,8 @@ class ClickDashboardController extends AbstractController
             'byDay'     => $byDay,
             'topHosts'  => $topHosts,
             'topBrands' => $this->clicks->topBrands($days, 50),
+            'intentTotals'    => $intentTotals,
+            'intentTopBrands' => $intentTopBrands,
         ]);
     }
 

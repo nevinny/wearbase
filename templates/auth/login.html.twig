@@ -24,6 +24,10 @@
 
         <form method="post" action="{{ path('app_login') }}">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
+            {% if look_share_target is defined and look_share_target %}
+                {# Возврат на лук после логина: form_login сохранит как target path сессии #}
+                <input type="hidden" name="_target_path" value="{{ look_share_target }}">
+            {% endif %}
 
             <div class="mb-4">
                 <label for="email" class="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">Email</label>

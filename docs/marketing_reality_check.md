@@ -4,7 +4,7 @@
 **Назначение:** калибровка «информационного пузыря» проекта (что мы *считаем* про целевую
 аудиторию и рынок) об реальность — внутренние данные БД + внешний рынок + конкуренты.
 Дополняет [`marketing_strategy.md`](marketing_strategy.md), [`competitors.md`](competitors.md),
-[`../_docs/strategy-notes.md`](../_docs/strategy-notes.md).
+[`strategy-notes.md`](strategy-notes.md).
 
 > Источники по рынку — внизу. Числа БД — снимок на 2026-06-17.
 

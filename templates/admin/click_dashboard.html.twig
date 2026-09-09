@@ -105,4 +105,27 @@
         </div>
     </div>
 </div>
+
+<div class="clk-card" style="margin-top:24px">
+    <h3>Интент «Хочу купить» <span style="font-weight:400;opacity:.7">— бренды без приёма оплаты</span></h3>
+    <div class="clk-grid" style="margin:0 0 16px">
+        <div class="clk-kpi"><div class="n">{{ intentTotals.all|number_format(0, '.', ' ') }}</div><div class="l">всего за всё время</div></div>
+        <div class="clk-kpi"><div class="n">{{ intentTotals.d7|number_format(0, '.', ' ') }}</div><div class="l">за 7 дней</div></div>
+    </div>
+    <table class="clk">
+        <thead><tr><th>#</th><th>Бренд</th><th class="num">«Хочу купить»</th><th>Оплата настроена</th></tr></thead>
+        <tbody>
+            {% for b in intentTopBrands %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><a href="{{ path('brand_show', {_locale: 'ru', slug: b.slug}) }}" target="_blank" rel="noopener">{{ b.title }}</a></td>
+                    <td class="num">{{ b.clicks|number_format(0, '.', ' ') }}</td>
+                    <td>{{ b.payment_ready ? '✅' : '❌' }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="4" class="clk-empty">нет данных</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endblock %}

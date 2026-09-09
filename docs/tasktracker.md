@@ -12,7 +12,7 @@
 > <details><summary>Историческая директива 2026-07-19 (отменена)</summary>
 >
 > ⚠️ **Директива фокуса 2026-07-19** (разбор Ключарёва → [klyucharev_decisions_2026.md](klyucharev_decisions_2026.md)):
-> нейробиология подтвердила — проект в ловушке «постройка машины без обратной связи» (dev 6728 new / active 439, монетизация 0). **WIP=1**: главное необратимое действие недели — **первая продажа** (20 холодных писем по `sales_offer.md` брендам из `_docs/cold-sales-candidates.csv`). **Заморожены** до первого платящего бренда: витрина FR, семейный гардероб, VTON, платёжки кроме yookassa, advisor-фазы 2–5. Активно: Phase-1 дайджест + дрип-публикация очереди (факт 2026-07-19: eligible-очередь ~2119, дрип экспоненциальный 27→33/день после деплоя ramp 22%, cap 80 — см. PublishTickCommand).
+> нейробиология подтвердила — проект в ловушке «постройка машины без обратной связи» (dev 6728 new / active 439, монетизация 0). **WIP=1**: главное необратимое действие недели — **первая продажа** (20 холодных писем по `sales_offer.md` брендам из `docs/cold-sales-candidates.csv`). **Заморожены** до первого платящего бренда: витрина FR, семейный гардероб, VTON, платёжки кроме yookassa, advisor-фазы 2–5. Активно: Phase-1 дайджест + дрип-публикация очереди (факт 2026-07-19: eligible-очередь ~2119, дрип экспоненциальный 27→33/день после деплоя ramp 22%, cap 80 — см. PublishTickCommand).
 >
 > </details>
 
@@ -793,16 +793,16 @@ brand_source_url(id, brand_id, url VARCHAR(1024), url_hash CHAR(64), source_type
 ## SEO-контур: блог, городские посадочные, единый шаблон, мобильная шапка (2026-06-12)
 
 **Сделано:**
-- **Блог**: `Article` (+миграция `Version20260612_blog_articles`), `BlogController` (`/ru/blog`, `/ru/blog/{slug}`), шаблоны `tailwind/blog/*`, schema.org Article+Breadcrumb, sitemap, админка «Контент → Статьи блога» (content = raw-HTML textarea — Trix ломает таблицы). 4 статьи опубликованы (комиссии-2026, гид по российским брендам, исход с WB, покупка напрямую) — перелинкованы, исходники в `_docs/blog-drafts/`.
+- **Блог**: `Article` (+миграция `Version20260612_blog_articles`), `BlogController` (`/ru/blog`, `/ru/blog/{slug}`), шаблоны `tailwind/blog/*`, schema.org Article+Breadcrumb, sitemap, админка «Контент → Статьи блога» (content = raw-HTML textarea — Trix ломает таблицы). 4 статьи опубликованы (комиссии-2026, гид по российским брендам, исход с WB, покупка напрямую) — перелинкованы, исходники в `docs/blog-drafts/`.
 - **301**: `/marketplace-commissions` → `/ru/blog/komissii-marketpleysov-2026` с fallback-рендером, пока статья не создана в БД (важно для прода: после деплоя вставить статьи, см. ниже).
-- **Городские посадочные**: `/ru/cities` + `/ru/cities/{slug}` (`CitySlugger`, транслит на лету, без таблицы слагов), таргет «бренды одежды москва» (1470/мес) и хвост; ссылки с главной (топ-городов), из шапки и подвала; все города в sitemap. Wordstat-карта — `_docs/seo-keywords-2026-06.md` («бренды из регионов» = 0 показов, формулировка из подвала убрана).
+- **Городские посадочные**: `/ru/cities` + `/ru/cities/{slug}` (`CitySlugger`, транслит на лету, без таблицы слагов), таргет «бренды одежды москва» (1470/мес) и хвост; ссылки с главной (топ-городов), из шапки и подвала; все города в sitemap. Wordstat-карта — `docs/seo-keywords-2026-06.md` («бренды из регионов» = 0 показов, формулировка из подвала убрана).
 - **Лендинги** переведены на общий `tailwind/base.html.twig` (сайтовые шапка+подвал); `tailwind/landing/base.html.twig` и `public_html/css/landing.css` удалены. В base добавлен рендер flash (нужен формам лидов).
 - **Подвал**: мёртвые якоря `#faq` убраны, форма подписки реально шлёт в `LandingLead` (source=footer-subscribe), добавлены ссылки Без маркетплейсов/Комиссии/Блог/Бренды по городам.
 - **Мобильная шапка**: бургер-меню (нав+авторизация+язык+валюта внутри), снаружи логотип+корзина+бургер. Проверено Playwright: было 481px на viewport 375 (горизонтальный скролл), стало 375px.
 
 **⚠️ Деплой-шаги для этого релиза (после полного rsync, см. «Грабли деплоя»):**
 1. `php bin/console doctrine:migrations:migrate --no-interaction` (создаст `article`).
-2. Вставить 4 статьи в прод-БД (HTML из `_docs/blog-drafts/*.html`, скрипт-инсерт через PDO; UTC-даты! MySQL NOW() в Москве, PHP в UTC — использовать UTC_TIMESTAMP()).
+2. Вставить 4 статьи в прод-БД (HTML из `docs/blog-drafts/*.html`, скрипт-инсерт через PDO; UTC-даты! MySQL NOW() в Москве, PHP в UTC — использовать UTC_TIMESTAMP()).
 3. `cache:clear --no-debug`.
 4. Смоук: /ru/blog, /ru/cities, /ru/cities/moskva, 301 у /ru/marketplace-commissions, бургер на мобильном.
 
@@ -1801,8 +1801,8 @@ GenerateListicleCommand/SeoGuideCommand (SEO Boost, не входит в явн�
 - [x] Агенты в .claude/agents: reels-maker, smm-marketer (+ владельцем: reels-trend-scout, viral-reels-analyst).
 
 **⏳ Осталось (соц-блок, в порядке приоритета):**
-- [ ] [решение владельца] **Held-гейт f1.rag**: grounded-посты с LLM-фактами копятся в held (OLLYTECH, HRDCR, yuzhka, ZIPATCH, ART IN CLO…) — одобрить первую партию в админке; если ок — снять гейт совсем, иначе ветка f1.rag не набирается в E1.
-- [ ] [решение владельца] `rate_start` IG 3→5 в админке — под темп 2 бренда/день (карусель+рилс) + обычная сетка.
+- [x] **Held-гейт f1.rag снят** (2026-08-22): первая партия проверена (выборочно — хуки/биты/подписи чистые, гейты заземления отработали), 367 постов возвращены в конвейер (184 рилса → planned на перегенерацию с новым CTA, карусели +150д — охват каруселей 2.5 против 85 у рилсов), `needsManualReview` удалён из SocialGenerateCommand. Бэкапы: var/backups/{held_reels,gallery_slots}_20260822.csv
+- [x] `rate_start` IG 3→5 (2026-08-22, social_channel id=5) — под темп рилсов из освобождённого held + сетка.
 - [ ] [M] **P1 плейбука** (§9 №7–18): луп-замыкание (E5), кегль 54→76 (E2), режимы покрытия текстом (E3/E3b), timeline-оверлеи → шаблон ticker, one_photo (zoompan 25–40%, бренды с 1 фото), chapters (MAX_BITS→динамический), комментарий-гейт «список в первом комментарии» (E7), нумерация брендов.
 - [ ] [S] **P2 плейбука** (§9 №19–30): polished/raw чередование, blur-fill вместо белых полей (E8), строб-вход, леттербокс, атрибуция «Фото: сайт бренда», больше треков (+тег build, снимает кап 38с).
 - [ ] [S] Крон `app:social:collect-metrics` в scheduled_command (2×/день, host=mac) — сейчас снимается вручную.
@@ -2008,38 +2008,100 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [x] Добавить read-only `/api/v1/wardrobe-app/bootstrap` и cursor-paginated `/items`, session-auth,
   explicit DTO, `no-store`, FamilyService IDOR guard.
 - [x] Покрыть web/API: guest, parent→child, child roster, child→parent/sibling deny, schema/privacy.
-- [ ] Зафиксировать capability matrix owner/parent/child и решение spouse-to-spouse privacy.
+- [x] Зафиксировать capability matrix owner/parent/child/adult: взрослые гардеробы приватны,
+  родитель управляет только детскими профилями; второй parent равноправен для детей и покупок.
 - [x] Скрыть family add/invite для child в family/wardrobe-app UI и явно запретить POST invite;
   гардеробы parent/sibling закрыты `FamilyService::resolveMember` и тестами.
-- [ ] Добавить claim expiry/rotate/revoke/recovery с сохранением User ID и истории гардероба.
-- [ ] Добавить invite expiry/revoke/regenerate, optional intended email и atomic single-use accept.
-- [ ] Добавить lifecycle семьи: leave/remove, owner transfer, last-parent invariant, role changes.
-- [ ] Разделить consent несовершеннолетнего на private processing, personalization, shared learning
-  и публикацию фото; пересматривать при взрослении.
-- [ ] Для native iOS добавить revocable per-device access/refresh tokens; не переиспользовать
-  X-Agent-Token/HMAC и не доверять user/member ID из клиента.
+- [x] Добавить claim expiry/rotate/revoke/recovery с сохранением User ID и истории гардероба;
+  used/revoked/expired ссылки закрывать нейтральным 410 и `no-store`.
+- [x] Добавить invite expiry/revoke/regenerate, optional intended email и atomic single-use accept;
+  закрыть публичную страницу от referrer, индексации и кеширования.
+- [x] Добавить lifecycle семьи: leave/remove, owner transfer, last-parent invariant и переход
+  активированного детского профиля в самостоятельный adult без смены User ID/истории.
+- [ ] Расширить уже реализованный consent на private photo processing/revoke-at-adulthood отдельными
+  grant/revoke для shared learning и публичных snapshot-фото (personalization уже закрыт отдельным
+  consent для стилиста).
+- [x] Закрыть remote-стилиста и персональный learning context отдельным personalization consent:
+  взрослый управляет своим consent, для child нужен parent; revoke сразу убирает history context,
+  а local failure без consent не делает silent remote fallback. Remote wardrobe payload ограничен
+  одноразовыми ID и category/color/season/styles без фото, названий, материалов, URL и DB ID.
+- [x] Добавить KISS structured context стилиста: исключать cleaning/repair/unavailable вещи,
+  мягко ротировать подтверждённые носки за 7 дней, принимать event только из allowlist и ограничить
+  explanation одной строкой/240 символами. Погода задаётся явно (условие + температурный диапазон),
+  без внешнего API, геоданных и location в prompt.
+- [x] Для native API добавить revocable per-device access/refresh tokens: opaque access/rotating
+  refresh, отзыв одной/всех сессий, device management и cleanup; не переиспользовать X-Agent-Token/HMAC
+  и не доверять user/member ID из клиента.
+
+### Фаза 0B — activation существующего гардероба
+
+- [x] Добавить profile-aware onboarding на главную PWA: первые 5 вещей → первый образ → реакция.
+- [x] Сохранять этап, skip/resume и активную пачку отдельно для каждого `profileSubject`.
+- [x] Разделить загрузившего `actor` и владельца вещей; parent→child работает, child→siblings/parent
+  и cross-family переключение блокируются через `FamilyService`.
+- [x] Сделать promotion черновика транзакционным и идемпотентным; повторный accept возвращает
+  прежний `WardrobeItem`, конфликт `itemNo` повторяет всю транзакцию.
+- [x] Ограничить пачку 20 фото, не создавать пустую пачку при полностью невалидной загрузке.
+- [x] Перенести новые wardrobe/draft photos из web-root и выдавать через авторизованный media
+  controller с `private, no-store`, `nosniff` и family scope.
+- [x] Связать завершение onboarding с реакцией на первый образ и проверить owner контекст образа.
+- [x] Добавить SHA-256 content hash и идемпотентный ответ для повторной multipart-загрузки фото;
+  дубликат не создаёт новый draft и не расходует vision.
+- [x] Добавить PWA foreground retry/resume: pending photo Blob хранится только в IndexedDB с
+  member/idempotency key и explicit consent, повторяется при app open/online, поддерживает per-file
+  cancel; 401 сохраняет очередь и просит login, logout очищает. Без Background Sync и Cache Storage.
+- [x] Добавить worker lease/retry (`processing`, `leaseUntil`, `attempts`) для multi-host и починить
+  batch-filter-before-limit в фоновой команде.
+- [x] Сделать lease длиннее максимального AI timeout и завершать/retry только атомарным CAS по
+  актуальному `workerId`; stale worker после повторного claim не может затереть результат.
+- [x] Добавить consent/retention: очистка abandoned drafts и диагностического `ai_raw`, EXIF strip,
+  лимит хранилища и rate limit стоимости vision.
+- [x] Закрыть legacy AI-photo endpoint тем же consent/sanitization boundary: явное согласие,
+  parent grant для child, строгая image validation, EXIF re-encode и subject-aware AI context.
+- [x] Перенести legacy `/images/wardrobe*` в private storage идемпотентной deploy-командой;
+  после успешного переноса публичные каталоги удаляются, конфликтующие файлы останавливают деплой.
+- [x] Добавить IndexedDB retry только как foreground-resume при следующем online/open; не обещать
+  iOS background upload, пока платформа не даёт надёжную гарантию.
 
 ### Фаза 1 — запрос ребёнка и решение родителя
 
 - [x] Реализовать provider-agnostic web/PWA MVP: одна HTTPS-ссылка без server fetch, комментарий,
   child/parent inbox, approve/reject с причиной, CSRF, IDOR-защита и append-only audit.
-- [ ] Добавить `PurchaseRequest`, `PurchaseRequestItem`, `PurchaseRequestEvent` и миграцию.
-- [ ] Реализовать доменный lifecycle и `FamilyService`-проверки actor/profileSubject.
-- [ ] Сделать детский флоу: черновик → provider/manual import → вариант → отправка.
-- [ ] Сделать родительскую очередь и решения по каждой позиции: approve/reject/change/defer.
-- [ ] Добавить лимит цены, частичное одобрение и in-app уведомления.
+- [x] Добавить `PurchaseRequest`, `PurchaseRequestItem`, `PurchaseRequestEvent` и миграцию.
+- [x] Реализовать доменный lifecycle и `FamilyService`-проверки actor/profileSubject.
+- [x] Сделать детский флоу: provider-agnostic HTTPS/manual input → несколько позиций → отправка.
+- [x] Сделать родительскую очередь и решения approve/reject по каждой позиции; change/defer оставлены
+  отдельными расширениями, не блокирующими заказ и примерку.
+- [x] Добавить ожидаемую цену, месячный лимит ребёнка, остаток/approved commitments,
+  явное подтверждение и audit перерасхода, in-app уведомления родителям и ребёнку.
+- [x] Перейти от одного URL к нескольким позициям и частичным решениям по каждой позиции.
+- [x] Добавить post-approval lifecycle позиции: `ordered → delivered → bought|refused`,
+  фактическую цену, возврат, структурированную примерку и audit.
+- [x] Идемпотентно создавать ровно один `WardrobeItem` из `bought`-позиции с владельцем-ребёнком,
+  фактической ценой, размером, URL и audit-связью.
+- [x] Добавить журнал жизненного цикла вещи: химчистка, чистка, подшив, молния, подошва,
+  другой ремонт, возврат в активный гардероб и передача вне семьи.
 - [x] Добавить отдельный mobile-first Twig-shell с safe-area и нижней навигацией:
   `templates/account/family_wardrobe/layout.html.twig`; несуществующие routes не хардкодить.
 - [x] Перевести существующие family/wardrobe страницы на shell, сохранив формы, CSRF, family member
   context, импорт, AI-стилиста и touch targets.
 - [x] Добавить installable PWA-фундамент: manifest, Apple/192/512 icons, scoped service worker,
   offline 503 без кеширования приватных HTML/API/фото.
-- [x] Проверить Twig/manifest/JS, профильные tests (67/375) и полный PHPUnit: 611 tests,
-  1974 assertions; только 7 существующих deprecation.
-- [ ] Перевести новые экраны покупок/образов на готовый shell после реализации их routes.
-- [ ] Убрать runtime Tailwind CDN в локальную production-сборку перед строгим CSP/offline-first.
-- [ ] Сделать интерфейс role-aware: ребёнку — запросы/ответы, родителю — решения/примерки.
-- [ ] Покрыть PHPUnit: переходы, CSRF, IDOR между семьями, managed-child, конкурентные решения.
+- [x] Отдавать manifest через Symfony с `application/manifest+json`, ограничить SW scope `/account/`
+  и автоматизировать mobile E2E для install metadata, камеры, offline shell и privacy cache policy.
+- [x] Проверить Twig/manifest/JS, профильные PHPUnit и mobile Playwright acceptance; полный CI на
+  актуальном main проходит (объём тестов меняется вместе с независимыми фичами).
+- [x] Перевести экраны покупок, lifecycle вещи и дневника образов на mobile-first family shell.
+- [x] Синхронизировать возврат после выкупа с гардеробом: связанная вещь атомарно получает
+  терминальный статус «Возвращена продавцу», повторный return не дублирует событие.
+- [x] Убрать внешний runtime Tailwind CDN: wardrobe landing/app используют локальный versioned asset,
+  который доступен PWA offline shell без сетевого запроса к `cdn.tailwindcss.com`.
+- [x] Сделать интерфейс role-aware: ребёнку — запросы/ответы и примерка, родителю — очередь решений,
+  уведомления, бюджет и действия от имени managed-child.
+- [x] Покрыть PHPUnit: переходы, CSRF, IDOR между семьями, бюджет, точные денежные расчёты,
+  audit перерасхода и безопасность уведомлений.
+- [x] Покрыть Playwright E2E на Pixel 7: 8 последовательных сценариев от invite/анкеты ребёнка до
+  approve/reject, уведомлений, лимита, подтверждённого перерасхода и cross-family IDOR.
 
 ### Фаза 1A — домен семейного приложения
 
@@ -2056,28 +2118,33 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 ### Фаза 2 — заказ, примерка и карточка вещи
 
 - [ ] Best-effort проверять цену/наличие через исходного provider перед ручным заказом.
-- [ ] Добавить ordered/fitting/bought/refused/returned/cancelled без хранения сессии/оплаты магазина.
-- [ ] Добавить `FittingFeedback`: размерность, посадка, проблемные зоны, качество и причины отказа.
-- [ ] Создавать `WardrobeItem` только после `bought`, идемпотентно и с provenance запроса.
+- [x] Добавить ordered/delivered/bought/refused/returned без хранения сессии/оплаты магазина.
+- [x] Добавить структурированную примерку: размерность, посадка, качество и причина отказа.
+- [x] Создавать `WardrobeItem` только после `bought`, идемпотентно и с provenance запроса.
 - [ ] Добавить напоминания через 7–14 и ~30 дней без автоматического создания носок.
 
 ### Фаза 3 — фото образа и source of truth носок
 
-- [ ] Добавить `WardrobeWearEvent`, `WardrobeWearEventItem` и миграцию.
-- [ ] Реализовать приватную загрузку фото и асинхронное vision-распознавание.
-- [ ] Ограничить кандидатов вещами выбранного `profileSubject`; unscoped-поиск запретить API.
-- [ ] Сделать обязательное подтверждение/исправление распознанных вещей.
+- [x] Добавить `WardrobeWearEvent`, `WardrobeWearEventItem` и миграцию.
+- [x] Реализовать приватную загрузку фото, bounded vision-вызов и ручной fallback без ложного
+  обещания фоновой обработки в iOS/PWA.
+- [x] Ограничить кандидатов вещами выбранного `profileSubject`; unscoped-поиск запретить.
+- [x] Сделать обязательное подтверждение/исправление распознанных вещей.
 - [ ] Добавить предупреждение дублей по file hash/perceptual hash/времени/составу.
-- [ ] Считать носки только по подтверждённым `type=worn`; fitting/planned не учитывать.
-- [ ] Вывести историю образов, последнюю носку, количество носок и стоимость одной носки.
-- [ ] Проверить пересчёт после исправления/удаления события и деление на ноль.
+- [x] Считать носки только по подтверждённым `type=worn`; fitting/planned не учитывать.
+- [x] Вывести историю образов, последнюю носку, количество носок и стоимость одной носки.
+- [x] Проверить пересчёт после исправления/удаления события и деление на ноль.
+- [x] Покрыть lifecycle Playwright E2E на мобильном viewport: CRUD вещи, заказ→примерка→гардероб,
+  химчистка/ремонт, внутренняя/внешняя передача, носка+feedback, spouse invite, adulthood,
+  owner transfer/leave — 9 сценариев; полный PHPUnit — 705 tests / 2415 assertions.
 
 ### Фаза 4 — обратная связь и сочетаемость
 
-- [ ] Добавить оценку образа после дня носки: удобство, повтор, причина отказа и замена вещи.
+- [x] Добавить оценку образа: удобство, желание повторить и свободный комментарий/замена вещи.
 - [ ] Добавить `WardrobeItemRelation` для подтверждённых удачных/неудачных сочетаний.
-- [ ] Сохранять actor/profileSubject/signalSource (`self|parent_observed|child_confirmed`).
-- [ ] Подключить фактические сочетания и повторные носки к AI-стилисту.
+- [x] Сохранять actor/profileSubject/signalSource (`self|parent_observed`). Подтверждение ребёнком
+  родительского наблюдения остаётся отдельным расширением `child_confirmed`.
+- [x] Подключить подтверждённые носки, comfort и repeat к персональной памяти AI-стилиста.
 - [ ] Дать родителю аналитику возвратов, неношеных покупок и стоимости одной носки.
 
 ### Фаза 5 — персональная память и controlled learning
@@ -2088,17 +2155,28 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 - [ ] Добавить экспорт/удаление AI-истории и раздельные consent на персонализацию, общий опыт,
   публичные фото и обучение весов.
 - [ ] Ввести продуктовые метрики: bought→worn, повторная носка, возвраты, zero-wear и correction rate.
+- [x] Добавить минимальную privacy-safe activation-воронку: onboarding started → first item →
+  first outfit → repeat wear. Milestone уникален на профиль; metadata ограничена `actorKind`
+  (`self|family_manager`) и low-cardinality `entryPoint`, без email, URL, фото, текста и параметров вещей.
+  Исторический backfill намеренно не выполняется: когорта начинается с даты выкладки миграции.
+- [x] Добавить first-party activation report: дневные когорты и time-to-first milestones,
+  batch completion, correction/autofill acceptance. Повторяемые batch/draft события идемпотентны
+  по hashed dedup key; metadata — только low-cardinality allowlist без фото, URL и свободного текста.
 - [ ] Не начинать fine-tuning до достаточного подтверждённого корпуса, privacy-review и offline eval;
   выпускать LoRA только через A/B по повторным носкам и снижению неудачных покупок.
 
 ### Фаза 6 — iOS и дополнительные каналы
 
 - [ ] До нативной разработки проверить activation/retention PWA и проблемы камеры/push интервью.
-- [ ] Добавить для native API короткоживущий access token, refresh/revoke и управление устройствами.
+- [x] Добавить для native API короткоживущий access token, rotating refresh/revoke и управление
+  устройствами (opaque public id, отзыв одного устройства и всех устройств, cleanup просроченных
+  сессий).
 - [ ] Реализовать iOS-клиент как presentation layer `/api/v1`, без бизнес-логики в приложении.
 - [ ] Подключить APNs и фоновые загрузки фото; PWA оставить полноценным fallback.
-- [ ] Telegram подключать только как необязательный API-клиент уведомлений/быстрых действий.
-- [ ] Проверить отказоустойчивость: недоступность Telegram не ломает ни один доменный переход.
+- [x] Telegram подключён как необязательный канал семейных уведомлений через transactional outbox;
+  его настройка доступна рядом с email, in-app и Web Push.
+- [x] Недоступность Telegram/email/Web Push не ломает доменный переход: сеть вызывается worker-ом
+  после commit, с retry/backoff и общей дедупликацией события.
 
 ---
 
@@ -2108,12 +2186,16 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
 получает опыт лишь после явного согласия. Семейный гардероб — ключевая продуктовая фича: отдельные
 профили взрослых и детей, вещи «на вырост», передача и семейная ротация без смешивания вкусов.
 
-### Уже реализовано в feature-ветке (не production-ready)
+### Уже реализовано в production web/PWA slice
 
 - [x] Vision-распознавание вещи и AI-подбор до трёх образов только из активных вещей.
 - [x] Проверка ID вещей, локальная Gemma first с OpenRouter fallback.
 - [x] Сохранение образов и реакций `Нравится / Не моё / Я это надел`.
 - [x] Простая персональная память по категориям, цветам и стилям; миграция и тесты feedback-loop.
+- [x] Явный погодный контекст запроса (условие + температурный диапазон) без геолокации и
+  скрытых внешних вызовов.
+- [x] Статусы чистоты `clean|dirty|laundry`; грязные вещи и вещи в стирке исключаются из
+  подборок, а изменение статуса защищено семейными правами.
 
 ### P0 — корректная личная память
 
@@ -2163,3 +2245,102 @@ SQL-инъекция там, где стоит `(int)`); зато один её 
   передачи вещей и retention family vs solo; до подтверждения moat остаётся сильной гипотезой.
 
 Подробное продуктовое и архитектурное решение: [wardrobe_ai_learning.md](wardrobe_ai_learning.md).
+
+## 2026-08-30 — Отладка воронки «саморег → модерация → публикация» (PR #178–#182)
+
+Триггер: бренды начали регистрироваться сами (FromBest 29.08), а воронка стояла — заявка
+123anna висела в `queued` месяц с `analyze_attempts=0`. Полный план: `~/.claude/plans/` +
+`docs/brand_self_service.md` (дизайн). Диагностика по живому проду.
+
+### Что было сломано и починено
+
+| # | Обрыв | Фикс | PR |
+|---|---|---|---|
+| 1 | `moderate-tick` при мёртвых поисковиках (SearXNG офлайн + Yandex 401) молча скипал бренды, exit 0 | Деградация: анализ по зонду доменов, вердикт постится всегда с пометкой «поиск недоступен»; очередь>0 && вердиктов 0 → FAILURE + TG-алерт (троттлинг 1/сутки) | #179 |
+| 2 | `missing` всегда содержал невыполнимые `inn`/`production_place` → вечный needs_work | Убраны из checklist (полей не существует на этапе самрега) | #179 |
+| 3 | `changes_requested` — тупик, возврата в очередь нет | Кнопка «Отправить на повторную проверку» в баннере ЛК (`brand_moderation_resubmit`, кулдаун 1 ч, сброс attempts) | #180 |
+| 4 | Баннер модерации в ЛК не гас после публикации (enum-vs-string) + дубль-плашка на дашборде | `not brand.isPublished`; дубль удалён | #180 |
+| 5 | Самрег после approve — в хвосте дрипа (нет ключевиков, SUM=0, позади ~2–3k) | `findDripCandidateIds()`: владельческие бренды (EXISTS brand_user owner) первыми; publish-tick впервые покрыт тестами | #181 |
+| 6 | Владельцу не сообщали о публикации | Письмо `brand_published` из publish-tick через `dispatchOnce` | #181 |
+| 7 | Кнопка «Опубликовать» товара в ЛК — 500 TypeError; в ЛК все товары «Архив» | enum-фиксы; тумблер active↔disabled | #178 |
+| 8 | Товары НИКОГДА не показывались на странице бренда (`createDemoProducts()` → `[]`) | `ProductRepository::findForBrandPage()` (active, с фото первыми, ≤12, без ссылок на /product) | #178 |
+| 9 | Нет таймаутов: заявки/клеймы висят вечно | `app:moderation:timeouts` (прод, 09:05): напоминание админу о reviewed>2д (reminded_at), алерт queued>48ч, архив changes_requested>14д + письмо, список claim>2д | #182 |
+| 10 | Заявителю claim уходило письмо с админским текстом (`brand_claim_admin`) | Новый шаблон `brand_claim_received` | #182 |
+| 11 | Решения claim только через админ-UI (требует логина) | CLI `app:brand:claim-decide {id} approve|reject --note=` — реплика админ-экшена | #182 |
+| 12 | Модерация невидима в метриках | Блок `moderation` в `/api/v1/publish-stats` + строка в дневном дайджесте | #182 |
+
+### Разбор затора (вручную, 30.08)
+
+- **3673 «АХ!»** — верифицирован (ahsilk.ru жив, email/телефон совпали с регистрацией) → approve
+  подписанной ссылкой → письмо «одобрено» доставлено за 9 сек → публикация дрипом с приоритетом.
+- **3677 FromBest + claim #12** — один заявитель саморегнул дубль И заклеймил каталожную карточку
+  2815. Верифицирован (TG @FROMBESTT, описание 2815 — про этот же бренд; frombest.com в карточке —
+  припаркованный домен, ошибка обогащения). Решение: `claim-decide 12 approve`, 8 товаров
+  перенесены 3677→2815, дубль 3677 soft-delete, мёртвая ссылка удалена, добавлен t.me/FROMBESTT.
+  Страница /ru/brands/frombest уже показывает товары (первый бренд с витриной).
+- **3674 123anna** (наш тест) — прогнан боевым циклом: queued → анализ в деградации → reviewed →
+  request-changes → письмо владельцу. Ресабмит-кнопка доступна в ЛК тест-аккаунта.
+- **3672 all4b2b** — пустая карточка, остаётся changes_requested; заархивируется тиком ~13.09.
+- **claim #11 (МАКСИМ МАКСАКОВ)** — фантом до-фиксовой эпохи (#169), отклонён с пояснением.
+
+### Наблюдения/остаток
+
+- [ ] ⚠️ `publish-tick` спит до 45 мин ВНУТРИ команды и держит глобальный flock диспетчера
+  `app:cron:run-scheduled` → все прод-кроны (включая ежеминутную доставку писем) стоят до конца
+  сна. Это же уронило health-гейт деплоя (`scheduler_stale` у wardrobe-ingest). Кандидат:
+  вынести джиттер из команды (schedule со смещением) или per-command lock.
+- [ ] LLM-сервер (192.168.0.111) офлайн, ключ Yandex Search — 401: анализатор работает в
+  деградации (зонд доменов). Поднять сервер / перевыпустить ключ — качество анализа вернётся.
+- [ ] Узкое окно PR3: архивация обновляет `updatedAt` → первый клик ресабмита в течение часа
+  после письма об архиве получит «подождите» (мягкая деградация, повтор через час работает).
+
+## 2026-08-31 — Контур продажи: гейт по реквизитам, баги чекаута, крон-лок (PR #184–#188)
+
+Продолжение отладки саморег-воронки. Триггер: первый саморег-бренд с товарами (FromBest)
+дошёл до каталога — и вскрылось, что путь «покупатель жмёт купить» нигде не проверялся.
+
+### Что нашли на живых данных
+
+- **Картинки товаров были битыми во всех публичных шаблонах** (#184): в БД у `ProductImage`
+  голое имя файла, но импорт кладёт файлы плоско (`images/products/<файл>`), а загрузка из ЛК —
+  в Vich-подкаталоги (`aa/bb/<файл>`). Шаблоны строили плоский путь. Молчало годами, потому что
+  каталог не показывал живых товаров. Фикс — twig `product_image_url(image, prefer)`.
+- **Логотип бренда в карточке товара** брался из `images/brands/` вместо `images/logos/`; **ссылки
+  бренда** рендерились из сырой `brand.links` (включая soft-deleted) — удалённая ссылка на мёртвый
+  домен продолжала висеть кнопкой, в т.ч. в JSON-LD (#185). Переведено на `brand.uniqueLinks`.
+- **Дрип держал глобальный крон-лок** (#186): `sleep` до 45 мин ВНУТРИ команды под flock
+  диспетчера. Следствия: письма из outbox с задержкой в десятки минут; health-гейт деплоя видел
+  `scheduler_stale` и красил зелёный выкат; задача с `next_run_at=NULL` не запускалась никогда.
+  Фикс: `PublishTickJitter` + state-файл, расписание `*/5`, инвариант «одна публикация в час».
+- **Четыре критических дефекта чекаута** (#187), контур не был покрыт тестами вовсе:
+  уведомления рендерились до `flush()` → `order.id = null` (битая ссылка в письме владельцу; в
+  dev/test — 500 и заказ не создавался); ранний `return` из транзакции оставлял фантомные заказы;
+  мультибрендовая корзина с онлайн-оплатой не оплачивалась никогда; текст про недоступную оплату
+  выбирался по платформенным реквизитам подписок, а не по счёту бренда.
+
+### Гейт продажи (#188) — решение владельца продукта
+
+Гейтим ПРОДАЖУ, не показ: товары видны (SEO + убедительность карточки), но у бренда без
+`brand_can_sell` вместо «В корзину» — «Хочу купить» (`POST /product/{uuid}/want`, CSRF,
+rate-limit, отсев ботов — по образцу `brand_outbound_click`). Клики копятся в
+`product_intent_click`, видны в админ-дашборде кликов и в ЛК владельца («N покупателей хотели
+купить, но не смогли оплатить»). Напоминания владельцу на 1/3/7/14/30 день после публикации —
+`app:brand:payment-reminders` (прод, 10:30). «При получении» сохранён как рабочий путь.
+
+### Состояние на 31.08
+
+| Бренд | Реквизиты | Что видит покупатель |
+|---|---|---|
+| Русский бренд АХ! (3673) | ИП + YooKassa с ключами | «В корзину», оплата проходит |
+| FromBest (2815) | нет юрлица | «Хочу купить», клик копится |
+
+Проверено на проде: карточка 3673 → «В корзину», карточка 2815 → «Хочу купить».
+
+### Открытое
+
+- [ ] Бренду не приходит уведомление об ОПЛАТЕ заказа (только покупателю и админу в TG).
+- [ ] Автодеплой дважды падал на `ssh: connect to host … Connection timed out` при rsync из
+  GitHub Actions, при этом с Mac тот же сервер отвечал (выкатывали скиллом `/deploy`). Третий
+  раз прошёл штатно — если повторится, разбираться с хостером/allowlist облачных IP.
+- [ ] Миграция `purchase_request_item` из другой ветки не проходит на dev-БД — блокирует
+  `migrations:migrate` локально (обходили `migrations:execute` точечно).

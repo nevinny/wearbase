@@ -23,7 +23,7 @@
 
 | Команда | Расписание | Где | Назначение |
 |---|---|---|---|
-| `app:brand:publish-tick` | `0 * * * *` (раз в час) | ☁️ prod | дрип-публикация брендов |
+| `app:brand:publish-tick` | `*/5 * * * *` (тик раз в 5 мин, публикация раз в час) | ☁️ prod | дрип-публикация брендов |
 | `app:report:pipeline` | `0 */3 * * *` (раз в 3ч) | 🖥/🍎 | сводка RAG-конвейера в TG |
 | `app:report:daily` | `17 9 * * *` (ежедневно) | 🍎 Mac | дайджест публикаций+GSC в TG |
 | `app:report:weekly` | `0 10 * * 1` (пн) | 🍎 Mac | дайджест видимости неделя-к-неделе (GSC+Яндекс+публикации) в TG |
@@ -43,6 +43,8 @@
 | `app:seo:gap-report` | `0 8 * * 1` (пн) | 🍎 Mac | автопилот position-листа (`--notify`): дожим 4–10 + gap >10, спрос есть → группы интента + сводка в TG |
 | `app:seo:tech-audit` | `30 7 * * 6` (сб) | 🍎 Mac | тех-аудит обходом сайта (`--notify`): чек-лист + битые внутренние ссылки + сироты, в TG только дельта |
 | `app:review:pr` | `*/10 * * * *` | 🍎 Mac | авторевью открытых PR локальной моделью: комментарий в PR + пинг в TG (только Mac — там `gh` и ollama) |
+| `app:brand:moderate-tick` | `*/30 * * * *` | 🍎 Mac | премодерация саморег-брендов: очередь с прода → ApplicationMatcher → вердикт + TG-досье |
+| `app:moderation:timeouts` | `5 9 * * *` | ☁️ prod | таймауты очереди: напоминание про `reviewed` без решения >2д, простой `queued` >48ч, авто-архивация `changes_requested` >14д, зависшие `BrandClaim` >2д |
 
 ### 🍎 Mac-крон: одна точка входа + расписание в БД
 
@@ -118,7 +120,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | Команда | Зачем | Как часто | Где |
 |---|---|---|---|
 | `app:brand:push` | Доставка готовых брендов (`isPublishReady`) на прод через `/api/v1/brands/upsert` (HMAC). Приземляются как `new`+`publish_pending`. `--id=N --publish` — приоритетная публикация ручного бренда сразу (минуя дрип, `/api/v1/brands/publish` + IndexNow; `published_at` входит в дневной таргет ramp'а). | 🔁 фон / 👆 ре-пуш с `--force` | 🖥 .43 |
-| `app:brand:publish-tick` | Дрип-публикация: часовой тик с ramp-up (5→28/день), окно 9–23 МСК, случайный выбор. Имитирует ручной ввод (анти-SpamBrain). При публикации вплетает бренд в жёсткий граф перелинковки (fail-open). | ⏰ `0 * * * *` | ☁️ prod |
+| `app:brand:publish-tick` | Дрип-публикация: ramp-up (5→28/день), окно 9–23 МСК, случайный выбор. Тик раз в 5 мин (диспетчер), но публикация в часе ровно одна — джиттер решает намеченную минуту через `var/publish_tick_state.json`, не блокирующим `sleep` (не держит глобальный крон-лок). Имитирует ручной ввод (анти-SpamBrain). При публикации вплетает бренд в жёсткий граф перелинковки (fail-open). `--now` — публиковать сразу, игнорируя джиттер. | ⏰ `*/5 * * * *` | ☁️ prod |
 | `app:brand:build-link-graph` | Жёсткий граф «Похожих брендов» (`brand_related`, 5 исходящих + гарантия ≥2 входящих, нет сирот). Qdrant-эмбеддинги → стили → город → fill. Идемпотентна: существующие рёбра не трогает; `--rebuild` — снести и заново. См. `docs/seo_adoption_plan.md` п.2. | 👆 после массовых публикаций / смены статусов | 🖥 Mac (нужен Qdrant; без него — SQL fallback) |
 
 ---
@@ -127,7 +129,14 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 
 | Команда | Зачем | Как часто | Где |
 |---|---|---|---|
-| `app:contacts:refresh` | Актуализация контактов из RAG-корпуса (новый конвейер, см. `_docs/contacts-refresh-plan.md`). TTL-ревалидация, демон-режим. | ⏰/🔁 | 🖥 .43 |
+| `app:wardrobe:ingest-drafts` | Фоновое vision-распознавание приватных batch-drafts с lease/retry. | ⏰ `*/2 * * * *` | ☁️ prod |
+| `app:wardrobe:cleanup-drafts` | Через 7 дней очищает photo/`ai_raw` accepted receipts; через 30 дней удаляет abandoned drafts. `--dry-run`. | ⏰ `17 3 * * *` | ☁️ prod |
+| `app:native-auth:cleanup` | Удаляет истёкшие refresh receipts, отозванные native device sessions и sessions без действующего refresh. | ⏰ `43 3 * * *` | ☁️ prod |
+| `app:wardrobe:ingest-health` | Production gate: scheduler heartbeat 10 мин, oldest pending SLA 15 мин, expired lease, failed/retry и storage. `--json`, `--check`; AI не запускает. Подробнее: [операционная проверка](wardrobe_ingest_operations.md). | ⏰ `*/5 * * * *` + deploy | ☁️ prod |
+| `app:family:purchase-reminders` | Только in-app: раз в локальный день напоминает родителям о pending-запросах, а родителям и активированному ребёнку — о delivered-позициях без результата примерки. `--dry-run`, `--now=ISO-8601`; граница дня — Europe/Moscow, дедуп — состояние/объект/дата/получатель. | ⏰ `15 9 * * *` | ☁️ prod |
+| `app:notification:deliver-outbox` | Доставляет уже committed email, Telegram и Web Push с lease, retry/backoff и повторной проверкой настроек получателя. | ⏰ `* * * * *` | ☁️ prod |
+| `app:notifications:cleanup-web-push` | Удаляет отозванные Web Push subscriptions старше 30 дней. | ⏰ `41 3 * * *` | ☁️ prod |
+| `app:contacts:refresh` | Актуализация контактов из RAG-корпуса (новый конвейер, см. `docs/contacts-refresh-plan.md`). TTL-ревалидация, демон-режим. | ⏰/🔁 | 🖥 .43 |
 | `app:brand:enrich-contacts` | **Легаси**: разовое обогащение из скрейп-корпуса (27b). Терминальные статусы, HTTP-проверка URL. Вытесняется `contacts:refresh`. | ⏰ `*/10` (пока) | 🖥 .43 |
 
 ---
@@ -200,10 +209,12 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:fetch:lamoda-brands` | Скрейп списка брендов Lamoda → JSON. | 1️⃣ / 👆 | 🖥 |
 | `app:brand:fix-slugs` | **Разовый фикс**: транслитерация кириллических слагов (инцидент 06-2026). ⚠️ один алгоритм на dev И проде. | 1️⃣ | 🖥+☁️ |
 | `app:migrate-images-to-subdirs` | **Разовая миграция**: плоское хранилище → `ab/cd/` (Vich SubdirNamer). | 1️⃣ | 🖥/☁️ |
+| `app:wardrobe:migrate-private-media` | Идемпотентно переносит legacy-фото вещей и AI-черновиков из web-root в `var/uploads`; конфликт содержимого останавливает deploy без удаления исходника. | 🚀 каждый deploy | ☁️ prod |
 | `app:seed:test-products` | Тестовые товары для проверки карточки/заказа. | 👆 dev/тест | 🖥 |
 | `app:wardrobe:import` | Импорт вещей из ПЛОСКОГО JSON (выгрузка TG-бота, ручной перенос старых записей). Дедуп по `(user, item_no)`. ⚠️ Формат бэкапа `wearbase.wardrobe` НЕ понимает — для него отдельная команда ниже. | 👆 | 🖥/☁️ |
 | `app:wardrobe:restore-backup` | Перенос гардероба между инсталляциями из бэкапа `wearbase.wardrobe` v1 (вещи + категории по `code` + галерея). Идемпотентность — `wardrobe_import_map` по тройке (sha256(`--source`), source_user_id, source_item_id): повторный запуск пропускает уже перенесённое и НЕ обновляет карточки. Владельцы только явной картой `--owners-map` (аккаунты не создаются). Один файл, пришедший и как legacy-обложка, и как элемент галереи, схлопывается в одну запись-обложку. Ограничения: `created_at` = дата импорта (сеттера нет), бэкап с историей передач отклоняется целиком (у `transferredAt` тоже нет сеттера — врать про хронологию нельзя). `--photos-dir`, `--renumber-conflicts` (занятый `item_no` выдать заново), `--dry-run`. Физические файлы едут отдельно rsync'ом. | 👆 разовый перенос | 🖥/☁️ |
 | `app:review:pr` | Авторевью открытых PR локальной моделью (`gemma4:26b`): дифф через `gh` → находки 🔴/🟠/🟡 комментарием в PR + пинг в TG. Повтор только на новый head-SHA (маркер `local-review:<sha>` в комментарии), `flock var/review_pr.lock` бережёт GPU от переподписки с RAG-демоном. Опции: `--pr=N`, `--dry-run`, `--force`, `--limit`. ⚠️ GitHub Action не подходит — облачный раннер не достаёт до ollama в LAN. | ⏰ `*/10 * * * *` | 🍎 Mac |
+| `app:brand:claim-decide` | Решение по заявке на владение брендом (`BrandClaim`) с консоли — точная реплика `BrandClaimAdminController` approve/reject (админ-UI требует логина). `<claimId> approve\|reject [--note=]`. | 👆 по запросу | ☁️ prod |
 
 ---
 

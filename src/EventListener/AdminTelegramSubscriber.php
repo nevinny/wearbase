@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\EventListener;
 
-use App\Entity\BrandClaim;
 use App\Entity\LandingLead;
 use App\Entity\Order;
 use App\Entity\Subscription;
@@ -17,7 +16,11 @@ use Doctrine\ORM\Events;
 
 /**
  * Шлёт админу проекта Telegram-уведомления о новых сущностях
- * (регистрации, заявки на бренд, лиды, заказы, подписки).
+ * (регистрации, лиды, заказы, подписки).
+ *
+ * BrandClaim здесь НЕ обрабатывается: строка заявки создаётся при открытии формы
+ * (GET), а не при подаче — пинг на вставку означал «зашёл на страницу». О реальной
+ * подаче админа уведомляет BrandClaimController::notifyAdmin().
  *
  * onFlush — собираем вставки; postFlush — отправляем после коммита,
  * чтобы HTTP-вызов не происходил внутри транзакции.
@@ -63,11 +66,6 @@ class AdminTelegramSubscriber
     {
         return match (true) {
             $entity instanceof User => "🆕 <b>Новая регистрация</b>\n" . $this->e((string) $entity->getEmail()),
-
-            $entity instanceof BrandClaim => "📩 <b>Заявка на бренд</b>\n"
-                . '«' . $this->e((string) $entity->getBrand()?->getTitle()) . '» от '
-                . $this->e((string) $entity->getUser()?->getEmail())
-                . ($entity->getMethod() ? ' · ' . $this->e($entity->getMethod()) : ''),
 
             $entity instanceof LandingLead => "📨 <b>Лид с лендинга</b>\n"
                 . $this->e($entity->getEmail())

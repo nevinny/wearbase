@@ -8,6 +8,7 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Vich\UploaderBundle\Storage\StorageInterface;
 
 final class WardrobePhotoManager
 {
@@ -15,7 +16,11 @@ final class WardrobePhotoManager
     private const MAX_FILE_SIZE = 10_000_000;
     private const MAX_BATCH_SIZE = 8;
 
-    public function __construct(private readonly EntityManagerInterface $entityManager) {}
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly WardrobeImageSanitizer $sanitizer,
+        private readonly StorageInterface $storage,
+    ) {}
 
     /** @param UploadedFile[] $files
      *  @return WardrobeItemPhoto[]
@@ -51,13 +56,14 @@ final class WardrobePhotoManager
                 throw new \InvalidArgumentException('Разрешены JPG, PNG и WebP размером до 10 МБ.');
             }
 
+            $cleanFile = $this->sanitizer->sanitize($file);
             $photo = (new WardrobeItemPhoto())
-                ->setFile($file)
+                ->setFile($cleanFile)
                 ->setPhotoType($photoType)
                 ->setSortOrder($nextSort++)
                 ->setOriginalFilename($file->getClientOriginalName())
-                ->setMimeType($file->getMimeType())
-                ->setFileSize($file->getSize() ?: null)
+                ->setMimeType($cleanFile->getMimeType())
+                ->setFileSize($cleanFile->getSize() ?: null)
                 ->setIsCover(!$hasCover);
             $hasCover = true;
             $item->addPhoto($photo);
@@ -100,6 +106,32 @@ final class WardrobePhotoManager
             $next?->setIsCover(true);
             $item->setPhoto($next?->getFilePath());
         }
+        $this->entityManager->flush();
+    }
+
+    public function rotate(WardrobeItemPhoto $photo, int $degrees): void
+    {
+        if ($photo->isDeleted()) {
+            throw new \InvalidArgumentException('Фотография уже удалена.');
+        }
+        $path = $this->storage->resolvePath($photo, 'file');
+        if ($path === null || !is_file($path)) {
+            throw new \InvalidArgumentException('Файл фото не найден.');
+        }
+        $raw = file_get_contents($path);
+        $image = is_string($raw) ? @imagecreatefromstring($raw) : false;
+        if ($image === false) {
+            throw new \RuntimeException('Не удалось прочитать изображение.');
+        }
+        $rotated = imagerotate($image, -$degrees, 0);
+        imagedestroy($image);
+        if ($rotated === false || !imagejpeg($rotated, $path, 90)) {
+            imagedestroy($rotated);
+            throw new \RuntimeException('Не удалось повернуть изображение.');
+        }
+        imagedestroy($rotated);
+        $photo->setFileSize((int) filesize($path))
+            ->setUpdatedAt(new \DateTimeImmutable());
         $this->entityManager->flush();
     }
 

@@ -109,8 +109,12 @@ docs/*.scratch.md
 # Авто-генерёные картинки соц-постов (бинарники, ~8М)
 /public_html/images/social/
 # Лид-выгрузки/кандидаты (рабочие данные, возможны контакты/PII) — не в git
-/_docs/*.csv
-/_docs/*.tsv
+/docs/*.csv
+/docs/*.tsv
 # Черновики тёплой рассылки — реальные email лидов + прод-токены, никогда не в git
-/_docs/warm-outreach-*.md
+/docs/warm-outreach-*.md
 /public_html/images/products
+
+# Транскрипты YouTube из yt-ingest — рабочие файлы, в репозиторий не нужны
+# (07.09.2026 семь штук уехали в main через `git add -A` при разрешении конфликта)
+transcript_*.txt

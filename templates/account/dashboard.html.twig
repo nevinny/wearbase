@@ -40,6 +40,44 @@
     </div>
 </div>
 
+{# Блок «Приглашай подруг» (спец §4): только покупателям; ссылка = последний активный токен лука #}
+{% if is_granted('ROLE_CUSTOMER') and referral %}
+<section class="mb-5 rounded-2xl bg-white p-5 shadow-sm">
+    <h2 class="font-bold">Приглашай подруг</h2>
+    <p class="mt-1 text-sm text-gray-500">Поделись ссылкой на свой лук: подруга зарегистрируется — вы обе получите бонус к AI-подсказкам.</p>
+
+    <div class="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+            {% if referral.shareToken %}
+            <label class="text-[11px] font-semibold uppercase tracking-wider text-gray-500" for="referral-link">Персональная ссылка</label>
+            <input id="referral-link" readonly value="{{ url('look_shared_show', {token: referral.shareToken}) }}"
+                   onclick="this.select()"
+                   class="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-500 focus:ring-2 focus:ring-gray-900" />
+            {% else %}
+            <div class="text-sm text-gray-600">
+                Персональная ссылка появится, когда поделитесь первым луком.
+                <a href="{{ path('account_wardrobe_outfits') }}" class="font-semibold text-gray-900 underline">Поделиться луком →</a>
+            </div>
+            {% endif %}
+        </div>
+        <div class="flex flex-col gap-2 text-sm">
+            <div>Подруг приглашено: <span class="font-bold">{{ referral.invitedCount }}</span></div>
+            {% if referral.dailyBonus > 0 %}
+            <div>Бонус: <span class="font-bold">+{{ referral.dailyBonus }} подсказок/день</span>{% if referral.bonusUntil %} до {{ referral.bonusUntil|date('d.m.Y') }}{% endif %}</div>
+            {% endif %}
+            {% if referral.badgeNext %}
+            <div class="text-gray-600">
+                До бейджа «{{ referral.badgeNext.target }} подруг»: {{ referral.badgeNext.current }} из {{ referral.badgeNext.target }}
+            </div>
+            {% elseif referral.badgeEarned %}
+            <div class="text-green-700 font-semibold">Все бейджи приглашающей получены</div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+
 {% if recentOrders|length > 0 %}
 <div class="overflow-hidden rounded-2xl bg-white shadow-sm">
     <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3 text-sm font-semibold">

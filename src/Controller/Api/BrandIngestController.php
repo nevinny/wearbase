@@ -348,6 +348,19 @@ class BrandIngestController extends AbstractController
         } catch (\Throwable) {
         }
 
+        // Модерация: снимок очереди для дайджеста (app:moderation:timeouts обслуживает
+        // те же данные на проде, здесь — только чтение для дашборда/советника).
+        try {
+            $oldestQueued = $db->fetchOne("SELECT MIN(created_at) FROM brand_moderation WHERE status = 'queued'");
+            $out['moderation'] = [
+                'queued'             => (int) $db->fetchOne("SELECT COUNT(*) FROM brand_moderation WHERE status = 'queued'"),
+                'oldest_queued_days' => $oldestQueued ? (int) floor((time() - strtotime((string) $oldestQueued)) / 86400) : 0,
+                'reviewed_awaiting'  => (int) $db->fetchOne("SELECT COUNT(*) FROM brand_moderation WHERE status = 'reviewed' AND decided_at IS NULL"),
+                'claims_pending'     => (int) $db->fetchOne("SELECT COUNT(*) FROM brand_claim WHERE status IN ('pending','email_verified')"),
+            ];
+        } catch (\Throwable) {
+        }
+
         return $this->json($out);
     }
 

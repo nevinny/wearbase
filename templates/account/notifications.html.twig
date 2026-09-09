@@ -7,6 +7,7 @@
     <h4 class="text-lg font-bold">Уведомления</h4>
     {% if unreadCount > 0 %}
         <form method="post" action="{{ path('account_notification_mark_all_read') }}" class="m-0">
+            <input type="hidden" name="_token" value="{{ csrf_token('notification_mark_all_read') }}">
             <button class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">Прочитать все</button>
         </form>
     {% endif %}
@@ -29,10 +30,16 @@
                     {% if notification.body %}
                         <p class="mb-0 mt-1 text-sm font-normal text-gray-500">{{ notification.body }}</p>
                     {% endif %}
+                    {% if notification.safeAccountUrl %}
+                        <a href="{{ notification.safeAccountUrl }}"
+                           class="mt-2 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-800">Открыть →</a>
+                    {% endif %}
                 </div>
                 {% if not notification.isRead %}
-                    <a href="{{ path('account_notification_mark_read', {id: notification.id}) }}"
-                       class="whitespace-nowrap text-sm text-gray-400 hover:text-gray-700" title="Отметить прочитанным">✓</a>
+                    <form method="post" action="{{ path('account_notification_mark_read', {id: notification.id}) }}">
+                        <input type="hidden" name="_token" value="{{ csrf_token('notification_mark_read_' ~ notification.id) }}">
+                        <button class="whitespace-nowrap text-sm text-gray-400 hover:text-gray-700" title="Отметить прочитанным">✓</button>
+                    </form>
                 {% endif %}
             </div>
         {% endfor %}

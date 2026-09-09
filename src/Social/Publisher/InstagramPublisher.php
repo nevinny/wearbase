@@ -6,6 +6,7 @@ namespace App\Social\Publisher;
 
 use App\Entity\SocialChannel;
 use App\Entity\SocialPost;
+use App\Notification\AdminNotifier;
 use App\Service\SecretCipher;
 use App\Service\Social\PublicMediaHost;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -26,6 +27,10 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * - 2..10 картинок — карусель: на каждый слайд свой контейнер с is_carousel_item=true,
  *   затем родительский контейнер media_type=CAROUSEL со списком children, подпись — только
  *   у родителя. Публикуется один media_publish (родителя).
+ *
+ * После media_publish публикуется ПЕРВЫЙ КОММЕНТАРИЙ с кликабельной ссылкой (post.cta_url),
+ * а строка CTA в подписи ведёт в него: «{label} — в первом комментарии 👇» (гейт на информацию,
+ * docs/reels_viral_playbook.md §5.3). Нет cta_url → старая строка «ссылка в профиле».
  */
 class InstagramPublisher implements SocialPublisherInterface
 {
@@ -46,6 +51,7 @@ class InstagramPublisher implements SocialPublisherInterface
         private readonly string $projectDir = '',
         #[Autowire('%env(default::IG_REELS_SHARE_TO_FEED)%')]
         private readonly ?string $shareReelsToFeed = null,
+        private readonly ?AdminNotifier $notifier = null,
     ) {
     }
 
@@ -79,8 +85,10 @@ class InstagramPublisher implements SocialPublisherInterface
         }
         $token = $this->cipher->decrypt($enc);
 
-        // IG: кликабельных ссылок в подписи нет — ссылка живёт в профиле; URL в текст не вставляем.
-        $caption = $this->insertCtaLine((string) $post->getCaption(), $post->getCtaLabel());
+        // IG: кликабельных ссылок в подписи нет. Есть URL → он уходит в ПЕРВЫЙ КОММЕНТАРИЙ
+        // (кликабельный, в отличие от подписи), а подпись ведёт туда; URL нет — старая строка
+        // «ссылка в профиле».
+        $caption = $this->insertCtaLine((string) $post->getCaption(), $post->getCtaLabel(), $post->getCtaUrl() !== null);
 
         $isReels = $post->getMediaType() === SocialPost::MEDIA_REELS;
 
@@ -101,23 +109,73 @@ class InstagramPublisher implements SocialPublisherInterface
         // Видео Meta транскодирует минутами, картинка готова почти сразу.
         $this->pollUntilFinished($creationId, $token, $isReels ? self::POLL_MAX_ATTEMPTS_VIDEO : self::POLL_MAX_ATTEMPTS);
 
-        return $this->publishContainer($igUserId, $creationId, $token);
+        $externalId = $this->publishContainer($igUserId, $creationId, $token);
+
+        // Пост уже живой — комментарий не должен уронить публикацию и статус поста в тике.
+        $this->postFirstComment($externalId, $post, $token);
+
+        return $externalId;
     }
 
     /**
-     * Строка «{ctaLabel} — ссылка в профиле» встаёт ПЕРЕД абзацем хэштегов, не после: в ленте IG
+     * Первый комментарий с кликабельной ссылкой — в подписи IG ссылки невозможны, а ссылка в
+     * профиле теряет клик (лишний шаг). Механика «гейта на информацию» из §5.3 плейбука:
+     * подпись обещает ссылку в комментарии → читатель открывает комментарии (у референса это
+     * 850 комментариев против 3 у прямой просьбы «отметьте фаворита»). Ошибка НЕ бросается:
+     * пост уже живой, упавший комментарий не должен переводить его в publish_failed и
+     * перезапускать публикацию — вместо этого сигнал в ops-чат.
+     */
+    private function postFirstComment(string $mediaId, SocialPost $post, string $token): void
+    {
+        $url = trim((string) $post->getCtaUrl());
+        if ($url === '') {
+            return;
+        }
+
+        $title = trim((string) $post->getBrand()?->getTitle());
+        $message = ($title !== '' ? $title . ' — ' : '') . $url;
+
+        try {
+            $response = $this->httpClient->request('POST', self::API_BASE . "/{$mediaId}/comments", [
+                'body'    => [
+                    'message'      => $message,
+                    'access_token' => $token,
+                ],
+                'timeout' => 30,
+            ]);
+            $this->assertNoError($response->toArray(false), 'comment create');
+        } catch (\Throwable $e) {
+            try {
+                if ($this->notifier !== null && $this->notifier->isEnabled()) {
+                    $this->notifier->send(sprintf(
+                        '⚠️ IG: медиа %s опубликовано, но первый комментарий не встал: %s',
+                        $mediaId,
+                        mb_substr($e->getMessage(), 0, 200),
+                    ));
+                }
+            } catch (\Throwable) {
+                // уведомление не должно ломать тик публикации
+            }
+        }
+    }
+
+    /**
+     * Строка «{ctaLabel} — в первом комментарии 👇» (или «— ссылка в профиле», если ссылки нет)
+     * встаёт ПЕРЕД абзацем хэштегов, не после: в ленте IG
      * длинная подпись сворачивается по высоте, и абзац после хэштегов (последний в подписи)
      * почти никогда не попадает в развёрнутый вид — ссылка туда добавленная просто не читалась.
      * Абзацы разделены пустой строкой (CaptionGenerator), хэштеги — последний абзац, начинающийся
      * с '#'. Нет хэштегов (не должно случаться для собранной подписи, но на всякий) — как раньше,
      * строка уходит в конец.
      */
-    private function insertCtaLine(string $caption, ?string $ctaLabel): string
+    private function insertCtaLine(string $caption, ?string $ctaLabel, bool $linkInComment): string
     {
         if ($ctaLabel === null || trim($ctaLabel) === '') {
             return $caption;
         }
-        $ctaLine = $ctaLabel . ' — ссылка в профиле';
+        $ctaLine = $linkInComment
+            ? $ctaLabel . ' — в первом комментарии 👇'
+            : $ctaLabel . ' — ссылка в профиле';
 
         $paragraphs = explode("\n\n", $caption);
         $hashtagIndex = null;

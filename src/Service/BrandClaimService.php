@@ -34,6 +34,7 @@ class BrandClaimService
         private readonly SubscriptionFactory    $subscriptionFactory,
         private readonly NotificationDispatcher $notifier,
         private readonly EmailNotifier          $emailNotifier,
+        private readonly VkVerifier             $vkVerifier,
         private readonly bool $autoGrantEmail = true,
         private readonly bool $autoGrantVk = true,
     ) {}
@@ -47,7 +48,7 @@ class BrandClaimService
         if ($brand->getEmail()) {
             $methods[] = BrandClaim::METHOD_EMAIL_CODE;
         }
-        if ($this->brandVkGroup($brand) !== null) {
+        if ($this->vkVerifier->isConfigured() && $this->brandVkGroup($brand) !== null) {
             $methods[] = BrandClaim::METHOD_VK_ADMIN;
         }
 

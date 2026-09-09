@@ -51,12 +51,15 @@ class BrandClaimController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
 
-        if ($this->brandUserRepo->findOneBy(['brand' => $brand, 'user' => $user])) {
-            $this->addFlash('info', 'Вы уже являетесь участником команды этого бренда');
-            return $this->redirectToRoute('brand_dashboard');
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
         }
 
-        $claim = $this->getOrCreateClaim($brand, $user);
+        // Строку заявки НЕ создаём на просмотре формы: раньше каждый заход
+        // плодил pending-claim (админ видел «заявку», которую никто не подавал).
+        // Персист происходит только при действии — см. getOrCreateClaim() в POST-роутах.
+        $claim = $this->claimRepo->findPendingByBrandAndUser($brand, $user)
+            ?? (new BrandClaim())->setBrand($brand)->setUser($user);
 
         return $this->renderForm($brand, $claim);
     }
@@ -75,7 +78,12 @@ class BrandClaimController extends AbstractController
         }
 
         /** @var User $user */
-        $user  = $this->getUser();
+        $user = $this->getUser();
+
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
+        }
+
         $claim = $this->getOrCreateClaim($brand, $user);
 
         $result = $this->claimService->startEmailCode($claim);
@@ -102,7 +110,12 @@ class BrandClaimController extends AbstractController
         }
 
         /** @var User $user */
-        $user  = $this->getUser();
+        $user = $this->getUser();
+
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
+        }
+
         $claim = $this->getOrCreateClaim($brand, $user);
 
         $code   = trim((string) $request->request->get('code', ''));
@@ -139,7 +152,12 @@ class BrandClaimController extends AbstractController
         }
 
         /** @var User $user */
-        $user  = $this->getUser();
+        $user = $this->getUser();
+
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
+        }
+
         $claim = $this->getOrCreateClaim($brand, $user);
 
         $verifier = $this->vkVerifier->generateCodeVerifier();
@@ -205,7 +223,12 @@ class BrandClaimController extends AbstractController
         }
 
         /** @var User $user */
-        $user  = $this->getUser();
+        $user = $this->getUser();
+
+        if ($redirect = $this->alreadyMemberRedirect($brand, $user)) {
+            return $redirect;
+        }
+
         $claim = $this->getOrCreateClaim($brand, $user);
 
         $claim->setComment(trim((string) $request->request->get('comment', '')) ?: null);
@@ -301,6 +324,22 @@ class BrandClaimController extends AbstractController
         }
     }
 
+    /**
+     * Участник команды бренда заявку подавать не может: раньше guard стоял только на
+     * GET-форме, а POST-роуты его не имели → повторный сабмит уже после авто-выдачи
+     * плодил pending-claim на свой же бренд (и отправлял бренду лишний код).
+     */
+    private function alreadyMemberRedirect(Brand $brand, User $user): ?Response
+    {
+        if (!$this->brandUserRepo->findOneBy(['brand' => $brand, 'user' => $user])) {
+            return null;
+        }
+
+        $this->addFlash('info', 'Вы уже являетесь участником команды этого бренда');
+
+        return $this->redirectToRoute('brand_dashboard');
+    }
+
     private function getOrCreateClaim(Brand $brand, User $user): BrandClaim
     {
         $claim = $this->claimRepo->findPendingByBrandAndUser($brand, $user);
@@ -340,6 +379,12 @@ class BrandClaimController extends AbstractController
 
         if ($this->claimService->isAutoGrant($method)) {
             $this->claimService->grantOwnership($claim, null, $via);
+            $this->adminNotifier->send(sprintf(
+                "✅ <b>Бренд забрали</b> «%s»\nВладелец: %s (%s, авто-выдача)",
+                htmlspecialchars((string) $brand->getTitle(), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars((string) $user->getEmail(), ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($via, ENT_QUOTES, 'UTF-8'),
+            ));
             $this->addFlash('success', "Владение подтверждено! Вы стали владельцем бренда «{$brand->getTitle()}».");
             return $this->redirectToRoute('brand_dashboard');
         }
@@ -408,13 +453,16 @@ class BrandClaimController extends AbstractController
         $user  = $claim->getUser();
         $label = $claim->isEmailDomainMatch() ? '✅ домен совпадает' : '⚠️ требуется проверка';
 
+        // Адресовано ЗАЯВИТЕЛЮ (в его кабинет + на почту) — до этой правки здесь по ошибке
+        // уходил админский текст/шаблон brand_claim_admin («Пользователь X подал заявку…»),
+        // адресованный как будто самому заявителю. Каналы админу — ниже, отдельно.
         $this->notifier->dispatch(
             $user,
             Notification::TYPE_SYSTEM,
-            "Новая заявка на бренд «{$brand->getTitle()}» — {$label}",
-            "Пользователь {$user->getEmail()} подал заявку на владение брендом. Комментарий: " . ($claim->getComment() ?? '—'),
+            "Заявка на бренд «{$brand->getTitle()}» принята",
+            'Мы получили вашу заявку на управление брендом. Проверим и ответим в течение 2 рабочих дней.',
             ['brand_id' => $brand->getId(), 'claim_id' => $claim->getId()],
-            'brand_claim_admin',
+            'brand_claim_received',
             ['claim' => $claim],
         );
         // dispatch только persist'ит in-app — коммитим

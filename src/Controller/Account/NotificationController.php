@@ -7,10 +7,13 @@ namespace App\Controller\Account;
 use App\Entity\Notification;
 use App\Entity\NotificationSettings;
 use App\Entity\User;
+use App\Entity\WebPushSubscription;
 use App\Repository\NotificationRepository;
 use App\Repository\NotificationSettingsRepository;
+use App\Repository\WebPushSubscriptionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -24,9 +27,21 @@ class NotificationController extends AbstractController
         Notification::TYPE_ORDER_SHIPPED => 'Заказ отправлен',
         Notification::TYPE_ORDER_DELIVERED => 'Заказ доставлен',
         Notification::TYPE_SYSTEM => 'Системные',
+        Notification::TYPE_PURCHASE_REQUEST_NEW => 'Новый запрос на покупку',
+        Notification::TYPE_PURCHASE_REQUEST_DECIDED => 'Решение по покупке',
+        Notification::TYPE_PURCHASE_FITTING => 'Результат примерки',
+        Notification::TYPE_PURCHASE_BOUGHT => 'Вещь выкуплена',
+        Notification::TYPE_PURCHASE_REFUSED => 'Отказ после примерки',
+        Notification::TYPE_PURCHASE_RETURNED => 'Вещь возвращена',
+        Notification::TYPE_PURCHASE_DECISION_REMINDER => 'Напоминание о решении',
+        Notification::TYPE_PURCHASE_FITTING_REMINDER => 'Напоминание о примерке',
     ];
 
-    private const CHANNELS = ['channelEmail', 'channelInapp'];
+    private const CHANNELS = ['channelEmail', 'channelInapp', 'channelTelegram', 'channelPush'];
+    private const INAPP_ONLY_TYPES = [
+        Notification::TYPE_PURCHASE_DECISION_REMINDER,
+        Notification::TYPE_PURCHASE_FITTING_REMINDER,
+    ];
 
     #[Route('', name: 'index')]
     public function index(NotificationRepository $repo): Response
@@ -34,10 +49,10 @@ class NotificationController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
 
-        return $this->render('account/notifications.html.twig', [
+        return $this->privateResponse($this->render('account/notifications.html.twig', [
             'notifications' => $repo->findForUser($user),
             'unreadCount'   => $repo->countUnread($user),
-        ]);
+        ]));
     }
 
     #[Route('/settings', name: 'settings')]
@@ -45,6 +60,9 @@ class NotificationController extends AbstractController
         Request $request,
         EntityManagerInterface $em,
         NotificationSettingsRepository $settingsRepo,
+        WebPushSubscriptionRepository $pushSubscriptions,
+        #[\Symfony\Component\DependencyInjection\Attribute\Autowire('%env(WEB_PUSH_PUBLIC_KEY)%')]
+        string $webPushPublicKey,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
@@ -82,22 +100,80 @@ class NotificationController extends AbstractController
             return $this->redirectToRoute('account_notification_settings');
         }
 
-        return $this->render('account/notification_settings.html.twig', [
+        return $this->privateResponse($this->render('account/notification_settings.html.twig', [
             'eventTypes' => self::EVENT_TYPES,
             'channels'   => self::CHANNELS,
             'settings'   => $indexed,
-        ]);
+            'inappOnlyTypes' => self::INAPP_ONLY_TYPES,
+            'pushSubscriptions' => $pushSubscriptions->findActiveForUser($user),
+            'webPushPublicKey' => $webPushPublicKey,
+        ]));
     }
 
-    #[Route('/mark-read/{id}', name: 'mark_read')]
+    #[Route('/push-subscriptions', name: 'push_subscribe', methods: ['POST'])]
+    public function subscribePush(Request $request, WebPushSubscriptionRepository $repo, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isCsrfTokenValid('web_push_subscription', $request->headers->get('X-CSRF-Token'))) {
+            return $this->json(['error' => 'invalid_csrf'], 403);
+        }
+        /** @var User $user */
+        $user = $this->getUser();
+        $payload = $request->toArray();
+        $endpoint = $payload['endpoint'] ?? null;
+        $publicKey = $payload['keys']['p256dh'] ?? null;
+        $authToken = $payload['keys']['auth'] ?? null;
+        if (!is_string($endpoint) || !str_starts_with($endpoint, 'https://') || strlen($endpoint) > 2048
+            || !is_string($publicKey) || strlen($publicKey) > 512 || !preg_match('/^[A-Za-z0-9_-]+$/', $publicKey)
+            || !is_string($authToken) || strlen($authToken) > 512 || !preg_match('/^[A-Za-z0-9_-]+$/', $authToken)) {
+            return $this->json(['error' => 'invalid_subscription'], 422);
+        }
+        $subscription = $repo->findByEndpoint($endpoint);
+        if ($subscription !== null && $subscription->getUser() !== $user) {
+            return $this->json(['error' => 'subscription_conflict'], 409);
+        }
+        if ($subscription === null) {
+            $subscription = new WebPushSubscription($user, $endpoint, $publicKey, $authToken, is_string($payload['contentEncoding'] ?? null) ? $payload['contentEncoding'] : 'aes128gcm');
+            $em->persist($subscription);
+        } else {
+            $subscription->update($endpoint, $publicKey, $authToken, is_string($payload['contentEncoding'] ?? null) ? $payload['contentEncoding'] : 'aes128gcm');
+        }
+        $em->flush();
+
+        return $this->json(['id' => $subscription->getId()], 201);
+    }
+
+    #[Route('/push-subscriptions/{id}', name: 'push_unsubscribe', requirements: ['id' => '\\d+'], methods: ['DELETE'])]
+    public function unsubscribePush(int $id, Request $request, WebPushSubscriptionRepository $repo, EntityManagerInterface $em): JsonResponse
+    {
+        if (!$this->isCsrfTokenValid('web_push_subscription', $request->headers->get('X-CSRF-Token'))) {
+            return $this->json(['error' => 'invalid_csrf'], 403);
+        }
+        /** @var User $user */
+        $user = $this->getUser();
+        $subscription = $repo->find($id);
+        if ($subscription === null || $subscription->getUser() !== $user) {
+            return $this->json(['error' => 'not_found'], 404);
+        }
+        $subscription->revoke();
+        $em->flush();
+
+        return $this->json(null, 204);
+    }
+
+    #[Route('/mark-read/{id}', name: 'mark_read', requirements: ['id' => '\d+'], methods: ['POST'])]
     public function markRead(
         int $id,
+        Request $request,
         NotificationRepository $repo,
         EntityManagerInterface $em,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
         $notification = $repo->find($id);
+
+        if (!$this->isCsrfTokenValid('notification_mark_read_'.$id, $request->request->getString('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный CSRF-токен');
+        }
 
         if ($notification && $notification->getRecipient() === $user) {
             $notification->markAsRead();
@@ -111,9 +187,14 @@ class NotificationController extends AbstractController
     public function markAllRead(
         NotificationRepository $repo,
         EntityManagerInterface $em,
+        Request $request,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
+
+        if (!$this->isCsrfTokenValid('notification_mark_all_read', $request->request->getString('_token'))) {
+            throw $this->createAccessDeniedException('Недействительный CSRF-токен');
+        }
 
         foreach ($repo->findForUser($user) as $notification) {
             if (!$notification->isRead()) {
@@ -123,5 +204,14 @@ class NotificationController extends AbstractController
         $em->flush();
 
         return $this->redirectToRoute('account_notification_index');
+    }
+
+    private function privateResponse(Response $response): Response
+    {
+        $response->setPrivate();
+        $response->setMaxAge(0);
+        $response->headers->addCacheControlDirective('no-store');
+
+        return $response;
     }
 }

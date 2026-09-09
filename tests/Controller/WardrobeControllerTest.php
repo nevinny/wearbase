@@ -10,10 +10,12 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeTransfer;
+use App\Entity\WardrobeItemLifecycleEvent;
 use App\Repository\WardrobeItemRepository;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeRemotePhotoFetcher;
+use App\Service\Wardrobe\WardrobeItemLifecycleService;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -165,6 +167,37 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
                 $this->tmpFiles[] = $path;
             }
         }
+    }
+
+    public function testOwnerCanMarkItemDirtyAndForeignUserCannotChangeIt(): void
+    {
+        $client = static::createClient();
+        $owner = UserFactory::withEmail(static::getContainer(), 'cleanliness-owner@test.local');
+        $foreign = UserFactory::withEmail(static::getContainer(), 'cleanliness-foreign@test.local');
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $item = (new WardrobeItem())->setUser($owner)->setItemNo(9911)->setName('Куртка');
+        $em->persist($item);
+        $em->flush();
+
+        $client->loginUser($owner);
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'cleanliness_wardrobe_item_'.$item->getId());
+        $client->request('POST', '/account/wardrobe/'.$item->getId().'/cleanliness', [
+            '_token' => $token,
+            'cleanliness_status' => WardrobeItem::CLEANLINESS_DIRTY,
+        ]);
+        self::assertResponseRedirects('/account/wardrobe/'.$item->getId());
+        self::assertSame(WardrobeItem::CLEANLINESS_DIRTY, $em->find(WardrobeItem::class, $item->getId())?->getCleanlinessStatus());
+
+        $client->loginUser($foreign);
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'cleanliness_wardrobe_item_'.$item->getId());
+        $client->request('POST', '/account/wardrobe/'.$item->getId().'/cleanliness', [
+            '_token' => $token,
+            'cleanliness_status' => WardrobeItem::CLEANLINESS_CLEAN,
+        ]);
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame(WardrobeItem::CLEANLINESS_DIRTY, $em->find(WardrobeItem::class, $item->getId())?->getCleanlinessStatus());
     }
 
     /**
@@ -744,6 +777,131 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertNull($stillActive->getDeletedAt());
     }
 
+    public function testRotatePhotoReturnsJsonAndRotatesFile(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+
+        [$item, $photo1] = $this->createItemWithTwoPhotos($em, $user, 600);
+        $id = $item->getId();
+
+        $absPath = $storage->resolvePath($photo1, 'file');
+        @mkdir(dirname($absPath), 0777, true);
+        $im = imagecreatetruecolor(8, 4);
+        imagejpeg($im, $absPath, 90);
+        imagedestroy($im);
+        $this->tmpFiles[] = $absPath;
+        $originalSize = filesize($absPath);
+        $photo1->setFileSize($originalSize)->setUpdatedAt(new \DateTimeImmutable('2020-01-01'));
+        $em->flush();
+
+        $client->request('GET', '/account/wardrobe/' . $id);
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photo_' . $photo1->getId());
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $id . '/photos/' . $photo1->getId() . '/rotate',
+            ['_token' => $token, 'degrees' => '90'],
+            [],
+            ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
+        );
+        $this->assertResponseIsSuccessful();
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertTrue($data['ok']);
+        $this->assertStringContainsString('v=', $data['uri']);
+
+        $imNew = @imagecreatefromstring(file_get_contents($absPath));
+        $this->assertNotFalse($imNew);
+        $this->assertSame(4, imagesx($imNew));
+        $this->assertSame(8, imagesy($imNew));
+        imagedestroy($imNew);
+
+        $em->clear();
+        /** @var WardrobeItemPhoto $reloaded */
+        $reloaded = $em->find(WardrobeItemPhoto::class, $photo1->getId());
+        $this->assertNotNull($reloaded->getFileSize());
+        $this->assertNotSame('2020-01-01', $reloaded->getUpdatedAt()->format('Y-m-d'));
+    }
+
+    public function testRotatePhotoWithInvalidCsrfReturns403(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1] = $this->createItemWithTwoPhotos($em, $user, 601);
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $item->getId() . '/photos/' . $photo1->getId() . '/rotate',
+            ['_token' => 'bad-token', 'degrees' => '90'],
+            [],
+            ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
+        );
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    public function testRotatePhotoReturns404ForForeignItem(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$foreignItem, $foreignPhoto] = $this->createItemWithTwoPhotos($em, UserFactory::brandOwner(static::getContainer()), 602);
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $foreignItem->getId() . '/photos/' . $foreignPhoto->getId() . '/rotate',
+            ['_token' => 'x', 'degrees' => '90'],
+            [],
+            ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
+        );
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testRotatePhotoRejectsInvalidDegrees(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1] = $this->createItemWithTwoPhotos($em, $user, 603);
+
+        $client->request('GET', '/account/wardrobe/' . $item->getId());
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_photo_' . $photo1->getId());
+
+        $client->request(
+            'POST',
+            '/account/wardrobe/' . $item->getId() . '/photos/' . $photo1->getId() . '/rotate',
+            ['_token' => $token, 'degrees' => '45'],
+            [],
+            ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'],
+        );
+        $this->assertResponseStatusCodeSame(400);
+    }
+
+    public function testShowPageContainsRotateButtonsForGalleryPhotos(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        [$item, $photo1] = $this->createItemWithTwoPhotos($em, $user, 604);
+
+        $crawler = $client->request('GET', '/account/wardrobe/' . $item->getId());
+        $this->assertResponseIsSuccessful();
+        $this->assertGreaterThanOrEqual(2, $crawler->filter('[data-rotate-btn]')->count());
+        $this->assertGreaterThanOrEqual(2, $crawler->filter('[data-rotate-target]')->count());
+    }
+
     /**
      * Регресс на 🔴: раньше замена photoFile через «Редактировать» физически удаляла
      * старый файл (Vich delete_on_update) и не заводила для него строку галереи —
@@ -946,6 +1104,59 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertNull($stillActive->getDeletedAt());
         // Ничего не изменилось: обложка осталась исходной (photo1, как в createItemWithTwoPhotos).
         $this->assertSame($foreignPhoto1->getId(), $em->find(WardrobeItem::class, $foreignId)->getCoverPhoto()?->getId());
+    }
+
+    public function testLegacyItemAndGalleryMediaRemainBehindFamilyAuthorizationDuringMigration(): void
+    {
+        $client = static::createClient();
+        $owner = $this->loginAsCustomer($client);
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+
+        $filename = 'legacy-'.bin2hex(random_bytes(8)).'.jpg';
+        $item = (new WardrobeItem())
+            ->setUser($owner)
+            ->setItemNo(516)
+            ->setName('Legacy photo')
+            ->setPhoto($filename);
+        $photo = (new WardrobeItemPhoto())
+            ->setItem($item)
+            ->setFilePath($filename)
+            ->setIsCover(true);
+        $item->addPhoto($photo);
+        $em->persist($item);
+        $em->persist($photo);
+        $em->flush();
+
+        $legacyPath = dirname(__DIR__, 2).'/public_html/images/wardrobe/'
+            .mb_substr($filename, 0, 2).'/'.mb_substr($filename, 2, 2).'/'.$filename;
+        if (!is_dir(dirname($legacyPath))) {
+            mkdir(dirname($legacyPath), 0755, true);
+        }
+        file_put_contents($legacyPath, 'legacy-photo');
+        $this->tmpFiles[] = $legacyPath;
+
+        foreach ([
+            '/account/wardrobe/media/item/'.$item->getId(),
+            '/account/wardrobe/media/photo/'.$photo->getId(),
+        ] as $url) {
+            $client->request('GET', $url);
+            $this->assertResponseIsSuccessful();
+            $this->assertResponseHeaderSame('X-Content-Type-Options', 'nosniff');
+            $this->assertResponseHeaderSame('Referrer-Policy', 'no-referrer');
+            $this->assertStringContainsString('private', (string) $client->getResponse()->headers->get('Cache-Control'));
+            $this->assertStringContainsString('no-store', (string) $client->getResponse()->headers->get('Cache-Control'));
+        }
+
+        $client->loginUser(UserFactory::withEmail(static::getContainer(), 'legacy-media-foreign@test.local'));
+        $client->request('GET', '/account/wardrobe/media/item/'.$item->getId());
+        $this->assertResponseStatusCodeSame(404);
+        $client->request('GET', '/account/wardrobe/media/photo/'.$photo->getId());
+        $this->assertResponseStatusCodeSame(404);
+
+        $client->restart();
+        $client->request('GET', '/account/wardrobe/media/item/'.$item->getId());
+        $this->assertResponseRedirects('/login', 302);
     }
 
     /**
@@ -1599,6 +1810,66 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertSame(WardrobeItem::WEAR_GIVEN_AWAY, $reloadedItem->getWearStatus());
     }
 
+    #[DataProvider('careTypeProvider')]
+    public function testCareAndRepairLifecycle(string $type): void
+    {
+        $user = UserFactory::withEmail(static::getContainer(), 'harness-care-'.str_replace('_', '-', $type).'@test.local');
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $item = (new WardrobeItem())->setUser($user)->setOriginalOwner($user)->setItemNo(1)->setName('Вещь для ухода');
+        $em->persist($item);
+        $em->flush();
+        /** @var WardrobeItemLifecycleService $service */
+        $service = static::getContainer()->get(WardrobeItemLifecycleService::class);
+
+        $event = $service->sendToCare($user, $user, $item, $type, 'Мастерская', '750', 'Проверить качество');
+        $this->assertSame(WardrobeItem::ITEM_REPAIR, $item->getItemStatus());
+        $this->assertSame(WardrobeItemLifecycleEvent::STATUS_OPEN, $event->getStatus());
+        $this->assertSame('750.00', $event->getCost());
+
+        $service->completeCare($user, $user, $event);
+        $this->assertSame(WardrobeItemLifecycleEvent::STATUS_COMPLETED, $event->getStatus());
+        $this->assertSame(WardrobeItem::ITEM_ACTIVE, $item->getItemStatus());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function careTypeProvider(): iterable
+    {
+        yield 'dry cleaning' => [WardrobeItemLifecycleEvent::TYPE_DRY_CLEANING];
+        yield 'hemming' => [WardrobeItemLifecycleEvent::TYPE_REPAIR_HEM];
+        yield 'zipper' => [WardrobeItemLifecycleEvent::TYPE_REPAIR_ZIPPER];
+        yield 'sole' => [WardrobeItemLifecycleEvent::TYPE_REPAIR_SOLE];
+    }
+
+    public function testParentTransfersChildItemOutsideFamilyAndChildCannot(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-external-parent@test.local');
+        /** @var FamilyService $families */
+        $families = static::getContainer()->get(FamilyService::class);
+        $child = $families->createChild($parent, 'Лера');
+        $item = (new WardrobeItem())->setUser($child)->setOriginalOwner($child)->setItemNo(1)->setName('Куртка');
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $em->persist($item);
+        $em->flush();
+        /** @var WardrobeItemLifecycleService $service */
+        $service = static::getContainer()->get(WardrobeItemLifecycleService::class);
+
+        try {
+            $service->transferOutside($child, $child, $item, 'Благотворительный фонд', null);
+            $this->fail('Minor must not transfer outside without parent');
+        } catch (\Symfony\Component\Security\Core\Exception\AccessDeniedException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $event = $service->transferOutside($parent, $child, $item, 'Благотворительный фонд', 'В хорошем состоянии');
+        $this->assertSame(WardrobeItem::ITEM_DONATED, $item->getItemStatus());
+        $this->assertSame(WardrobeItem::WEAR_GIVEN_AWAY, $item->getWearStatus());
+        $this->assertSame(WardrobeItemLifecycleEvent::STATUS_COMPLETED, $event->getStatus());
+        $this->assertSame($parent->getId(), $event->getActor()->getId());
+        $this->assertSame($child->getId(), $event->getProfileSubject()->getId());
+    }
+
     // ── AI-подсказки по фото: перезапрос по item_id (уже сохранённая вещь) ────
 
     public function testAiPhotoWithForeignItemIdReturnsNotFound(): void
@@ -1705,12 +1976,15 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $storage = static::getContainer()->get(StorageInterface::class);
         $absPath = $storage->resolvePath($item, 'photoFile');
         @mkdir(dirname($absPath), 0777, true);
-        file_put_contents($absPath, 'fake-image-bytes');
+        copy($this->makeTempImage(), $absPath);
 
         $aiMock = $this->createMock(WardrobeAiService::class);
         $aiMock->expects($this->once())
             ->method('suggestFromPhoto')
-            ->with($absPath, $this->callback(static fn (User $u): bool => $u->getId() === $user->getId()))
+            ->with(
+                $this->callback(static fn (string $path): bool => $path !== $absPath && is_file($path) && mime_content_type($path) === 'image/jpeg'),
+                $this->callback(static fn (User $u): bool => $u->getId() === $user->getId()),
+            )
             ->willReturn(['ok' => true, 'fields' => ['category' => 'Обувь'], 'confidence' => 'high']);
         static::getContainer()->set(WardrobeAiService::class, $aiMock);
 
@@ -1721,6 +1995,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
             $client->request('POST', '/account/wardrobe/ai/photo', [
                 'item_id' => (string) $item->getId(),
                 '_token'  => $token,
+                'photoConsent' => '1',
             ]);
 
             $this->assertResponseIsSuccessful();
@@ -1730,6 +2005,52 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         } finally {
             @unlink($absPath);
         }
+    }
+
+    public function testAiPhotoRequiresExplicitConsentAndParentGrantForChild(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $parent = UserFactory::withEmail(static::getContainer(), 'ai-consent-parent-'.bin2hex(random_bytes(4)).'@test.local');
+        /** @var FamilyService $families */
+        $families = static::getContainer()->get(FamilyService::class);
+        $child = $families->createChild($parent, 'Лена');
+        $client->loginUser($child);
+
+        $aiMock = $this->createMock(WardrobeAiService::class);
+        $aiMock->expects($this->never())->method('suggestFromPhoto');
+        static::getContainer()->set(WardrobeAiService::class, $aiMock);
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+        $photo = new UploadedFile($this->makeTempImage(), 'child.png', 'image/png', null, true);
+        $client->request('POST', '/account/wardrobe/ai/photo', [
+            '_token' => $token,
+            'photoConsent' => '1',
+        ], ['photo' => $photo]);
+
+        $this->assertResponseStatusCodeSame(403);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertStringContainsString('согласие родителя', $data['error']);
+    }
+
+    public function testAiPhotoRejectsUnconsentedAdultUploadBeforeCallingAi(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->loginUser(UserFactory::withEmail(static::getContainer(), 'ai-consent-adult-'.bin2hex(random_bytes(4)).'@test.local'));
+        $aiMock = $this->createMock(WardrobeAiService::class);
+        $aiMock->expects($this->never())->method('suggestFromPhoto');
+        static::getContainer()->set(WardrobeAiService::class, $aiMock);
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+        $photo = new UploadedFile($this->makeTempImage(), 'adult.png', 'image/png', null, true);
+        $client->request('POST', '/account/wardrobe/ai/photo', ['_token' => $token], ['photo' => $photo]);
+
+        $this->assertResponseStatusCodeSame(422);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertStringContainsString('Подтвердите согласие', $data['error']);
     }
 
     /**

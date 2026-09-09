@@ -7,6 +7,7 @@ use App\Entity\AdvisorIdea;
 use App\Entity\AdvisorRun;
 use App\Entity\AiUsageLog;
 use App\Entity\Article;
+use App\Entity\NewsItem;
 use App\Entity\Author;
 use App\Entity\Brand;
 use App\Entity\BrandAudience;
@@ -27,6 +28,7 @@ use App\Entity\SocialPost;
 use App\Entity\BrandMarket;
 use App\Entity\ShippingRule;
 use App\Entity\TaxRule;
+use App\Service\Admin\AdminDashboardSummary;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
 use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
@@ -39,9 +41,16 @@ use Symfony\Component\HttpFoundation\Response;
 #[AdminDashboard(routePath: '/admin', routeName: 'admin')]
 class DashboardController extends AbstractDashboardController
 {
+    public function __construct(
+        private readonly AdminDashboardSummary $summary,
+    ) {
+    }
+
     public function index(): Response
     {
-        return $this->render('admin/dashboard.html.twig');
+        return $this->render('admin/dashboard.html.twig', [
+            'tiles' => $this->summary->build(),
+        ]);
 //        return parent::index();
 
         // Option 1. You can make your dashboard redirect to some common page of your backend
@@ -84,6 +93,8 @@ class DashboardController extends AbstractDashboardController
         yield MenuItem::linkToRoute('Клики по брендам', 'fas fa-arrow-up-right-from-square', 'admin_clicks');
         yield MenuItem::linkToRoute('Динамика Яндекс', 'fas fa-chart-line', 'admin_yandex_dynamics');
         yield MenuItem::linkToCrud('Статьи блога', 'fas fa-newspaper', Article::class);
+        yield MenuItem::linkToCrud('Новости (модерация)', 'fas fa-rss', NewsItem::class)
+            ->setController(NewsItemCrudController::class);
         yield MenuItem::linkToCrud('Авторы', 'fas fa-user-pen', Author::class);
         yield MenuItem::linkToCrud('SEO города (хабы)', 'fas fa-city', CityHub::class);
 

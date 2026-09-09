@@ -9,6 +9,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: NotificationRepository::class)]
+#[ORM\UniqueConstraint(name: 'uniq_notification_recipient_dedupe', columns: ['recipient_id', 'dedupe_key'])]
 class Notification
 {
     // Типы событий
@@ -20,11 +21,21 @@ class Notification
     public const TYPE_PRODUCT_LOW_STOCK = 'product_low_stock';
     public const TYPE_WEEKLY_STATS = 'weekly_stats';
     public const TYPE_SYSTEM = 'system';
+    public const TYPE_PURCHASE_REQUEST_NEW = 'purchase_request_new';
+    public const TYPE_PURCHASE_REQUEST_DECIDED = 'purchase_request_decided';
+    public const TYPE_PURCHASE_FITTING = 'purchase_fitting';
+    public const TYPE_PURCHASE_BOUGHT = 'purchase_bought';
+    public const TYPE_PURCHASE_REFUSED = 'purchase_refused';
+    public const TYPE_PURCHASE_RETURNED = 'purchase_returned';
+    public const TYPE_PURCHASE_DECISION_REMINDER = 'purchase_decision_reminder';
+    public const TYPE_PURCHASE_FITTING_REMINDER = 'purchase_fitting_reminder';
+    public const TYPE_PAYMENT_REMINDER = 'payment_reminder';
 
     // Каналы доставки
     public const CHANNEL_INAPP = 'inapp';
     public const CHANNEL_EMAIL = 'email';
     public const CHANNEL_TELEGRAM = 'telegram';
+    public const CHANNEL_PUSH = 'push';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -47,6 +58,9 @@ class Notification
     // Дополнительные данные (id заказа, ссылка, etc.)
     #[ORM\Column(type: Types::JSON, nullable: true)]
     private ?array $data = null;
+
+    #[ORM\Column(length: 100, nullable: true)]
+    private ?string $dedupeKey = null;
 
     #[ORM\Column(options: ['default' => false])]
     private bool $isRead = false;
@@ -101,9 +115,24 @@ class Notification
 
     public function getData(): ?array { return $this->data; }
 
+    public function getSafeAccountUrl(): ?string
+    {
+        $url = $this->data['url'] ?? null;
+
+        return is_string($url) && preg_match('#^/account/purchases/\d+$#', $url) ? $url : null;
+    }
+
     public function setData(?array $data): static
     {
         $this->data = $data;
+        return $this;
+    }
+
+    public function getDedupeKey(): ?string { return $this->dedupeKey; }
+
+    public function setDedupeKey(?string $dedupeKey): static
+    {
+        $this->dedupeKey = $dedupeKey;
         return $this;
     }
 

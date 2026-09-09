@@ -10,14 +10,12 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeTransfer;
 use App\Repository\WardrobeItemRepository;
 use App\Repository\WardrobeTransferRepository;
-use Vich\UploaderBundle\Storage\StorageInterface;
 
 class WardrobeExportService
 {
     public function __construct(
         private readonly WardrobeItemRepository $itemRepository,
         private readonly WardrobeTransferRepository $transferRepository,
-        private readonly StorageInterface $storage,
     ) {}
 
     /**
@@ -112,7 +110,7 @@ class WardrobeExportService
         $photos = [];
         if ($item->getPhoto() !== null) {
             $photos[] = [
-                'url' => $this->storage->resolveUri($item, 'photoFile'),
+                'url' => $this->portablePhotoReference($item->getPhoto()),
                 'type' => 'legacy',
                 'cover' => true,
             ];
@@ -120,7 +118,7 @@ class WardrobeExportService
         foreach ($item->getActivePhotos() as $photo) {
             if ($photo->getFilePath() !== null) {
                 $photos[] = [
-                    'url' => $this->storage->resolveUri($photo, 'file'),
+                    'url' => $this->portablePhotoReference($photo->getFilePath()),
                     'type' => $photo->getPhotoType(),
                     'cover' => $photo->isCover(),
                 ];
@@ -167,6 +165,16 @@ class WardrobeExportService
             'created_at' => $item->getCreatedAt()->format(\DateTimeInterface::ATOM),
             'updated_at' => $item->getUpdatedAt()?->format(\DateTimeInterface::ATOM),
         ];
+    }
+
+    private function portablePhotoReference(string $filename): string
+    {
+        return sprintf(
+            '/images/wardrobe/%s/%s/%s',
+            mb_substr($filename, 0, 2),
+            mb_substr($filename, 2, 2),
+            $filename,
+        );
     }
 
     /** @return array<string, mixed> */

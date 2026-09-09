@@ -16,14 +16,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Публикует статьи блога из _docs/blog-drafts/*.html по встроенному манифесту.
+ * Публикует статьи блога из docs/blog-drafts/*.html по встроенному манифесту.
  * Идемпотентна: существующий slug пропускается (с --force — контент обновляется).
  * Деплой: после выкатки кода выполнить на сервере
  *
  *   php bin/console app:blog:publish-drafts --dry-run
  *   php bin/console app:blog:publish-drafts
  */
-#[AsCommand(name: 'app:blog:publish-drafts', description: 'Publish blog articles from _docs/blog-drafts into the article table')]
+#[AsCommand(name: 'app:blog:publish-drafts', description: 'Publish blog articles from docs/blog-drafts into the article table')]
 class PublishBlogDraftsCommand extends Command
 {
     /** slug => [file, title, excerpt, publishedAt] — синхронизировано с локальной БД (канон) */
@@ -75,7 +75,7 @@ class PublishBlogDraftsCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $dryRun = (bool) $input->getOption('dry-run');
         $force = (bool) $input->getOption('force');
-        $draftsDir = $this->projectDir . '/_docs/blog-drafts';
+        $draftsDir = $this->projectDir . '/docs/blog-drafts';
 
         $created = $updated = $skipped = 0;
 

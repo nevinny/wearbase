@@ -3,9 +3,8 @@
 {#
   Mobile-first shell for the family wardrobe flow.
 
-  Future purchase/capture controllers pass `familyPurchaseUrl` and `familyCaptureUrl`.
-  Until those routes exist, their navigation items remain visibly disabled instead of
-  calling path() with an unknown route and breaking every page that extends this layout.
+  Purchase/capture URLs default to the application routes and may be overridden by a
+  controller when it needs to preserve additional context.
 #}
 
 {% block title %}{% block family_mobile_title %}Семейный гардероб{% endblock %} — WEARBASE{% endblock %}
@@ -50,10 +49,10 @@
 
 {% block body %}
     {% set currentRoute = app.request.attributes.get('_route')|default('') %}
-    {% set purchaseUrl = familyPurchaseUrl|default(null) %}
-    {% set captureUrl = familyCaptureUrl|default(null) %}
-    {% set activeSection = familyActiveSection|default(null) %}
     {% set wardrobeParams = currentMember is defined and currentMember ? {member: currentMember.id} : {} %}
+    {% set purchaseUrl = familyPurchaseUrl|default(path('account_purchase_index')) %}
+    {% set captureUrl = familyCaptureUrl|default(path('account_wardrobe_wear_index', wardrobeParams)) %}
+    {% set activeSection = familyActiveSection|default(null) %}
     {% set isFamilyActive = activeSection == 'family' or (activeSection is null and currentRoute starts with 'account_family') %}
     {% set isPurchaseActive = activeSection == 'purchases' or (activeSection is null and currentRoute starts with 'account_purchase') %}
     {% set isCaptureActive = activeSection == 'capture' or (activeSection is null and currentRoute starts with 'account_wardrobe_wear') %}

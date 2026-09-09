@@ -55,9 +55,37 @@ jobs:
         # схема провижинится из сущностей в tests/bootstrap.php.
         run: php -d memory_limit=512M vendor/bin/phpunit
 
+  pwa:
+    name: PWA acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, mbstring, intl, pdo_sqlite, sqlite3, xml, tokenizer, gd
+          coverage: none
+          tools: composer:v2
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --no-scripts
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
+
+      - name: Install frontend test dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run PWA acceptance
+        run: npx playwright test --config=playwright.pwa.config.ts
+
   deploy:
     name: Deploy to prod (regru)
-    needs: tests
+    needs: [tests, pwa]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
@@ -128,6 +156,8 @@ jobs:
               -e "ssh -i ~/.ssh/deploy_key -p ${P} -o UserKnownHostsFile=~/.ssh/known_hosts" \
               "./$DIR/" "${U}@${H}:${D}/$DIR/"
           done
+          ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${U}@${H}" "rm -f '${D}/public_html/manifest.webmanifest'"
 
       - name: Migrate + clear cache
         id: migrate
@@ -143,7 +173,7 @@ jobs:
         run: |
           set -o pipefail
           ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${U}@${H}" "cd ${D} && php -d memory_limit=512M bin/console doctrine:migrations:migrate --no-interaction && php -d memory_limit=512M bin/console cache:clear --no-debug" \
+            "${U}@${H}" "cd ${D} && php -d memory_limit=512M bin/console doctrine:migrations:migrate --no-interaction && php -d memory_limit=512M bin/console cache:clear --no-debug && php bin/console app:wardrobe:migrate-private-media --no-interaction && test ! -d public_html/images/wardrobe && test ! -d public_html/images/wardrobe_drafts" \
             2>&1 | tee migrate.log
 
       - name: Smoke test
@@ -160,6 +190,23 @@ jobs:
           done
           exit $fail
 
+      - name: Wardrobe ingest health gate
+        id: ingest_health
+        # Read-only operational check: validates scheduler heartbeat, queue SLA and private
+        # storage after migrations. It does not claim drafts or call the vision model.
+        # mkdir -p: Vich создаёт каталог лениво при первой загрузке, а prune/rsync удаляют
+        # пустой var/uploads/wardrobe_drafts — без этого gate ложно валит деплой.
+        env:
+          H: ${{ secrets.DEPLOY_HOST }}
+          U: ${{ secrets.DEPLOY_USER }}
+          P: ${{ secrets.DEPLOY_PORT }}
+          D: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -o pipefail
+          ssh -i ~/.ssh/deploy_key -p "${P}" -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${U}@${H}" "cd ${D} && mkdir -p var/uploads/wardrobe_drafts && APP_ENV=prod php bin/console app:wardrobe:ingest-health --check --json --no-debug" \
+            2>&1 | tee ingest-health.log
+
       - name: Notify Telegram
         # always(): шлём уведомление и при успехе, и при провале любого предыдущего
         # шага деплоя (rsync/prune/migrate/smoke). continue-on-error — сбой отправки
@@ -175,6 +222,7 @@ jobs:
           OUTCOME_PRUNE: ${{ steps.prune.outcome }}
           OUTCOME_MIGRATE: ${{ steps.migrate.outcome }}
           OUTCOME_SMOKE: ${{ steps.smoke.outcome }}
+          OUTCOME_INGEST_HEALTH: ${{ steps.ingest_health.outcome }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_AUTHOR: ${{ github.actor }}

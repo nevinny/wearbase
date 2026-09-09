@@ -74,6 +74,51 @@ class WardrobeAiService
         }
     }
 
+    /** @return array<int, array{name:?string,category:?string,color:?string,confidence:string}> */
+    public function recognizeOutfitPhoto(string $path, ?User $user = null): array
+    {
+        $hash = @sha1_file($path);
+        if ($hash === false) {
+            return [];
+        }
+        try {
+            return $this->cache->get('wardrobe_ai_outfit_'.$hash, function (ItemInterface $item) use ($path, $user): array {
+                $item->expiresAfter(self::CACHE_TTL);
+                if (!$this->visionLocal && !$this->meter->allowed()) {
+                    throw new WardrobeAiException(self::DAILY_CAP_ERROR);
+                }
+                $prompt = <<<'PROMPT'
+Определи отдельные предметы одежды, обуви и аксессуары, которые надеты на человеке.
+Верни ТОЛЬКО JSON без markdown: {"garments":[{"name":"короткое название","category":"категория","color":"цвет","confidence":"high|med|low"}]}.
+Не описывай тело, возраст, пол, фон и внешность человека. Не выдумывай невидимые вещи. Максимум 12 предметов.
+PROMPT;
+                if (!$this->visionLocal) {
+                    $this->meter->record();
+                }
+                $model = $this->visionLocal ? $this->localModel : $this->visionModel;
+                $data = $this->extractJson($this->llm->generateVision($prompt, [$path], $model, $this->visionLocal));
+                $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_PHOTO);
+                $garments = is_array($data['garments'] ?? null) ? array_slice($data['garments'], 0, 12) : [];
+
+                return array_values(array_filter(array_map(function (mixed $garment): ?array {
+                    if (!is_array($garment)) {
+                        return null;
+                    }
+                    $name = $this->cleanString($garment['name'] ?? null, 100);
+                    $category = $this->cleanString($garment['category'] ?? null, 100);
+                    $color = $this->cleanString($garment['color'] ?? null, 100);
+                    if ($name === null && $category === null && $color === null) {
+                        return null;
+                    }
+                    return ['name' => $name, 'category' => $category, 'color' => $color, 'confidence' => $this->normalizeConfidence($garment['confidence'] ?? null)];
+                }, $garments)));
+            });
+        } catch (\Throwable $exception) {
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_PHOTO, $user, $exception->getMessage(), ['hash' => $hash, 'flow' => 'outfit']);
+            return [];
+        }
+    }
+
     /** @return array{ok:bool,fields?:array,imageUrl?:?string,confidence?:string,error?:string} */
     public function suggestFromUrl(string $url, ?User $user = null): array
     {
@@ -150,6 +195,15 @@ EOT;
             'fields'     => $this->normalizePhotoFields($data),
             'confidence' => $this->normalizeConfidence($data['confidence'] ?? null),
         ];
+    }
+
+    private function cleanString(mixed $value, int $length): ?string
+    {
+        if (!is_scalar($value)) {
+            return null;
+        }
+        $value = trim((string) $value);
+        return $value === '' ? null : mb_substr($value, 0, $length);
     }
 
     private function analyzeUrl(string $url, ?User $user): array

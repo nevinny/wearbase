@@ -46,6 +46,14 @@ class CityHub
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $intro = null;
 
+    /**
+     * FAQ хаба: [{question, answer}, ...]. Рендерится в FAQPage-разметку city.html.twig.
+     *
+     * @var array<int, array{question: string, answer: string}>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $faq = null;
+
     #[ORM\Column(options: ['default' => true])]
     private bool $isActive = true;
 
@@ -127,6 +135,20 @@ class CityHub
     public function setIntro(?string $intro): static
     {
         $this->intro = $intro;
+
+        return $this;
+    }
+
+    /** @return array<int, array{question: string, answer: string}>|null */
+    public function getFaq(): ?array
+    {
+        return $this->faq;
+    }
+
+    /** @param array<int, array{question: string, answer: string}>|null $faq */
+    public function setFaq(?array $faq): static
+    {
+        $this->faq = $faq === [] ? null : $faq;
 
         return $this;
     }

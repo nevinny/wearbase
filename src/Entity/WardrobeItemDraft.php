@@ -17,12 +17,15 @@ use Vich\UploaderBundle\Mapping\Annotation as Vich;
  */
 #[ORM\Entity(repositoryClass: WardrobeItemDraftRepository::class)]
 #[ORM\Table(name: 'wardrobe_item_draft')]
+#[ORM\UniqueConstraint(name: 'uniq_wardrobe_draft_subject_hash', columns: ['user_id', 'content_hash'])]
 #[ORM\Index(name: 'idx_wardrobe_draft_user_batch', columns: ['user_id', 'batch_id'])]
 #[ORM\Index(name: 'idx_wardrobe_draft_status', columns: ['status'])]
+#[ORM\Index(name: 'idx_wardrobe_draft_status_lease', columns: ['status', 'lease_until'])]
 #[Vich\Uploadable]
 class WardrobeItemDraft
 {
     public const STATUS_PENDING = 'pending';
+    public const STATUS_PROCESSING = 'processing';
     public const STATUS_RECOGNIZED = 'recognized';
     public const STATUS_FAILED = 'failed';
     public const STATUS_ACCEPTED = 'accepted';
@@ -37,8 +40,31 @@ class WardrobeItemDraft
     #[ORM\JoinColumn(nullable: false)]
     private ?User $user = null;
 
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?User $actor = null;
+
+    #[ORM\OneToOne]
+    #[ORM\JoinColumn(onDelete: 'SET NULL')]
+    private ?WardrobeItem $acceptedItem = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $acceptedAt = null;
+
     #[ORM\Column(name: 'batch_id', length: 36)]
     private ?string $batchId = null;
+
+    #[ORM\Column(length: 64, nullable: true)]
+    private ?string $contentHash = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $leaseUntil = null;
+
+    #[ORM\Column(length: 64, nullable: true)]
+    private ?string $workerId = null;
+
+    #[ORM\Column(options: ['default' => 0])]
+    private int $attempts = 0;
 
     #[ORM\Column(length: 12)]
     private string $status = self::STATUS_PENDING;
@@ -67,6 +93,9 @@ class WardrobeItemDraft
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $photo = null;
 
+    #[ORM\Column(nullable: true)]
+    private ?int $fileSize = null;
+
     #[Vich\UploadableField(mapping: 'wardrobe_draft_photo', fileNameProperty: 'photo')]
     private ?File $photoFile = null;
 
@@ -89,7 +118,33 @@ class WardrobeItemDraft
     public function setUser(?User $user): static
     {
         $this->user = $user;
+        $this->actor ??= $user;
         return $this;
+    }
+
+    public function getProfileSubject(): ?User { return $this->user; }
+    public function setProfileSubject(User $subject): static { $this->user = $subject; return $this; }
+    public function getActor(): ?User { return $this->actor; }
+    public function setActor(User $actor): static { $this->actor = $actor; return $this; }
+    public function getAcceptedItem(): ?WardrobeItem { return $this->acceptedItem; }
+    public function getAcceptedAt(): ?\DateTimeImmutable { return $this->acceptedAt; }
+
+    public function accept(WardrobeItem $item): void
+    {
+        if ($this->status === self::STATUS_ACCEPTED) {
+            if ($this->acceptedItem?->getId() !== $item->getId()) {
+                throw new \DomainException('Черновик уже принят как другая вещь');
+            }
+            return;
+        }
+        if ($this->status !== self::STATUS_RECOGNIZED && $this->status !== self::STATUS_FAILED) {
+            throw new \DomainException('Черновик ещё не готов к подтверждению');
+        }
+
+        $this->status = self::STATUS_ACCEPTED;
+        $this->acceptedItem = $item;
+        $this->acceptedAt = new \DateTimeImmutable();
+        $this->updatedAt = new \DateTime();
     }
 
     public function getBatchId(): ?string { return $this->batchId; }
@@ -98,6 +153,58 @@ class WardrobeItemDraft
     {
         $this->batchId = $batchId;
         return $this;
+    }
+
+    public function getContentHash(): ?string { return $this->contentHash; }
+
+    public function setContentHash(string $contentHash): static
+    {
+        if (preg_match('/^[a-f0-9]{64}$/D', $contentHash) !== 1) {
+            throw new \InvalidArgumentException('Некорректный hash фотографии');
+        }
+        $this->contentHash = $contentHash;
+
+        return $this;
+    }
+
+    public function getLeaseUntil(): ?\DateTimeImmutable { return $this->leaseUntil; }
+    public function getWorkerId(): ?string { return $this->workerId; }
+    public function getAttempts(): int { return $this->attempts; }
+
+    public function claim(string $workerId, \DateTimeImmutable $leaseUntil): void
+    {
+        if ($this->status !== self::STATUS_PENDING
+            && !($this->status === self::STATUS_PROCESSING
+                && $this->leaseUntil !== null
+                && $this->leaseUntil < new \DateTimeImmutable())
+        ) {
+            throw new \DomainException('Черновик уже обрабатывается');
+        }
+        $this->status = self::STATUS_PROCESSING;
+        $this->workerId = mb_substr($workerId, 0, 64);
+        $this->leaseUntil = $leaseUntil;
+        $this->attempts++;
+        $this->updatedAt = new \DateTime();
+    }
+
+    public function releaseForRetry(string $error): void
+    {
+        $this->status = self::STATUS_PENDING;
+        $this->error = mb_substr($error, 0, 255);
+        $this->workerId = null;
+        $this->leaseUntil = null;
+        $this->updatedAt = new \DateTime();
+    }
+
+    public function finishProcessing(string $status): void
+    {
+        if (!in_array($status, [self::STATUS_RECOGNIZED, self::STATUS_FAILED], true)) {
+            throw new \InvalidArgumentException('Недопустимый итог распознавания');
+        }
+        $this->status = $status;
+        $this->workerId = null;
+        $this->leaseUntil = null;
+        $this->updatedAt = new \DateTime();
     }
 
     public function getStatus(): string { return $this->status; }
@@ -165,6 +272,8 @@ class WardrobeItemDraft
     }
 
     public function getPhoto(): ?string { return $this->photo; }
+    public function getFileSize(): ?int { return $this->fileSize; }
+    public function setFileSize(?int $fileSize): static { $this->fileSize = $fileSize; return $this; }
 
     public function setPhoto(?string $photo): static
     {
@@ -186,6 +295,14 @@ class WardrobeItemDraft
     public function getCreatedAt(): \DateTime { return $this->createdAt; }
 
     public function getUpdatedAt(): ?\DateTime { return $this->updatedAt; }
+
+    public function clearSensitiveData(): void
+    {
+        $this->aiRaw = null;
+        $this->photo = null;
+        $this->fileSize = null;
+        $this->updatedAt = new \DateTime();
+    }
 
     public function setUpdatedAt(?\DateTime $updatedAt): static
     {

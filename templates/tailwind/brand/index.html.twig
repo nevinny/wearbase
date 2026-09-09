@@ -2,7 +2,7 @@
 
 {% block title %}Каталог российских брендов одежды | WEARBASE{% endblock %}
 
-{% block meta_description %}Каталог российских брендов одежды. Более 340 брендов из Москвы, Санкт-Петербурга и других городов России. Streetwear, casual, минимализм.{% endblock %}
+{% block meta_description %}Каталог российских брендов одежды: {{ publishedCount }} местных марок из Москвы, Санкт-Петербурга, Екатеринбурга и других городов России — с сайтами, соцсетями и контактами. Streetwear, casual, минимализм, спорт.{% endblock %}
 
 {% block meta_keywords %}российские бренды одежды, каталог брендов, streetwear, уличная мода, российские марки{% endblock %}
 
@@ -14,7 +14,7 @@
 
 {% block og_title %}Каталог российских брендов одежды | WEARBASE{% endblock %}
 
-{% block og_description %}Более 340 российских брендов одежды. Streetwear, casual, минимализм из Москвы, Питера и других городов.{% endblock %}
+{% block og_description %}{{ publishedCount }} российских брендов одежды с контактами. Streetwear, casual, минимализм из Москвы, Петербурга и других городов.{% endblock %}
 
 {% block og_image %}{{ absolute_url('/og-image.svg') }}{% endblock %}
 
@@ -28,7 +28,7 @@
                 "@id": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}#webpage",
                 "url": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}",
                 "name": "Каталог российских брендов одежды | WEARBASE",
-                "description": "Каталог российских брендов одежды. Более 340 брендов из Москвы, Санкт-Петербурга и других городов России.",
+                "description": "Каталог российских брендов одежды: {{ publishedCount }} местных марок из Москвы, Санкт-Петербурга и других городов России.",
                 "isPartOf": {"@id": "#website"},
                 "breadcrumb": {"@id": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}#breadcrumb"}
             },
@@ -36,7 +36,7 @@
                 "@type": "CollectionPage",
                 "@id": "{{ url('brand_index', {_locale: app.request.locale|default('ru')}) }}#collection",
                 "name": "Каталог российских брендов одежды",
-                "description": "Каталог российских брендов одежды. Более 340 брендов из Москвы, Санкт-Петербурга и других городов России.",
+                "description": "Каталог российских брендов одежды: {{ publishedCount }} местных марок из Москвы, Санкт-Петербурга и других городов России.",
                 "isPartOf": {"@id": "#website"}
             },
             {
@@ -72,8 +72,28 @@
         <section class="text-center mb-10">
             <h1 class="text-3xl md:text-4xl font-bold tracking-tight mb-3">Российские бренды одежды</h1>
             <p class="text-gray-600 text-base md:text-lg">
-                Каталог отечественных fashion-брендов. Streetwear, casual, минимализм и другие направления.
+                {{ publishedCount }} отечественных марок с сайтами, соцсетями и контактами — streetwear, casual,
+                минимализм, спорт и другие направления. Покупайте напрямую у производителя.
             </p>
+            {# Ссылка на гид: статья под тот же головной запрос («российские бренды одежды»,
+               20 273 показа/мес) висела почти без входящих ссылок и не ранжировалась вовсе.
+               Каталог и гид закрывают разные интенты — витрину и «как выбрать», — и должны
+               ссылаться друг на друга, а не конкурировать вслепую. #}
+            <p class="mt-3 text-sm text-gray-500">
+                Впервые выбираете локальный бренд?
+                <a href="{{ path('blog_show', {_locale: page_locale|default('ru'), slug: 'rossiyskie-brendy-odezhdy-gid'}) }}"
+                   class="text-gray-900 underline underline-offset-2 hover:no-underline">Гид по российским брендам одежды</a>
+                — как отличить производителя от перепродавца и где покупать напрямую.
+            </p>
+            {# Ссылки на фасетные страницы аудитории (docs/geo_city_demand_2026_09.md §11):
+               «российские бренды женской/мужской/детской одежды» — неотработанный спрос
+               ≈4400 показов/мес до появления /audience/{slug}. #}
+            <div class="flex flex-wrap justify-center gap-3 mt-4 text-sm">
+                <a href="{{ path('brand_audience_show', {_locale: app.request.locale, slug: 'female'}) }}" class="text-indigo-600 hover:text-indigo-800">Женская одежда</a>
+                <a href="{{ path('brand_audience_show', {_locale: app.request.locale, slug: 'male'}) }}" class="text-indigo-600 hover:text-indigo-800">Мужская одежда</a>
+                <a href="{{ path('brand_audience_show', {_locale: app.request.locale, slug: 'kids'}) }}" class="text-indigo-600 hover:text-indigo-800">Детская одежда</a>
+                <a href="{{ path('brand_audience_show', {_locale: app.request.locale, slug: 'unisex'}) }}" class="text-indigo-600 hover:text-indigo-800">Унисекс</a>
+            </div>
         </section>
 
         {# --- Алфавитный указатель --- #}

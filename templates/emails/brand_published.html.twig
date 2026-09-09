@@ -1,0 +1,27 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Бренд «{{ brand.title }}» опубликован — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">🎉 Бренд «{{ brand.title }}» опубликован</h2>
+<p style="color:#555;line-height:1.6;">
+    Карточка появилась в каталоге WEARBASE и теперь видна покупателям.
+</p>
+
+<p style="text-align:center;">
+    <a href="{{ brandUrl }}" class="btn">Открыть карточку бренда</a>
+</p>
+
+<p style="color:#555;line-height:1.6;"><strong>Что дальше:</strong></p>
+<ul style="color:#555;line-height:1.7;">
+    <li>Добавьте товары в личном кабинете — карточка с ассортиментом убедительнее для покупателей.</li>
+    <li>Следите за карточкой в личном кабинете: там видно статистику и можно быстро внести правки.</li>
+</ul>
+
+<p style="text-align:center;">
+    <a href="{{ dashboardUrl }}" class="btn">Открыть кабинет бренда</a>
+</p>
+
+<p style="color:#555;line-height:1.6;">
+    Если удобнее голосом или в мессенджере — пишите напрямую основателю площадки:
+    <a href="https://t.me/zyablik">@zyablik</a> в Telegram.
+</p>
+{% endblock %}

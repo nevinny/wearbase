@@ -3,7 +3,7 @@
 namespace App\Controller\Brands;
 
 use App\Entity\Brand;
-use App\Entity\Product;
+use App\Repository\BrandAudienceRepository;
 use App\Repository\BrandRepository;
 use App\Repository\BrandStyleRepository;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -213,6 +213,11 @@ class BrandsController extends AbstractController
         }
 
         return $this->render('tailwind/brand/index.html.twig', [
+            // Живой счётчик для меты: в шаблоне было зашито «Более 340 брендов»,
+            // при фактических 2778 опубликованных. Мета видна в выдаче по головному
+            // запросу категории («российские бренды одежды», 20 273 показа/мес по
+            // Wordstat), и восьмикратное занижение там работает против нас.
+            'publishedCount' => $repo->countPubliclyVisible(),
             'brands' => $brands,
             'featuredBrands' => $featured,
             'alphabets' => $displayAlphabets,
@@ -351,7 +356,7 @@ class BrandsController extends AbstractController
         name: 'brand_show',
         requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko'],
         defaults: ['_locale' => 'ru'])]
-    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo, \App\Service\CitySlugger $citySlugger, \App\Service\AdminAccess $adminAccess): Response
+    public function show(#[MapEntity(mapping: ['slug' => 'slug'])]Brand $brand, BrandRepository $brandRepo, \App\Repository\BrandUserRepository $brandUserRepo, \App\Repository\ProductRepository $productRepo, \App\Service\CitySlugger $citySlugger, \App\Service\AdminAccess $adminAccess): Response
     {
         // Является ли текущий пользователь участником команды ИМЕННО этого бренда
         $isMemberOfThisBrand = false;
@@ -375,7 +380,7 @@ class BrandsController extends AbstractController
             throw $this->createNotFoundException('Бренд не опубликован');
         }
 
-        $demoProducts = $this->createDemoProducts($brand);
+        $brandProducts = $productRepo->findForBrandPage($brand);
         // Жёсткий граф перелинковки (только active-таргеты). Если граф дал недобор
         // (часть рёбер ведёт на ещё не опубликованные new-бренды → отфильтрованы),
         // добиваем до минимума active-кандидатами, чтобы страница не становилась
@@ -462,7 +467,7 @@ class BrandsController extends AbstractController
 
         return $this->render('tailwind/brand/show.html.twig', [
             'brand' => $brand,
-            'products' => $demoProducts,
+            'products' => $brandProducts,
             'similarBrands' => $similarBrands,
             'styles' => $styles,
             'cities' => $cities,
@@ -721,6 +726,85 @@ class BrandsController extends AbstractController
         ]);
     }
 
+    /**
+     * Фасетная страница аудитории /{_locale}/audience/{slug} (Женщины/Мужчины/Дети/
+     * Унисекс — docs/geo_city_demand_2026_09.md §11: «российские бренды женской
+     * одежды» и т.п. — спрос ≈4400 показов/мес, наших показов не было вообще, т.к.
+     * публичной страницы не существовало). Копирует гейты styleShow один в один.
+     */
+    #[Route('/{_locale}/audience/{slug}', name: 'brand_audience_show', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
+    public function audienceShow(string $slug, BrandRepository $repo, BrandAudienceRepository $audienceRepo, Request $request): Response
+    {
+        $audience = $audienceRepo->findOneBy(['slug' => $slug]);
+        if (!$audience || !$audience->isPublished()) {
+            throw $this->createNotFoundException('Аудитория не найдена');
+        }
+
+        $brandsQb = $repo->createQueryBuilder('b')
+            ->join('b.audiences', 'a')
+            ->where('b.status = :status')
+            ->andWhere('a.slug = :slug')
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('slug', $slug)
+            ->orderBy('b.title', 'ASC');
+        $repo->excludeForeignOrigin($brandsQb);
+        $brands = $brandsQb->getQuery()->getResult();
+
+        // Пустая аудитория (0 опубликованных брендов) = нет контента → 404, как у стилей.
+        if ($brands === []) {
+            throw $this->createNotFoundException('В этой аудитории пока нет опубликованных брендов');
+        }
+
+        // Гейт индексации тонких хабов (docs/seo_sitewide_backlog.md HIGH-1): кураторское
+        // description (заполняет app:seo:audience-hub) индексируется независимо от числа
+        // брендов — тот же приём, что cityShow делает для кураторского CityHub.
+        $indexable = count($brands) >= self::MIN_INDEXABLE_BRANDS || trim((string) $audience->getDescription()) !== '';
+
+        // Grounded extractable-блок: топ-5 стилей и топ-5 городов среди брендов аудитории.
+        $topStyles = [];
+        $topCities = [];
+        if ($indexable) {
+            $topStylesQb = $repo->createQueryBuilder('b')
+                ->select('s.title, COUNT(DISTINCT b.id) as cnt')
+                ->join('b.audiences', 'a')
+                ->join('b.styles', 's')
+                ->where('b.status = :status')
+                ->andWhere('a.slug = :slug')
+                ->setParameter('status', Statuses::Active)
+                ->setParameter('slug', $slug)
+                ->groupBy('s.id')
+                ->orderBy('cnt', 'DESC')
+                ->setMaxResults(5);
+            $repo->excludeForeignOrigin($topStylesQb);
+            $topStyles = $topStylesQb->getQuery()->getResult();
+
+            $topCitiesQb = $repo->createQueryBuilder('b')
+                ->select('b.city, COUNT(DISTINCT b.id) as cnt')
+                ->join('b.audiences', 'a')
+                ->where('b.status = :status')
+                ->andWhere('a.slug = :slug')
+                ->andWhere('b.city IS NOT NULL')
+                ->andWhere('b.city != \'\'')
+                ->setParameter('status', Statuses::Active)
+                ->setParameter('slug', $slug)
+                ->groupBy('b.city')
+                ->orderBy('cnt', 'DESC')
+                ->setMaxResults(5);
+            $repo->excludeForeignOrigin($topCitiesQb);
+            $topCities = $topCitiesQb->getQuery()->getResult();
+        }
+
+        return $this->render('tailwind/audience.html.twig', [
+            'audience' => $audience,
+            'slug' => $slug,
+            'brands' => $brands,
+            'indexable' => $indexable,
+            'topStyles' => $topStyles,
+            'topCities' => $topCities,
+            'locale' => $request->getLocale(),
+        ]);
+    }
+
     #[Route('/brands/a-z', name: 'brands_az')]
     public function brandsAlphabetical(Request $request, BrandRepository $brandRepository): Response
     {
@@ -779,85 +863,4 @@ class BrandsController extends AbstractController
         ]);
     }
 
-    /**
-     * Создает демо-товары для бренда
-     */
-    private function createDemoProducts(Brand $brand): array
-    {
-        $demoProducts = [];
-        return $demoProducts;
-        // Товар 1
-        $product1 = new Product();
-        $product1->setTitle('Оверсайз худи "Shadow"');
-        $product1->setSlug('oversize-hudi-shadow');
-        $product1->setPrice(4990);
-        $product1->setBrand($brand);
-        $product1->setDescription('Черное оверсайз худи из хлопка с капюшоном. Увеличенный крой для комфортной носки.');
-        $demoProducts[] = $product1;
-
-        // Товар 2
-        $product2 = new Product();
-        $product2->setTitle('Футболка оверсайз "Minimal"');
-        $product2->setSlug('oversize-t-shirt-minimal');
-        $product2->setPrice(2990);
-        $product2->setBrand($brand);
-        $product2->setDescription('Белая футболка оверсайз с минималистичным принтом. 100% хлопок.');
-        $demoProducts[] = $product2;
-
-        // Товар 3
-        $product3 = new Product();
-        $product3->setTitle('Бомбер "Urban"');
-        $product3->setSlug('bomber-urban');
-        $product3->setPrice(8990);
-        $product3->setBrand($brand);
-        $product3->setDescription('Легкий бомбер из нейлона с градиентной отделкой. Для прохладных вечеров.');
-        $demoProducts[] = $product3;
-
-        // Товар 4
-        $product4 = new Product();
-        $product4->setTitle('Штаны карго "Utility"');
-        $product4->setSlug('cargo-pants-utility');
-        $product4->setPrice(5990);
-        $product4->setBrand($brand);
-        $product4->setDescription('Штаны карго с множеством карманов. Удобство и функциональность.');
-        $demoProducts[] = $product4;
-
-        // Товар 5
-        $product5 = new Product();
-        $product5->setTitle('Кепка "Logo"');
-        $product5->setSlug('cap-logo');
-        $product5->setPrice(1990);
-        $product5->setBrand($brand);
-        $product5->setDescription('Бейсболка с вышитым логотипом бренда. Регулируемая посадка.');
-        $demoProducts[] = $product5;
-
-        // Товар 6
-        $product6 = new Product();
-        $product6->setTitle('Рюкзак "City"');
-        $product6->setSlug('backpack-city');
-        $product6->setPrice(7590);
-        $product6->setBrand($brand);
-        $product6->setDescription('Городской рюкзак с отделением для ноутбука. Водоотталкивающий материал.');
-        $demoProducts[] = $product6;
-
-        // Товар 7
-        $product7 = new Product();
-        $product7->setTitle('Лонгслив "Oversize"');
-        $product7->setSlug('longsleeve-oversize');
-        $product7->setPrice(3990);
-        $product7->setBrand($brand);
-        $product7->setDescription('Длинный рукав оверсайз кроя. Идеально для слоинга.');
-        $demoProducts[] = $product7;
-
-        // Товар 8
-        $product8 = new Product();
-        $product8->setTitle('Ветровка "Rain"');
-        $product8->setSlug('windbreaker-rain');
-        $product8->setPrice(6990);
-        $product8->setBrand($brand);
-        $product8->setDescription('Ветровка с защитой от ветра и воды. Складной дизайн.');
-        $demoProducts[] = $product8;
-
-        return $demoProducts;
-    }
 }

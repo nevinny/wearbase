@@ -3,6 +3,9 @@
 namespace App\Command;
 
 use App\Entity\Brand;
+use App\Entity\BrandUser;
+use App\Entity\Notification;
+use App\Notification\NotificationDispatcher;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -13,21 +16,27 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Дрип-публикация (прод): системный cron раз в час. Постепенный вывод новой базы
- * брендов, имитирующий ручную работу — резкий скачок числа страниц вредит Google
- * (content velocity / SpamBrain).
+ * Дрип-публикация (прод): системный cron раз в 5 минут (диспетчер scheduled_command,
+ * app:cron:run-scheduled). Постепенный вывод новой базы брендов, имитирующий ручную работу —
+ * резкий скачок числа страниц вредит Google (content velocity / SpamBrain).
  *
- *   0 * * * * cd /path && php bin/console app:brand:publish-tick --no-debug >> var/log/publish.log 2>&1
+ *   0,5,10,15,20,25,30,35,40,45,50,55 * * * * cd /path && php bin/console app:brand:publish-tick --no-debug >> var/log/publish.log 2>&1
  *
  * Логика тика:
  *  1. Окно бодрствования 9–23 МСК (явная TZ — прод-сервер может жить в UTC).
- *  2. sleep(rand(0..45мин)) — публикации не по ровным часам (--no-wait для теста).
- *  3. Ramp-up БЕЗ хранимого состояния: w = недель с PUBLISH_LAUNCH_DATE (env);
+ *  2. Джиттер БЕЗ sleep (PublishTickJitter + var/publish_tick_state.json): на первом тике часа
+ *     намечается случайная минута публикации в пределах 45 мин от начала часа — то же
+ *     распределение :00–:45, что раньше давал sleep(rand(0..2700)) ПРЯМО ВНУТРИ команды. Тот
+ *     sleep держал весь интервал под глобальным флоком диспетчера (RunScheduledCommandsCommand
+ *     держит его на весь проход) — стояли все прочие кроны, включая ежеминутную доставку писем.
+ *     Теперь каждый тик мгновенно завершается SUCCESS, пока намеченная минута не наступит;
+ *     ровно одна публикация в час. `--now` публикует немедленно, игнорируя джиттер (отладка/ручной прогон).
+ *  3. Ramp-up БЕЗ хранимого состояния таргета: w = недель с PUBLISH_LAUNCH_DATE (env);
  *     дневной таргет T(w) = min(CAP, round(START * (1+G)^w)) — старт 10/день,
  *     +22%/нед, потолок 80/день (разгон под живой индекс Яндекса, см. RATE_* ниже).
- *  4. Самокоррекция: p = (T - published_today) / оставшихся_тиков;
- *     за тик публикуем n = floor(p) + Bernoulli(frac(p)) — иначе CAP недостижим
- *     (15 тиков/день < 28 публикаций при «1 за тик»).
+ *  4. Самокоррекция: p = (T - published_today) / оставшихся ЧАСОВ окна (не 5-минутных тиков —
+ *     публикация всё ещё максимум раз в час); за час публикуем n = floor(p) + Bernoulli(frac(p))
+ *     — иначе CAP недостижим.
  *  5. Выбор СЛУЧАЙНЫХ готовых брендов (status='new' AND publish_pending=1,
  *     по СПРОСУ-НА-ПОКУПКУ: имя бренда + коммерч.модификатор) → active + published_at (в каталог/sitemap).
  */
@@ -39,8 +48,7 @@ class PublishTickCommand extends Command
 {
     private const TZ          = 'Europe/Moscow';
     private const HOUR_FROM   = 9;    // первый тик дня
-    private const HOUR_TO     = 22;   // последний тик дня (sleep до 45м удержит публикацию до ~23)
-    private const MAX_SLEEP   = 2700; // 45 мин
+    private const HOUR_TO     = 22;   // последний час дня (джиттер до 45м удержит публикацию до ~23)
     // Разгон 02.07: Яндекс усваивает страницы (pages-in-search 339→494 май→июль, показы ×2),
     // покрытие НЕ заморожено (в отличие от Google), а в очереди дрипа ~3000 grounded-брендов.
     // Подняли потолок 28→80 и ускорили ramp — под наблюдением yandex_history/панели «Динамика Яндекс».
@@ -60,6 +68,9 @@ class PublishTickCommand extends Command
         private readonly \App\Service\BrandLinkGraphService $linkGraph,
         private readonly \App\Notification\AdminNotifier $notifier,
         private readonly \App\Service\BrandActionSigner $actionSigner,
+        private readonly \App\Repository\BrandRepository $brands,
+        private readonly NotificationDispatcher $userNotifier,
+        private readonly \App\Service\PublishTickJitter $jitter,
         #[Autowire('%env(default::PUBLISH_LAUNCH_DATE)%')]
         private readonly ?string $launchDate,
         #[Autowire('%kernel.project_dir%')]
@@ -72,22 +83,22 @@ class PublishTickCommand extends Command
     {
         $this
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Посчитать T(w)/p/n, ничего не публиковать')
-            ->addOption('no-wait', null, InputOption::VALUE_NONE, 'Без случайной задержки (для теста)')
+            ->addOption('now', null, InputOption::VALUE_NONE, 'Публиковать сейчас же, игнорируя джиттер (ручной прогон/отладка)')
         ;
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io     = new SymfonyStyle($input, $output);
-        $dryRun = (bool) $input->getOption('dry-run');
-        $noWait = (bool) $input->getOption('no-wait');
+        $io        = new SymfonyStyle($input, $output);
+        $dryRun    = (bool) $input->getOption('dry-run');
+        $immediate = (bool) $input->getOption('now');
 
         if (trim((string) $this->launchDate) === '') {
             $io->error('PUBLISH_LAUNCH_DATE не задан (env, формат YYYY-MM-DD) — дрип выключен.');
             return Command::FAILURE;
         }
 
-        // Защита от перекрытия тиков (cron + 45-минутный sleep)
+        // Защита от перекрытия тиков (тик может занять время — IndexNow/письма/ТГ — а cron дёргает раз в 5 мин)
         $lock = fopen($this->projectDir . '/var/publish_tick.lock', 'c');
         if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
             $io->warning('Предыдущий тик ещё работает — выходим.');
@@ -103,8 +114,157 @@ class PublishTickCommand extends Command
             return Command::SUCCESS;
         }
 
+        if ($dryRun) {
+            $this->planHour($now, $hour, $io);
+            $io->note('dry-run — без публикации');
+            return Command::SUCCESS;
+        }
+
+        // Джиттер: намеченная минута публикации решается раз в час (var/publish_tick_state.json),
+        // тяжёлый расчёт таргета/n ($this->planHour) вызывается только на первом тике часа —
+        // см. докстринг класса и PublishTickJitter.
+        $stateFile = $this->projectDir . '/var/publish_tick_state.json';
+        $state = is_file($stateFile) ? (json_decode((string) file_get_contents($stateFile), true) ?: null) : null;
+
+        $decision = $this->jitter->evaluate(
+            $now,
+            $state,
+            fn () => $this->planHour($now, $hour, $io),
+            $immediate,
+        );
+        file_put_contents($stateFile, json_encode($decision['state'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        if (!$decision['publish']) {
+            $io->text(sprintf(
+                '[%s МСК] %s.',
+                $now->format('H:i'),
+                ($decision['state']['done'] ?? false) ? 'час уже обработан' : 'ждём намеченную минуту публикации',
+            ));
+            return Command::SUCCESS;
+        }
+
+        $n = (int) ($decision['state']['n'] ?? 0);
+        if ($n === 0) {
+            $io->text('В этот час не публикуем.');
+            return Command::SUCCESS;
+        }
+
+        // --- Готовые бренды ПО СПРОСу (drip-by-demand), владельческие — первыми ---
+        // Выборка и её порядок — BrandRepository::findDripCandidateIds() (гейты ниши/происхождения,
+        // приоритет саморег-владельцев, спрос по ключевикам, RAND() рвёт ничьи).
+        $ids = $this->brands->findDripCandidateIds($n);
+
+        if ($ids === []) {
+            $io->text('Очередь публикации пуста (нет new + publish_pending).');
+            return Command::SUCCESS;
+        }
+
+        $published = 0;
+        $newUrls = [];
+        $tgLines = [];
+        $tgButtons = []; // по одной кнопке-ссылке «🚫 Скрыть» на бренд (подписанный URL → BrandModerationController)
+        foreach ($ids as $id) {
+            $brand = $this->em->find(Brand::class, (int) $id);
+            if ($brand === null) {
+                continue;
+            }
+            // Доменный переход new → active. МСК, как и граница дня в published_today —
+            // иначе на UTC-проде счёт published_today съезжает на 3ч.
+            $brand->publish(new \DateTime('now', $tz));
+            $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
+
+            // Письмо владельцу саморег-бренда (brand_user role=owner) — «карточка опубликована».
+            // Каталожные бренды без владельца просто не находят получателя — dispatch не идёт.
+            // dedupe встроен в dispatchOnce (recipient+dedupeKey) — повторный тик по той же
+            // карточке письмо не задублирует. Fail-open: сбой уведомления публикацию не ломает
+            // (тот же паттерн, что и ТГ-уведомление ниже).
+            try {
+                $owner = $this->em->getRepository(BrandUser::class)
+                    ->findOneBy(['brand' => $brand, 'role' => BrandUser::ROLE_OWNER])
+                    ?->getUser();
+                if ($owner !== null) {
+                    $this->userNotifier->dispatchOnce(
+                        $owner,
+                        Notification::TYPE_SYSTEM,
+                        sprintf('brand_published:%d', $brand->getId()),
+                        sprintf('Бренд «%s» опубликован', $brand->getTitle()),
+                        'Карточка появилась в каталоге WEARBASE и теперь видна покупателям.',
+                        ['brand_id' => $brand->getId()],
+                        'brand_published',
+                        ['brand' => $brand, 'brandUrl' => $url, 'dashboardUrl' => 'https://wearbase.ru/brand/dashboard'],
+                    );
+                }
+            } catch (\Throwable) {
+            }
+
+            $this->em->flush();
+
+            // Вплетение в жёсткий граф перелинковки: исходящие рёбра + гарантия
+            // входящих (страница не рождается сиротой). Fail-open: SQL-fallback
+            // источники (style/city/fill), эмбеддинг-рёбра доуточнит локальный
+            // app:brand:build-link-graph. Сбой графа публикацию не ломает.
+            try {
+                $this->linkGraph->weave($brand->getId());
+            } catch (\Throwable) {
+            }
+
+            $io->text(sprintf('  ✓ опубликован: %s (id %d)', $brand->getTitle(), $brand->getId()));
+            $newUrls[] = $url;
+            // Сниппет описания (несколько предложений) — чтобы сразу было видно, про что бренд
+            // (ловим чужие сущности глазами: «…пневмоэлементы автоподвески» → жмём «Скрыть»).
+            $desc = trim(preg_replace('/\s+/', ' ', strip_tags((string) $brand->getDescription())));
+            $snippet = mb_substr($desc, 0, 280);
+            if (mb_strlen($desc) > 280) {
+                $snippet .= '…';
+            }
+            $tgLines[] = sprintf(
+                '• <a href="%s">%s</a>%s',
+                $url, htmlspecialchars((string) $brand->getTitle()),
+                $snippet !== '' ? "\n<i>" . htmlspecialchars($snippet) . '</i>' : '',
+            );
+            // URL-кнопка на прод: клик открывает подписанную ссылку (?action=unpublish&id&key),
+            // BrandModerationController скрывает бренд. Не зависит от callback-вебхука (тот таймаутит).
+            $hideUrl = sprintf(
+                'https://wearbase.ru/mod/brand-action?action=unpublish&id=%d&key=%s',
+                $brand->getId(),
+                $this->actionSigner->sign('unpublish', $brand->getId()),
+            );
+            $tgButtons[] = ['text' => '🚫 Скрыть: ' . mb_substr((string) $brand->getTitle(), 0, 40), 'url' => $hideUrl];
+            $published++;
+        }
+
+        // IndexNow: мгновенный пинг Яндексу/Bing о новых URL (Google — через sitemap lastmod).
+        // Fail-open: неуспех пинга публикацию не ломает.
+        if ($newUrls !== [] && $this->indexNow->ping($newUrls)) {
+            $io->text(sprintf('  → IndexNow: %d URL отправлено (Яндекс/Bing)', count($newUrls)));
+        }
+
+        // ТГ-уведомление со ссылками + кнопки «🚫 Скрыть» по каждому бренду (верификация человеком,
+        // callback → unpublish). Fail-open: уведомление не должно ломать публикацию.
+        if ($tgLines !== [] && $this->notifier->isEnabled()) {
+            try {
+                $this->notifier->sendWithButtons("📢 <b>Дрип-публикация</b>\n" . implode("\n", $tgLines), $tgButtons);
+            } catch (\Throwable) {
+            }
+        }
+
+        $io->success(sprintf('Опубликовано брендов: %d', $published));
+
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Ramp-up + самокоррекция часа: сколько брендов публиковать (n). Тяжёлый расчёт (health-
+     * множители, published_today) — вызывается РАЗ в час (см. PublishTickJitter::evaluate()
+     * $onNewHour), а также из --dry-run для превью; побочных эффектов, кроме чтения БД и
+     * вывода в $io, не имеет — публикацию и state пишет вызывающий execute().
+     *
+     * @return array{n:int,done:bool}
+     */
+    private function planHour(\DateTime $now, int $hour, SymfonyStyle $io): array
+    {
         // --- Ramp-up ---
-        $launch = new \DateTime($this->launchDate, $tz);
+        $launch = new \DateTime($this->launchDate, new \DateTimeZone(self::TZ));
         $week   = max(0, (int) floor(($now->getTimestamp() - $launch->getTimestamp()) / (7 * 86400)));
         $target = (int) min(self::RATE_CAP, round(self::RATE_START * (1 + self::RATE_GROWTH) ** $week));
 
@@ -155,119 +315,12 @@ class PublishTickCommand extends Command
         }
 
         $io->text(sprintf(
-            '[%s МСК] неделя %d · таргет %d/день%s · опубликовано сегодня %d · тиков осталось %d · p=%.2f → n=%d',
+            '[%s МСК] неделя %d · таргет %d/день%s · опубликовано сегодня %d · часов осталось %d · p=%.2f → n=%d',
             $now->format('H:i'), $week, $target, $note,
             $publishedToday, $ticksLeft, $p, $n,
         ));
 
-        if ($dryRun || $n === 0) {
-            $dryRun ? $io->note('dry-run — без публикации') : $io->text('В этот тик не публикуем.');
-            return Command::SUCCESS;
-        }
-
-        // Человеческий паттерн: публикация не по ровным часам
-        if (!$noWait) {
-            $delay = random_int(0, self::MAX_SLEEP);
-            $io->text(sprintf('Задержка %d мин %d сек…', intdiv($delay, 60), $delay % 60));
-            sleep($delay);
-        }
-
-        // --- Готовые бренды ПО СПРОСу (drip-by-demand) ---
-        // niche_status='off' (app:brand:niche-check) НЕ публикуем — чужая ниша. NULL/'in' проходят
-        // (иначе гейт застопорит дрип до прогона классификатора → порядок cron: niche-check → publish-tick).
-        // origin_status 'foreign'/'unknown' (app:brand:origin-check, docs/foreign_brands_policy.md)
-        // НЕ публикуем — иностранный бренд или сомнение (ручной review). NULL/'ru' проходят.
-        // Порядок: спрос НА ПОКУПКУ бренда = SUM(monthly_shows) по ключам, где имя бренда СОЧЕТАЕТСЯ
-        // с коммерческим модификатором (одежда/бренд/купить/магазин/сайт). Так отсекается фейковый
-        // спрос общесловных имён («яндекс браузер», «форма для выпечки»), а distinctive-бренды
-        // (LIME/Sela/Zarina/Befree) выходят в индекс первыми — максимум трафика на страницу.
-        // Раньше был чистый RAND() → публиковали вслепую. RAND() теперь рвёт ничьи.
-        $ids = $this->em->getConnection()->fetchFirstColumn(
-            "SELECT b.id FROM brand b
-              LEFT JOIN brand_keyword k ON k.brand_id = b.id
-             WHERE b.status = 'new' AND b.publish_pending = 1
-               AND (b.niche_status IS NULL OR b.niche_status <> 'off')
-               AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign', 'unknown'))
-             GROUP BY b.id
-             ORDER BY SUM(CASE WHEN LOWER(k.keyword) LIKE CONCAT('%', LOWER(b.title), '%')
-                        AND (k.keyword LIKE '%одежд%' OR k.keyword LIKE '%бренд%' OR k.keyword LIKE '%купить%'
-                          OR k.keyword LIKE '%магазин%' OR k.keyword LIKE '%официальн%' OR k.keyword LIKE '%сайт%')
-                       THEN k.monthly_shows ELSE 0 END) DESC, RAND()
-             LIMIT " . $n,
-        );
-
-        if ($ids === []) {
-            $io->text('Очередь публикации пуста (нет new + publish_pending).');
-            return Command::SUCCESS;
-        }
-
-        $published = 0;
-        $newUrls = [];
-        $tgLines = [];
-        $tgButtons = []; // по одной кнопке-ссылке «🚫 Скрыть» на бренд (подписанный URL → BrandModerationController)
-        foreach ($ids as $id) {
-            $brand = $this->em->find(Brand::class, (int) $id);
-            if ($brand === null) {
-                continue;
-            }
-            // Доменный переход new → active. МСК, как и граница дня в published_today —
-            // иначе на UTC-проде счёт published_today съезжает на 3ч.
-            $brand->publish(new \DateTime('now', $tz));
-            $this->em->flush();
-
-            // Вплетение в жёсткий граф перелинковки: исходящие рёбра + гарантия
-            // входящих (страница не рождается сиротой). Fail-open: SQL-fallback
-            // источники (style/city/fill), эмбеддинг-рёбра доуточнит локальный
-            // app:brand:build-link-graph. Сбой графа публикацию не ломает.
-            try {
-                $this->linkGraph->weave($brand->getId());
-            } catch (\Throwable) {
-            }
-
-            $io->text(sprintf('  ✓ опубликован: %s (id %d)', $brand->getTitle(), $brand->getId()));
-            $url = 'https://wearbase.ru/ru/brands/' . rawurlencode((string) $brand->getSlug());
-            $newUrls[] = $url;
-            // Сниппет описания (несколько предложений) — чтобы сразу было видно, про что бренд
-            // (ловим чужие сущности глазами: «…пневмоэлементы автоподвески» → жмём «Скрыть»).
-            $desc = trim(preg_replace('/\s+/', ' ', strip_tags((string) $brand->getDescription())));
-            $snippet = mb_substr($desc, 0, 280);
-            if (mb_strlen($desc) > 280) {
-                $snippet .= '…';
-            }
-            $tgLines[] = sprintf(
-                '• <a href="%s">%s</a>%s',
-                $url, htmlspecialchars((string) $brand->getTitle()),
-                $snippet !== '' ? "\n<i>" . htmlspecialchars($snippet) . '</i>' : '',
-            );
-            // URL-кнопка на прод: клик открывает подписанную ссылку (?action=unpublish&id&key),
-            // BrandModerationController скрывает бренд. Не зависит от callback-вебхука (тот таймаутит).
-            $hideUrl = sprintf(
-                'https://wearbase.ru/mod/brand-action?action=unpublish&id=%d&key=%s',
-                $brand->getId(),
-                $this->actionSigner->sign('unpublish', $brand->getId()),
-            );
-            $tgButtons[] = ['text' => '🚫 Скрыть: ' . mb_substr((string) $brand->getTitle(), 0, 40), 'url' => $hideUrl];
-            $published++;
-        }
-
-        // IndexNow: мгновенный пинг Яндексу/Bing о новых URL (Google — через sitemap lastmod).
-        // Fail-open: неуспех пинга публикацию не ломает.
-        if ($newUrls !== [] && $this->indexNow->ping($newUrls)) {
-            $io->text(sprintf('  → IndexNow: %d URL отправлено (Яндекс/Bing)', count($newUrls)));
-        }
-
-        // ТГ-уведомление со ссылками + кнопки «🚫 Скрыть» по каждому бренду (верификация человеком,
-        // callback → unpublish). Fail-open: уведомление не должно ломать публикацию.
-        if ($tgLines !== [] && $this->notifier->isEnabled()) {
-            try {
-                $this->notifier->sendWithButtons("📢 <b>Дрип-публикация</b>\n" . implode("\n", $tgLines), $tgButtons);
-            } catch (\Throwable) {
-            }
-        }
-
-        $io->success(sprintf('Опубликовано брендов: %d', $published));
-
-        return Command::SUCCESS;
+        return ['n' => $n, 'done' => $n === 0];
     }
 
     /**

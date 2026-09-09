@@ -26,6 +26,15 @@ class FamilyInviteRepository extends ServiceEntityRepository
      */
     public function findPendingForFamily(Family $family): array
     {
-        return $this->findBy(['family' => $family, 'acceptedAt' => null], ['createdAt' => 'DESC']);
+        return $this->createQueryBuilder('i')
+            ->andWhere('i.family = :family')
+            ->andWhere('i.acceptedAt IS NULL')
+            ->andWhere('i.revokedAt IS NULL')
+            ->andWhere('i.expiresAt > :now')
+            ->setParameter('family', $family)
+            ->setParameter('now', new \DateTimeImmutable())
+            ->orderBy('i.createdAt', 'DESC')
+            ->getQuery()
+            ->getResult();
     }
 }

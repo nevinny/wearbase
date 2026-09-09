@@ -7,6 +7,7 @@ namespace App\Tests\Service\Wardrobe;
 use App\Entity\User;
 use App\Entity\WardrobeOutfit;
 use App\Repository\WardrobeOutfitRepository;
+use App\Repository\WardrobeConsentRepository;
 use App\Service\Wardrobe\WardrobeOutfitLearningService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
@@ -28,7 +29,7 @@ class WardrobeOutfitLearningServiceTest extends TestCase
         $disliked->react(WardrobeOutfit::REACTION_DISLIKE);
         $repository = $this->createMock(WardrobeOutfitRepository::class);
         $repository->expects(self::once())->method('findRecentReacted')->with($user)->willReturn([$worn, $disliked]);
-        $service = new WardrobeOutfitLearningService($repository, $this->createStub(EntityManagerInterface::class));
+        $service = new WardrobeOutfitLearningService($repository, $this->createStub(EntityManagerInterface::class), null, null, $this->consents(true));
 
         $context = $service->context($user);
 
@@ -42,8 +43,30 @@ class WardrobeOutfitLearningServiceTest extends TestCase
     {
         $repository = $this->createStub(WardrobeOutfitRepository::class);
         $repository->method('findRecentReacted')->willReturn([]);
-        $service = new WardrobeOutfitLearningService($repository, $this->createStub(EntityManagerInterface::class));
+        $service = new WardrobeOutfitLearningService($repository, $this->createStub(EntityManagerInterface::class), null, null, $this->consents(true));
 
         self::assertSame('', $service->context(new User()));
+    }
+
+    public function testRevokedConsentStopsContextBeforeReadingHistory(): void
+    {
+        $repository = $this->createMock(WardrobeOutfitRepository::class);
+        $repository->expects(self::never())->method('findRecentReacted');
+        $service = new WardrobeOutfitLearningService(
+            $repository,
+            $this->createStub(EntityManagerInterface::class),
+            null,
+            null,
+            $this->consents(false),
+        );
+
+        self::assertSame('', $service->context(new User()));
+    }
+
+    private function consents(bool $granted): WardrobeConsentRepository
+    {
+        $consents = $this->createStub(WardrobeConsentRepository::class);
+        $consents->method('isPersonalizationGranted')->willReturn($granted);
+        return $consents;
     }
 }

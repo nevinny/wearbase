@@ -7,6 +7,14 @@
 {% block canonical_url %}{{ url('landing_wardrobe', {_locale: app.request.locale|default('ru')}) }}{% endblock %}
 {% block og_title %}Покупайте реже. Носите больше.{% endblock %}
 {% block og_description %}Личный и семейный гардероб: вещи по фото, образы из своего шкафа и честная статистика носки.{% endblock %}
+{% block pwa_metadata %}
+    <meta name="application-name" content="WEARBASE Семья">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="WEARBASE Семья">
+    <link rel="manifest" href="{{ path('pwa_manifest') }}" type="application/manifest+json">
+    <link rel="apple-touch-icon" href="/images/pwa/icon-180.png">
+{% endblock %}
 
 {% block stylesheets %}
     {{ parent() }}
@@ -46,6 +54,10 @@
                     <a href="#how-it-works"
                        class="inline-flex min-h-14 items-center justify-center rounded-2xl border border-slate-300 bg-white/80 px-7 text-base font-bold text-slate-700 transition hover:border-slate-400 hover:bg-white">
                         Как это работает
+                    </a>
+                    <a href="#install-iphone"
+                       class="inline-flex min-h-14 items-center justify-center px-3 text-sm font-bold text-indigo-700 underline decoration-indigo-200 underline-offset-4">
+                        Установить на iPhone
                     </a>
                 </div>
                 <div class="mt-7 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
@@ -200,7 +212,7 @@
     </section>
 
     <section class="mx-auto grid max-w-7xl gap-8 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-28">
-        <div class="rounded-[2.25rem] bg-indigo-600 p-8 text-white sm:p-10">
+        <div id="install-iphone" class="scroll-mt-6 rounded-[2.25rem] bg-indigo-600 p-8 text-white sm:p-10">
             <p class="text-sm font-bold uppercase tracking-wider text-indigo-200">На iPhone</p>
             <h2 class="mt-4 text-3xl font-black">Как приложение — без App Store</h2>
             <ol class="mt-8 space-y-5 text-indigo-50">
@@ -253,4 +265,8 @@
         </div>
     </section>
 </div>
+{% endblock %}
+
+{% block javascripts %}
+    <script src="/pwa-register.js" defer></script>
 {% endblock %}

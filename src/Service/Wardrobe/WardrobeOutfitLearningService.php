@@ -8,6 +8,8 @@ use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeOutfit;
 use App\Repository\WardrobeOutfitRepository;
+use App\Repository\WardrobeConsentRepository;
+use App\Repository\WardrobeWearEventRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 class WardrobeOutfitLearningService
@@ -15,6 +17,9 @@ class WardrobeOutfitLearningService
     public function __construct(
         private readonly WardrobeOutfitRepository $outfits,
         private readonly EntityManagerInterface $em,
+        private readonly ?WardrobeWearEventRepository $wearEvents = null,
+        private readonly ?WardrobeActivationService $activation = null,
+        private readonly ?WardrobeConsentRepository $consents = null,
     ) {}
 
     /**
@@ -36,6 +41,9 @@ class WardrobeOutfitLearningService
             $entities[$index] = $outfit;
         }
         $this->em->flush();
+        if ($entities !== []) {
+            $this->activation?->firstOutfitCreated($user, $owner);
+        }
         foreach ($entities as $index => $outfit) {
             $suggestions[$index]['feedbackId'] = $outfit->getId();
         }
@@ -43,10 +51,13 @@ class WardrobeOutfitLearningService
         return $suggestions;
     }
 
-    public function react(User $user, int $id, string $reaction): void
+    public function react(User $user, User $wardrobeOwner, int $id, string $reaction): void
     {
         $outfit = $this->outfits->find($id);
-        if ($outfit === null || $outfit->getUser()->getId() !== $user->getId()) {
+        if ($outfit === null
+            || $outfit->getUser()->getId() !== $user->getId()
+            || $outfit->getWardrobeOwner()->getId() !== $wardrobeOwner->getId()
+        ) {
             throw new \DomainException('Образ не найден');
         }
         $outfit->react($reaction);
@@ -55,6 +66,9 @@ class WardrobeOutfitLearningService
 
     public function context(User $wardrobeOwner): string
     {
+        if (!$this->consents?->isPersonalizationGranted($wardrobeOwner)) {
+            return '';
+        }
         $positive = [];
         $negative = [];
         foreach ($this->outfits->findRecentReacted($wardrobeOwner) as $outfit) {
@@ -66,6 +80,25 @@ class WardrobeOutfitLearningService
                 }
             }
             if ($outfit->getReaction() === WardrobeOutfit::REACTION_DISLIKE) {
+                $negative = $target;
+            } else {
+                $positive = $target;
+            }
+        }
+        foreach ($this->wearEvents?->findRecentConfirmed($wardrobeOwner, 50) ?? [] as $event) {
+            if (!$event->isConfirmedWorn()) {
+                continue;
+            }
+            $isNegative = $event->getComfort() === 'uncomfortable' || $event->wantsRepeat() === false;
+            $target = $isNegative ? $negative : $positive;
+            $weight = $event->wantsRepeat() === true ? 4 : 2;
+            foreach ($event->getItems() as $eventItem) {
+                $item = $eventItem->getItem();
+                foreach (array_filter([$item->getCategory(), $item->getColorName()]) as $value) {
+                    $target[$value] = ($target[$value] ?? 0) + $weight;
+                }
+            }
+            if ($isNegative) {
                 $negative = $target;
             } else {
                 $positive = $target;

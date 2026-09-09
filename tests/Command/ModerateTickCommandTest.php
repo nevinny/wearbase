@@ -13,14 +13,22 @@ use App\Service\BraveSearchClient;
 use App\Service\Moderation\ApplicationMatcher;
 use App\Service\NearDuplicateDetector;
 use App\Service\SearxClient;
+use App\Service\SearxUnavailableException;
 use App\Service\UrlFilter;
 use App\Service\WebScraperService;
 use App\Service\YandexSearchClient;
 use App\Service\YandexSearchMeter;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
+use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * Юнит-тесты на два дефекта первого живого прогона `app:brand:moderate-tick --id=3673`
@@ -44,25 +52,32 @@ class ModerateTickCommandTest extends TestCase
         ?WebScraperService $scraper = null,
         ?SearxClient $searx = null,
         ?BraveSearchClient $brave = null,
+        ?BrandSourceFinder $sourceFinder = null,
+        ?EntityManagerInterface $em = null,
+        ?HttpClientInterface $httpClient = null,
+        ?AdminNotifier $notifier = null,
+        ?YandexSearchMeter $yandexMeter = null,
+        ?string $projectDir = null,
     ): ModerateTickCommand {
         return new ModerateTickCommand(
-            $this->createMock(HttpClientInterface::class),
-            $this->createMock(BrandSourceFinder::class),
+            $httpClient ?? $this->createMock(HttpClientInterface::class),
+            $sourceFinder ?? $this->createMock(BrandSourceFinder::class),
             $scraper ?? $this->createMock(WebScraperService::class),
             new ApplicationMatcher(),
             $this->createMock(NearDuplicateDetector::class),
-            $this->createMock(YandexSearchMeter::class),
+            $yandexMeter ?? $this->createMock(YandexSearchMeter::class),
             $yandex ?? $this->createMock(YandexSearchClient::class),
             // По умолчанию неконфигурированы (пустой URL/ключ) — isConfigured() false,
             // searchAnyEngine молча их пропускает, сеть не дёргается.
             $searx ?? new SearxClient($this->createMock(HttpClientInterface::class), ''),
             $brave ?? new BraveSearchClient($this->createMock(HttpClientInterface::class), ''),
-            $this->createMock(AdminNotifier::class),
+            $notifier ?? $this->createMock(AdminNotifier::class),
             $this->createMock(BrandActionSigner::class),
-            $this->createMock(EntityManagerInterface::class),
+            $em ?? $this->createMock(EntityManagerInterface::class),
             'https://example.test',
             'token',
             'secret',
+            $projectDir ?? sys_get_temp_dir(),
         );
     }
 
@@ -357,6 +372,160 @@ class ModerateTickCommandTest extends TestCase
         $links   = $this->invoke($command, 'extractSocialLinks', [[['url' => 'https://ahsilk.ru/', 'html' => $html]]]);
 
         $this->assertCount(6, $links, 'кап MAX_SOCIAL_LINKS=6, седьмой (facebook.com) отброшен');
+    }
+
+    // ── checklist(): inn/production_place не собираются на этапе самрега — не missing ───
+
+    public function testChecklistNoLongerRequiresInnOrProductionPlace(): void
+    {
+        $command = $this->makeCommand();
+        $item = [
+            'logo'               => 'logo.png',
+            'has_priced_product' => true,
+            'founding_year'      => 2020,
+            'description'        => 'Бренд одежды ручной работы',
+            'link_count'         => 1,
+        ];
+
+        [$missing, ] = $this->invoke($command, 'checklist', [$item]);
+
+        $this->assertSame([], $missing, 'все прочие поля заполнены — missing должен быть пуст, inn/production_place больше не требуются');
+    }
+
+    // ── Деградация при недоступном поиске: SearxUnavailableException не роняет анализ ───
+
+    public function testBuildSummaryFlagsSearchDown(): void
+    {
+        $command = $this->makeCommand();
+        $match   = ['identity_match' => 'weak', 'control_proof' => 'unconfirmed', 'evidence' => []];
+
+        $summary = $this->invoke($command, 'buildSummary', [$match, [], [], '', true]);
+
+        $this->assertStringContainsString('поиск недоступен', $summary);
+    }
+
+    public function testBuildTgTextFlagsSearchDown(): void
+    {
+        $command = $this->makeCommand();
+        $match   = ['identity_match' => 'weak', 'control_proof' => 'unconfirmed', 'evidence' => []];
+
+        $tgText = $this->invoke($command, 'buildTgText', ['Бренд', $match, [], [], 'summary', true]);
+
+        $this->assertStringContainsString('поиск недоступен', $tgText);
+    }
+
+    public function testProcessItemPostsVerdictViaProbeWhenDiscoverTieredThrows(): void
+    {
+        $html = <<<'HTML'
+            <html><head><title>AH Silk</title></head>
+            <body><p>Тел: <a href="tel:+79686146174">+7 968 614-61-74</a></p></body></html>
+            HTML;
+
+        $sourceFinder = $this->createMock(BrandSourceFinder::class);
+        $sourceFinder->method('discoverTiered')->willThrowException(new SearxUnavailableException('SearXNG down'));
+
+        $scraper = $this->createMock(WebScraperService::class);
+        $scraper->method('fetch')->willReturnCallback(
+            static fn (string $url): array => ['url' => $url, 'httpStatus' => 200, 'html' => $html],
+        );
+        $scraper->method('discoverSitePages')->willReturn([]);
+
+        $connection = $this->createMock(Connection::class);
+        $connection->method('fetchAllAssociative')->willReturn([]);
+        $connection->method('fetchAssociative')->willReturn(false);
+        $em = $this->createMock(EntityManagerInterface::class);
+        $em->method('getConnection')->willReturn($connection);
+
+        $capturedBody = null;
+        $httpClient = $this->createMock(HttpClientInterface::class);
+        $httpClient->expects($this->once())->method('request')->willReturnCallback(
+            function (string $method, string $url, array $options = []) use (&$capturedBody) {
+                $capturedBody = $options['body'] ?? null;
+
+                return $this->createMock(ResponseInterface::class);
+            },
+        );
+
+        $command = $this->makeCommand(null, $scraper, null, null, $sourceFinder, $em, $httpClient);
+        $item = ['title' => 'Русский бренд АХ!', 'email' => 'ah.silk@yandex.ru', 'phone' => '+7 968 614 6174', 'brand_id' => 123];
+
+        $io     = new SymfonyStyle(new ArrayInput([]), new NullOutput());
+        $result = $this->invoke($command, 'processItem', [$item, $io, false]);
+
+        $this->assertTrue($result, 'вердикт должен постится даже когда discoverTiered упал по недоступности поиска');
+        $this->assertNotNull($capturedBody, 'постVerdict должен был улететь на прод');
+
+        $payload = json_decode((string) $capturedBody, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertStringContainsString('поиск недоступен', $payload['summary']);
+    }
+
+    // ── Алертинг простоя: очередь непуста, вердиктов 0 → FAILURE + троттлированный TG ──
+
+    public function testExecuteFailsAndAlertsWhenQueueNonEmptyButZeroVerdictsPosted(): void
+    {
+        $projectDir = sys_get_temp_dir() . '/moderate_tick_test_' . uniqid('', true);
+        mkdir($projectDir . '/var', 0777, true);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('toArray')->willReturn(['items' => [
+            ['title' => 'A', 'slug' => 'a', 'analyze_attempts' => 3],
+            ['title' => 'B', 'slug' => 'b', 'analyze_attempts' => 3],
+        ]]);
+        $httpClient = $this->createMock(HttpClientInterface::class);
+        $httpClient->expects($this->once())->method('request')->willReturn($response);
+
+        $notifier = $this->createMock(AdminNotifier::class);
+        $notifier->method('isEnabled')->willReturn(true);
+        $notifier->expects($this->once())->method('send');
+
+        $yandexMeter = $this->createMock(YandexSearchMeter::class);
+        $yandexMeter->method('allowed')->willReturn(true);
+
+        $command = $this->makeCommand(
+            httpClient: $httpClient,
+            notifier: $notifier,
+            yandexMeter: $yandexMeter,
+            projectDir: $projectDir,
+        );
+
+        $tester = new CommandTester($command);
+        $exit   = $tester->execute([]);
+
+        $this->assertSame(Command::FAILURE, $exit, 'оба элемента очереди упёрлись в лимит попыток — 0 вердиктов должны давать красный exit');
+    }
+
+    public function testStalledAlertIsThrottledOncePerDayButStillFails(): void
+    {
+        $projectDir = sys_get_temp_dir() . '/moderate_tick_test_' . uniqid('', true);
+        mkdir($projectDir . '/var', 0777, true);
+        $today = (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d');
+        file_put_contents($projectDir . '/var/moderate_tick_state.json', json_encode(['alerted_on' => $today]));
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('toArray')->willReturn(['items' => [
+            ['title' => 'A', 'slug' => 'a', 'analyze_attempts' => 3],
+        ]]);
+        $httpClient = $this->createMock(HttpClientInterface::class);
+        $httpClient->expects($this->once())->method('request')->willReturn($response);
+
+        $notifier = $this->createMock(AdminNotifier::class);
+        $notifier->method('isEnabled')->willReturn(true);
+        $notifier->expects($this->never())->method('send');
+
+        $yandexMeter = $this->createMock(YandexSearchMeter::class);
+        $yandexMeter->method('allowed')->willReturn(true);
+
+        $command = $this->makeCommand(
+            httpClient: $httpClient,
+            notifier: $notifier,
+            yandexMeter: $yandexMeter,
+            projectDir: $projectDir,
+        );
+
+        $tester = new CommandTester($command);
+        $exit   = $tester->execute([]);
+
+        $this->assertSame(Command::FAILURE, $exit, 'троттлится только TG, exit код остаётся красным «пока не починят»');
     }
 
     private function realScraper(): WebScraperService

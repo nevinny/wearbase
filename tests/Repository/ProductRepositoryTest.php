@@ -76,4 +76,45 @@ class ProductRepositoryTest extends KernelTestCase
         $this->assertCount(1, $result);
         $this->assertSame('Similar One', $result[0]->getTitle());
     }
+
+    public function testFindForBrandPageOrdersProductsWithPhotoFirstAndExcludesDisabled(): void
+    {
+        $brand = new Brand();
+        $brand->setTitle('Test Brand Page');
+        $brand->setSlug('test-brand-page');
+        $this->em->persist($brand);
+
+        $withoutPhoto = new Product();
+        $withoutPhoto->setTitle('Без фото');
+        $withoutPhoto->setBrand($brand);
+        $withoutPhoto->setStatus(Statuses::Active);
+        $this->em->persist($withoutPhoto);
+
+        $withPhoto = new Product();
+        $withPhoto->setTitle('С фото');
+        $withPhoto->setBrand($brand);
+        $withPhoto->setStatus(Statuses::Active);
+        $this->em->persist($withPhoto);
+
+        $image = new \App\Entity\ProductImage();
+        $image->setProduct($withPhoto);
+        $image->setSlug('test-product-image');
+        $image->setPreview('preview.jpg');
+        $image->setIsMain(true);
+        $this->em->persist($image);
+
+        $disabled = new Product();
+        $disabled->setTitle('Скрытый товар');
+        $disabled->setBrand($brand);
+        $disabled->setStatus(Statuses::Disabled);
+        $this->em->persist($disabled);
+
+        $this->em->flush();
+
+        $result = $this->repo->findForBrandPage($brand);
+
+        $this->assertCount(2, $result);
+        $this->assertSame('С фото', $result[0]->getTitle());
+        $this->assertSame('Без фото', $result[1]->getTitle());
+    }
 }

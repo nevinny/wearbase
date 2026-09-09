@@ -1,0 +1,37 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Подключите приём оплаты — бренд «{{ brand.title }}» — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">💳 Покупатели не могут оплатить заказ</h2>
+<p style="color:#555;line-height:1.6;">
+    Карточка бренда «{{ brand.title }}» опубликована в каталоге WEARBASE
+    ({{ productsCount }} {{ productsCount == 1 ? 'товар' : 'товаров' }}), но приём онлайн-оплаты
+    ещё не настроен.
+</p>
+
+{% if intentCount > 0 %}
+<p style="color:#555;line-height:1.6;">
+    <strong>{{ intentCount }} {{ intentCount == 1 ? 'покупатель нажал' : 'покупателей нажали' }}</strong>
+    кнопку «Хочу купить» вместо оформления заказа — они готовы платить, но карточка пока не может
+    провести оплату.
+</p>
+{% endif %}
+
+<p style="color:#555;line-height:1.6;">
+    Чтобы принимать оплату картой, нужны shopId и секретный ключ YooKassa — их выдают при подключении
+    приёма платежей (5–10 минут).
+</p>
+
+<p style="text-align:center;">
+    <a href="{{ paymentsUrl }}" class="btn">Подключить приём оплаты</a>
+</p>
+
+{% if isLast %}
+<p style="color:#888;line-height:1.6;font-size:13px;">
+    Это последнее автоматическое напоминание — дальше решать вам, когда подключить оплату.
+</p>
+{% endif %}
+
+<p style="color:#555;line-height:1.6;">
+    Вопросы — пишите напрямую основателю площадки: <a href="https://t.me/zyablik">@zyablik</a> в Telegram.
+</p>
+{% endblock %}

@@ -321,8 +321,9 @@
 
                             {# Изображение #}
                             <div class="relative overflow-hidden bg-gray-100" style="padding-top:125%">
-                                {% if mainImage and (mainImage.preview or mainImage.image) %}
-                                    <img src="{{ asset('images/products/' ~ (mainImage.preview ?? mainImage.image)) }}"
+                                {% set mainImageSrc = product_image_url(mainImage) %}
+                                {% if mainImageSrc %}
+                                    <img src="{{ mainImageSrc }}"
                                          alt="{{ product.title }}"
                                          class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                          loading="lazy">

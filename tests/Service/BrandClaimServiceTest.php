@@ -13,6 +13,7 @@ use App\Notification\EmailNotifier;
 use App\Notification\NotificationDispatcher;
 use App\Repository\BrandUserRepository;
 use App\Service\BrandClaimService;
+use App\Service\VkVerifier;
 use App\Service\SubscriptionFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
@@ -24,6 +25,7 @@ class BrandClaimServiceTest extends TestCase
     private SubscriptionFactory $subscriptionFactory;
     private NotificationDispatcher $notifier;
     private EmailNotifier $emailNotifier;
+    private VkVerifier $vkVerifier;
 
     protected function setUp(): void
     {
@@ -32,6 +34,8 @@ class BrandClaimServiceTest extends TestCase
         $this->subscriptionFactory = $this->createMock(SubscriptionFactory::class);
         $this->notifier = $this->createMock(NotificationDispatcher::class);
         $this->emailNotifier = $this->createMock(EmailNotifier::class);
+        $this->vkVerifier = $this->createMock(VkVerifier::class);
+        $this->vkVerifier->method('isConfigured')->willReturn(true);
     }
 
     private function service(bool $autoEmail = true, bool $autoVk = true): BrandClaimService
@@ -42,8 +46,27 @@ class BrandClaimServiceTest extends TestCase
             $this->subscriptionFactory,
             $this->notifier,
             $this->emailNotifier,
+            $this->vkVerifier,
             $autoEmail,
             $autoVk,
+        );
+    }
+
+    /** Сервис с незаданными VK_APP_ID/SECRET (как на проде) */
+    private function serviceWithoutVkApp(): BrandClaimService
+    {
+        $vk = $this->createMock(VkVerifier::class);
+        $vk->method('isConfigured')->willReturn(false);
+
+        return new BrandClaimService(
+            $this->em,
+            $this->brandUserRepo,
+            $this->subscriptionFactory,
+            $this->notifier,
+            $this->emailNotifier,
+            $vk,
+            true,
+            true,
         );
     }
 
@@ -63,6 +86,13 @@ class BrandClaimServiceTest extends TestCase
         $brand = $this->brandWithVkLink('https://vk.com/wahhid');
         $this->assertSame('wahhid', $this->service()->brandVkGroup($brand));
         $this->assertContains(BrandClaim::METHOD_VK_ADMIN, $this->service()->availableMethods($brand));
+    }
+
+    public function testVkMethodHiddenWhenVkAppNotConfigured(): void
+    {
+        // VK_APP_ID/SECRET пустые → кнопка «Войти через VK» вела в тупик (flash-ошибка)
+        $brand = $this->brandWithVkLink('https://vk.com/maximmaksakov1999');
+        $this->assertNotContains(BrandClaim::METHOD_VK_ADMIN, $this->serviceWithoutVkApp()->availableMethods($brand));
     }
 
     public function testEmailMethodOfferedOnlyWhenBrandHasEmail(): void

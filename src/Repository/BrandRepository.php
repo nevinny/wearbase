@@ -4,6 +4,7 @@ namespace App\Repository;
 
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use App\Entity\Brand;
+use App\Entity\BrandUser;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
@@ -34,6 +35,25 @@ class BrandRepository extends ServiceEntityRepository
     {
         return $qb->andWhere(sprintf('(%1$s.originStatus IS NULL OR %1$s.originStatus != :originForeign)', $alias))
             ->setParameter('originForeign', 'foreign');
+    }
+
+    /**
+     * Сколько брендов реально публично доступно — ТОТ ЖЕ предикат, что каталог
+     * (BrandsController::index/a-z: status=active + excludeForeignOrigin), а НЕ
+     * COUNT(published_at IS NOT NULL). Те два числа расходятся в обе стороны:
+     * легаси-бренды status=active БЕЗ published_at (залиты до дрипа) недосчитаны
+     * published_at-фильтром, а снятые с публикации status=disabled, у которых
+     * published_at так и остался проставлен, им наоборот попадают — то и другое
+     * искажало плитку «опубликовано» на дашборде (см. PR admin-dashboard).
+     */
+    public function countPubliclyVisible(): int
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->select('COUNT(b.id)')
+            ->andWhere('b.status = :active')
+            ->setParameter('active', Statuses::Active);
+
+        return (int) $this->excludeForeignOrigin($qb)->getQuery()->getSingleScalarResult();
     }
 
     /**
@@ -102,6 +122,27 @@ class BrandRepository extends ServiceEntityRepository
             ->setParameter('status', Statuses::Active)
             ->orderBy('b.title', 'ASC');
         $this->excludeForeignOrigin($qb);
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Активные бренды без разметки аудитории (app:brand:audience-backfill).
+     * При $force — все активные, включая уже размеченные (для перепроставки регулярок).
+     *
+     * @return Brand[]
+     */
+    public function findWithoutAudience(int $limit, bool $force = false): array
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->where('b.status = :status')
+            ->setParameter('status', Statuses::Active)
+            ->orderBy('b.id', 'ASC')
+            ->setMaxResults($limit);
+
+        if (!$force) {
+            $qb->andWhere('b.audiences IS EMPTY');
+        }
 
         return $qb->getQuery()->getResult();
     }
@@ -563,5 +604,84 @@ class BrandRepository extends ServiceEntityRepository
     public function countReadyToPush(int $maxAttempts = 3, bool $includePushed = false): int
     {
         return $this->pipelineQueue->countReadyToPush($maxAttempts, $includePushed);
+    }
+
+    /**
+     * Кандидаты дрип-публикации (app:brand:publish-tick, PR4 "владельческие бренды первыми").
+     * niche_status='off' (app:brand:niche-check) НЕ публикуем — чужая ниша. NULL/'in' проходят
+     * (иначе гейт застопорит дрип до прогона классификатора). origin_status 'foreign'/'unknown'
+     * (app:brand:origin-check, docs/foreign_brands_policy.md) НЕ публикуем — иностранный бренд
+     * или сомнение (ручной review). NULL/'ru' проходят.
+     *
+     * Порядок:
+     *  1. Владельческие бренды (саморег — есть строка brand_user role='owner') ПЕРВЫМИ:
+     *     у них нет собранных ключевиков (SUM спроса = 0 у всех одинаково), поэтому раньше
+     *     они тонули в хвосте очереди из ~2-3 тыс. каталожных брендов на недели.
+     *  2. Спрос НА ПОКУПКУ = SUM(monthly_shows) по ключам, где имя бренда СОЧЕТАЕТСЯ
+     *     с коммерческим модификатором (одежда/бренд/купить/магазин/сайт). Так отсекается
+     *     фейковый спрос общесловных имён, а distinctive-бренды выходят в индекс первыми.
+     *  3. RAND() — рвёт ничьи.
+     *
+     * @return int[]
+     */
+    public function findDripCandidateIds(int $limit): array
+    {
+        return $this->getEntityManager()->getConnection()->fetchFirstColumn(
+            "SELECT b.id FROM brand b
+              LEFT JOIN brand_keyword k ON k.brand_id = b.id
+             WHERE b.status = 'new' AND b.publish_pending = 1
+               AND (b.niche_status IS NULL OR b.niche_status <> 'off')
+               AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign', 'unknown'))
+             GROUP BY b.id
+             ORDER BY
+                 EXISTS(SELECT 1 FROM brand_user bu WHERE bu.brand_id = b.id AND bu.role = 'owner') DESC,
+                 SUM(CASE WHEN LOWER(k.keyword) LIKE CONCAT('%', LOWER(b.title), '%')
+                        AND (k.keyword LIKE '%одежд%' OR k.keyword LIKE '%бренд%' OR k.keyword LIKE '%купить%'
+                          OR k.keyword LIKE '%магазин%' OR k.keyword LIKE '%официальн%' OR k.keyword LIKE '%сайт%')
+                       THEN k.monthly_shows ELSE 0 END) DESC,
+                 RAND()
+             LIMIT :limit",
+            ['limit' => $limit],
+            ['limit' => \PDO::PARAM_INT],
+        );
+    }
+
+    /**
+     * Сколько брендов реально ждут дрип-публикации — ТОТ ЖЕ WHERE, что findDripCandidateIds
+     * (без ранжирующих JOIN/ORDER BY, они на COUNT не влияют). Для дашборда: НЕ путать с
+     * `queue_pending` из /api/v1/publish-stats (status='new' AND publish_pending=1 БЕЗ
+     * niche/origin-гейтов) — та цифра маскировала простой дрипа niche_status='off' мусором
+     * (396 «в очереди» при 0 реально публикабельных, см. PR admin-dashboard).
+     */
+    public function countDripCandidates(): int
+    {
+        return (int) $this->getEntityManager()->getConnection()->fetchOne(
+            "SELECT COUNT(*) FROM brand b
+             WHERE b.status = 'new' AND b.publish_pending = 1
+               AND (b.niche_status IS NULL OR b.niche_status <> 'off')
+               AND (b.origin_status IS NULL OR b.origin_status NOT IN ('foreign', 'unknown'))",
+        );
+    }
+
+    /**
+     * Кандидаты для напоминаний о реквизитах (app:brand:payment-reminders): опубликованные
+     * активные бренды с владельцем (brand_user role='owner') и хотя бы одним активным
+     * товаром. Готовность приёма оплаты и день с публикации — не денормализованы,
+     * фильтруются в команде (DATEDIFF не портируется на тестовый SQLite).
+     *
+     * @return list<Brand>
+     */
+    public function findActiveOwnedWithProducts(): array
+    {
+        return $this->createQueryBuilder('b')
+            ->andWhere('b.status = :status')
+            ->andWhere('b.publishedAt IS NOT NULL')
+            ->andWhere('EXISTS (SELECT 1 FROM App\Entity\BrandUser bu WHERE bu.brand = b AND bu.role = :owner)')
+            ->andWhere('EXISTS (SELECT 1 FROM App\Entity\Product p WHERE p.brand = b AND p.status = :pstatus)')
+            ->setParameter('status', Statuses::Active)
+            ->setParameter('owner', BrandUser::ROLE_OWNER)
+            ->setParameter('pstatus', Statuses::Active)
+            ->getQuery()
+            ->getResult();
     }
 }

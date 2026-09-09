@@ -1,4 +1,4 @@
-const VERSION = 'wearbase-family-v1';
+const VERSION = 'wearbase-family-v3';
 const STATIC_CACHE = `${VERSION}-static`;
 const STATIC_ASSETS = [
     '/favicon.ico',
@@ -6,13 +6,18 @@ const STATIC_ASSETS = [
     '/images/pwa/icon-180.png',
     '/images/pwa/icon-192.png',
     '/images/pwa/icon-512.png',
+    '/js/tailwind-3.4.17.js',
     '/manifest.webmanifest'
 ];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(STATIC_CACHE)
-            .then((cache) => cache.addAll(STATIC_ASSETS))
+            .then((cache) => Promise.allSettled(
+                STATIC_ASSETS.map((asset) => fetch(asset, {cache: 'reload'})
+                    .then((response) => cacheableStaticResponse(response) ? cache.put(asset, response) : undefined)
+                    .catch(() => undefined))
+            ))
             .then(() => self.skipWaiting())
     );
 });
@@ -63,6 +68,40 @@ self.addEventListener('fetch', (event) => {
     }
 });
 
+self.addEventListener('push', (event) => {
+    let payload = {};
+    try { payload = event.data ? event.data.json() : {}; } catch (_) {}
+    event.waitUntil(self.registration.showNotification(payload.title || 'WEARBASE', {
+        body: payload.body || 'Новое уведомление',
+        icon: '/images/pwa/icon-192.png',
+        data: {url: safeAccountUrl(payload.url)}
+    }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const target = safeAccountUrl(event.notification.data && event.notification.data.url);
+    event.waitUntil(self.clients.matchAll({type: 'window', includeUncontrolled: true}).then((clients) => {
+        const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+        if (existing) {
+            return existing.navigate(target).then(() => existing.focus());
+        }
+        return self.clients.openWindow(target);
+    }));
+});
+
+function safeAccountUrl(value) {
+    if (typeof value !== 'string') return '/account/notifications';
+    try {
+        const url = new URL(value, self.location.origin);
+        return url.origin === self.location.origin && /^\/account(?:\/|$)/.test(url.pathname)
+            ? url.pathname + url.search
+            : '/account/notifications';
+    } catch (_) {
+        return '/account/notifications';
+    }
+}
+
 function offlinePage() {
     return `<!doctype html>
 <html lang="ru">
@@ -81,4 +120,14 @@ function offlinePage() {
 </head>
 <body><main><section><h1>Нет подключения</h1><p>Подключитесь к интернету, чтобы продолжить работу с семейным гардеробом.</p><button onclick="location.reload()">Повторить</button></section></main></body>
 </html>`;
+}
+
+function cacheableStaticResponse(response) {
+    if (!response.ok) {
+        return false;
+    }
+
+    const cacheControl = (response.headers.get('Cache-Control') || '').toLowerCase();
+
+    return !cacheControl.includes('private') && !cacheControl.includes('no-store');
 }

@@ -33,6 +33,9 @@ class LoginSuccessHandler implements AuthenticationSuccessHandlerInterface
 
         // Приоритет 1: _target_path из сессии (Symfony сохраняет куда шёл)
         $targetPath = $request->getSession()->remove('_security.main.target_path');
+        if (is_string($targetPath) && str_starts_with($targetPath, $request->getSchemeAndHttpHost().'/')) {
+            $targetPath = substr($targetPath, strlen($request->getSchemeAndHttpHost()));
+        }
         /** @var User $user */
         $user = $token->getUser();
         $isBrandManager = $user instanceof User && $user->isBrandManager();

@@ -27,17 +27,16 @@ class AdminTelegramSubscriberTest extends TestCase
         $this->assertStringContainsString('new@user.com', $msg);
     }
 
-    public function testBrandClaimMessage(): void
+    public function testBrandClaimDoesNotPingOnInsert(): void
     {
+        // Строка заявки создаётся при действии в форме, а не при подаче на модерацию,
+        // и о реальной подаче админа уведомляет BrandClaimController::notifyAdmin().
+        // Пинг на вставку означал «кто-то открыл форму» — убран.
         $user  = (new User())->setEmail('owner@brand.com');
         $brand = (new Brand())->setTitle('Acme');
         $claim = (new BrandClaim())->setBrand($brand)->setUser($user)->setMethod(BrandClaim::METHOD_EMAIL_CODE);
 
-        $msg = $this->subscriber()->buildMessage($claim);
-        $this->assertStringContainsString('Заявка на бренд', $msg);
-        $this->assertStringContainsString('Acme', $msg);
-        $this->assertStringContainsString('owner@brand.com', $msg);
-        $this->assertStringContainsString('email_code', $msg);
+        $this->assertNull($this->subscriber()->buildMessage($claim));
     }
 
     public function testSubscriptionMessage(): void

@@ -6,6 +6,7 @@
 parameters:
     app.admin_email: '%env(ADMIN_EMAIL)%'
     app.telegram_bot_username: 'wearbase_bot'
+    app.wardrobe_draft_storage_dir: '%kernel.project_dir%/var/uploads/wardrobe_drafts'
     # Дефолты опциональных env (чтобы приложение грузилось без записи в .env)
     env(ADMIN_TELEGRAM_CHAT_ID): ''
     env(VK_APP_ID): ''
@@ -13,6 +14,10 @@ parameters:
     env(BRAND_CLAIM_AUTOGRANT_EMAIL): '1'
     env(BRAND_CLAIM_AUTOGRANT_VK): '1'
     env(PAYMENT_SECRET_KEY): ''
+    env(AGENT_API_SECRET): ''
+    env(WEB_PUSH_PUBLIC_KEY): ''
+    env(WEB_PUSH_PRIVATE_KEY): ''
+    env(WEB_PUSH_SUBJECT): 'mailto:admin@wearbase.ru'
     # Гардероб авто-ингест: 0=remote vision (WARDROBE_VISION_MODEL, работает на проде),
     # 1=local vision на LLM-сервере (dev/.env.local, где достаётся риг — бесплатно).
     env(WARDROBE_VISION_LOCAL): '0'
@@ -50,10 +55,16 @@ parameters:
     env(LOCAL_LLM_JUDGE_URL): ''
     env(QDRANT_URL): ''
     env(QDRANT_API_KEY): ''
+    env(QDRANT_COLLECTION): ''
     env(SEARXNG_URL): ''
     # Канонический хост сайта для canonical/hreflang (не зависит от request-хоста)
     env(SITE_BASE_URL): 'https://wearbase.ru'
     app.site_base_url: '%env(SITE_BASE_URL)%'
+
+    # News pipeline (парсер → рерайт → модерация): ollama и предохранитель автопубликации
+    env(OLLAMA_URL): 'http://127.0.0.1:11434'
+    env(OLLAMA_MODEL): 'qwen3.5:27b'
+    env(NEWS_AUTO_PUBLISH): '0'
 
 services:
     # default configuration for services in *this* file
@@ -75,7 +86,24 @@ services:
     App\:
         resource: '../src/'
 
-    # add more service definitions when explicit configuration is needed
+    App\Notification\WebPushPublisherInterface: '@App\Notification\WebPushPublisher'
+
+    App\Notification\WebPushPublisher:
+        arguments:
+            $publicKey: '%env(WEB_PUSH_PUBLIC_KEY)%'
+            $privateKey: '%env(WEB_PUSH_PRIVATE_KEY)%'
+            $subject: '%env(WEB_PUSH_SUBJECT)%'
+
+    # News pipeline: ollama HTTP-клиент (URL/модель — env, см. параметры выше)
+    App\Service\News\OllamaClient:
+        arguments:
+            $ollamaUrl: '%env(OLLAMA_URL)%'
+            $model: '%env(OLLAMA_MODEL)%'
+
+    App\Command\NewsProcessCommand:
+        arguments:
+            $autoPublish: '%env(bool:NEWS_AUTO_PUBLISH)%'
+
     # please note that last definitions always *replace* previous ones
 
     App\Service\LlmService:
@@ -158,6 +186,10 @@ services:
             $visionModel: '%env(WARDROBE_VISION_MODEL)%'
             $visionLocal: '%env(bool:WARDROBE_VISION_LOCAL)%'
             $localModel: '%env(LOCAL_LLM_MODEL)%'
+
+    App\Service\Wardrobe\WardrobeIngestHealth:
+        arguments:
+            $storageDir: '%app.wardrobe_draft_storage_dir%'
 
     App\Service\Wardrobe\WardrobeOutfitService:
         arguments:
@@ -325,6 +357,12 @@ services:
     # Брендированная карточка для IG-рубрик-шаблонов (вместо слабой AI-сцены) — точечная добавка,
     # не меняет существующий MediaRenderer/TG/VK.
     App\Service\Social\CardImageRenderer:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'
+
+    # OG-карта лука 1200x630 («Поделиться луком»): GD-рендер в приватное хранилище.
+    App\Service\Look\LookShareOgCardRenderer:
         arguments:
             $projectDir: '%kernel.project_dir%'
             $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'

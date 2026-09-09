@@ -8,6 +8,7 @@ use App\Entity\Order;
 use App\Entity\Subscription;
 use App\Repository\BrandUserRepository;
 use App\Repository\OrderRepository;
+use App\Repository\ProductIntentClickRepository;
 use App\Repository\ProductRepository;
 use App\Repository\SellerLegalEntityRepository;
 use App\Repository\SubscriptionRepository;
@@ -29,6 +30,7 @@ class BrandDashboardController extends AbstractController
         OrderRepository             $orderRepository,
         ProductRepository           $productRepository,
         SellerLegalEntityRepository $legalEntities,
+        ProductIntentClickRepository $intentClicks,
     ): Response {
         $brand = $this->getActiveBrand();
 
@@ -46,6 +48,7 @@ class BrandDashboardController extends AbstractController
             'recent_orders'      => $recentOrders,
             'low_stock'          => $lowStockItems,
             'payment_ready'      => $paymentReady,
+            'intent_count'       => $paymentReady ? 0 : $intentClicks->countForBrand($brand),
             'subscription'       => $this->getActiveSubscription(),
             'revenue'            => $orderRepository->sumPaidRevenue($brand),
             'orders_total'       => $orderRepository->countByBrand($brand),

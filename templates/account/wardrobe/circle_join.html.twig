@@ -1,0 +1,17 @@
+{% extends 'account/family_wardrobe/layout.html.twig' %}
+{% block title %}Приглашение в кружок — WEARBASE{% endblock %}
+
+{% block family_mobile_content %}
+<div class="mx-auto max-w-md rounded-2xl bg-white p-6 text-center shadow-sm">
+    <h1 class="text-lg font-bold">{{ invite.createdBy.firstName }} приглашает вас в кружок</h1>
+    <p class="mt-1 text-xl font-black tracking-tight">«{{ invite.circle.title }}»</p>
+    <p class="mt-2 text-sm text-gray-500">
+        Участников: {{ occupied }} из {{ constant('App\\Entity\\WardrobeCircle::MEMBER_CAP') }}.
+        В ленте кружка участники видят только те луки, которые авторы явно в него показали.
+    </p>
+    <form method="post" class="mt-5">
+        <input type="hidden" name="_token" value="{{ csrf_token('circle_join_' ~ invite.token) }}">
+        <button class="min-h-11 w-full rounded-full bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black">Вступить в кружок</button>
+    </form>
+</div>
+{% endblock %}

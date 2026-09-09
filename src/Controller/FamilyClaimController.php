@@ -8,14 +8,12 @@ use App\Entity\User;
 use App\Repository\FamilyInviteRepository;
 use App\Repository\UserRepository;
 use App\Service\FamilyService;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Form\Extension\Core\Type\EmailType;
 use Symfony\Component\Form\Extension\Core\Type\PasswordType;
 use Symfony\Component\Form\FormError;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Validator\Constraints\Email;
 use Symfony\Component\Validator\Constraints\Length;
@@ -34,12 +32,19 @@ class FamilyClaimController extends AbstractController
         string $token,
         Request $request,
         UserRepository $userRepo,
-        EntityManagerInterface $em,
-        UserPasswordHasherInterface $passwordHasher,
+        FamilyService $familyService,
     ): Response {
         $member = $userRepo->findOneBy(['familyClaimToken' => $token]);
         if ($member === null) {
             throw $this->createNotFoundException();
+        }
+
+        $unavailable = !$member->isFamilyClaimUsable();
+        if ($unavailable) {
+            return $this->secureClaimResponse($this->render('family/claim.html.twig', [
+                'unavailable' => true,
+                'memberName' => $member->getFirstName() ?? $member->getFullName(),
+            ], new Response(status: Response::HTTP_GONE)));
         }
 
         $form = $this->createFormBuilder()
@@ -71,24 +76,20 @@ class FamilyClaimController extends AbstractController
             $data  = $form->getData();
             $email = $data['email'];
 
-            if ($userRepo->findOneBy(['email' => $email]) !== null) {
-                $form->get('email')->addError(new FormError('Этот email уже зарегистрирован'));
-            } else {
-                $member->setEmail($email);
-                $member->setPassword($passwordHasher->hashPassword($member, $data['password']));
-                $member->setClaimedAt(new \DateTimeImmutable());
-                $member->setFamilyClaimToken(null);
-                $em->flush();
-
+            try {
+                $familyService->activateChildAccess($member, $email, $data['password']);
                 $this->addFlash('success', 'Аккаунт активирован — войдите с новым email и паролем');
                 return $this->redirectToRoute('app_login');
+            } catch (\DomainException $exception) {
+                $form->get('email')->addError(new FormError($exception->getMessage()));
             }
         }
 
-        return $this->render('family/claim.html.twig', [
+        return $this->secureClaimResponse($this->render('family/claim.html.twig', [
             'form'       => $form,
             'memberName' => $member->getFirstName() ?? $member->getFullName(),
-        ]);
+            'unavailable' => false,
+        ]));
     }
 
     #[Route('/family/invite/{token}', name: 'family_invite_accept', methods: ['GET', 'POST'])]
@@ -106,7 +107,18 @@ class FamilyClaimController extends AbstractController
         /** @var ?User $user */
         $user = $this->getUser();
 
+        $unavailable = !$invite->isUsable();
+
         if ($request->isMethod('POST')) {
+            if ($unavailable) {
+                $response = $this->render('family/invite_accept.html.twig', [
+                    'invite' => $invite,
+                    'inviterName' => $invite->getFamily()->getOwner()->getFullName(),
+                    'unavailable' => true,
+                ], new Response(status: Response::HTTP_GONE));
+
+                return $this->secureInviteResponse($response);
+            }
             if ($user === null) {
                 $this->addFlash('error', 'Войдите, чтобы принять приглашение');
                 return $this->redirectToRoute('app_login');
@@ -134,17 +146,30 @@ class FamilyClaimController extends AbstractController
             $request->getSession()->set('_security.main.target_path', $request->getUri());
         }
 
-        $alreadyUsed = $invite->isAccepted();
         $response = $this->render('family/invite_accept.html.twig', [
             'invite'      => $invite,
             'inviterName' => $invite->getFamily()->getOwner()->getFullName(),
-            'alreadyUsed' => $alreadyUsed,
+            'unavailable' => $unavailable,
         ]);
 
-        if ($alreadyUsed) {
+        if ($unavailable) {
             $response->setStatusCode(Response::HTTP_GONE);
         }
+        return $this->secureInviteResponse($response);
+    }
+
+    private function secureInviteResponse(Response $response): Response
+    {
+        $response->headers->set('Referrer-Policy', 'no-referrer');
+        $response->headers->set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+        $response->setPrivate();
+        $response->headers->addCacheControlDirective('no-store');
 
         return $response;
+    }
+
+    private function secureClaimResponse(Response $response): Response
+    {
+        return $this->secureInviteResponse($response);
     }
 }

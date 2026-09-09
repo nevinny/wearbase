@@ -3,6 +3,9 @@ DirectoryIndex index.php index.html
     Options -MultiViews
     RewriteEngine On
 
+    # Фото личного и семейного гардероба выдаёт только авторизованный controller.
+    RewriteRule ^images/wardrobe(?:_drafts)?(?:/|$) - [F,L,NC]
+
     # Редирект с HTTP на HTTPS
 #    RewriteCond %{HTTPS} off
 #    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]

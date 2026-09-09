@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use App\Repository\WardrobeItemPhotoRepository;
 use Symfony\Component\HttpFoundation\File\File;
 use Vich\UploaderBundle\Mapping\Annotation as Vich;
 
-#[ORM\Entity]
+#[ORM\Entity(repositoryClass: WardrobeItemPhotoRepository::class)]
 #[ORM\Table(name: 'wardrobe_item_photo')]
 #[ORM\Index(name: 'idx_wardrobe_photo_item_deleted', columns: ['item_id', 'deleted_at'])]
 #[Vich\Uploadable]
@@ -107,6 +108,15 @@ class WardrobeItemPhoto
     public function isCover(): bool { return $this->isCover; }
     public function setIsCover(bool $isCover): static { $this->isCover = $isCover; return $this; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
+    // \DateTimeInterface, а не Immutable: EntityUserListener::preUpdate() передаёт \DateTime
+    public function setUpdatedAt(?\DateTimeInterface $updatedAt): static
+    {
+        $this->updatedAt = $updatedAt === null ? null : \DateTimeImmutable::createFromInterface($updatedAt);
+
+        return $this;
+    }
+
+    public function getUpdatedAt(): ?\DateTimeImmutable { return $this->updatedAt; }
     public function getDeletedAt(): ?\DateTimeImmutable { return $this->deletedAt; }
     public function isDeleted(): bool { return $this->deletedAt !== null; }
     public function softDelete(): void { $this->deletedAt = new \DateTimeImmutable(); }

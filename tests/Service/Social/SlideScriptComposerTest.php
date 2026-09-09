@@ -47,7 +47,7 @@ YAML;
         self::assertSame('Вместо Zara?', $script->hookA);
         self::assertSame('Но не копия.', $script->hookB);
         self::assertSame(['Маркетплейс — 30–67%.', 'Мы — 0%.'], $script->bits);
-        self::assertSame('h1.departed|b.det2|c.save', $script->scriptKey);
+        self::assertSame('h1.departed|b.det2|c.send', $script->scriptKey);
     }
 
     /** Имя ушедшего не влезает в плашку → H1 пропускается, дальше — бинарная ветка F1/F2. */
@@ -103,6 +103,62 @@ YAML;
 
         self::assertStringStartsWith('f2.fee|', $script->scriptKey);
         self::assertSame([], $script->bits);
+    }
+
+    // --- Ротация финальной просьбы (FINALE_ASKS) ----------------------------------------------
+
+    /** Две финальные просьбы ротируются по чётности crc32('ask'.slug), независимо от хука. */
+    public function testFinaleAskRotatesBySlug(): void
+    {
+        // crc32('askbrand-4') % 2 === 0 → «Сохрани…»
+        $save = $this->composer()->compose($this->brand(slug: 'brand-4'), totalSlides: 4);
+        self::assertSame('Сохрани, чтобы не искать.', $save->finaleAsk);
+        self::assertStringEndsWith('c.save', $save->scriptKey);
+
+        // crc32('askour-brand') % 2 === 1 → «Отправь…»
+        $send = $this->composer()->compose($this->brand(slug: 'our-brand'), totalSlides: 4);
+        self::assertSame('Отправь тому, кто ищет.', $send->finaleAsk);
+        self::assertStringEndsWith('c.send', $send->scriptKey);
+    }
+
+    /**
+     * Ротация двух F2-хуков по чётности slug (useRealHook): бренды без RAG-фактов больше не
+     * получают все до одного комиссионный хук — половина ленты идёт с позиционным тезисом
+     * «реальные фото» (H8 плейбука). Ветку решает только содержимое, рандома нет.
+     */
+    public function testF2FallbackRotatesBetweenFeeAndRealBySlugParity(): void
+    {
+        // crc32('brand-4') % 2 === 1 → ветка f2.real
+        $real = $this->composer()->compose($this->brand(slug: 'brand-4'), totalSlides: 7);
+        self::assertSame('Это не нейронка.', $real->hookA);
+        self::assertSame('Фото сняли они.', $real->hookB);
+        self::assertStringStartsWith('f2.real|', $real->scriptKey);
+
+        // crc32('marka-4') % 2 === 0 → контроль f2.fee, как раньше
+        $fee = $this->composer()->compose($this->brand(slug: 'marka-4'), totalSlides: 7);
+        self::assertSame('Маркетплейс: до 67%.', $fee->hookA);
+        self::assertStringStartsWith('f2.fee|', $fee->scriptKey);
+    }
+
+    /** Пустой slug не должен улетать в неожиданную ветку — чётность нуля = контроль f2.fee. */
+    public function testEmptySlugKeepsFeeBranch(): void
+    {
+        $script = $this->composer()->compose($this->brand(), totalSlides: 4);
+
+        self::assertSame('Маркетплейс: до 67%.', $script->hookA);
+        self::assertStringStartsWith('f2.fee|', $script->scriptKey);
+    }
+
+    /** Повторный generate того же бренда обязан дать ту же ветку — ротация детерминирована. */
+    public function testRealBranchIsStableAcrossRegeneration(): void
+    {
+        $composer = $this->composer();
+        $brand = $this->brand(slug: 'brand-4');
+
+        $first = $composer->compose($brand, 7);
+        $second = $composer->compose($brand, 7);
+
+        self::assertEquals($first, $second);
     }
 
     /**
@@ -480,7 +536,8 @@ YAML;
             $this->composer()->compose($this->brand(), 4),
             // F2 — детерминированный добор: год / категории / материал.
             $this->composer()->compose($this->brand(foundingYear: '1998'), 7),
-            $this->composer(categories: ['брюки', 'футболки', 'платья'])->compose($this->brand(), 7),
+            // F2.real — позиционный тезис «фото реальные», детерминированный добор битов.
+            $this->composer()->compose($this->brand(slug: 'brand-4', foundingYear: '1998'), 7),
             $this->composer(materials: ['хлопок'])->compose($this->brand(), 7),
             // F1 — grounded RAG-факт ведёт хук.
             $this->composer(

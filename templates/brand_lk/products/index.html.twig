@@ -69,8 +69,8 @@
                     {{ minPrice ? 'от ' ~ price(minPrice) : '—' }}
                 </td>
                 <td class="px-5 py-3">
-                    <span class="rounded px-2 py-0.5 text-xs font-semibold {{ product.status == 'active' ? 'bg-green-100 text-green-800' : (product.status == 'draft' ? 'bg-gray-100 text-gray-700' : 'bg-amber-100 text-amber-800') }}">
-                        {{ product.status == 'active' ? 'Активен' : (product.status == 'draft' ? 'Черновик' : 'Архив') }}
+                    <span class="rounded px-2 py-0.5 text-xs font-semibold {{ product.isPublished ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800' }}">
+                        {{ product.isPublished ? 'Активен' : 'Скрыт' }}
                     </span>
                 </td>
                 <td class="px-5 py-3 text-right">
@@ -83,8 +83,8 @@
                             <hr class="my-1 border-gray-100">
                             <form method="post" action="{{ path('brand_product_publish', {id: product.id}) }}">
                                 <input type="hidden" name="_token" value="{{ csrf_token('brand_product') }}">
-                                <button class="block w-full px-4 py-2 text-left text-sm hover:bg-gray-50 {{ product.status == 'active' ? 'text-amber-600' : 'text-green-600' }}" type="submit">
-                                    {{ product.status == 'active' ? 'Снять с публикации' : 'Опубликовать' }}
+                                <button class="block w-full px-4 py-2 text-left text-sm hover:bg-gray-50 {{ product.isPublished ? 'text-amber-600' : 'text-green-600' }}" type="submit">
+                                    {{ product.isPublished ? 'Снять с публикации' : 'Опубликовать' }}
                                 </button>
                             </form>
                         </div>
