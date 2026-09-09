@@ -13,7 +13,12 @@ use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 
 final class WardrobeConsentService
 {
-    public function __construct(private readonly WardrobeConsentRepository $consents, private readonly FamilyService $families, private readonly EntityManagerInterface $em) {}
+    public function __construct(
+        private readonly WardrobeConsentRepository $consents,
+        private readonly FamilyService $families,
+        private readonly EntityManagerInterface $em,
+        private readonly ?WardrobeMemoryFactService $memory = null,
+    ) {}
 
     public function grantPhotoProcessing(User $actor, User $subject): WardrobeConsent
     {
@@ -37,6 +42,7 @@ final class WardrobeConsentService
         $consent->grantPersonalization($actor);
         $this->em->persist($consent);
         $this->em->flush();
+        $this->memory?->rebuild($subject);
 
         return $consent;
     }

@@ -20,6 +20,7 @@ class WardrobeOutfitLearningService
         private readonly ?WardrobeWearEventRepository $wearEvents = null,
         private readonly ?WardrobeActivationService $activation = null,
         private readonly ?WardrobeConsentRepository $consents = null,
+        private readonly ?WardrobeMemoryFactService $memory = null,
     ) {}
 
     /**
@@ -109,15 +110,12 @@ class WardrobeOutfitLearningService
         arsort($negative);
         $liked = array_slice(array_keys($positive), 0, 8);
         $disliked = array_slice(array_keys($negative), 0, 8);
-        if ($liked === [] && $disliked === []) {
-            return '';
-        }
-
-        return sprintf(
+        $weighted = $liked === [] && $disliked === [] ? '' : sprintf(
             'Предыдущие реакции пользователя: чаще выбирает [%s]; чаще отклоняет [%s]. Учитывай это, но сохраняй разнообразие.',
             implode(', ', $liked),
             implode(', ', $disliked),
         );
+        return trim($weighted.' '.$this->memory?->context($wardrobeOwner));
     }
 
     /** @return array{id:int,category:?string,color:?string,styles:string[]} */

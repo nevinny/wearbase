@@ -27,6 +27,7 @@ final class WardrobeWearService
         private readonly WardrobeWearEventRepository $events,
         private readonly EntityManagerInterface $em,
         private readonly ?WardrobeActivationService $activation = null,
+        private readonly ?WardrobeMemoryFactService $memory = null,
     ) {}
 
     /** @param array<int, array{item:WardrobeItem,confidence:?string}> $candidates */
@@ -70,6 +71,7 @@ final class WardrobeWearService
             $event->revise($type, $itemIds);
         }
         $this->em->flush();
+        $this->memory?->syncWear($event);
         if ($type === WardrobeWearEvent::TYPE_WORN && $this->events->hasRepeatedItem($subject)) {
             $this->activation?->repeatWearRecorded($actor, $subject, 'wear_review');
         }
@@ -105,6 +107,7 @@ final class WardrobeWearService
             $outfit->react(WardrobeOutfit::REACTION_WORN);
             $this->em->persist($event);
             $this->em->flush();
+            $this->memory?->syncWear($event);
             if ($this->events->hasRepeatedItem($subject)) {
                 $this->activation?->repeatWearRecorded($actor, $subject, 'outfit');
             }
@@ -117,11 +120,13 @@ final class WardrobeWearService
         $this->assertCanManage($actor, $event->getProfileSubject());
         $event->addFeedback($comfort, $wantsRepeat, $comment);
         $this->em->flush();
+        $this->memory?->syncWear($event);
     }
 
     public function delete(User $actor, WardrobeWearEvent $event): void
     {
         $this->assertCanManage($actor, $event->getProfileSubject());
+        $this->memory?->deleteWear($event);
         $this->em->remove($event);
         $this->em->flush();
     }

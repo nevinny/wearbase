@@ -12,6 +12,7 @@ use App\Entity\FittingFeedback;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Notification\NotificationDispatcher;
+use App\Service\Wardrobe\WardrobeMemoryFactService;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\DBAL\LockMode;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
@@ -23,6 +24,7 @@ class PurchaseRequestService
         private readonly FamilyService $families,
         private readonly FamilyBudgetService $budgets,
         private readonly NotificationDispatcher $notifications,
+        private readonly ?WardrobeMemoryFactService $memory = null,
     ) {}
 
     public function create(
@@ -227,6 +229,9 @@ class PurchaseRequestService
         $this->mutateItem($actor, $request, $item, PurchaseRequestEvent::TYPE_FITTING, static function (PurchaseRequestItem $locked) use ($actor, $outcome, $triedSize, $sizing, $fitIssues, $comment): void {
             $locked->recordFitting(new FittingFeedback($actor, $outcome, $triedSize, $sizing, $fitIssues, $comment));
         }, $notificationType, in_array($outcome, [FittingFeedback::OUTCOME_REFUSED, FittingFeedback::OUTCOME_DIFFERENT_SIZE], true));
+        if ($item->getFittingFeedback() !== null) {
+            $this->memory?->syncFitting($item->getFittingFeedback());
+        }
     }
 
     public function markReturned(User $actor, PurchaseRequest $request, PurchaseRequestItem $item): void

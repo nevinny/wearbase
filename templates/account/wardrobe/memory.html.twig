@@ -1,0 +1,46 @@
+{% extends 'account/family_wardrobe/layout.html.twig' %}
+{% block title %}Память стилиста — WEARBASE{% endblock %}
+
+{% block family_mobile_content %}
+<div class="mb-5 flex items-center justify-between gap-3">
+    <div>
+        <h1 class="text-lg font-bold">Память стилиста</h1>
+        <p class="mt-1 text-sm text-slate-500">Только для профиля {{ currentMember.firstName ?: currentMember.email }}.</p>
+    </div>
+    <a class="text-sm font-semibold text-slate-600" href="{{ path('account_wardrobe_outfits', {member: currentMember.id}) }}">← К стилисту</a>
+</div>
+
+<section class="mb-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+    <p>{{ personalizationGranted ? 'Персонализация включена: активные факты используются стилистом.' : 'Персонализация выключена: факты сохранены, но стилист их не использует.' }}</p>
+    <p class="mt-1 text-xs text-slate-500">Комментарии, фото и ссылки покупок в память автоматически не копируются.</p>
+</section>
+
+<div class="space-y-3">
+    {% for memory in facts %}
+        <article class="rounded-2xl bg-white p-4 shadow-sm">
+            <form method="post" action="{{ path('account_wardrobe_memory_edit', {id: memory.id, member: currentMember.id}) }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_memory_' ~ memory.id) }}">
+                <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">{{ memory.sourceType == 'wear' ? 'Носка' : 'Примерка' }} · {{ memory.signalSource }}</label>
+                <textarea name="fact" maxlength="500" rows="2" required class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">{{ memory.fact }}</textarea>
+                <button class="mt-2 min-h-11 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white">Сохранить</button>
+            </form>
+            <form class="mt-2" method="post" action="{{ path('account_wardrobe_memory_delete', {id: memory.id, member: currentMember.id}) }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_memory_' ~ memory.id) }}">
+                <button class="min-h-11 text-xs font-semibold text-red-600">Удалить факт</button>
+            </form>
+        </article>
+    {% else %}
+        <div class="rounded-2xl bg-white p-5 text-sm text-slate-500">Фактов пока нет. Они появятся после согласованной примерки или подтверждённой носки.</div>
+    {% endfor %}
+</div>
+
+<div class="mt-6 flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+    <a class="min-h-11 rounded-xl border border-slate-300 px-4 py-3 text-xs font-semibold" href="{{ path('account_wardrobe_memory_export', {member: currentMember.id}) }}">Экспорт JSON</a>
+    {% if facts %}
+        <form method="post" action="{{ path('account_wardrobe_memory_delete_all', {member: currentMember.id}) }}">
+            <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_memory_delete_all') }}">
+            <button class="min-h-11 rounded-xl border border-red-200 px-4 py-2 text-xs font-semibold text-red-700">Удалить всю память</button>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}
