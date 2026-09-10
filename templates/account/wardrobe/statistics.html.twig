@@ -2,7 +2,7 @@
 {% block title %}Статистика гардероба — WEARBASE{% endblock %}
 
 {% block family_mobile_content %}
-{% set memberParam = {member: currentMember.id} %}
+{% set memberParam = currentMember.id == app.user.id ? {} : {member: currentMember.id} %}
 {% set summary = statistics.summary %}
 
 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">

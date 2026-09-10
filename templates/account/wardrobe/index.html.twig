@@ -5,7 +5,9 @@
 {# Гварды на переходный момент: контроллер может ещё не передавать family-переменные #}
 {% set hasFamily = members is defined and currentMember is defined %}
 {% set ownWardrobe = isOwnWardrobe is defined ? isOwnWardrobe : true %}
-{% set memberParam = hasFamily ? {member: currentMember.id} : {} %}
+{# member=<id> только для чужого гардероба — свой URL остаётся коротким и передаваемым
+   (тот же контракт, что у WardrobeController::memberQuery()) #}
+{% set memberParam = hasFamily and not ownWardrobe ? {member: currentMember.id} : {} %}
 {% set activeQuery = memberParam|merge(activeFilters) %}
 {% if isArchiveView %}{% set activeQuery = activeQuery|merge({view: 'archive'}) %}{% endif %}
 {% set seasonLabels = {'all': 'Всесезон', 'spring': 'Весна', 'summer': 'Лето', 'autumn': 'Осень', 'winter': 'Зима'} %}
@@ -34,7 +36,7 @@
 </div>
 
 <form method="get" class="mb-6 flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm">
-    <input type="hidden" name="member" value="{{ currentMember.id }}">
+    {% if not ownWardrobe %}<input type="hidden" name="member" value="{{ currentMember.id }}">{% endif %}
     <div>
         <label class="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Экспорт</label>
         <select name="scope" class="rounded-lg border border-gray-200 px-3 py-2 text-sm">
@@ -92,7 +94,7 @@
 
 {# ── Поиск и фильтры ── #}
 <form method="get" action="{{ path('account_wardrobe_index') }}" class="mb-6 rounded-2xl bg-white p-4 shadow-sm">
-    {% if hasFamily %}<input type="hidden" name="member" value="{{ currentMember.id }}">{% endif %}
+    {% if not ownWardrobe %}<input type="hidden" name="member" value="{{ currentMember.id }}">{% endif %}
     {% if isArchiveView %}<input type="hidden" name="view" value="archive">{% endif %}
     <div class="grid gap-3 md:grid-cols-12">
         <div class="md:col-span-4">

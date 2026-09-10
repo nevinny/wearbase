@@ -49,7 +49,7 @@
 
 {% block body %}
     {% set currentRoute = app.request.attributes.get('_route')|default('') %}
-    {% set wardrobeParams = currentMember is defined and currentMember ? {member: currentMember.id} : {} %}
+    {% set wardrobeParams = currentMember is defined and currentMember and currentMember.id != app.user.id ? {member: currentMember.id} : {} %}
     {% set purchaseUrl = familyPurchaseUrl|default(path('account_purchase_index')) %}
     {% set captureUrl = familyCaptureUrl|default(path('account_wardrobe_wear_index', wardrobeParams)) %}
     {% set activeSection = familyActiveSection|default(null) %}

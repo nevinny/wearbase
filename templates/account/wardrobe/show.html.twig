@@ -3,7 +3,7 @@
 
 {% block family_mobile_content %}
 {# Гварды на переходный момент: контроллер может ещё не передавать family-переменные #}
-{% set memberParam = currentMember is defined ? {member: currentMember.id} : {} %}
+{% set memberParam = currentMember is defined and currentMember.id != app.user.id ? {member: currentMember.id} : {} %}
 {% set backQuery = app.request.query.all %}
 {% set mayManage = canManage is defined and canManage %}
 {% set wearLabels = constant('App\\Entity\\WardrobeItem::WEAR_LABELS') %}
