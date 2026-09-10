@@ -49,6 +49,27 @@ class SeoMetaServiceTest extends TestCase
         self::assertStringEndsNotWith('|', $out);
     }
 
+    public function testFitDropsDanglingPreposition(): void
+    {
+        // реальный случай (бренд AFNSKA DRESS): бюджет 49 обрывал строку на предлоге «из»,
+        // в рендере получалось «… одежды из | WEARBASE»
+        $out = $this->s->fit('AFNSKA DRESS — бренд платьев и одежды из Санкт-Петербурга', 49);
+        self::assertSame('AFNSKA DRESS — бренд платьев и одежды', $out);
+    }
+
+    public function testFitDropsSeveralDanglingWordsInARow(): void
+    {
+        $out = $this->s->fit('Бренд женской одежды и из Казани с доставкой', 26);
+        self::assertSame('Бренд женской одежды', $out);
+    }
+
+    public function testFitKeepsMeaningfulLastWord(): void
+    {
+        // слово не служебное — трогать его нельзя
+        $out = $this->s->fit('Российский бренд женской одежды из Казани', 30);
+        self::assertSame('Российский бренд женской', $out);
+    }
+
     public function testFitTitleForRenderReservesSuffixWhenAbsent(): void
     {
         // нет WEARBASE → шаблон добавит « | WEARBASE» (11) → итог должен остаться ≤60
