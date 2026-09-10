@@ -1637,6 +1637,23 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseStatusCodeSame(403);
     }
 
+    /**
+     * Регресс: свой гардероб не должен эмитить ?member=<свой id> ни в одной ссылке —
+     * иначе пользователь копирует из адресной строки персональный URL, который
+     * у любого другого человека даёт 403 (WardrobeController::memberQuery()).
+     */
+    public function testOwnWardrobeLinksHaveNoMemberQueryParam(): void
+    {
+        $client = static::createClient();
+        $user   = $this->loginAsCustomer($client);
+
+        $client->request('GET', '/account/wardrobe');
+
+        $this->assertResponseIsSuccessful();
+        $this->assertSelectorNotExists(sprintf('a[href*="member=%d"]', $user->getId()));
+        $this->assertSelectorNotExists('input[name="member"]');
+    }
+
     public function testTransferMovesItemToChildAndRenumbers(): void
     {
         $client = static::createClient();
