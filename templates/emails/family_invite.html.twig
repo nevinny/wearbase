@@ -1,0 +1,19 @@
+{% extends 'emails/base.html.twig' %}
+{% block email_title %}Приглашение в семью — WEARBASE{% endblock %}
+{% block email_content %}
+<h2 style="margin-top:0;font-size:18px;">Приглашение в семейный гардероб</h2>
+<p style="color:#555;line-height:1.6;">Здравствуйте!</p>
+<p style="color:#555;line-height:1.6;">
+    {{ inviterName }} приглашает вас в семью на WEARBASE.<br>
+    Ваша роль в семье: <strong>{{ roleLabel }}</strong>.
+</p>
+<p style="text-align:center;">
+    <a href="{{ inviteUrl }}" class="btn">
+        Принять приглашение
+    </a>
+</p>
+<p style="color:#888;font-size:13px;">
+    Ссылка действительна до {{ expiresAt|date('d.m.Y') }}.<br>
+    Если вы не ожидали этого приглашения, проигнорируйте письмо.
+</p>
+{% endblock %}

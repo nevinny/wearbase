@@ -133,6 +133,61 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
         );
     }
 
+    public function testInviteWithEmailSendsInviteMail(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-invite-mail@test.local');
+        $client->loginUser($parent);
+
+        $crawler = $client->request('GET', '/account/family');
+        $this->assertResponseIsSuccessful();
+
+        $form = $crawler->selectButton('Пригласить в семью')->form([
+            'role' => User::FAMILY_ROLE_PARENT,
+            'email' => 'invite-recipient@example.test',
+        ]);
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/family');
+
+        // Ассерты почты — до следующего клиентского запроса: KernelBrowser
+        // перезагружает kernel между запросами, а с ним и логгер писем.
+        $this->assertEmailCount(1);
+        $mail = $this->getMailerMessage();
+        $this->assertEmailAddressContains($mail, 'To', 'invite-recipient@example.test');
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $em->clear();
+
+        /** @var User $reloadedParent */
+        $reloadedParent = $em->getRepository(User::class)->find($parent->getId());
+        $invite = $em->getRepository(FamilyInvite::class)->findOneBy(
+            ['family' => $reloadedParent->getFamily(), 'intendedEmail' => 'invite-recipient@example.test'],
+            ['id' => 'DESC'],
+        );
+        $this->assertNotNull($invite);
+        $this->assertEmailHtmlBodyContains($mail, '/family/invite/' . $invite->getToken());
+    }
+
+    public function testInviteWithoutEmailDoesNotSendMail(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-family-invite-nomail@test.local');
+        $client->loginUser($parent);
+
+        $crawler = $client->request('GET', '/account/family');
+        $this->assertResponseIsSuccessful();
+
+        $form = $crawler->selectButton('Пригласить в семью')->form([
+            'role' => User::FAMILY_ROLE_PARENT,
+        ]);
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/account/family');
+        $this->assertEmailCount(0);
+    }
+
     public function testChildCannotSeeOrCreateFamilyManagementActions(): void
     {
         $client = static::createClient();
