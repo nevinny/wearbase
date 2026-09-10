@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Notification;
 
+use App\Entity\User;
 use App\Notification\EmailNotifier;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Bundle\FrameworkBundle\Test\MailerAssertionsTrait;
@@ -33,5 +34,22 @@ class EmailNotifierTest extends KernelTestCase
         $this->assertSame('hello@mail.wearbase.ru', $message->getFrom()[0]->getAddress());
         $this->assertNotSame([], $message->getReplyTo(), 'Reply-To должен быть выставлен');
         $this->assertSame($notifier->getAdminEmail(), $message->getReplyTo()[0]->getAddress());
+    }
+
+    /**
+     * Guard: managed-дети (синтетический email на family.wearbase.ru, без реального ящика)
+     * не должны получать почту — иначе это гарантированный hard-bounce на наш же домен.
+     */
+    public function testDoesNotSendToManagedRecipient(): void
+    {
+        self::bootKernel();
+        $notifier = self::getContainer()->get(EmailNotifier::class);
+
+        $managedChild = (new User())->setEmail('child-1-abc123@' . User::MANAGED_EMAIL_DOMAIN);
+
+        $sent = $notifier->send($managedChild, 'Тема', 'lead_welcome', ['brandName' => 'Бренд']);
+
+        $this->assertFalse($sent, 'Managed-получателю письмо не должно уходить');
+        $this->assertEmailCount(0);
     }
 }

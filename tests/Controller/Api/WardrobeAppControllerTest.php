@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller\Api;
 
+use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Service\FamilyService;
 use App\Tests\Controller\AuthenticatedWebTestCase;
@@ -50,7 +51,7 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
             array_keys($data['members'][0]),
         );
         $this->assertStringNotContainsString('email', strtolower((string) $client->getResponse()->getContent()));
-        $this->assertStringNotContainsString('@family.wearbase.local', (string) $client->getResponse()->getContent());
+        $this->assertStringNotContainsString('@' . User::MANAGED_EMAIL_DOMAIN, (string) $client->getResponse()->getContent());
     }
 
     public function testItemsReturnsSelectedManagedMembersActiveWardrobeWithStableSchema(): void

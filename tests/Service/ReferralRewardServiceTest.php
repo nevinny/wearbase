@@ -209,8 +209,8 @@ final class ReferralRewardServiceTest extends KernelTestCase
     public function testManagedAndDisposableInviteesAreCutOff(): void
     {
         $inviter = $this->user('ref-inviter-guards@test.local', true);
-        // Managed-ребёнок: синтетический домен family.wearbase.local (User::isManaged).
-        $managed = $this->user('ref-managed-child@family.wearbase.local', true);
+        // Managed-ребёнок: синтетический домен User::MANAGED_EMAIL_DOMAIN (User::isManaged).
+        $managed = $this->user('ref-managed-child@' . User::MANAGED_EMAIL_DOMAIN, true);
         $this->em->flush();
 
         $managedEvent = $this->event($inviter, $managed);

@@ -103,6 +103,35 @@ class NotificationDispatcherTest extends TestCase
         $this->assertSame('order:1:email', $queued->getDedupeKey());
     }
 
+    /**
+     * Guard: managed-ребёнок (синтетический email на family.wearbase.ru) не должен получить
+     * email-запись в outbox — реального ящика там нет (см. EmailNotifier::send()). In-app при
+     * этом создаётся как обычно — это осмысленный канал и для managed-детей.
+     */
+    public function testDispatchSkipsEmailOutboxForManagedRecipient(): void
+    {
+        $managedChild = (new User())->setEmail('child-1-abc123@' . User::MANAGED_EMAIL_DOMAIN);
+
+        $this->settingsRepo->method('findOneBy')->willReturn(null);
+        $this->twig->expects($this->never())->method('render');
+        $persisted = null;
+        $this->em->expects($this->once())->method('persist')->willReturnCallback(function (object $entity) use (&$persisted): void {
+            $persisted = $entity;
+        });
+
+        $this->createDispatcher()->dispatch(
+            $managedChild,
+            Notification::TYPE_ORDER_NEW,
+            'Test email',
+            null,
+            null,
+            'new_order_brand',
+            ['order' => 'stub'],
+        );
+
+        $this->assertInstanceOf(Notification::class, $persisted);
+    }
+
     public function testDispatchRespectsSettingsInappDisabled(): void
     {
         $settings = new NotificationSettings();

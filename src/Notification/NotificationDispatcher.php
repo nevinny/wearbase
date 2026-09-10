@@ -49,7 +49,9 @@ readonly class NotificationDispatcher
             $this->createInApp($recipient, $type, $title, $body, $data)->setDedupeKey($dedupeKey);
         }
 
-        if ($channels['email'] && $emailTemplate) {
+        // Managed-дети: синтетический email без ящика — не создаём email-запись в outbox
+        // (см. guard и его обоснование в EmailNotifier::send()). In-app/telegram/push не трогаем.
+        if ($channels['email'] && $emailTemplate && !$recipient->isManaged()) {
             $context = $emailContext ?? [];
             $context['user'] = $recipient;
             $this->em->persist(new ExternalNotificationOutbox($recipient, Notification::CHANNEL_EMAIL, $type, $dedupeKey.':email', [
