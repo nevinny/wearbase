@@ -13,6 +13,7 @@ use App\Repository\WardrobeItemRepository;
 use App\Service\FamilyService;
 use App\Service\Family\ChildProfileService;
 use App\Service\FamilyLifecycleService;
+use App\Notification\EmailNotifier;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -125,7 +126,7 @@ class FamilyController extends AbstractController
     }
 
     #[Route('/invite', name: 'invite', methods: ['POST'])]
-    public function invite(Request $request, FamilyService $familyService): Response
+    public function invite(Request $request, FamilyService $familyService, EmailNotifier $emailNotifier): Response
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -151,8 +152,26 @@ class FamilyController extends AbstractController
             return $this->redirectToRoute('account_family_index');
         }
 
-        $familyService->createInvite($user, $role, $email !== '' ? $email : null);
-        $this->addFlash('success', 'Приглашение создано — отправьте ссылку члену семьи');
+        $invite = $familyService->createInvite($user, $role, $email !== '' ? $email : null);
+
+        $sent = false;
+        if ($invite->getIntendedEmail() !== null) {
+            $sent = $emailNotifier->send(
+                $invite->getIntendedEmail(),
+                sprintf('%s приглашает вас в семью на WEARBASE', $user->getFullName()),
+                'family_invite',
+                [
+                    'inviterName' => $user->getFullName(),
+                    'roleLabel' => $role === User::FAMILY_ROLE_CHILD ? 'Ребёнок' : 'Родитель',
+                    'inviteUrl' => $familyService->inviteUrl($invite),
+                    'expiresAt' => $invite->getExpiresAt(),
+                ],
+            );
+        }
+
+        $this->addFlash('success', $sent
+            ? sprintf('Приглашение отправлено на %s — ссылка также есть в списке ниже', $invite->getIntendedEmail())
+            : 'Приглашение создано — отправьте ссылку члену семьи');
 
         return $this->redirectToRoute('account_family_index');
     }
