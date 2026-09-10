@@ -51,5 +51,12 @@ class EmailNotifierTest extends KernelTestCase
 
         $this->assertFalse($sent, 'Managed-получателю письмо не должно уходить');
         $this->assertEmailCount(0);
+
+        // Guard не должен зацепить обычного User-получателя — иначе никто не получит почту.
+        $regularUser = (new User())->setEmail('parent@example.com');
+        $sentToRegular = $notifier->send($regularUser, 'Тема', 'lead_welcome', ['brandName' => 'Бренд']);
+
+        $this->assertTrue($sentToRegular, 'Обычному пользователю письмо должно уходить');
+        $this->assertEmailCount(1);
     }
 }
