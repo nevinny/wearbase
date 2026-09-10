@@ -1,4 +1,10 @@
 DirectoryIndex index.php index.html
+
+# AVIF — без объявления типа Apache отдаёт файл как application/octet-stream.
+<IfModule mod_mime.c>
+    AddType image/avif .avif
+</IfModule>
+
 <IfModule mod_rewrite.c>
     Options -MultiViews
     RewriteEngine On
@@ -13,6 +19,10 @@ DirectoryIndex index.php index.html
     # 301 www → apex (дубль-хост в GSC)
     RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
     RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
+
+    # Раздел /demo/ — статические страницы, Symfony их не обслуживает.
+    # Без этого исключения запрос каталога (не файла) уходит в index.php и получает 404.
+    RewriteRule ^demo(?:/|$) - [L]
 
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^(.*)$ index.php [QSA,L]

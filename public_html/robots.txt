@@ -10,6 +10,8 @@ Disallow: /admin/
 Disallow: /_profiler/
 Disallow: /_wdt/
 Disallow: /go/
+# Демо-концепты сайтов для брендов — служебный раздел, не для индекса
+Disallow: /demo/
 # Tracking parameters — экономим краул-бюджет на UTM/ref вариантах
 Disallow: /*?utm_*
 Disallow: /*?ref=*
