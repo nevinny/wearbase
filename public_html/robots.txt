@@ -10,6 +10,18 @@ Disallow: /admin/
 Disallow: /_profiler/
 Disallow: /_wdt/
 Disallow: /go/
+# Приватные разделы: личный кабинет, ЛК бренда, корзина, оформление, вход.
+# Все они требуют логина и отдают 302 на /login — робот тратит краул-бюджет впустую.
+# Заходить, чтобы прочитать meta noindex, он не может: его редиректит раньше.
+Disallow: /account/
+Disallow: /brand/
+Disallow: /brand-claim/
+Disallow: /cart/
+Disallow: /checkout/
+Disallow: /login
+Disallow: /register
+# Демо-концепты сайтов для брендов — служебный раздел, не для индекса
+Disallow: /demo/
 # Tracking parameters — экономим краул-бюджет на UTM/ref вариантах
 Disallow: /*?utm_*
 Disallow: /*?ref=*
@@ -36,6 +48,18 @@ Disallow: /admin/
 Disallow: /_profiler/
 Disallow: /_wdt/
 Disallow: /go/
+# Приватные разделы: личный кабинет, ЛК бренда, корзина, оформление, вход.
+# Все они требуют логина и отдают 302 на /login — робот тратит краул-бюджет впустую.
+# Заходить, чтобы прочитать meta noindex, он не может: его редиректит раньше.
+Disallow: /account/
+Disallow: /brand/
+Disallow: /brand-claim/
+Disallow: /cart/
+Disallow: /checkout/
+Disallow: /login
+Disallow: /register
+# Демо-концепты сайтов для брендов — служебный раздел, не для индекса
+Disallow: /demo/
 
 # Sitemap и LLM-индекс
 Sitemap: https://wearbase.ru/sitemap.xml
