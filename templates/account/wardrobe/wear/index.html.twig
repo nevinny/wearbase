@@ -38,7 +38,7 @@
         {% for item in items %}
             {% if statistics[item.id] is defined %}
             {% set stat = statistics[item.id] %}
-            <a href="{{ path('account_wardrobe_show', {id: item.id, member: currentMember.id}) }}" class="min-w-36 snap-start rounded-2xl bg-white p-4 shadow-sm">
+            <a href="{{ path('account_wardrobe_show', {id: item.id}|merge(currentMember.id == app.user.id ? {} : {member: currentMember.id})) }}" class="min-w-36 snap-start rounded-2xl bg-white p-4 shadow-sm">
                 <p class="truncate text-sm font-bold text-slate-900">{{ item.name ?: item.category ?: 'Вещь' }}</p>
                 <p class="mt-2 text-2xl font-black text-indigo-600">{{ stat.wearCount }}</p>
                 <p class="text-xs text-slate-500">{{ stat.wearCount == 1 ? 'носка' : 'носок' }}</p>

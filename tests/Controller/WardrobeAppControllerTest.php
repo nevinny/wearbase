@@ -131,7 +131,10 @@ class WardrobeAppControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseIsSuccessful();
         $this->assertSelectorTextContains('body', 'Мария');
         $this->assertSelectorTextContains('body', 'Лиза');
-        $this->assertSelectorExists(sprintf('a[href="/account/wardrobe?member=%d"]', $child->getId()));
+        // Свой гардероб — ссылка без ?member= (персональный id не должен попадать
+        // в URL, который пользователь копирует из адресной строки и пересылает).
+        $this->assertSelectorExists('a[href="/account/wardrobe"]');
+        $this->assertSelectorNotExists(sprintf('a[href="/account/wardrobe?member=%d"]', $child->getId()));
         $this->assertSelectorNotExists(sprintf('a[href="/account/wardrobe?member=%d"]', $parent->getId()));
         $this->assertSelectorNotExists('a[href="/account/family/add"]');
         $this->assertSelectorNotExists('form[action="/account/family/invite"]');

@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<script>document.documentElement.classList.add('js');</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Сайты для локальных брендов одежды — демо-концепты</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;800&family=Onest:wght@400;500;600&family=Martian+Mono:wght@500;600&display=swap&subset=cyrillic,latin" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        bg:'var(--bg)', surface:'var(--surface)',
+        ink:'var(--ink)', 'ink-2':'var(--ink-2)', 'ink-3':'var(--ink-3)',
+        line:'var(--line)', 'fill-hi':'var(--fill-hi)',
+      },
+      fontFamily: {
+        display:['Unbounded','system-ui','sans-serif'],
+        sans:['Onest','system-ui','sans-serif'],
+        mono:['"Martian Mono"','ui-monospace','monospace'],
+      },
+      maxWidth: { shell:'1120px' },
+      borderRadius: { none:'0', xs:'3px', sm:'6px', md:'10px' },
+    }
+  }
+}
+</script>
+
+<style>
+:root{
+  --bg:#F2EFE9; --surface:#FBF9F5;
+  --ink:#14120F; --ink-2:#5C574E; --ink-3:#6E675C;
+  --line:#DDD7CB; --fill-hi:#FFE500;
+  --tile-ring: rgb(0 0 0 / .10);
+  --fs-display: clamp(2.75rem, 9.2vw, 7rem);
+  --fs-h2: clamp(1.75rem, 4vw, 3rem);
+  --fs-h3: clamp(1.25rem, 1.4vw + 1rem, 1.5rem);
+  --fs-tile-name: clamp(1.0625rem, 1vw + .9rem, 1.25rem);
+  --fs-body-lg: clamp(1.0625rem, .3vw + 1rem, 1.1875rem);
+  --fs-body: clamp(.9375rem, .2vw + .9rem, 1rem);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#12110F; --surface:#1B1917;
+    --ink:#F2EFE9; --ink-2:#B8B1A5; --ink-3:#8E877B;
+    --line:#2E2B27; --fill-hi:#FFE500;
+    --tile-ring: rgb(255 255 255 / .10);
+  }
+}
+
+body{ background:var(--bg); color:var(--ink); }
+
+.fs-display{ font-family:'Unbounded',sans-serif; font-weight:800; font-size:var(--fs-display); line-height:.90; letter-spacing:-0.035em; text-wrap:balance; }
+.fs-h2{ font-family:'Unbounded',sans-serif; font-weight:700; font-size:var(--fs-h2); line-height:1.00; letter-spacing:-0.02em; }
+.fs-h3{ font-family:'Onest',sans-serif; font-weight:600; font-size:var(--fs-h3); line-height:1.15; letter-spacing:-0.01em; }
+.fs-tile-name{ font-family:'Onest',sans-serif; font-weight:600; font-size:var(--fs-tile-name); line-height:1.15; letter-spacing:-0.01em; }
+.fs-body-lg{ font-family:'Onest',sans-serif; font-weight:400; font-size:var(--fs-body-lg); line-height:1.50; }
+.fs-body{ font-family:'Onest',sans-serif; font-weight:400; font-size:var(--fs-body); line-height:1.55; }
+.fs-caption{ font-family:'Onest',sans-serif; font-weight:400; font-size:13px; line-height:1.45; }
+.fs-label{ font-family:'Martian Mono',monospace; font-weight:500; font-size:11px; line-height:1.20; letter-spacing:.14em; text-transform:uppercase; }
+.fs-index{ font-family:'Martian Mono',monospace; font-weight:600; font-size:13px; line-height:1.00; letter-spacing:.04em; }
+
+/* ---- кнопки ---- */
+.btn-primary{
+  display:inline-flex; align-items:center; justify-content:center;
+  background:var(--ink); color:var(--bg);
+  font-family:'Onest',sans-serif; font-weight:600; font-size:16px;
+  padding:14px 24px; border-radius:6px;
+  transition:background-color 160ms ease-out, box-shadow 160ms ease-out;
+  text-decoration:none;
+}
+.btn-primary:hover, .btn-primary:active{ background:#FFE500; color:#14120F; box-shadow:0 1px 0 rgb(0 0 0/.08), 0 10px 28px -14px rgb(0 0 0/.35); }
+.btn-primary:focus-visible{ outline:2px solid var(--ink); outline-offset:3px; }
+@media (max-width:639px){ .btn-primary{ width:100%; padding:16px 24px; } }
+
+.link-u{ color:var(--ink); text-decoration:none; position:relative; padding-bottom:2px; }
+.link-u::after{ content:''; position:absolute; left:0; right:0; bottom:0; height:1px; background:var(--line); }
+.link-u::before{ content:''; position:absolute; left:0; right:0; bottom:0; height:2px; background:var(--ink); transform:scaleX(0); transform-origin:left; transition:transform 160ms ease-out; }
+.link-u:hover::before, .link-u:focus-visible::before, .link-u:active::before{ transform:scaleX(1); }
+.link-u:focus-visible{ outline:2px solid var(--ink); outline-offset:3px; }
+
+/* ---- сетка (первый ряд латинского квадрата 3×3) ---- */
+.tile{ display:block; background:var(--surface); text-decoration:none; color:inherit; }
+.tile-mat{ padding:16px; }
+@media (max-width:639px){ .tile-mat{ padding:10px; } }
+
+.tile-photobox{ position:relative; aspect-ratio:1/1; background:var(--surface); box-shadow:inset 0 0 0 1px var(--tile-ring); }
+
+.tile-img{ position:absolute; object-fit:cover; transition:clip-path 200ms cubic-bezier(.2,.7,.3,1); border-radius:3px; }
+.fmt-s .tile-img{ inset:-8px; clip-path:inset(8px round 3px); }
+.fmt-p .tile-img{ top:-8px; left:-8px; bottom:-8px; width:calc(75% + 8px); clip-path:inset(8px 0 8px 8px round 3px); }
+.fmt-l .tile-img{ left:-8px; top:-8px; right:-8px; height:calc(75% + 8px); clip-path:inset(8px 8px 0 8px round 3px); }
+.tile:hover .tile-img, .tile:focus-visible .tile-img, .tile:active .tile-img{ clip-path:inset(0 round 3px); }
+
+.tile-face{ position:absolute; display:flex; align-items:center; justify-content:center; border-radius:3px; }
+.fmt-s .tile-face{ inset:0; }
+.fmt-p .tile-face{ top:0; left:0; bottom:0; width:75%; }
+.fmt-l .tile-face{ left:0; right:0; top:0; height:75%; }
+.tile-photobox--empty .tile-face{ background:var(--bg); box-shadow:inset 0 0 0 1px var(--tile-ring); }
+
+.tile-band{ position:absolute; background:var(--surface); display:flex; }
+.fmt-p .tile-band{ right:0; top:0; bottom:0; width:25%; align-items:flex-end; justify-content:center; padding-bottom:10px; }
+.fmt-l .tile-band{ left:0; right:0; bottom:0; height:25%; align-items:center; justify-content:flex-start; padding-left:10px; }
+
+.tile-num{ font-family:'Martian Mono',monospace; font-weight:600; font-size:13px; letter-spacing:.04em; color:var(--ink-3); transition:color 160ms ease-out; }
+.tile:hover .tile-num, .tile:focus-visible .tile-num{ color:var(--ink); }
+.tile-num--s{ position:absolute; left:8px; bottom:8px; }
+.tile-num--p{ writing-mode:vertical-rl; transform:rotate(180deg); }
+.tile-num--l{ display:flex; align-items:center; gap:8px; }
+/* --brand-accent — единственное место цвета бренда на лендинге: инлайновая переменная на .tile
+   конкретной работы (см. tile 01); у брендов без акцента (заглушки) — fallback var(--ink) */
+.tile-num--l .tile-rule-acc{ width:40px; height:2px; background:var(--brand-accent, var(--ink)); display:inline-block; }
+/* плашка --fill-hi маркирует сделанную работу, а не пустой слот (максимум ×1 сейчас) */
+.tile-num--work{ background:var(--fill-hi); color:#14120F; padding:2px 8px; }
+.tile:hover .tile-num--work, .tile:focus-visible .tile-num--work{ color:#14120F; }
+
+.tile-caption{ margin-top:12px; padding-top:8px; border-top:1px solid var(--line); min-height:5.5rem; }
+.tile-name{ position:relative; display:inline-block; color:var(--ink); }
+.tile-name::after{ content:''; position:absolute; left:0; right:0; bottom:-3px; height:2px; background:var(--brand-accent, var(--ink)); transform:scaleX(0); transform-origin:left; transition:transform 160ms ease-out; }
+.tile:hover .tile-name::after, .tile:focus-visible .tile-name::after{ transform:scaleX(1); }
+.tile-city{ color:var(--ink-2); }
+.tile-desc{ color:var(--ink-3); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+.tile-plus{ font-family:'Unbounded',sans-serif; font-weight:800; font-size:32px; color:var(--ink-3); transition:color 160ms ease-out; }
+.tile:hover .tile-plus, .tile:focus-visible .tile-plus{ color:var(--ink); }
+
+.tile:focus-visible{ outline:2px solid var(--ink); outline-offset:4px; }
+
+/* ---- моушн: появление секций ----
+   Исходное скрытое состояние ставится в CSS через класс html.js (не из JS в момент старта —
+   иначе между рендером и первым тиком анимации контент виден→пропадает→проявляется).
+   Без class="js" (JS не выполнился) — секции видны сразу, никакого FOUC-скрытия. */
+html.js [data-reveal]{ opacity:0; transform:translateY(12px); }
+
+@media (prefers-reduced-motion: reduce){
+  [data-reveal]{ opacity:1 !important; transform:none !important; transition:none !important; }
+  .tile-img{ transition:none; }
+}
+</style>
+</head>
+<body class="font-sans antialiased">
+
+<!-- 1. Шапка -->
+<header class="h-14 flex items-center border-b border-line">
+  <div class="max-w-shell w-full mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+    <span class="fs-index">WEARBASE / DEMO</span>
+    <a href="https://t.me/zyablik" class="link-u fs-body">Telegram</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- 2. Герой -->
+  <section class="pt-16 pb-20 lg:pt-28 lg:pb-40">
+    <div class="max-w-shell mx-auto px-4 sm:px-6 lg:px-8">
+      <h1 class="fs-display lg:max-w-[840px]">Сайты для локальных брендов одежды</h1>
+      <p class="fs-body-lg mt-6 max-w-xl text-ink-2">Демо-концепты на материалах реальных российских брендов. От 20 000 ₽, 5 дней. Демо вашего бренда сделаю бесплатно — до оплаты и до любых обязательств.</p>
+      <p class="fs-index mt-8 text-ink-3">
+        <span class="whitespace-nowrap">демо-концепт</span> <span class="mx-1">·</span> <span class="whitespace-nowrap">сайт под ключ</span> <span class="mx-1">·</span> <span class="whitespace-nowrap">20–50&nbsp;000&nbsp;₽</span> <span class="mx-1">·</span> <span class="whitespace-nowrap">от 5 дней</span>
+      </p>
+      <a href="https://t.me/zyablik" class="btn-primary mt-10">Сделаю демо вашего бренда бесплатно</a>
+    </div>
+  </section>
+
+  <!-- 3. Сетка (сейчас первый ряд латинского квадрата — одна готовая работа + 2 заглушки) -->
+  <section class="pb-16 lg:pb-32" id="works">
+    <div class="max-w-shell mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-baseline justify-between border-b border-line pb-3 mb-4" data-reveal>
+        <h2 class="fs-h2">Демо-концепты</h2>
+        <span class="fs-label text-ink-3 hidden sm:inline">Работы 01–03</span>
+      </div>
+      <p class="fs-label text-ink-3 mb-4 sm:hidden">Работы 01–03</p>
+      <p class="fs-body text-ink-2 max-w-md mb-1">Честно: это демо, а не клиентские работы — сайты собрал сам, на фото и текстах из открытых Telegram-каналов брендов каталога. Бренды реальные, ни один не заказывал и не платил.</p>
+      <p class="fs-caption text-ink-3 max-w-md mb-8">Ваш бренд здесь и вы против? Напишите <a href="https://t.me/zyablik" class="link-u">@zyablik</a> — уберу в течение суток.</p>
+
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+
+        <!-- 01 · P · Splash! — единственная готовая работа: плашка --fill-hi маркирует именно её -->
+        <a href="/demo/splash/" class="tile fmt-p col-span-2 sm:col-span-1" style="--brand-accent:#CC425B" aria-label="SPLASH!, Москва — открыть демо-сайт" data-reveal>
+          <div class="tile-mat">
+            <div class="tile-photobox">
+              <picture>
+                <source type="image/avif" srcset="img/splash-01.avif">
+                <img class="tile-img" src="img/splash-01.jpg" width="596" height="800" style="--focus:50% 50%; object-position:var(--focus)" alt="Splash! — постер в чёрной раме на красной стене" loading="lazy" decoding="async">
+              </picture>
+              <span class="tile-band" aria-hidden="true">
+                <span class="tile-num tile-num--p tile-num--work" aria-hidden="true">01</span>
+              </span>
+            </div>
+            <div class="tile-caption">
+              <p class="fs-tile-name tile-name">Splash!</p>
+              <p class="fs-caption tile-city">Москва</p>
+              <p class="fs-caption tile-desc">стикер-арт — превратили ленту канала в витрину арт-объектов</p>
+            </div>
+          </div>
+        </a>
+
+        <!-- 02 · S · заглушка -->
+        <a href="https://t.me/zyablik" class="tile fmt-s" aria-label="Место свободно, слот 02 — предложить свой бренд в Telegram" data-reveal>
+          <div class="tile-mat">
+            <div class="tile-photobox tile-photobox--empty">
+              <div class="tile-face"><span class="tile-plus" aria-hidden="true">+</span></div>
+              <span class="tile-num tile-num--s" aria-hidden="true">02</span>
+            </div>
+            <div class="tile-caption">
+              <p class="fs-tile-name tile-name">Место свободно</p>
+              <p class="fs-caption tile-city">ваш бренд?</p>
+              <p class="fs-caption tile-desc">напишите в Telegram — соберу демо</p>
+            </div>
+          </div>
+        </a>
+
+        <!-- 03 · L · заглушка -->
+        <a href="https://t.me/zyablik" class="tile fmt-l" aria-label="Место свободно, слот 03 — предложить свой бренд в Telegram" data-reveal>
+          <div class="tile-mat">
+            <div class="tile-photobox tile-photobox--empty">
+              <div class="tile-face"><span class="tile-plus" aria-hidden="true">+</span></div>
+              <span class="tile-band" aria-hidden="true">
+                <span class="tile-num tile-num--l" aria-hidden="true"><span class="tile-rule-acc"></span>03</span>
+              </span>
+            </div>
+            <div class="tile-caption">
+              <p class="fs-tile-name tile-name">Место свободно</p>
+              <p class="fs-caption tile-city">ваш бренд?</p>
+              <p class="fs-caption tile-desc">напишите в Telegram — соберу демо</p>
+            </div>
+          </div>
+        </a>
+
+      </div>
+
+      <p class="fs-index text-ink-3 mt-8">Свободно ещё 8 мест — напишите, соберу демо.</p>
+    </div>
+  </section>
+
+  <!-- 4. Что входит -->
+  <section class="pb-16 lg:pb-32">
+    <div class="max-w-shell mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="fs-h2 mb-10" data-reveal>Что входит</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-4xl" data-reveal>
+        <div class="pt-6 border-t border-line md:border-t-0">
+          <span class="fs-index text-ink-3">01</span>
+          <p class="fs-body text-ink-2 mt-2">Одностраничник под ключ: адаптация под телефон, кнопка «Написать в Telegram», подключение домена. В старших тарифах — каталог с фильтрами и приём заявок или оплаты.</p>
+        </div>
+        <div class="pt-6 border-t border-line md:border-t-0">
+          <span class="fs-index text-ink-3">02</span>
+          <h3 class="fs-h3 mt-2 mb-2">Что нужно от вас</h3>
+          <p class="fs-body text-ink-2">Фото и тексты о бренде — свои, из вашего Telegram-канала или маркетплейса. Брифов на десять страниц не будет.</p>
+        </div>
+        <div class="pt-6 border-t border-line md:border-t-0">
+          <span class="fs-index text-ink-3">03</span>
+          <h3 class="fs-h3 mt-2 mb-2">Чего не входит</h3>
+          <p class="fs-body text-ink-2">Фотосъёмки, текстов «с нуля» без ваших материалов и рекламных кампаний — это сайт, а не агентство.</p>
+        </div>
+        <div class="pt-6 border-t border-line md:border-t-0">
+          <span class="fs-index text-ink-3">04</span>
+          <h3 class="fs-h3 mt-2 mb-2">Бонус</h3>
+          <p class="fs-body text-ink-2">Карточка бренда в каталоге wearbase.ru со ссылкой на новый сайт — бесплатно, как часть демо.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Как это устроено -->
+  <section class="pb-16 lg:pb-32">
+    <div class="max-w-shell mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="fs-h2 mb-10" data-reveal>Как это устроено</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6 relative" data-reveal>
+        <div class="pl-6 border-l border-line md:border-l-0 md:border-t md:pl-0 md:pt-6">
+          <span class="fs-index text-ink-3">01</span>
+          <p class="fs-body mt-2 text-ink-2">Пишете в Telegram — присылаете фото и тексты бренда (подойдёт и ссылка на канал).</p>
+        </div>
+        <div class="pl-6 border-l border-line md:border-l-0 md:border-t md:pl-0 md:pt-6">
+          <span class="fs-index text-ink-3">02</span>
+          <p class="fs-body mt-2 text-ink-2">Собираю демо на отдельном адресе — вы смотрите и правите, ничего не оплачивая.</p>
+        </div>
+        <div class="pl-6 border-l border-line md:border-l-0 md:border-t md:pl-0 md:pt-6">
+          <span class="fs-index text-ink-3">03</span>
+          <p class="fs-body mt-2 text-ink-2">Нравится — переезжает на ваш домен, платите после сдачи. Не нравится — расходимся бесплатно.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Цена -->
+  <section class="pb-16 lg:pb-32">
+    <div class="max-w-shell mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="fs-h2 mb-10" data-reveal>Цена</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8 max-w-5xl" data-reveal>
+        <div>
+          <p class="fs-display text-[44px] lg:text-[56px]">20 000 ₽</p>
+          <p class="fs-h3 mt-3 mb-2">Показывать бренд</p>
+          <p class="fs-body text-ink-2">Одностраничник как в демо: ваши фото и тексты, мобильная версия, кнопка в Telegram, домен и подключение.</p>
+          <p class="fs-index text-ink-3 mt-3">5 дней</p>
+        </div>
+        <div>
+          <p class="fs-display text-[36px] lg:text-[44px]">35 000 ₽</p>
+          <p class="fs-h3 mt-3 mb-2">Собирать заявки</p>
+          <p class="fs-body text-ink-2">+ каталог вещей с описаниями и фильтрами, форма, заявки в TG/почту.</p>
+          <p class="fs-index text-ink-3 mt-3">10 дней</p>
+        </div>
+        <div>
+          <p class="fs-display text-[36px] lg:text-[44px]">50 000 ₽</p>
+          <p class="fs-h3 mt-3 mb-2">Продавать</p>
+          <p class="fs-body text-ink-2">+ цены, корзина, приём оплаты, доставка.</p>
+          <p class="fs-index text-ink-3 mt-3">3 недели</p>
+        </div>
+      </div>
+      <div class="mt-12 max-w-2xl space-y-3" data-reveal>
+        <p class="fs-body text-ink-2"><span class="text-ink font-semibold">Почему недорого:</span> сайты делаю на движке собственного каталога — половина работы сделана до вас.</p>
+        <p class="fs-body text-ink-2"><span class="text-ink font-semibold">Когда платить:</span> после сдачи. Пока смотрите — сайт живёт на демо-адресе; после оплаты переезжает на ваш домен, сайт и домен ваши. Не понравится — расходимся, платить не нужно.</p>
+      </div>
+      <a href="https://t.me/zyablik" class="btn-primary mt-10">Сделаю демо вашего бренда бесплатно</a>
+    </div>
+  </section>
+
+  <!-- 7. Кто делает + проверяемые цифры -->
+  <section class="pb-16 lg:pb-32">
+    <div class="max-w-shell mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="fs-h2 mb-8" data-reveal>Кто делает</h2>
+      <p class="fs-body-lg max-w-2xl text-ink-2" data-reveal>Я веду <a href="https://wearbase.ru" class="link-u">wearbase.ru</a> — каталог российских брендов одежды. Всё в нём — бэкенд, дизайн, тексты, поиск и сервер — сделал один я. Сейчас в каталоге <span class="text-ink font-semibold">2 700</span> опубликованных брендов, а только за последние 28 дней сайт привёл <span class="text-ink font-semibold">9 656</span> переходов из поиска: <span class="text-ink">8 444</span> — из Яндекса, <span class="text-ink">1 212</span> — из Google. Демо в сетке выше — тот же движок в масштабе одного бренда.</p>
+    </div>
+  </section>
+
+  <!-- 8. Контакт -->
+  <section class="pb-16 lg:pb-32" id="contact">
+    <div class="max-w-shell mx-auto px-4 sm:px-6 lg:px-8">
+      <h2 class="fs-h2 mb-10" data-reveal>FAQ</h2>
+      <div class="max-w-2xl divide-y divide-line" data-reveal>
+        <div class="py-6 first:pt-0">
+          <p class="fs-h3 mb-2">С кем вы уже работали?</p>
+          <p class="fs-body text-ink-2">Сайты я делаю давно: начинал верстальщиком, потом программистом. Позже продавал сайты сам и вёл их как арт-директор — дизайн был на аутсорсе, постановка задачи и приёмка на мне. Таких проектов набралось несколько десятков. Честно: показать их нечего. Сайты живут три-пять лет, те давно закрыты или переписаны, из архива остались только макеты. Ссылаться на мёртвые ссылки — плохой аргумент. Поэтому смотрите на то, что живо сегодня: wearbase.ru — каталог российских брендов одежды, 2 700 опубликованных карточек и 9 656 переходов из поиска за последние 28 дней. Код, дизайн, тексты, поисковая оптимизация и сервер — один я. И на демо в этой сетке: они собраны на реальных материалах брендов и показывают ровно тот уровень, который получите вы. Риск с вашей стороны закрываю условиями: демо вашего бренда делаю бесплатно и показываю до оплаты. Деньги — после сдачи.</p>
+        </div>
+        <div class="py-6">
+          <p class="fs-h3 mb-2">Когда платить?</p>
+          <p class="fs-body text-ink-2">После сдачи. Пока смотрите — сайт живёт на демо-адресе; понравится — переезжает на ваш домен, сайт и домен становятся вашими. Не понравится — расходимся, платить не нужно.</p>
+        </div>
+        <div class="py-6">
+          <p class="fs-h3 mb-2">Я не разбираюсь в сайтах — что от меня нужно?</p>
+          <p class="fs-body text-ink-2">Фото и тексты о бренде — подойдёт и просто ссылка на ваш Telegram-канал или маркетплейс. Остальное соберу сам.</p>
+        </div>
+        <div class="py-6">
+          <p class="fs-h3 mb-2">Демо, которое вы показываете, — это чей-то настоящий сайт?</p>
+          <p class="fs-body text-ink-2">Нет. Это демо-концепт: я сам собрал его на фото и текстах из открытого Telegram-канала бренда каталога WEARBASE. Бренд не заказывал у меня сайт и не платил — я показываю работу, а не список клиентов.</p>
+        </div>
+        <div class="py-6 last:pb-0">
+          <p class="fs-h3 mb-2">Почему так недорого?</p>
+          <p class="fs-body text-ink-2">Сайты делаю на движке собственного каталога — половина работы сделана до вас.</p>
+        </div>
+      </div>
+
+      <div class="mt-16 border-t border-line pt-10" data-reveal>
+        <h2 class="fs-h2 mb-4">Написать</h2>
+        <p class="fs-body-lg text-ink-2 mb-6 max-w-lg">Telegram — быстрее всего: <span class="text-ink">@zyablik</span>.</p>
+        <a href="https://t.me/zyablik" class="btn-primary">Сделаю демо вашего бренда бесплатно</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- 9. Подвал -->
+<footer class="border-t border-line py-6">
+  <div class="max-w-shell mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <p class="fs-caption text-ink-3">© 2026 WEARBASE — Александр Крекин</p>
+    <a href="https://wearbase.ru" class="link-u fs-caption text-ink-3">wearbase.ru</a>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.3.0/dist/bundles/anime.umd.min.js"></script>
+<script>
+(function(){
+  // Исходное скрытое состояние уже стоит в CSS (html.js [data-reveal]) — здесь только целевые
+  // значения и триггер. Если анимация невозможна — снимаем class="js", контент виден сразу.
+  if (!window.anime || !('IntersectionObserver' in window)) {
+    document.documentElement.classList.remove('js');
+    return;
+  }
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; // CSS-оверрайд §8 уже держит контент видимым
+
+  var animate = anime.animate;
+
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry, k){
+      if (!entry.isIntersecting) return;
+      animate(entry.target, {
+        y: 0,
+        opacity: 1,
+        duration: 420,
+        ease: 'cubicBezier(.16,1,.3,1)',
+        delay: k * 60, // каскад по индексу внутри текущего колбэка, не по глобальному индексу
+      });
+      io.unobserve(entry.target);
+    });
+  }, { threshold: 0.15 });
+
+  document.querySelectorAll('[data-reveal]').forEach(function(el){ io.observe(el); });
+})();
+</script>
+</body>
+</html>

@@ -118,3 +118,14 @@ docs/*.scratch.md
 # Транскрипты YouTube из yt-ingest — рабочие файлы, в репозиторий не нужны
 # (07.09.2026 семь штук уехали в main через `git add -A` при разрешении конфликта)
 transcript_*.txt
+
+# Личный тулчейн скиллов (npx skills add) — не код проекта
+.agents/
+.claude/skills/
+skills-lock.json
+
+# Демо-раздел: фотографии брендов из их открытых каналов НЕ кладём в публичный репозиторий
+# (см. docs/demo_landing_concept.md §2). На прод уезжают ручным rsync. Собственные ассеты — исключения.
+public_html/demo/*/img/*
+!public_html/demo/splash/img/paper.avif
+public_html/demo/img/*
