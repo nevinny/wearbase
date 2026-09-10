@@ -20,6 +20,16 @@ class SeoMetaService
     /** Суффикс, который шаблон (tailwind/brand/show.html.twig) добавляет, если его нет. */
     private const RENDER_SUFFIX = ' | WEARBASE';
 
+    /**
+     * Служебные слова, повисающие в конце после трима по границе слова: «…одежды из | WEARBASE».
+     * Слово целое, пунктуации нет — предыдущие правила их не ловят, а заголовок читается оборванным.
+     */
+    private const DANGLING_TAIL = [
+        'и', 'а', 'но', 'или', 'же', 'да',
+        'в', 'во', 'на', 'с', 'со', 'из', 'изо', 'от', 'ото', 'до', 'к', 'ко', 'у', 'о', 'об', 'обо',
+        'по', 'за', 'при', 'для', 'над', 'под', 'про', 'без', 'через', 'между',
+    ];
+
     /** Тримит текст к лимиту по границе слова (без обрезанных слов и хвостовой пунктуации). */
     public function fit(string $text, int $max): string
     {
@@ -38,7 +48,23 @@ class SeoMetaService
         }
 
         // хвостовая пунктуация + висячий разделитель «|» (обрезали «… купить | WEARBASE»)
-        return rtrim($cut, " \t\n\r\0\x0B.,;:—-|");
+        $cut = rtrim($cut, " \t\n\r\0\x0B.,;:—-|");
+
+        return $this->dropDanglingTail($cut);
+    }
+
+    /** Снимает повисшие в конце предлоги/союзы (и пунктуацию за ними), пока они там есть. */
+    private function dropDanglingTail(string $text): string
+    {
+        while (($pos = mb_strrpos($text, ' ')) !== false) {
+            $last = mb_strtolower(mb_substr($text, $pos + 1));
+            if (!in_array($last, self::DANGLING_TAIL, true)) {
+                break;
+            }
+            $text = rtrim(mb_substr($text, 0, $pos), " \t\n\r\0\x0B.,;:—-|");
+        }
+
+        return $text;
     }
 
     /**
