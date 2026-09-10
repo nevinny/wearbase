@@ -5,12 +5,10 @@
 {% set canManageFamily = family is null or app.user.familyRole == 'parent' %}
 <div class="mb-5 flex items-center justify-between gap-3">
     <h1 class="text-xl font-black text-slate-950">Семья</h1>
+    {# Основной путь для ребёнка — профиль внутри аккаунта родителя: у детей до 14 лет
+       своей почты обычно нет, а приглашение по ссылке требует от них регистрации. #}
     {% if canManageFamily %}
-    <form method="post" action="{{ path('account_family_invite') }}">
-        <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
-        <input type="hidden" name="role" value="child">
-        <button type="submit" class="rounded-xl bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-black">+ Пригласить ребёнка</button>
-    </form>
+    <a href="{{ path('account_family_add') }}" class="rounded-xl bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-black">+ Добавить ребёнка</a>
     {% endif %}
 </div>
 
@@ -22,13 +20,8 @@
         <p class="mb-1 font-semibold text-gray-700">Добавьте членов семьи</p>
         <p class="mb-5 text-sm">У каждого свой гардероб, вещи можно передавать</p>
         {% if canManageFamily %}<div class="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-            <form method="post" action="{{ path('account_family_invite') }}">
-                <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
-                <input type="hidden" name="role" value="child">
-                <button type="submit" class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">+ Пригласить ребёнка</button>
-            </form>
             <a href="{{ path('account_family_add') }}"
-               class="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Профиль без входа</a>
+               class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition">+ Добавить ребёнка</a>
             <form method="post" action="{{ path('account_family_invite') }}" class="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
                 <input type="email" name="email" autocomplete="email" placeholder="Email (необязательно)"
@@ -122,7 +115,11 @@
 
     {# ── Приглашения ── #}
     {% if canManageFamily %}<div class="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
-        <h2 class="mb-4 text-sm font-bold">Приглашения</h2>
+        <h2 class="mb-1 text-sm font-bold">Приглашения</h2>
+        <p class="mb-4 text-xs text-gray-500">
+            Ссылка нужна тем, у кого есть своя почта: второму родителю или подростку.
+            Ребёнку младше 14 лет заведите <a href="{{ path('account_family_add') }}" class="underline">профиль без входа</a> — почта ему не понадобится.
+        </p>
 
         <form method="post" action="{{ path('account_family_invite') }}" class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
             <input type="hidden" name="_token" value="{{ csrf_token('family_invite') }}">
