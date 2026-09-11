@@ -13,3 +13,4 @@ channels:
   drmaxseo:              { role: seo,     name: "DrMax SEO" }
   freychu:               { role: seo,     name: "Frey Chu (directories)" }
   big_bad_coach:         { role: seo,     name: "big_bad_coach" }
+  "ДМИТРИЙ_ПОПОВ_ИИ_ДЛЯ_БИЗНЕСА": { role: framing, name: "Дмитрий Попов (AI для бизнеса)" }
