@@ -70,19 +70,17 @@
             <p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#374151;" class="em-txt">
                 Данные мы собрали из открытых источников, поэтому что-то может быть неточным. Было бы здорово, если бы мы <strong>вместе</strong> довели страницу до идеала — вы подтверждаете данные, добавляете фото и описание.
             </p>
-            <p style="margin:0 0 10px;font-size:15px;font-weight:700;color:#111827;" class="em-strong">Что это даёт бренду</p>
+            {% if demand %}
+            <p style="margin:0 0 10px;font-size:15px;font-weight:700;color:#111827;" class="em-strong">Как вашу страницу ищут</p>
             <p style="margin:0 0 8px;font-size:14px;line-height:1.55;color:#374151;" class="em-txt">
-                &bull;&nbsp;<strong>Витрина, а не строка в выдаче.</strong> Покупатель приходит к бренду, а не к карточке среди тысяч чужих на маркетплейсе.
+                За последние 28 дней страница «{{ brand.title }}» в каталоге показалась в поиске Google <strong>{{ demand.impressions }}</strong> раз.
             </p>
-            <p style="margin:0 0 8px;font-size:14px;line-height:1.55;color:#374151;" class="em-txt">
-                &bull;&nbsp;<strong>Прямые продажи без комиссии маркетплейса.</strong> Деньги за заказ идут напрямую бренду — Wearbase не берёт комиссию с продаж.
-            </p>
+            {% if demand.queries|length %}
             <p style="margin:0 0 4px;font-size:14px;line-height:1.55;color:#374151;" class="em-txt">
-                &bull;&nbsp;<strong>Данные под вашим контролем.</strong> Описание, фото, ссылки и ассортимент редактируете вы — страница принадлежит бренду.
+                Запросы, по которым вас находили: {{ demand.queries|join(' · ') }}.
             </p>
-            <p style="margin:14px 0 0;font-size:14px;line-height:1.55;color:#374151;" class="em-txt">
-                У нас общая цель — чтобы покупатель приходил к «{{ brand.title }}» напрямую, а не терялся среди чужих карточек. Уверены, вместе сделаем страницу, которая работает на бренд.
-            </p>
+            {% endif %}
+            {% endif %}
         </td></tr>
 
         {# Одна CTA: bulletproof-кнопка #}

@@ -44,6 +44,7 @@ class OutreachSendCommand extends Command
             ->addArgument('limit', InputArgument::OPTIONAL, 'Сколько писем отправить', 10)
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Показать получателей, не слать')
             ->addOption('slugs',   null, InputOption::VALUE_REQUIRED, 'Точечный батч: слаги через запятую (вычитанные кандидаты cold-эксперимента) вместо авто-когорты')
+            ->addOption('facts',   null, InputOption::VALUE_REQUIRED, 'JSON-файл с фактами спроса по слагу: {"slug":{"impressions":N,"queries":["..."]}} (GSC живёт на Mac, письма уходят с прода)')
         ;
     }
 
@@ -54,6 +55,22 @@ class OutreachSendCommand extends Command
         $dryRun = (bool) $input->getOption('dry-run');
 
         $io->title('Outreach · warmup-отправка (когорта A)');
+
+        // Факты спроса (--facts): подставляются в письмо как «вас искали N раз».
+        $factsPath = (string) $input->getOption('facts');
+        if ($factsPath !== '') {
+            if (!is_readable($factsPath)) {
+                $io->error(sprintf('Файл фактов не читается: %s', $factsPath));
+                return Command::FAILURE;
+            }
+            $facts = json_decode((string) file_get_contents($factsPath), true);
+            if (!is_array($facts)) {
+                $io->error('Файл фактов — не валидный JSON-объект');
+                return Command::FAILURE;
+            }
+            $this->mailer->setDemandFacts($facts);
+            $io->text(sprintf('Факты спроса загружены: %d брендов', count($facts)));
+        }
         if (!$this->mailer->isConfigured() && !$dryRun) {
             $io->error('Не настроено: OUTREACH_FROM / OUTREACH_BASE_URL / MAILER_DSN');
             return Command::FAILURE;

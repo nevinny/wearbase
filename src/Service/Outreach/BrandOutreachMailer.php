@@ -59,6 +59,21 @@ class BrandOutreachMailer
      *
      * @return array<string,mixed>
      */
+    /**
+     * Факты поискового спроса по слагу бренда: ['slug' => ['impressions' => int, 'queries' => string[]]].
+     * Живут в GSC-таблицах на Mac, а письма уходят с прода — поэтому передаются снаружи
+     * (--facts у app:outreach:send), а не читаются из БД отправителя.
+     *
+     * @var array<string,array{impressions:int,queries:string[]}>
+     */
+    private array $demandFacts = [];
+
+    /** @param array<string,array{impressions:int,queries:string[]}> $facts */
+    public function setDemandFacts(array $facts): void
+    {
+        $this->demandFacts = $facts;
+    }
+
     public function buildContext(Brand $brand, string $base, string $token): array
     {
         // Каналы: лейбл по хосту (link_type часто 'other' из enrichment).
@@ -96,6 +111,7 @@ class BrandOutreachMailer
             'click_url'  => $base . '/e/c/' . $token,
             'pixel_url'  => $base . '/e/o/' . $token . '.gif',
             'unsub_url'  => $base . '/e/u/' . $token,
+            'demand'     => $this->demandFacts[(string) $brand->getSlug()] ?? null,
         ];
     }
 
