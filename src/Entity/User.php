@@ -28,7 +28,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     public const FAMILY_ROLE_ADULT = 'adult';
 
     // Домен синтетических email managed-детей (email NOT NULL UNIQUE не трогаем)
-    public const MANAGED_EMAIL_DOMAIN = 'family.wearbase.local';
+    public const MANAGED_EMAIL_DOMAIN = 'family.wearbase.ru';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -533,7 +533,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
 
     /**
      * Managed-аккаунт: ребёнок, заведённый родителем без своего email/пароля
-     * (синтетический email child-<familyId>-<hex>@family.wearbase.local, случайный пароль).
+     * (синтетический email child-<familyId>-<hex>@family.wearbase.ru, случайный пароль).
      *
      * Инварианты:
      * - familyClaimToken выставляется ТОЛЬКО при createChild() и обнуляется при claim —

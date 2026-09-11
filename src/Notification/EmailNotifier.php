@@ -57,6 +57,20 @@ readonly class EmailNotifier
      */
     public function send(User|string $recipient, string $subject, string $template, array $context = []): bool
     {
+        // Guard временный: managed-дети получают синтетический email на family.wearbase.ru,
+        // реальных ящиков там нет — отправка была бы гарантированным hard-bounce на наш же
+        // домен и била бы по репутации отправителя в RuSender. Снять, когда на
+        // family.wearbase.ru появятся настоящие почтовые ящики.
+        if ($recipient instanceof User && $recipient->isManaged()) {
+            $this->logger->info('Email notification skipped: managed recipient', [
+                'to' => $recipient->getEmail(),
+                'subject' => $subject,
+                'template' => $template,
+            ]);
+
+            return false;
+        }
+
         if ($recipient instanceof User) {
             $to = new Address((string) $recipient->getEmail(), $recipient->getFullName());
             $context['user'] = $recipient;

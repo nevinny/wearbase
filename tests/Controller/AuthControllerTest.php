@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use App\Entity\User;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
@@ -107,13 +108,13 @@ class AuthControllerTest extends WebTestCase
         $client->request('GET', '/login');
         $client->getRequest()->getSession()->set(
             \Symfony\Component\Security\Http\SecurityRequestAttributes::LAST_USERNAME,
-            'child-2-secret@family.wearbase.local',
+            'child-2-secret@' . User::MANAGED_EMAIL_DOMAIN,
         );
 
         $client->request('GET', '/login');
 
         $this->assertSelectorExists('input[name="_username"][value=""]');
-        $this->assertStringNotContainsString('family.wearbase.local', $client->getResponse()->getContent());
+        $this->assertStringNotContainsString(User::MANAGED_EMAIL_DOMAIN, $client->getResponse()->getContent());
     }
 
     // ── /register ─────────────────────────────────────────────────────────────
