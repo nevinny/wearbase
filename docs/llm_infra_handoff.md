@@ -97,13 +97,19 @@ zero-RPM. Держат драйвер `ollama` (постоянно) и `rig-dash
 | Порт | Сервис | Управление | Назначение |
 |---|---|---|---|
 | `11434` | **Ollama 0.33.2** | systemd `ollama.service` | генерация + vision + эмбеддинги |
-| `6333` | **Qdrant** (версия не проверена) | Docker: контейнер `qdrant`, образ `qdrant/qdrant` | векторное хранилище |
+| `6333` | **Qdrant 1.18.1** | Docker: контейнер `qdrant`, образ `qdrant/qdrant` | векторное хранилище |
 | `8080` | **SearXNG** | Docker: `searxng`, образ `searxng/searxng:latest`; egress через `winproxy-tunnel.service` | метапоиск для discover/скрейпа |
 | `8088` | дашборд майнинга | — | не относится к AI |
 
 Проверено 2026-09-13: `/api/version` Ollama отвечает; SearXNG `/` и Qdrant
 `/healthz` возвращают HTTP 200 на localhost. Оба контейнера работают около 45 часов.
 Для `docker ps` пользователю `zyablik` нужен `sudo`.
+Дополнительная проверка в тот же день: найден один процесс `qdrant` (PID 1739),
+он совпадает с `docker top qdrant`, а `/proc/1739/cgroup` указывает на Docker scope.
+Порт 6333 на хосте обслуживает `docker-proxy`; системных и пользовательских
+systemd-юнитов Qdrant не найдено. Второго запущенного экземпляра не обнаружено.
+Данные: bind mount `/opt/qdrant/storage` на хосте → `/qdrant/storage` в контейнере.
+Версия 1.18.1 подтверждена ответом `GET /`.
 Системных и пользовательских failed-юнитов нет. Работают также `prometheus.service`
 (9090), `node_exporter.service` (9100), `tailscaled.service`, `winproxy-tunnel.service`.
 На 8088 есть listener; содержимое дашборда не проверялось.
