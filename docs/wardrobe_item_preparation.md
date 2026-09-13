@@ -34,9 +34,31 @@
 автоматически не создаётся. Новое распознавание фото не создаёт вторую вещь.
 
 Эта версия обогащает существующие вещи через их форму по одной. Фоновое массовое
-обогащение существующего гардероба, отдельные структурированные фасон/стили,
+обогащение существующего гардероба теперь доступно небольшими пачками командой ниже.
+Отдельные структурированные фасон/стили,
 уверенность каждого поля, удаление фона и поиск визуальных дублей — следующие этапы.
 Факт готовности к подбору не заменяет проверку текущей доступности вещи.
+
+## Фоновое обогащение существующих вещей
+
+Команда намеренно требует email владельца и не перебирает всю базу автоматически:
+
+```bash
+php bin/console app:wardrobe:prepare-existing-items \
+  --user=user@example.com --limit=15 --dry-run
+
+php bin/console app:wardrobe:prepare-existing-items \
+  --user=user@example.com --limit=15
+```
+
+`--dry-run` показывает кандидатов, `--limit` ограничивает одну пачку, а `--after=ID`
+продолжает обработку после конкретной вещи. Если фото отсутствует или AI не ответил,
+вещь пропускается и остаётся в списке подготовки. Параллельный запуск получает lock и
+завершается без обработки. Команда дополняет только пустые категорию, цвет, состав и
+сезон; ручные и ранее подтверждённые значения не перезаписываются.
+
+Перед запуском на production нужен применённый `Version20260913_wardrobe_draft_attributes`;
+сама команда не изменяет черновики и не требует Qdrant.
 
 ## Установка и проверки
 
@@ -49,6 +71,7 @@
 
 ```bash
 php vendor/bin/phpunit tests/Controller/WardrobeControllerTest.php tests/Controller/WardrobeIngestControllerTest.php tests/Controller/WardrobePreparationControllerTest.php tests/Repository/WardrobeItemDraftRepositoryTest.php tests/Service/Wardrobe/WardrobeAiServiceTest.php tests/Service/Wardrobe/WardrobeOutfitServiceTest.php tests/Command/IngestWardrobeDraftsActivationTest.php tests/Command/CleanupWardrobeDraftsCommandTest.php
+php vendor/bin/phpunit tests/Command/PrepareExistingItemsCommandTest.php
 node --test tests/browser/wardrobe-item-preparation.test.cjs
 APP_ENV=test php bin/console lint:container
 APP_ENV=test php bin/console lint:twig templates/account/wardrobe

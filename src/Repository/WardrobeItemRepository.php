@@ -44,7 +44,7 @@ class WardrobeItemRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('w')
             ->andWhere('w.user = :subject AND w.deletedAt IS NULL')
             ->andWhere('w.itemStatus = :active AND w.wearStatus = :wear')
-            ->andWhere("w.category IS NULL OR TRIM(w.category) = '' OR w.colorName IS NULL OR TRIM(w.colorName) = '' OR w.season IS NULL OR TRIM(w.season) = ''")
+            ->andWhere("(w.category IS NULL OR TRIM(w.category) = '' OR w.colorName IS NULL OR TRIM(w.colorName) = '' OR w.season IS NULL OR TRIM(w.season) = '')")
             ->andWhere('w.id > :after')
             ->setParameter('subject', $subject)
             ->setParameter('active', WardrobeItem::ITEM_ACTIVE)
