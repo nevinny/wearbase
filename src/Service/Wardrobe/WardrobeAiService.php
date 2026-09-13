@@ -5,6 +5,7 @@ namespace App\Service\Wardrobe;
 use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Repository\WardrobeConsentRepository;
 use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Service\WardrobeAiMeter;
@@ -32,6 +33,7 @@ class WardrobeAiService
     private const CACHE_TTL = 86400;
     private const MAX_SCRAPE_CHARS = 6000;
     private const DAILY_CAP_ERROR = 'Дневной лимит AI-подсказок исчерпан, попробуйте завтра';
+    private const CONSENT_ERROR = 'Нет согласия на передачу фото внешнему AI-сервису';
     // Наружу при НЕ-WardrobeAiException (детали — только в логе; URL провайдера никогда не утекает)
     private const GENERIC_ERROR = 'Не удалось обработать запрос, попробуйте позже';
 
@@ -46,12 +48,38 @@ class WardrobeAiService
         private readonly bool $visionLocal,
         private readonly string $localModel,
         private readonly LoggerInterface $wardrobeAiLogger,
+        private readonly WardrobeConsentRepository $consents,
     ) {
+    }
+
+    /**
+     * Единственный гейт согласия на фото: фото уходит в модель только отсюда (веб,
+     * CLI, фоновый воркер черновиков, telegram-бот), поэтому вопрос «нужно ли
+     * отдельное согласие» решается по месту отправки, а не по месту загрузки.
+     *
+     * visionLocal — обработка на оборудовании Оператора, третьей стороны нет:
+     * её покрывает общее согласие при регистрации (фото названы в его тексте).
+     * Иначе фото уходит внешнему сервису — нужна отметка субъекта, данная под
+     * текстом, который эту передачу описывает.
+     */
+    public function externalPhotoConsentRequired(?User $subject): bool
+    {
+        if ($this->visionLocal) {
+            return false;
+        }
+
+        return $subject === null || !($this->consents->findForSubject($subject)?->coversExternalPhotoTransfer() ?? false);
     }
 
     /** @return array{ok:bool,fields?:array,confidence?:string,error?:string} */
     public function suggestFromPhoto(string $path, ?User $user = null): array
     {
+        if ($this->externalPhotoConsentRequired($user)) {
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_PHOTO, $user, self::CONSENT_ERROR);
+
+            return ['ok' => false, 'error' => self::CONSENT_ERROR];
+        }
+
         $hash = @sha1_file($path);
         if ($hash === false) {
             $error = 'Не удалось прочитать фото';
@@ -83,6 +111,12 @@ class WardrobeAiService
     /** @return array<int, array{name:?string,category:?string,color:?string,confidence:string}> */
     public function recognizeOutfitPhoto(string $path, ?User $user = null): array
     {
+        if ($this->externalPhotoConsentRequired($user)) {
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_PHOTO, $user, self::CONSENT_ERROR, ['flow' => 'outfit']);
+
+            return [];
+        }
+
         $hash = @sha1_file($path);
         if ($hash === false) {
             return [];

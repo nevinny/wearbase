@@ -2035,6 +2035,9 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $client->loginUser($child);
 
         $aiMock = $this->createMock(WardrobeAiService::class);
+        // Решение «нужно ли отдельное согласие» принимает WardrobeAiService (знает,
+        // уйдёт ли фото наружу); мок отвечает «нужно», проверяем реакцию контроллера.
+        $aiMock->method('externalPhotoConsentRequired')->willReturn(true);
         $aiMock->expects($this->never())->method('suggestFromPhoto');
         static::getContainer()->set(WardrobeAiService::class, $aiMock);
 
@@ -2057,6 +2060,9 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $client->disableReboot();
         $client->loginUser(UserFactory::withEmail(static::getContainer(), 'ai-consent-adult-'.bin2hex(random_bytes(4)).'@test.local'));
         $aiMock = $this->createMock(WardrobeAiService::class);
+        // Решение «нужно ли отдельное согласие» принимает WardrobeAiService (знает,
+        // уйдёт ли фото наружу); мок отвечает «нужно», проверяем реакцию контроллера.
+        $aiMock->method('externalPhotoConsentRequired')->willReturn(true);
         $aiMock->expects($this->never())->method('suggestFromPhoto');
         static::getContainer()->set(WardrobeAiService::class, $aiMock);
 

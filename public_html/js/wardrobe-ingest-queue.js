@@ -55,7 +55,7 @@
             : Date.now().toString(36) + Math.random().toString(36).slice(2);
     }
 
-    async function enqueue(files, member) {
+    async function enqueue(files, member, consent) {
         var db = await database();
         var tx = db.transaction(STORE, 'readwrite');
         var store = tx.objectStore(STORE);
@@ -66,7 +66,7 @@
                 name: file.name,
                 type: file.type,
                 member: member,
-                consent: true,
+                consent: consent,
                 status: 'pending'
             });
         });
@@ -158,13 +158,13 @@
 
         async function add(files) {
             if (!files || !files.length) return;
-            if (!options.consent.checked) {
+            if (options.consent && !options.consent.checked) {
                 options.errorBox.textContent = 'Подтвердите согласие на обработку фото';
                 options.errorBox.classList.remove('hidden');
                 return;
             }
             options.errorBox.classList.add('hidden');
-            await enqueue(files, options.member);
+            await enqueue(files, options.member, !!options.consent);
             await render();
             await drain();
         }

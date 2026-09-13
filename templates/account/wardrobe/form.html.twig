@@ -87,10 +87,12 @@
             {% endif %}
         </div>
     {% endif %}
-    <label class="mb-3 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-        <input id="wardrobe-ai-photo-consent" type="checkbox" class="mt-0.5 h-4 w-4 rounded">
-        <span>Разрешаю приватную обработку выбранного фото для AI-подсказок. Для детского профиля согласие подтверждает родитель.</span>
-    </label>
+    {% if photoConsentRequired %}
+        <label class="mb-3 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+            <input id="wardrobe-ai-photo-consent" type="checkbox" class="mt-0.5 h-4 w-4 rounded">
+            <span>Разрешаю передать выбранное фото внешнему AI-сервису для подсказок по вещи. Для детского профиля согласие подтверждает родитель. Подробнее — в <a href="{{ path('personal_data_consent') }}" target="_blank" class="underline">согласии на обработку персональных данных</a>.</span>
+        </label>
+    {% endif %}
     {{ form_widget(form.photoFile, {'attr': {'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-black'}}) }}
     {{ f.err(form.photoFile) }}
     <div class="mt-4">

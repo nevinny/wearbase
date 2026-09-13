@@ -22,10 +22,10 @@
         </label>
         <button class="mt-5 min-h-11 rounded-xl bg-white px-4 text-sm font-black text-indigo-700">Распознать</button>
     </div>
-    {% if not hasPhotoConsent %}
+    {% if photoConsentRequired %}
         <label class="mt-4 flex items-start gap-3 rounded-xl bg-black/15 p-3 text-xs leading-5">
             <input type="checkbox" name="photoConsent" value="1" class="mt-1 h-4 w-4 rounded">
-            <span>Разрешаю приватно обработать это фото для подбора вещей. Фото не используется для общего обучения.</span>
+            <span>Разрешаю передать это фото внешнему AI-сервису, который подберёт вещи из гардероба. Подробнее — в <a href="{{ path('personal_data_consent') }}" target="_blank" class="underline">согласии на обработку персональных данных</a>.</span>
         </label>
     {% endif %}
     <button name="manual" value="1" class="mt-3 min-h-11 w-full text-sm font-semibold text-white/90">Без фото — выбрать вещи вручную</button>

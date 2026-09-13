@@ -6,7 +6,6 @@ namespace App\Command\Wardrobe;
 
 use App\Entity\User;
 use App\Entity\WardrobeItem;
-use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeImageSanitizer;
@@ -37,7 +36,6 @@ final class PrepareExistingItemsCommand extends Command
         private readonly WardrobeItemRepository $items,
         private readonly WardrobeAiService $ai,
         private readonly StorageInterface $storage,
-        private readonly WardrobeConsentRepository $consents,
         private readonly WardrobeImageSanitizer $sanitizer,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
@@ -72,11 +70,12 @@ final class PrepareExistingItemsCommand extends Command
             $io->error('Пользователь не найден: '.$email);
             return Command::FAILURE;
         }
-        // Тот же гейт, что у веб-путей (WardrobeController::photoConsentError): без
-        // согласия владельца фото в модель не уходят. Из CLI согласие не выдаём —
-        // его даёт только сам владелец в интерфейсе.
-        if (!$this->consents->findForSubject($user)?->isPhotoProcessingGranted()) {
-            $io->error('Нет согласия на обработку фото у '.$email.' — владелец должен подтвердить его в личном кабинете.');
+        // Тот же гейт, что у веб-путей: отдельное согласие нужно только когда фото
+        // уходит внешнему сервису. Из CLI согласие не выдаём — его даёт только сам
+        // владелец в интерфейсе. (WardrobeAiService откажет и сам, но прогон по
+        // десяткам вещей лучше остановить одной внятной ошибкой.)
+        if ($this->ai->externalPhotoConsentRequired($user)) {
+            $io->error('Нет согласия на передачу фото внешнему AI-сервису у '.$email.' — владелец подтверждает его в личном кабинете.');
             return Command::FAILURE;
         }
 

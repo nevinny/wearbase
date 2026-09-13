@@ -6,6 +6,7 @@ namespace App\Tests\Service\Wardrobe;
 
 use App\Service\AiUsageTracker;
 use App\Service\LlmService;
+use App\Repository\WardrobeConsentRepository;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WildberriesAdapter;
 use App\Service\WardrobeAiMeter;
@@ -75,6 +76,7 @@ final class WardrobeAiServiceTest extends TestCase
             $llm, $this->createStub(WebScraperService::class), $this->createStub(WildberriesAdapter::class),
             $this->createStub(WardrobeAiMeter::class), $this->createStub(AiUsageTracker::class),
             $cache, 'remote-test', true, $model, new NullLogger(),
+            $this->createStub(WardrobeConsentRepository::class),
         );
     }
 }

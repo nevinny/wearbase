@@ -7,8 +7,8 @@ namespace App\Controller\Account;
 use App\Entity\User;
 use App\Entity\WardrobeItemDraft;
 use App\Repository\WardrobeItemDraftRepository;
-use App\Repository\WardrobeConsentRepository;
 use App\Service\FamilyService;
+use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeDraftPromotionService;
 use App\Service\Wardrobe\WardrobeOnboardingService;
 use App\Service\Wardrobe\WardrobeConsentService;
@@ -46,7 +46,7 @@ class WardrobeIngestController extends AbstractController
         EntityManagerInterface $em,
         ValidatorInterface $validator,
         WardrobeItemDraftRepository $drafts,
-        WardrobeConsentRepository $consents,
+        WardrobeAiService $ai,
         WardrobeConsentService $consentService,
         WardrobeImageSanitizer $imageSanitizer,
         RateLimiterFactory $wardrobeIngestLimiter,
@@ -62,10 +62,12 @@ class WardrobeIngestController extends AbstractController
         }
         $memberId = $request->request->getInt('member') ?: $request->query->getInt('member');
         $subject = $this->familyService->resolveMember($actor, $memberId > 0 ? $memberId : null);
-        $consent = $consents->findForSubject($subject);
-        if (!$consent?->isPhotoProcessingGranted()) {
+        // Согласие спрашиваем и записываем только если фото реально уйдёт наружу:
+        // при обработке на оборудовании Оператора photoConsent из запроса игнорируется,
+        // чтобы не появлялось отметок, которых пользователь не давал.
+        if ($ai->externalPhotoConsentRequired($subject)) {
             if (!$request->request->getBoolean('photoConsent')) {
-                return $this->json(['ok' => false, 'error' => 'Подтвердите согласие на приватную обработку фото'], 422);
+                return $this->json(['ok' => false, 'error' => 'Подтвердите согласие на передачу фото внешнему AI-сервису'], 422);
             }
             try {
                 $consentService->grantPhotoProcessing($actor, $subject);
@@ -195,7 +197,7 @@ class WardrobeIngestController extends AbstractController
     }
 
     #[Route('/{batch}', name: 'review', methods: ['GET'])]
-    public function review(string $batch, Request $request, WardrobeItemDraftRepository $draftRepo): Response
+    public function review(string $batch, Request $request, WardrobeItemDraftRepository $draftRepo, WardrobeAiService $ai): Response
     {
         /** @var User $actor */
         $actor = $this->getUser();
@@ -207,6 +209,7 @@ class WardrobeIngestController extends AbstractController
         }
 
         return $this->render('account/wardrobe/ingest.html.twig', [
+            'photoConsentRequired' => $ai->externalPhotoConsentRequired($subject),
             'drafts' => $drafts,
             'batch' => $batch,
             'counts' => $draftRepo->countsByBatch($subject, $batch),
