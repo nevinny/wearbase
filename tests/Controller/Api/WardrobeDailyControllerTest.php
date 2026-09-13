@@ -13,6 +13,9 @@ use App\Tests\Controller\UserFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Vich\UploaderBundle\Storage\StorageInterface;
 
 /**
  * Агент-API ночного пакетного конвейера образов (/api/v1/wardrobe/daily/*).
@@ -197,6 +200,191 @@ class WardrobeDailyControllerTest extends WebTestCase
         $this->assertSame([$items[1]->getId(), $items[0]->getId()], $ids);
         $this->assertSame('fresh', $mine[0]['items'][0]['rotation']);
         $this->assertArrayHasKey('preference_context', $mine[0]);
+    }
+
+    /**
+     * Домашний конвейер подготовки атрибутов (app:wardrobe:prepare-prod-items):
+     * очередь → фото по id → приём результатов. Без консент-гейта — та же логика,
+     * что у PrepareExistingItemsCommand (локальная обработка отдельной отметки
+     * не требует, см. WardrobeAiService::externalPhotoConsentRequired()).
+     */
+    public function testPrepareQueueRequiresToken(): void
+    {
+        $client = static::createClient();
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/queue');
+
+        $this->assertResponseStatusCodeSame(401);
+    }
+
+    public function testPrepareQueueListsOnlyItemsMissingAttributes(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [, $wardrobe, $items] = $this->makeWardrobeWithItems($em, 'prepare-queue', 1);
+        $needsPrep = (new WardrobeItem())
+            ->setUser($items[0]->getUser())
+            ->setWardrobe($wardrobe)
+            ->setItemNo(50);
+        $em->persist($needsPrep);
+        $em->flush();
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/queue', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN]);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode((string) $client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $ids = array_column($data['items'], 'id');
+        // makeWardrobeWithItems() заполняет category+colorName, но НЕ season — тоже
+        // "нуждается в подготовке" по тому же критерию, что и findNeedingPreparation().
+        $this->assertContains($items[0]->getId(), $ids);
+        $this->assertContains($needsPrep->getId(), $ids);
+
+        $row = current(array_filter($data['items'], static fn (array $r): bool => (int) $r['id'] === $needsPrep->getId()));
+        $this->assertSame($wardrobe->getId(), $row['wardrobe_id']);
+        $this->assertSame($needsPrep->getUser()->getEmail(), $row['owner_email']);
+    }
+
+    public function testPrepareQueueExcludesFullyFilledItems(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-queue-full', 0);
+        $complete = (new WardrobeItem())
+            ->setUser($owner)
+            ->setWardrobe($wardrobe)
+            ->setItemNo(1)
+            ->setCategory('Рубашки')
+            ->setColorName('белый')
+            ->setSeason('summer');
+        $em->persist($complete);
+        $em->flush();
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/queue', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN]);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode((string) $client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertNotContains($complete->getId(), array_column($data['items'], 'id'));
+    }
+
+    public function testPreparePhotoRequiresToken(): void
+    {
+        $client = static::createClient();
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/photo/1');
+
+        $this->assertResponseStatusCodeSame(401);
+    }
+
+    public function testPreparePhotoReturnsRealFileBytes(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-photo', 0);
+        $item = (new WardrobeItem())->setUser($owner)->setWardrobe($wardrobe)->setItemNo(1);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'wardrobe_daily_prepare_') . '.jpg';
+        $image = imagecreatetruecolor(3, 3);
+        imagejpeg($image, $tmp, 90);
+        imagedestroy($image);
+        $expectedBytes = file_get_contents($tmp);
+        $item->setPhotoFile(new UploadedFile($tmp, 'item.jpg', 'image/jpeg', null, true));
+        $em->persist($item);
+        $em->flush();
+        @unlink($tmp);
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/photo/' . $item->getId(), [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN]);
+
+        $this->assertResponseIsSuccessful();
+        $response = $client->getResponse();
+        $this->assertInstanceOf(BinaryFileResponse::class, $response);
+        $this->assertSame($expectedBytes, file_get_contents($response->getFile()->getPathname()));
+
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        @unlink((string) $storage->resolvePath($item, 'photoFile'));
+    }
+
+    public function testPreparePhotoReturns404WhenItemHasNoPhoto(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-photo-missing', 0);
+        $item = (new WardrobeItem())->setUser($owner)->setWardrobe($wardrobe)->setItemNo(1);
+        $em->persist($item);
+        $em->flush();
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/photo/' . $item->getId(), [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN]);
+
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testPrepareResultsRequiresToken(): void
+    {
+        $client = static::createClient();
+
+        $client->request('POST', '/api/v1/wardrobe/daily/prepare/results', [], [], ['CONTENT_TYPE' => 'application/json'], '{}');
+
+        $this->assertResponseStatusCodeSame(401);
+    }
+
+    /**
+     * Критично: category уже заполнена человеком ("Рубашки") — присланное значение
+     * должно быть отброшено, а не перезаписать её. colorName и season пусты —
+     * применяются. Невалидный season ('unknown') отбрасывается по аллоулисту, но
+     * не блокирует применение остальных полей той же вещи.
+     */
+    public function testPrepareResultsFillsOnlyEmptyFieldsAndDropsInvalidSeason(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-results', 0);
+        $item = (new WardrobeItem())
+            ->setUser($owner)
+            ->setWardrobe($wardrobe)
+            ->setItemNo(1)
+            ->setCategory('Рубашки');
+        $em->persist($item);
+        $em->flush();
+        $itemId = $item->getId();
+
+        $body = json_encode([
+            'items' => [
+                ['id' => $itemId, 'category' => 'Платья', 'colorName' => 'белый', 'materialText' => 'хлопок', 'season' => 'unknown'],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $client->request('POST', '/api/v1/wardrobe/daily/prepare/results', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN, 'CONTENT_TYPE' => 'application/json'], $body);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode((string) $client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $data['updated']);
+        $this->assertSame([], $data['rejected']);
+
+        $em->clear();
+        $reloaded = $em->getRepository(WardrobeItem::class)->find($itemId);
+        $this->assertSame('Рубашки', $reloaded->getCategory());
+        $this->assertSame('белый', $reloaded->getColorName());
+        $this->assertSame('хлопок', $reloaded->getMaterialText());
+        $this->assertNull($reloaded->getSeason());
+    }
+
+    public function testPrepareResultsRejectsUnknownItemId(): void
+    {
+        $client = static::createClient();
+
+        $body = json_encode(['items' => [['id' => 999999999, 'colorName' => 'белый']]], JSON_THROW_ON_ERROR);
+
+        $client->request('POST', '/api/v1/wardrobe/daily/prepare/results', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN, 'CONTENT_TYPE' => 'application/json'], $body);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode((string) $client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $data['updated']);
+        $this->assertSame('not_found', $data['rejected'][0]['reason']);
     }
 
     /** @return array{0:User,1:Wardrobe,2:WardrobeItem[]} */
