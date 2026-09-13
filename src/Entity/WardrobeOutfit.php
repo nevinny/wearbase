@@ -18,6 +18,19 @@ class WardrobeOutfit
     public const REACTION_WORN = 'worn';
     public const REACTIONS = [self::REACTION_LIKE, self::REACTION_DISLIKE, self::REACTION_WORN];
 
+    // Поводы ночного пакетного конвейера (app:wardrobe:daily-outfits + WardrobeDailyController):
+    // ключ едет в occasion и в payload прод-API, значение — request-текст для промпта/prompt-поля.
+    public const OCCASION_WORK = 'work';
+    public const OCCASION_THEATER = 'theater';
+    public const OCCASION_WALK = 'walk';
+    public const OCCASION_MEETING = 'meeting';
+    public const DAILY_OCCASIONS = [
+        self::OCCASION_WORK => 'Образ на работу',
+        self::OCCASION_THEATER => 'Образ в театр',
+        self::OCCASION_WALK => 'Образ на прогулку',
+        self::OCCASION_MEETING => 'Образ на встречу',
+    ];
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -47,11 +60,21 @@ class WardrobeOutfit
     #[ORM\Column(length: 12, nullable: true)]
     private ?string $reaction = null;
 
+    // Повод ночного пакетного конвейера (см. DAILY_OCCASIONS); null у образов,
+    // собранных интерактивно через account_wardrobe_outfits.
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $occasion = null;
+
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $reactedAt = null;
+
+    // Soft-delete: используется только идемпотентной заменой пакетного конвейера
+    // (тот же гардероб+повод+день) — правило проекта запрещает физический DELETE.
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $deletedAt = null;
 
     public function __construct()
     {
@@ -72,8 +95,11 @@ class WardrobeOutfit
     public function getItems(): array { return $this->items; }
     public function setItems(array $items): static { $this->items = $items; return $this; }
     public function getReaction(): ?string { return $this->reaction; }
+    public function getOccasion(): ?string { return $this->occasion; }
+    public function setOccasion(?string $occasion): static { $this->occasion = $occasion; return $this; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
     public function getReactedAt(): ?\DateTimeImmutable { return $this->reactedAt; }
+    public function getDeletedAt(): ?\DateTimeImmutable { return $this->deletedAt; }
 
     public function react(string $reaction): void
     {

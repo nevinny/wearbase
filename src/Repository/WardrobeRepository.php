@@ -27,4 +27,22 @@ class WardrobeRepository extends ServiceEntityRepository
             'deletedAt' => null,
         ]);
     }
+
+    /**
+     * Активные дефолтные гардеробы всех владельцев — источник для ночного пакетного
+     * конвейера (WardrobeDailyController::catalog). isDefault=true фильтрует дубли:
+     * вещи привязаны к owner (WardrobeItemRepository::findActiveForUser), а не к
+     * конкретному Wardrobe, поэтому несколько гардеробов одного owner'а дали бы
+     * один и тот же набор вещей дважды.
+     *
+     * @return Wardrobe[]
+     */
+    public function findActiveDefaults(): array
+    {
+        return $this->findBy([
+            'isDefault' => true,
+            'status' => Wardrobe::STATUS_ACTIVE,
+            'deletedAt' => null,
+        ]);
+    }
 }
