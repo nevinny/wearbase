@@ -51,13 +51,16 @@ class WardrobeOutfitLearningService
         return $suggestions;
     }
 
-    public function react(User $user, User $wardrobeOwner, int $id, string $reaction): void
+    /**
+     * Владение определяется гардеробом (wardrobeOwner), а не тем, кто нажал
+     * реакцию: у ночного пакетного конвейера user=wardrobeOwner=подопечный,
+     * реагирует может управляющий родитель. Право actor'а на $wardrobeOwner
+     * уже проверено выше (FamilyService::resolveMember).
+     */
+    public function react(User $wardrobeOwner, int $id, string $reaction): void
     {
-        $outfit = $this->outfits->find($id);
-        if ($outfit === null
-            || $outfit->getUser()->getId() !== $user->getId()
-            || $outfit->getWardrobeOwner()->getId() !== $wardrobeOwner->getId()
-        ) {
+        $outfit = $this->outfits->findActiveForOwner($id, $wardrobeOwner);
+        if ($outfit === null) {
             throw new \DomainException('Образ не найден');
         }
         $outfit->react($reaction);

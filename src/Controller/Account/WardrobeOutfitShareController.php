@@ -46,7 +46,7 @@ class WardrobeOutfitShareController extends AbstractController
 
         /** @var User $actor */
         $actor = $this->getUser();
-        $outfit = $this->outfits->find($outfitId);
+        $outfit = $this->outfits->findActive($outfitId);
         if ($outfit === null || !$this->canShare($actor, $outfit)) {
             throw $this->createNotFoundException();
         }
@@ -140,7 +140,7 @@ class WardrobeOutfitShareController extends AbstractController
 
         /** @var User $actor */
         $actor = $this->getUser();
-        $outfit = $this->outfits->find($outfitId);
+        $outfit = $this->outfits->findActive($outfitId);
         $circleId = (int) $request->request->get('circle_id');
         $circle = $circleId > 0 ? $this->em->find(WardrobeCircle::class, $circleId) : null;
         if ($outfit === null || !$circle instanceof WardrobeCircle) {

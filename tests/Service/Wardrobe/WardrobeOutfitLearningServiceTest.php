@@ -63,6 +63,33 @@ class WardrobeOutfitLearningServiceTest extends TestCase
         self::assertSame('', $service->context(new User()));
     }
 
+    /** Владение — по wardrobeOwner (семейный сценарий: родитель управляет луком ребёнка). */
+    public function testReactThrowsWhenRepositoryFindsNoActiveOutfitForOwner(): void
+    {
+        $owner = new User();
+        $repository = $this->createMock(WardrobeOutfitRepository::class);
+        $repository->expects(self::once())->method('findActiveForOwner')->with(42, $owner)->willReturn(null);
+        $service = new WardrobeOutfitLearningService($repository, $this->createStub(EntityManagerInterface::class));
+
+        $this->expectException(\DomainException::class);
+        $service->react($owner, 42, WardrobeOutfit::REACTION_LIKE);
+    }
+
+    public function testReactAppliesReactionWhenOutfitBelongsToOwner(): void
+    {
+        $owner = new User();
+        $outfit = (new WardrobeOutfit())->setUser($owner)->setWardrobeOwner($owner);
+        $repository = $this->createMock(WardrobeOutfitRepository::class);
+        $repository->method('findActiveForOwner')->with(7, $owner)->willReturn($outfit);
+        $em = $this->createMock(EntityManagerInterface::class);
+        $em->expects(self::once())->method('flush');
+        $service = new WardrobeOutfitLearningService($repository, $em);
+
+        $service->react($owner, 7, WardrobeOutfit::REACTION_DISLIKE);
+
+        self::assertSame(WardrobeOutfit::REACTION_DISLIKE, $outfit->getReaction());
+    }
+
     private function consents(bool $granted): WardrobeConsentRepository
     {
         $consents = $this->createStub(WardrobeConsentRepository::class);

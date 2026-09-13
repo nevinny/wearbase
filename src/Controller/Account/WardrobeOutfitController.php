@@ -11,6 +11,7 @@ use App\Entity\WardrobeOutfit;
 use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeCircleMemberRepository;
 use App\Repository\WardrobeItemRepository;
+use App\Repository\WardrobeOutfitRepository;
 use App\Repository\WardrobeOutfitShareRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
@@ -35,6 +36,7 @@ class WardrobeOutfitController extends AbstractController
         Request $request,
         FamilyService $familyService,
         WardrobeItemRepository $items,
+        WardrobeOutfitRepository $outfitRepo,
         WardrobeOutfitService $outfits,
         WardrobeOutfitLearningService $learning,
         WardrobeConsentRepository $consents,
@@ -47,6 +49,7 @@ class WardrobeOutfitController extends AbstractController
         $actor = $this->getUser();
         $member = $familyService->resolveMember($actor, $request->query->has('member') ? $request->query->getInt('member') : null);
         $wardrobeItems = $items->findActiveForUser($member);
+        $dailyOutfits = $this->hydrateDailyOutfits($outfitRepo, $items, $member);
         $result = [];
         $error = null;
         $prompt = mb_substr(trim((string) $request->request->get('prompt')), 0, 300);
@@ -84,6 +87,7 @@ class WardrobeOutfitController extends AbstractController
             'weatherCondition' => $weatherCondition,
             'temperatureBand' => $temperatureBand,
             'outfits' => $result,
+            'dailyOutfits' => $dailyOutfits,
             'error' => $error,
             'itemCount' => count($wardrobeItems),
             'personalizationGranted' => $consents->isPersonalizationGranted($member),
@@ -143,7 +147,7 @@ class WardrobeOutfitController extends AbstractController
             if ($reaction === WardrobeOutfit::REACTION_WORN) {
                 $wear->recordOutfitWorn($user, $member, $id);
             } else {
-                $learning->react($user, $member, $id, $reaction);
+                $learning->react($member, $id, $reaction);
             }
             $onboarding->complete($user, $member);
             $this->addFlash('success', $reaction === WardrobeOutfit::REACTION_WORN
@@ -154,5 +158,46 @@ class WardrobeOutfitController extends AbstractController
         }
 
         return $this->redirectToRoute('account_wardrobe_outfits', $member->getId() === $user->getId() ? [] : ['member' => $member->getId()]);
+    }
+
+    /**
+     * Витрина «Образы на утро»: результат ночного пакетного конвейера за сегодня,
+     * сгруппированный по поводу в порядке WardrobeOutfit::DAILY_OCCASIONS. Вещи
+     * гидрируются по сохранённому снимку id; вещь, удалённую после генерации,
+     * findActiveOneForUser() молча не вернёт — образ просто выходит с меньшим
+     * набором вещей (как WardrobeWearService::recordOutfitWorn()).
+     *
+     * @return array<string, array{label:string, outfits: list<array{title:string,explanation:?string,items:list<\App\Entity\WardrobeItem>,feedbackId:int}>}>
+     */
+    private function hydrateDailyOutfits(WardrobeOutfitRepository $outfitRepo, WardrobeItemRepository $items, User $member): array
+    {
+        $grouped = [];
+        foreach ($outfitRepo->findDailyForOwner($member, new \DateTimeImmutable('today')) as $outfit) {
+            $occasion = $outfit->getOccasion();
+            $hydratedItems = [];
+            foreach ($outfit->getItems() as $snapshot) {
+                $item = $items->findActiveOneForUser((int) ($snapshot['id'] ?? 0), $member);
+                if ($item !== null) {
+                    $hydratedItems[] = $item;
+                }
+            }
+            $grouped[$occasion]['label'] ??= WardrobeOutfit::DAILY_OCCASIONS[$occasion] ?? $occasion;
+            $grouped[$occasion]['outfits'][] = [
+                'title' => $outfit->getTitle(),
+                'explanation' => $outfit->getExplanation(),
+                'items' => $hydratedItems,
+                'feedbackId' => $outfit->getId(),
+            ];
+        }
+
+        // Порядок групп — как объявлено в DAILY_OCCASIONS, а не как вернул SQL.
+        $ordered = [];
+        foreach (WardrobeOutfit::DAILY_OCCASIONS as $occasion => $label) {
+            if (isset($grouped[$occasion])) {
+                $ordered[$occasion] = $grouped[$occasion];
+            }
+        }
+
+        return $ordered;
     }
 }

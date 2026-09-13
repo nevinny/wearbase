@@ -67,9 +67,9 @@ final class ReferralRewardServiceTest extends KernelTestCase
         return $item;
     }
 
-    private function outfit(User $owner): WardrobeOutfit
+    private function outfit(User $owner, ?string $occasion = null): WardrobeOutfit
     {
-        $outfit = (new WardrobeOutfit())->setUser($owner)->setWardrobeOwner($owner);
+        $outfit = (new WardrobeOutfit())->setUser($owner)->setWardrobeOwner($owner)->setOccasion($occasion);
         $this->em->persist($outfit);
 
         return $outfit;
@@ -204,6 +204,21 @@ final class ReferralRewardServiceTest extends KernelTestCase
         $this->em->flush();
         $this->assertSame('ceiling', $this->rewards->qualifyAndGrant($anotherEvent));
         $this->assertSame(30, $this->grants()->sumActiveDailyBump($inviter));
+    }
+
+    public function testRobotGeneratedDailyOutfitDoesNotQualifyInviter(): void
+    {
+        $inviter = $this->user('ref-inviter-robot@test.local', true);
+        $this->em->flush();
+
+        $invitee = $this->user('ref-invitee-robot@test.local', true);
+        $this->em->flush();
+        $event = $this->event($inviter, $invitee);
+        // Ночной пакетный конвейер: occasion задан → не действие пользователя.
+        $this->outfit($invitee, WardrobeOutfit::OCCASION_WORK);
+        $this->em->flush();
+
+        $this->assertSame('bar_not_met', $this->rewards->qualifyAndGrant($event));
     }
 
     public function testManagedAndDisposableInviteesAreCutOff(): void
