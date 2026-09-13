@@ -8,6 +8,7 @@ use App\Entity\FamilyInvite;
 use App\Entity\FamilyMembershipEvent;
 use App\Entity\User;
 use App\Entity\WardrobeConsent;
+use App\Entity\WardrobeItem;
 use App\Service\FamilyService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -411,6 +412,130 @@ class FamilyControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseStatusCodeSame(410);
         $this->assertResponseHeaderSame('Referrer-Policy', 'no-referrer');
         $this->assertStringContainsString('no-store', (string) $client->getResponse()->headers->get('Cache-Control'));
+    }
+
+    public function testClaimPreservesItemsAndWritesJournalEntry(): void
+    {
+        $client = static::createClient();
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        /** @var FamilyService $familyService */
+        $familyService = static::getContainer()->get(FamilyService::class);
+
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-claim-items-parent@test.local');
+        $child  = $familyService->createChild($parent, 'Гоша');
+        $childId = $child->getId();
+        $token   = $child->getFamilyClaimToken();
+
+        $item = (new WardrobeItem())->setUser($child)->setItemNo(1)->setName('Куртка');
+        $em->persist($item);
+        $em->flush();
+        $itemId = $item->getId();
+
+        $crawler = $client->request('GET', '/family/claim/' . $token);
+        $form = $crawler->selectButton('Создать доступ')->form([
+            'form[email]'    => 'gosha-claimed@example.test',
+            'form[password]' => 'Password123',
+        ]);
+        $client->submit($form);
+        $this->assertResponseRedirects('/login');
+
+        $em->clear();
+
+        $reloadedItem = $em->find(WardrobeItem::class, $itemId);
+        $this->assertNotNull($reloadedItem);
+        $this->assertSame($childId, $reloadedItem->getUser()->getId());
+
+        $reloadedChild = $em->find(User::class, $childId);
+        $this->assertNotNull($em->getRepository(FamilyMembershipEvent::class)->findOneBy([
+            'subject' => $reloadedChild,
+            'type'    => FamilyMembershipEvent::TYPE_CHILD_CLAIMED,
+        ]));
+    }
+
+    public function testClaimTokenCannotBeReusedAfterActivation(): void
+    {
+        $client = static::createClient();
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        /** @var FamilyService $familyService */
+        $familyService = static::getContainer()->get(FamilyService::class);
+
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-claim-reuse-parent@test.local');
+        $child  = $familyService->createChild($parent, 'Никита');
+        $childId = $child->getId();
+        $token   = $child->getFamilyClaimToken();
+
+        $crawler = $client->request('GET', '/family/claim/' . $token);
+        $form = $crawler->selectButton('Создать доступ')->form([
+            'form[email]'    => 'nikita-first@example.test',
+            'form[password]' => 'Password123',
+        ]);
+        $client->submit($form);
+        $this->assertResponseRedirects('/login');
+
+        // Повторное использование того же токена (уже нет активной формы — контроллер
+        // отдаёт 410 ещё до разбора запроса, POST так же отклоняется, как и GET).
+        $client->request('POST', '/family/claim/' . $token, [
+            'form' => ['email' => 'attacker@example.test', 'password' => 'Whatever123'],
+        ]);
+        $this->assertResponseStatusCodeSame(410);
+
+        $em->clear();
+        $reloadedChild = $em->find(User::class, $childId);
+        $this->assertSame('nikita-first@example.test', $reloadedChild->getEmail());
+    }
+
+    public function testClaimCannotHijackAnotherPersonsEmail(): void
+    {
+        $client = static::createClient();
+
+        /** @var EntityManagerInterface $em */
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        /** @var FamilyService $familyService */
+        $familyService = static::getContainer()->get(FamilyService::class);
+
+        $stranger = UserFactory::withEmail(static::getContainer(), 'harness-claim-stranger@test.local');
+        $parent   = UserFactory::withEmail(static::getContainer(), 'harness-claim-collision-parent@test.local');
+        $child    = $familyService->createChild($parent, 'Соня');
+        $childId  = $child->getId();
+        $token    = $child->getFamilyClaimToken();
+
+        // Ссылка — bearer-токен без привязки к получателю (у ребёнка ещё нет своей почты),
+        // так что claim-страница не требует входа; но занять чужой email нельзя.
+        $crawler = $client->request('GET', '/family/claim/' . $token);
+        $this->assertResponseIsSuccessful();
+
+        $form = $crawler->selectButton('Создать доступ')->form([
+            'form[email]'    => 'harness-claim-stranger@test.local',
+            'form[password]' => 'Password123',
+        ]);
+        $client->submit($form);
+
+        $this->assertSelectorTextContains('.form-error', 'уже зарегистрирован');
+
+        $em->clear();
+        $reloadedChild = $em->find(User::class, $childId);
+        $this->assertTrue($reloadedChild->isManaged());
+        $this->assertStringEndsWith('@' . User::MANAGED_EMAIL_DOMAIN, $reloadedChild->getEmail());
+        $reloadedStranger = $em->getRepository(User::class)->findOneBy(['email' => 'harness-claim-stranger@test.local']);
+        $this->assertSame($stranger->getId(), $reloadedStranger->getId());
+    }
+
+    public function testClaimedChildCannotAccessSiblingWardrobe(): void
+    {
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-claim-siblings-parent@test.local');
+        /** @var FamilyService $familyService */
+        $familyService = static::getContainer()->get(FamilyService::class);
+        $childA = $familyService->createChild($parent, 'Ева');
+        $childB = $familyService->createChild($parent, 'Егор');
+
+        $familyService->activateChildAccess($childA, 'eva-claimed@example.test', 'Password123');
+
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AccessDeniedException::class);
+        $familyService->resolveMember($childA, $childB->getId());
     }
 
     public function testParentCanRevokeAndRenewManagedChildAccess(): void

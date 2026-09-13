@@ -82,6 +82,9 @@ class WardrobeOutfitController extends AbstractController
 
         return $this->render('account/wardrobe/outfits.html.twig', [
             'member' => $member,
+            // Для family_wardrobe/layout.html.twig (переключатель участника в шапке,
+            // ссылки нижней навигации) — тот же контракт, что у остальных wardrobe-контроллеров.
+            'currentMember' => $member,
             'prompt' => $prompt,
             'event' => $event,
             'weatherCondition' => $weatherCondition,

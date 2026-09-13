@@ -33,6 +33,9 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h1', 'AI-стилист');
         self::assertSelectorExists('form textarea[name="prompt"]');
+        // Свежий гардероб — ночная генерация ещё не считала образы; экран должен
+        // объяснять это, а не выглядеть пустым/сломанным.
+        self::assertSelectorTextContains('body', 'Образы ещё не готовы');
     }
 
     public function testInvalidCsrfDoesNotCallLlm(): void

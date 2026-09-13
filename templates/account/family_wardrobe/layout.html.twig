@@ -64,7 +64,8 @@
     {% set isFamilyActive = activeSection == 'family' or (activeSection is null and currentRoute starts with 'account_family') %}
     {% set isPurchaseActive = activeSection == 'purchases' or (activeSection is null and currentRoute starts with 'account_purchase') %}
     {% set isCaptureActive = activeSection == 'capture' or (activeSection is null and currentRoute starts with 'account_wardrobe_wear') %}
-    {% set isWardrobeActive = currentRoute starts with 'account_wardrobe' and not isCaptureActive %}
+    {% set isOutfitsActive = activeSection == 'outfits' or (activeSection is null and currentRoute starts with 'account_wardrobe_outfits') %}
+    {% set isWardrobeActive = currentRoute starts with 'account_wardrobe' and not isCaptureActive and not isOutfitsActive %}
 
     <a href="#family-main"
        class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:rounded-lg focus:bg-gray-900 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">
@@ -82,7 +83,14 @@
                     </a>
                     {% block family_mobile_context %}
                         {% if currentMember is defined and currentMember %}
-                            <p class="truncate text-xs text-slate-500">{{ currentMember.fullName }}</p>
+                            {# Ссылка на /account/wardrobe: там же живёт переключатель участников
+                               (пилюли members) — с любой страницы гардероба один тап возвращает
+                               к выбору «чей гардероб», не изобретаем второй переключатель. #}
+                            <a href="{{ path('account_wardrobe_index', wardrobeParams) }}"
+                               class="flex items-center gap-1 truncate text-xs text-slate-500 hover:text-slate-700">
+                                {{ currentMember.fullName }}
+                                <span aria-hidden="true">›</span>
+                            </a>
                         {% endif %}
                     {% endblock %}
                 </div>
@@ -105,7 +113,7 @@
 
         <nav class="family-safe-nav fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur md:hidden"
              aria-label="Семейный гардероб">
-            <div class="mx-auto grid h-[4.75rem] max-w-3xl grid-cols-4">
+            <div class="mx-auto grid h-[4.75rem] max-w-3xl grid-cols-5">
                 <a href="{{ path('account_family_index') }}"
                    class="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition {{ isFamilyActive ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900' }}"
                    {% if isFamilyActive %}aria-current="page"{% endif %}>
@@ -113,6 +121,15 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 20v-1.5A3.5 3.5 0 0 0 12.5 15h-5A3.5 3.5 0 0 0 4 18.5V20m8.5-11.5A3.5 3.5 0 1 1 5.5 8.5a3.5 3.5 0 0 1 7 0Zm3 2.5a3 3 0 0 1 0 6m1-11.5a3 3 0 0 1 0 5.5"/>
                     </svg>
                     <span class="truncate">Семья</span>
+                </a>
+
+                <a href="{{ path('account_wardrobe_outfits', wardrobeParams) }}"
+                   class="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition {{ isOutfitsActive ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-900' }}"
+                   {% if isOutfitsActive %}aria-current="page"{% endif %}>
+                    <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 4h9l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm8 0v5h5M9 13h6M9 16.5h6"/>
+                    </svg>
+                    <span class="truncate">Образы</span>
                 </a>
 
                 {% if purchaseUrl %}
@@ -143,7 +160,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.2-2h5.6L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8ZM15.5 12.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"/>
                             </svg>
                         </span>
-                        <span class="truncate">Снять образ</span>
+                        <span class="truncate">Снять</span>
                     </a>
                 {% else %}
                     <span class="flex min-w-0 cursor-not-allowed flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold text-slate-300"
@@ -153,7 +170,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.2-2h5.6L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8ZM15.5 12.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"/>
                             </svg>
                         </span>
-                        <span class="truncate">Снять образ</span>
+                        <span class="truncate">Снять</span>
                     </span>
                 {% endif %}
 
@@ -173,6 +190,9 @@
                 <a href="{{ path('account_family_index') }}"
                    class="rounded-xl px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ isFamilyActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
                    {% if isFamilyActive %}aria-current="page"{% endif %}>Семья</a>
+                <a href="{{ path('account_wardrobe_outfits', wardrobeParams) }}"
+                   class="rounded-xl px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ isOutfitsActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' }}"
+                   {% if isOutfitsActive %}aria-current="page"{% endif %}>Образы</a>
                 {% if purchaseUrl %}<a href="{{ purchaseUrl }}" class="rounded-xl px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ isPurchaseActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' }}" {% if isPurchaseActive %}aria-current="page"{% endif %}>Покупки</a>{% endif %}
                 {% if captureUrl %}<a href="{{ captureUrl }}" class="rounded-xl px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ isCaptureActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100' }}" {% if isCaptureActive %}aria-current="page"{% endif %}>Снять образ</a>{% endif %}
                 <a href="{{ path('account_wardrobe_index', wardrobeParams) }}"

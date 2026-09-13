@@ -70,6 +70,49 @@ final class WardrobeAiServiceTest extends TestCase
         }
     }
 
+    public function testAttributesFromNamesReturnsFieldsKeyedByIdAndDropsInvalidSeasonAndUnknownIds(): void
+    {
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::once())
+            ->method('generate')
+            ->willReturn(json_encode(['items' => [
+                ['id' => 1, 'colorName' => 'пыльная роза', 'materialText' => 'рубчик', 'season' => 'summer'],
+                ['id' => 2, 'colorName' => null, 'materialText' => null, 'season' => 'демисезон'],
+                // id=999 не входил в запрос — должен быть отброшен, а не создать лишнюю запись.
+                ['id' => 999, 'colorName' => 'бордовый', 'materialText' => null, 'season' => 'all'],
+            ]], JSON_THROW_ON_ERROR));
+        $service = $this->service($llm, new ArrayAdapter());
+
+        $result = $service->suggestAttributesFromNames([
+            ['id' => 1, 'name' => 'Облегающая футболка в рубчик цвета пыльной розы', 'category' => 'Футболки', 'materialText' => null],
+            ['id' => 2, 'name' => 'Вещь без опознаваемых атрибутов', 'category' => null, 'materialText' => null],
+        ]);
+
+        self::assertSame(['colorName' => 'пыльная роза', 'materialText' => 'рубчик', 'season' => 'summer'], $result[1]);
+        self::assertSame(['colorName' => null, 'materialText' => null, 'season' => null], $result[2]);
+        self::assertArrayNotHasKey(999, $result);
+    }
+
+    public function testAttributesFromNamesReturnsEmptyArrayWithoutCallingLlmWhenInputEmpty(): void
+    {
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::never())->method('generate');
+
+        self::assertSame([], $this->service($llm, new ArrayAdapter())->suggestAttributesFromNames([]));
+    }
+
+    public function testAttributesFromNamesReturnsEmptyArrayOnLlmFailure(): void
+    {
+        $llm = $this->createMock(LlmService::class);
+        $llm->method('generate')->willThrowException(new \RuntimeException('local llm timeout'));
+
+        $result = $this->service($llm, new ArrayAdapter())->suggestAttributesFromNames([
+            ['id' => 1, 'name' => 'Платье', 'category' => 'Платья', 'materialText' => null],
+        ]);
+
+        self::assertSame([], $result);
+    }
+
     private function service(LlmService $llm, ArrayAdapter $cache, string $model = 'vision-test'): WardrobeAiService
     {
         return new WardrobeAiService(

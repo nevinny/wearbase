@@ -159,6 +159,96 @@ PROMPT;
         }
     }
 
+    /**
+     * Батч без фото и без ссылки на карточку (или для одного лишь сезона, когда цвет/
+     * материал уже известны из WB/vision, а сезон — нет): вход — что уже известно о
+     * вещи (имя, категория, materialText — из WB или пусто), выход — colorName/
+     * materialText/season по каждому id. Локальная модель, без консент-гейта и без
+     * WardrobeAiMeter — как и visionLocal=true, обработка целиком на риге Оператора,
+     * фото не участвует (см. докблок externalPhotoConsentRequired()). Батч экономит
+     * вызовы модели: 8–12 вещей за один запрос вместо одного вызова на вещь.
+     *
+     * @param array<int, array{id:int,name:?string,category:?string,materialText:?string}> $rows
+     * @return array<int, array{colorName:?string,materialText:?string,season:?string}> по id
+     */
+    public function suggestAttributesFromNames(array $rows): array
+    {
+        $rows = array_values(array_filter($rows, static fn (array $r): bool => isset($r['id'])));
+        if ($rows === []) {
+            return [];
+        }
+
+        $catalog = array_map(static fn (array $r): array => [
+            'id' => (int) $r['id'],
+            'name' => (string) ($r['name'] ?? ''),
+            'category' => $r['category'] ?? null,
+            'materialText' => $r['materialText'] ?? null,
+        ], $rows);
+        $knownIds = array_column($catalog, 'id');
+
+        $systemPrompt = <<<'TXT'
+        Ты извлекаешь атрибуты одежды для личного гардероба из УЖЕ ИЗВЕСТНЫХ данных (название,
+        категория, иногда состав) — фото нет. Ложный атрибут хуже пустого: никогда не
+        выдумывай то, чего нет в названии или в уже известных данных.
+
+        Верни ТОЛЬКО валидный JSON без markdown, ровно по одному объекту на каждый id из
+        списка: {"items":[{"id":число,"colorName":"цвет или null","materialText":"материал
+        или null","season":"all|spring|summer|autumn|winter или null"}]}.
+
+        Правила:
+        - colorName — свободная строка на русском, как цвет назван в названии/данных
+          (например «пыльная роза», «светло-бежевый»), не своди к базовым цветам. Если цвет
+          нигде не назван явно — null, не гадай.
+        - materialText — только если материал/ткань явно есть в названии или уже известны;
+          можно уточнить уже известное значение, не выдумывая новое. Если неизвестно — null.
+        - season — у него другое правило, он не может просто пропасть: если по названию и
+          категории понятно, что это за вещь (футболка, платье, водолазка, пальто и т.п.),
+          выведи сезон из категории и упомянутой ткани (водолазки/шерсть/экокожа/пальто — не
+          лето; футболки/лён/шорты — не зима; базовые вещи без сезонной привязки — "all").
+          null для season допустим ТОЛЬКО если из названия вообще не понятно, что это за вещь.
+        TXT;
+
+        $prompt = 'ВЕЩИ (JSON): '.json_encode($catalog, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+        try {
+            $response = $this->llm->generate($prompt, $systemPrompt, local: true, think: false);
+        } catch (\Throwable $e) {
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_ATTRIBUTES, null, $e->getMessage());
+
+            return [];
+        }
+
+        $data = $this->extractJson($response);
+        $entries = is_array($data['items'] ?? null) ? $data['items'] : [];
+
+        $out = [];
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $id = filter_var($entry['id'] ?? null, FILTER_VALIDATE_INT);
+            if ($id === false || !in_array($id, $knownIds, true)) {
+                continue;
+            }
+            $out[$id] = [
+                'colorName' => $this->limitedString($entry['colorName'] ?? null, 100),
+                'materialText' => $this->limitedString($entry['materialText'] ?? null, 2000),
+                'season' => $this->normalizeSeason($entry['season'] ?? null),
+            ];
+        }
+
+        $this->usageTracker->recordLocal(null, AiUsageLog::FEATURE_WARDROBE_ATTRIBUTES, $this->localModel);
+
+        return $out;
+    }
+
+    private function normalizeSeason(mixed $value): ?string
+    {
+        $value = is_string($value) ? strtolower(trim($value)) : '';
+
+        return in_array($value, ['all', 'spring', 'summer', 'autumn', 'winter'], true) ? $value : null;
+    }
+
     /** @return array{ok:bool,fields?:array,imageUrl?:?string,confidence?:string,error?:string} */
     public function suggestFromUrl(string $url, ?User $user = null): array
     {

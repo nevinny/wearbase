@@ -398,6 +398,10 @@ class WardrobeController extends AbstractController
 
         /** @var User $user */
         $user = $this->getUser();
+        // ?member=<id>: подсказка запрашивается для того, кому реально создаётся вещь
+        // (родитель может собирать её ребёнку) — иначе согласие и лимит проверялись бы
+        // не по тому профилю.
+        $currentMember = $this->familyService->resolveMember($user, $this->memberParam($request));
         if (!$aiAllowance->consume($user)) {
             $usageTracker->recordError($user, AiUsageLog::FEATURE_WARDROBE_PHOTO, 'Лимит AI-подсказок на сегодня');
             $wardrobeAiLogger->error('Лимит AI-подсказок на сегодня', ['feature' => AiUsageLog::FEATURE_WARDROBE_PHOTO, 'user_id' => $user->getId()]);
@@ -412,13 +416,13 @@ class WardrobeController extends AbstractController
             if ($error = $this->validateAiPhoto($photo, $validator)) {
                 return $error;
             }
-            if ($error = $this->photoConsentError($request, $ai, $user, $user, $consentService)) {
+            if ($error = $this->photoConsentError($request, $ai, $user, $currentMember, $consentService)) {
                 return $error;
             }
 
             try {
                 $sanitized = $this->imageSanitizer->sanitize($photo);
-                $result = $ai->suggestFromPhoto($sanitized->getPathname(), $user);
+                $result = $ai->suggestFromPhoto($sanitized->getPathname(), $currentMember);
             } catch (\InvalidArgumentException $exception) {
                 return $this->json(['ok' => false, 'error' => $exception->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
             } finally {

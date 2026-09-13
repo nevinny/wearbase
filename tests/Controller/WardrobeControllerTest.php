@@ -1638,6 +1638,29 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
     }
 
     /**
+     * Ребёнок не parent — canManage() пускает его только к себе самому: не к брату/сестре,
+     * не к родителю. Проверяем оба направления на реальном экшене добавления вещи.
+     */
+    public function testChildCannotAddItemForSiblingOrParent(): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'harness-wardrobe-sibling-parent@test.local');
+
+        /** @var FamilyService $familyService */
+        $familyService = static::getContainer()->get(FamilyService::class);
+        $childA = $familyService->createChild($parent, 'Аня');
+        $childB = $familyService->createChild($parent, 'Боря');
+
+        $client->loginUser($childA);
+
+        $client->request('GET', '/account/wardrobe/new?member=' . $childB->getId());
+        $this->assertResponseStatusCodeSame(403);
+
+        $client->request('GET', '/account/wardrobe/new?member=' . $parent->getId());
+        $this->assertResponseStatusCodeSame(403);
+    }
+
+    /**
      * Регресс: свой гардероб не должен эмитить ?member=<свой id> ни в одной ссылке —
      * иначе пользователь копирует из адресной строки персональный URL, который
      * у любого другого человека даёт 403 (WardrobeController::memberQuery()).
@@ -2052,6 +2075,61 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertResponseStatusCodeSame(403);
         $data = json_decode($client->getResponse()->getContent(), true);
         $this->assertStringContainsString('согласие родителя', $data['error']);
+    }
+
+    /**
+     * Регресс: родитель, собирающий вещь ребёнку (?member=), должен получать
+     * AI-подсказку и согласие по ребёнку, а не по себе — иначе форма (которая решает,
+     * показывать ли чекбокс согласия, по currentMember) расходится с тем, что реально
+     * проверяет и записывает контроллер.
+     */
+    public function testAiPhotoForChildUsesChildAsConsentSubjectNotActor(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $parent = UserFactory::withEmail(static::getContainer(), 'ai-consent-parent2-'.bin2hex(random_bytes(4)).'@test.local');
+        /** @var FamilyService $families */
+        $families = static::getContainer()->get(FamilyService::class);
+        $child = $families->createChild($parent, 'Сева');
+        $client->loginUser($parent);
+
+        $aiMock = $this->createMock(WardrobeAiService::class);
+        $aiMock->method('externalPhotoConsentRequired')->willReturn(true);
+        $aiMock->expects($this->once())->method('suggestFromPhoto')
+            ->with($this->anything(), $this->callback(static fn (User $subject): bool => $subject->getId() === $child->getId()))
+            ->willReturn(['ok' => true, 'fields' => []]);
+        static::getContainer()->set(WardrobeAiService::class, $aiMock);
+
+        $client->request('GET', '/account/wardrobe?member=' . $child->getId());
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+        $photo = new UploadedFile($this->makeTempImage(), 'child.png', 'image/png', null, true);
+        $client->request('POST', '/account/wardrobe/ai/photo?member=' . $child->getId(), [
+            '_token' => $token,
+            'photoConsent' => '1',
+        ], ['photo' => $photo]);
+
+        $this->assertResponseIsSuccessful();
+
+        /** @var \App\Repository\WardrobeConsentRepository $consents */
+        $consents = static::getContainer()->get(\App\Repository\WardrobeConsentRepository::class);
+        $childConsent = $consents->findForSubject($child);
+        $this->assertNotNull($childConsent, 'Согласие должно быть записано на ребёнка');
+        $this->assertTrue($childConsent->coversExternalPhotoTransfer());
+        $this->assertNull($consents->findForSubject($parent), 'Согласие не должно записаться на актора вместо ребёнка');
+    }
+
+    public function testAiPhotoRejectsForeignMemberParam(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $client->loginUser(UserFactory::withEmail(static::getContainer(), 'ai-consent-stranger-actor-'.bin2hex(random_bytes(4)).'@test.local'));
+        $stranger = UserFactory::withEmail(static::getContainer(), 'ai-consent-stranger-'.bin2hex(random_bytes(4)).'@test.local');
+
+        $client->request('GET', '/account/wardrobe');
+        $token = $this->forceCsrfToken($client->getRequest(), 'wardrobe_ai');
+        $client->request('POST', '/account/wardrobe/ai/photo?member=' . $stranger->getId(), ['_token' => $token]);
+
+        $this->assertResponseStatusCodeSame(403);
     }
 
     public function testAiPhotoRejectsUnconsentedAdultUploadBeforeCallingAi(): void

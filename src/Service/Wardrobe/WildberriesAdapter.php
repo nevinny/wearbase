@@ -102,6 +102,118 @@ class WildberriesAdapter
         return [$labels !== [] ? implode(', ', array_unique($labels)) : null, $price];
     }
 
+    /**
+     * Полная карточка (характеристики: состав/цвет/страна/уход) — отдельный JSON на том
+     * же CDN, что и картинка у fetch() (v4/detail характеристик не отдаёт). Приоритетный
+     * источник атрибутов для app:wardrobe:prepare-prod-items: структурные данные от
+     * производителя достовернее и фото-распознавания, и разбора названия.
+     *
+     * WB отдаёт валидный в остальном JSON с СЫРЫМИ (неэкранированными) переводами строк
+     * внутри строковых значений — стандартный json_decode падает ("Control character
+     * error"), поэтому байты 0x00–0x1F (единственные запрещённые внутри JSON-строк)
+     * заменяются на пробел до декодирования; на структуру JSON это не влияет — пробельные
+     * символы между токенами и так незначимы.
+     *
+     * @return array{materialText:?string,colorName:?string,countryOfOrigin:?string,careText:?string}|null
+     *         null — карточка недоступна или не отдала НИ ОДНОГО из четырёх полей;
+     *         вызывающий в этом случае падает на фото/название.
+     */
+    public function fetchCard(string $url): ?array
+    {
+        $nm = $this->extractNmId($url);
+        if ($nm === null) {
+            return null;
+        }
+
+        $data = $this->fetchCardJson($nm);
+        if ($data === null) {
+            return null;
+        }
+
+        $options = $this->collectOptions($data);
+        $mapped = [
+            'materialText'    => $options['Состав'] ?? null,
+            'colorName'       => $options['Цвет'] ?? null,
+            'countryOfOrigin' => $options['Страна производства'] ?? null,
+            'careText'        => $options['Уход за вещами'] ?? null,
+        ];
+
+        return $mapped === array_fill_keys(array_keys($mapped), null) ? null : $mapped;
+    }
+
+    /** @return array<string,mixed>|null декодированный card.json первого ответившего шарда */
+    private function fetchCardJson(int $nm): ?array
+    {
+        $vol  = intdiv($nm, 100000);
+        $part = intdiv($nm, 1000);
+
+        $responses = [];
+        for ($i = 1; $i <= self::BASKET_HOSTS_MAX; $i++) {
+            $url = sprintf('https://basket-%02d.wbbasket.ru/vol%d/part%d/%d/info/ru/card.json', $i, $vol, $part, $nm);
+            try {
+                $responses[$url] = $this->httpClient->request('GET', $url, [
+                    'headers' => ['User-Agent' => $this->userAgent],
+                    'timeout' => 5,
+                ]);
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        // Тот же приём, что у findImageUrl(): дочитываем ВСЕ ответы до конца — иначе
+        // непрочитанные 404 у неверных шардов кидают исключение из своего __destruct()
+        // уже после выхода из метода (Symfony HttpClient считает статус непрочитанным).
+        $body = null;
+        foreach ($responses as $response) {
+            try {
+                $code = $response->getStatusCode();
+                if ($body === null && $code === 200) {
+                    $body = $response->getContent(false);
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        if ($body === null) {
+            return null;
+        }
+
+        $decoded = json_decode(preg_replace('/[\x00-\x1F]/', ' ', $body) ?? $body, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /** @return array<string,string> имя характеристики → значение; options[] + grouped_options[].options[], дедуп по имени (первое встреченное значение). */
+    private function collectOptions(array $data): array
+    {
+        $out = [];
+        foreach ((is_array($data['options'] ?? null) ? $data['options'] : []) as $option) {
+            $this->addOption($out, $option);
+        }
+        foreach ((is_array($data['grouped_options'] ?? null) ? $data['grouped_options'] : []) as $group) {
+            foreach ((is_array($group['options'] ?? null) ? $group['options'] : []) as $option) {
+                $this->addOption($out, $option);
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param array<string,string> $out */
+    private function addOption(array &$out, mixed $option): void
+    {
+        if (!is_array($option)) {
+            return;
+        }
+        $name = trim((string) ($option['name'] ?? ''));
+        $value = trim((string) ($option['value'] ?? ''));
+        if ($name === '' || $value === '' || isset($out[$name])) {
+            return;
+        }
+        $out[$name] = mb_substr($value, 0, 2000);
+    }
+
     /** nm-id из URL вида wildberries.ru/catalog/<nm>/detail.aspx (и вариаций с query/якорем). */
     private function extractNmId(string $url): ?int
     {

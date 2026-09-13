@@ -58,6 +58,8 @@ class WardrobeDailyController extends AbstractController
     public function __construct(
         #[Autowire('%env(default::AGENT_API_TOKEN)%')]
         private readonly ?string $apiToken,
+        #[Autowire('%kernel.project_dir%')]
+        private readonly string $projectDir,
     ) {
     }
 
@@ -273,10 +275,19 @@ class WardrobeDailyController extends AbstractController
             ->getQuery()
             ->getResult();
 
-        return $this->json(['items' => array_map(static fn (WardrobeItem $item): array => [
+        return $this->json(['items' => array_map(fn (WardrobeItem $item): array => [
             'id' => (int) $item->getId(),
             'wardrobe_id' => $item->getWardrobe()?->getId(),
             'owner_email' => $item->getUser()?->getEmail(),
+            // Приоритет источников на Mac: WB-карточка (product_url) → фото → название.
+            // has_photo — есть ХОТЬ КАКОЙ-ТО снимок (обложка галереи ИЛИ legacy-поле photo);
+            // без этого признака до починки резолва в preparePhoto() вещи с фото только в
+            // галерее (см. WardrobeItemPhoto) отдавали 404 и никогда не распознавались.
+            'has_photo' => $item->getCoverPhoto() !== null || !$this->isEmpty($item->getPhoto()),
+            'name' => $item->getName(),
+            'category' => $item->getCategory(),
+            'material_text' => $item->getMaterialText(),
+            'product_url' => $item->getProductUrl(),
         ], $rows)]);
     }
 
@@ -308,8 +319,20 @@ class WardrobeDailyController extends AbstractController
             return $this->json(['error' => 'item_not_found'], Response::HTTP_NOT_FOUND);
         }
 
-        $path = $storage->resolvePath($item, 'photoFile');
-        if (!is_string($path) || !is_file($path)) {
+        // Тот же порядок и тот же legacy-фолбэк, что в карточке ЛК и
+        // WardrobeMediaController::mediaResponse() (шаблоны: coverPhoto → photo, см.
+        // account/wardrobe/show.html.twig): часть импортированных фото ещё физически
+        // лежит в public_html/images/wardrobe (app:wardrobe:migrate-private-media их не
+        // трогало — WardrobeRestoreBackupCommand пишет filePath, но не копирует байты в
+        // var/uploads/wardrobe), иначе Vich resolvePath() их не находит и отдаёт 404.
+        $cover = $item->getCoverPhoto();
+        $path = $cover !== null
+            ? $this->resolveMediaPath($storage->resolvePath($cover, 'file'), $cover->getFilePath())
+            : null;
+        if ($path === null) {
+            $path = $this->resolveMediaPath($storage->resolvePath($item, 'photoFile'), $item->getPhoto());
+        }
+        if ($path === null) {
             return $this->json(['error' => 'photo_not_found'], Response::HTTP_NOT_FOUND);
         }
 
@@ -324,7 +347,9 @@ class WardrobeDailyController extends AbstractController
     }
 
     /**
-     * Тело: {"items":[{"id":N,"category":?,"colorName":?,"materialText":?,"season":?}]}.
+     * Тело: {"items":[{"id":N,"category":?,"colorName":?,"materialText":?,"season":?,
+     * "countryOfOrigin":?,"careText":?}]} — последние два приходят из WB-карточки
+     * (см. WildberriesAdapter::fetchCard()), остальные — из WB/фото/названия.
      *
      * Критично: заполняет ТОЛЬКО пустые поля вещи — ровно то же правило, что у
      * PrepareExistingItemsCommand (см. её метод execute(), блок с hasValue()):
@@ -378,6 +403,14 @@ class WardrobeDailyController extends AbstractController
                 $item->setSeason($row['season']);
                 $changed = true;
             }
+            if ($this->isEmpty($item->getCountryOfOrigin()) && $this->isNonEmptyString($row['countryOfOrigin'] ?? null)) {
+                $item->setCountryOfOrigin(mb_substr(trim((string) $row['countryOfOrigin']), 0, 100));
+                $changed = true;
+            }
+            if ($this->isEmpty($item->getCareText()) && $this->isNonEmptyString($row['careText'] ?? null)) {
+                $item->setCareText(mb_substr(trim((string) $row['careText']), 0, 2000));
+                $changed = true;
+            }
 
             if ($changed) {
                 $updated++;
@@ -391,6 +424,33 @@ class WardrobeDailyController extends AbstractController
         }
 
         return $this->json(['status' => 'ok', 'updated' => $updated, 'skipped' => $skipped, 'rejected' => $rejected]);
+    }
+
+    /**
+     * Verbatim-мирроринг legacy-фолбэка WardrobeMediaController::mediaResponse() —
+     * см. комментарий в preparePhoto(). $legacyName — сырое имя файла (без каталогов;
+     * aa/bb даёт SubdirDirectoryNamer детерминированно, в БД не хранится).
+     */
+    private function resolveMediaPath(?string $vichPath, ?string $legacyName): ?string
+    {
+        if ($vichPath !== null && is_file($vichPath)) {
+            return $vichPath;
+        }
+        if ($legacyName === null || basename($legacyName) !== $legacyName) {
+            return null;
+        }
+        $root = realpath($this->projectDir.'/public_html/images/wardrobe');
+        if ($root === false) {
+            return null;
+        }
+        foreach ([$legacyName, mb_substr($legacyName, 0, 2).'/'.mb_substr($legacyName, 2, 2).'/'.$legacyName] as $relativePath) {
+            $legacyPath = realpath($root.'/'.$relativePath);
+            if ($legacyPath !== false && str_starts_with($legacyPath, $root.DIRECTORY_SEPARATOR)) {
+                return $legacyPath;
+            }
+        }
+
+        return null;
     }
 
     private function isEmpty(?string $value): bool

@@ -6,6 +6,7 @@ namespace App\Command\Wardrobe;
 
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeImageSanitizer;
+use App\Service\Wardrobe\WildberriesAdapter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -20,26 +21,38 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * Только Mac. Вещи и фото гардероба живут на проде, а прод физически не
  * достаёт до домашнего GPU-рига (см. класс-докблок WardrobeDailyController) —
  * поэтому Mac инициирует оба конца: забирает очередь вещей без AI-атрибутов
- * (GET /api/v1/wardrobe/daily/prepare/queue), тянет фото по одному
- * (GET .../prepare/photo/{id}), распознаёт ЛОКАЛЬНОЙ ollama через
- * WardrobeAiService::suggestFromPhoto() и одним запросом пушит результат
+ * (GET /api/v1/wardrobe/daily/prepare/queue) и одним запросом пушит результат
  * (POST .../prepare/results) — тот заполняет ТОЛЬКО пустые поля вещи.
  *
- * Риг — единственный слот (OLLAMA_NUM_PARALLEL=1, шины PCIe gen1 x1): фото
- * обрабатываются строго последовательно, без параллелизма.
+ * Приоритет источников на вещь (структурные данные надёжнее любого распознавания):
+ *   1. WB-карточка (product_url на wildberries.ru) — WildberriesAdapter::fetchCard():
+ *      состав/цвет/страна/уход прямо с фабричной карточки. Сезона там нет никогда.
+ *   2. Фото (обложка галереи ИЛИ legacy-поле photo, has_photo) — ЛОКАЛЬНАЯ ollama,
+ *      WardrobeAiService::suggestFromPhoto() — но только для того, чего WB не дал
+ *      (или для вещей совсем без WB-ссылки/карточки).
+ *   3. Название + то немногое, что уже известно (category/materialText) — тоже
+ *      локальная ollama, батчем по TEXT_BATCH_SIZE вещей за один вызов модели.
+ *      Это ЕДИНСТВЕННЫЙ источник season для вещей, обогащённых через WB (в
+ *      характеристиках WB сезона нет) — и последний резерв colorName/materialText
+ *      для вещей без WB-ссылки и без фото.
+ *
+ * Риг — единственный слот (OLLAMA_NUM_PARALLEL=1, шины PCIe gen1 x1): вызовы модели
+ * (фото и текстовые батчи) идут строго последовательно, без параллелизма.
  *
  * flock — общий с app:wardrobe:prepare-existing-items / app:wardrobe:ingest-drafts
- * (var/wardrobe_ingest_drafts.lock): все три шлют фото в тот же единственный ollama.
+ * (var/wardrobe_ingest_drafts.lock): все три шлют запросы в тот же единственный ollama.
  */
 #[AsCommand(
     name: 'app:wardrobe:prepare-prod-items',
-    description: 'Забрать с прода вещи без AI-атрибутов, распознать на домашнем риге, вернуть на прод',
+    description: 'Забрать с прода вещи без AI-атрибутов, обогатить (WB → фото → название), вернуть на прод',
 )]
 final class PrepareProdItemsCommand extends Command
 {
-    /** Потолок на прогон: фото идут в единственный инстанс ollama последовательно (как у prepare-existing-items). */
+    /** Потолок на прогон: вызовы модели идут в единственный инстанс ollama последовательно. */
     private const MAX_LIMIT = 25;
     private const HTTP_TIMEOUT_SEC = 60;
+    /** 8–12 вещей за один вызов модели — золотая середина: заметно дешевле поштучных вызовов, промпт не распухает. */
+    private const TEXT_BATCH_SIZE = 10;
 
     /** @var resource|null держим открытым весь прогон (flock) */
     private $lockHandle = null;
@@ -48,6 +61,7 @@ final class PrepareProdItemsCommand extends Command
         private readonly HttpClientInterface $httpClient,
         private readonly WardrobeAiService $ai,
         private readonly WardrobeImageSanitizer $sanitizer,
+        private readonly WildberriesAdapter $wildberries,
         #[Autowire('%env(default::PROD_API_URL)%')]
         private readonly ?string $prodApiUrl,
         #[Autowire('%env(default::AGENT_API_TOKEN)%')]
@@ -85,7 +99,8 @@ final class PrepareProdItemsCommand extends Command
         // Тот же гейт согласия, что у prepare-existing-items — не изобретаем свою
         // проверку. При WARDROBE_VISION_LOCAL=1 (Mac .env.local) он всегда false;
         // если false — эта команда обязана остановиться: иначе фото прода уйдут
-        // во внешний AI-сервис, а не на домашний риг.
+        // во внешний AI-сервис, а не на домашний риг. WB-карточка и текстовый батч
+        // фото не трогают вовсе, но фото-тир (шаг 2) — трогает, поэтому гейт общий.
         if ($this->ai->externalPhotoConsentRequired(null)) {
             $io->error('WARDROBE_VISION_LOCAL должен быть включён на Mac — иначе фото прода уйдут во внешний AI-сервис.');
             return Command::FAILURE;
@@ -134,9 +149,10 @@ final class PrepareProdItemsCommand extends Command
         $io->title(sprintf('Подготовка атрибутов: %d вещей%s', count($queue), $dryRun ? ' (dry-run)' : ''));
         $io->progressStart(count($queue));
 
+        /** @var array<int, array<string,mixed>> $results id => поля вещи (без ключа id внутри) */
         $results = [];
-        $recognized = 0;
-        $failed = 0;
+        /** @var list<array{id:int,name:?string,category:?string,materialText:?string}> $textQueue */
+        $textQueue = [];
 
         foreach ($queue as $row) {
             $id = (int) ($row['id'] ?? 0);
@@ -145,91 +161,106 @@ final class PrepareProdItemsCommand extends Command
                 continue;
             }
 
-            $rawPath = null;
-            $sanitizedPath = null;
-            try {
-                $photoResponse = $this->httpClient->request('GET', $this->prodUrl('/api/v1/wardrobe/daily/prepare/photo/'.$id), [
-                    'headers' => ['X-Agent-Token' => $this->apiToken],
-                    'timeout' => self::HTTP_TIMEOUT_SEC,
-                ]);
-                if ($photoResponse->getStatusCode() !== 200) {
-                    $failed++;
-                    $io->text(sprintf('  вещь #%d: фото не получено (HTTP %d)', $id, $photoResponse->getStatusCode()));
-                    $io->progressAdvance();
-                    continue;
-                }
+            $entry = [];
+            $knownCategory = is_string($row['category'] ?? null) ? trim($row['category']) : '';
+            $knownMaterial = is_string($row['material_text'] ?? null) && trim($row['material_text']) !== '' ? $row['material_text'] : null;
 
-                $rawPath = tempnam(sys_get_temp_dir(), 'wardrobe_prod_photo_');
-                file_put_contents($rawPath, $photoResponse->getContent(false));
+            // 1. WB-карточка — приоритетный источник, WardrobeAiService/vision тут не участвуют.
+            $productUrl = $row['product_url'] ?? null;
+            $wb = (is_string($productUrl) && str_contains(strtolower($productUrl), 'wildberries.ru'))
+                ? $this->wildberries->fetchCard($productUrl)
+                : null;
+            if ($wb !== null) {
+                $this->fillIfMissing($entry, 'colorName', $wb['colorName']);
+                $this->fillIfMissing($entry, 'materialText', $wb['materialText']);
+                $this->fillIfMissing($entry, 'countryOfOrigin', $wb['countryOfOrigin']);
+                $this->fillIfMissing($entry, 'careText', $wb['careText']);
+            }
 
-                $sanitized = $this->sanitizer->sanitize(
-                    new UploadedFile($rawPath, 'item.jpg', (string) mime_content_type($rawPath), null, true),
-                );
-                $sanitizedPath = $sanitized->getPathname();
-
-                // $user = null: сущности User прода нет в локальной БД Mac — идентификатор
-                // тут не нужен, WardrobeAiService при visionLocal=true не трогает
-                // consent-репозиторий и не пишет ничего специфичное для юзера (см. её докблок).
-                $result = $this->ai->suggestFromPhoto($sanitizedPath, null);
-            } catch (\InvalidArgumentException|\RuntimeException $e) {
-                $failed++;
-                $io->text(sprintf('  вещь #%d: %s', $id, $e->getMessage()));
-                $io->progressAdvance();
-                continue;
-            } catch (\Throwable $e) {
-                $failed++;
-                $io->text(sprintf('  вещь #%d: ошибка запроса — %s', $id, $e->getMessage()));
-                $io->progressAdvance();
-                continue;
-            } finally {
-                if ($rawPath !== null && is_file($rawPath)) {
-                    @unlink($rawPath);
-                }
-                if ($sanitizedPath !== null && is_file($sanitizedPath)) {
-                    @unlink($sanitizedPath);
+            // 2. Фото — только для того, чего WB не дал (или совсем без ссылки/карточки).
+            $season = null;
+            $needPhoto = ($row['has_photo'] ?? false) === true
+                && ($wb === null || ($wb['colorName'] ?? null) === null || $knownCategory === '');
+            if ($needPhoto) {
+                [$photoFields, $photoError] = $this->recognizeFromPhoto($id);
+                if ($photoFields !== null) {
+                    $this->fillIfMissing($entry, 'category', $photoFields['category'] ?? null);
+                    $this->fillIfMissing($entry, 'colorName', $photoFields['colorName'] ?? null);
+                    $this->fillIfMissing($entry, 'materialText', $photoFields['materialText'] ?? null);
+                    $season = $photoFields['season'] ?? null;
+                } elseif ($dryRun) {
+                    $io->text(sprintf('  вещь #%d: фото — %s', $id, $photoError));
                 }
             }
 
-            if (!($result['ok'] ?? false)) {
-                $failed++;
-                $io->text(sprintf('  вещь #%d: %s', $id, $result['error'] ?? 'AI недоступен'));
-                $io->progressAdvance();
-                continue;
+            // 3. Название/известные данные — единственный источник season для WB-вещей
+            // (в характеристиках WB его нет) и последний резерв colorName/materialText.
+            if ($season !== null) {
+                $entry['season'] = $season;
+            } else {
+                $textQueue[] = [
+                    'id' => $id,
+                    'name' => $row['name'] ?? null,
+                    'category' => $entry['category'] ?? ($knownCategory !== '' ? $knownCategory : null),
+                    'materialText' => $entry['materialText'] ?? $knownMaterial,
+                ];
             }
 
-            $fields = $result['fields'] ?? [];
-            $entry = array_filter([
-                'id' => $id,
-                'category' => $fields['category'] ?? null,
-                'colorName' => $fields['colorName'] ?? null,
-                'materialText' => $fields['materialText'] ?? null,
-                'season' => $fields['season'] ?? null,
-            ], static fn ($value): bool => $value !== null);
-            $results[] = $entry;
-            $recognized++;
-
-            if ($dryRun) {
-                $io->text(sprintf('  вещь #%d: %s', $id, json_encode($entry, JSON_UNESCAPED_UNICODE)));
-            }
+            $results[$id] = $entry;
             $io->progressAdvance();
         }
 
         $io->progressFinish();
 
+        foreach (array_chunk($textQueue, self::TEXT_BATCH_SIZE) as $chunk) {
+            $batch = $this->ai->suggestAttributesFromNames($chunk);
+            foreach ($chunk as $chunkRow) {
+                $id = $chunkRow['id'];
+                $fields = $batch[$id] ?? null;
+                if ($fields === null) {
+                    continue;
+                }
+                $this->fillIfMissing($results[$id], 'colorName', $fields['colorName'] ?? null);
+                $this->fillIfMissing($results[$id], 'materialText', $fields['materialText'] ?? null);
+                if (($fields['season'] ?? null) !== null) {
+                    $results[$id]['season'] = $fields['season'];
+                }
+            }
+        }
+
+        $finalResults = [];
+        $recognized = 0;
+        $failed = 0;
+        foreach ($results as $id => $entry) {
+            if ($entry === []) {
+                $failed++;
+                if ($dryRun) {
+                    $io->text(sprintf('  вещь #%d: ничего не удалось определить', $id));
+                }
+                continue;
+            }
+            $recognized++;
+            $entry = ['id' => $id] + $entry;
+            $finalResults[] = $entry;
+            if ($dryRun) {
+                $io->text(sprintf('  вещь #%d: %s', $id, json_encode($entry, JSON_UNESCAPED_UNICODE)));
+            }
+        }
+
         if ($dryRun) {
-            $io->success(sprintf('Готово (dry-run): распознано %d вещей, ошибок %d. На прод ничего не отправлено.', $recognized, $failed));
+            $io->success(sprintf('Готово (dry-run): распознано %d вещей, ничего не найдено у %d. На прод ничего не отправлено.', $recognized, $failed));
             return Command::SUCCESS;
         }
 
-        if ($results === []) {
-            $io->success(sprintf('Нечего отправлять на прод (распознано 0, ошибок %d).', $failed));
+        if ($finalResults === []) {
+            $io->success(sprintf('Нечего отправлять на прод (распознано 0, ничего не найдено у %d).', $failed));
             return Command::SUCCESS;
         }
 
         try {
             $push = $this->httpClient->request('POST', $this->prodUrl('/api/v1/wardrobe/daily/prepare/results'), [
                 'headers' => ['X-Agent-Token' => $this->apiToken],
-                'json' => ['items' => $results],
+                'json' => ['items' => $finalResults],
                 'timeout' => self::HTTP_TIMEOUT_SEC,
             ]);
             $data = $push->toArray(false);
@@ -239,13 +270,70 @@ final class PrepareProdItemsCommand extends Command
         }
 
         $io->success(sprintf(
-            'Готово: применено %d, без изменений %d, ошибок распознавания %d.',
+            'Готово: применено %d, без изменений %d, ничего не найдено у %d.',
             (int) ($data['updated'] ?? 0),
             (int) ($data['skipped'] ?? 0),
             $failed,
         ));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Фото-тир: тянет байты с прода, санитайзит, распознаёт ЛОКАЛЬНОЙ ollama.
+     * $user = null: сущности User прода нет в локальной БД Mac — идентификатор тут не
+     * нужен, WardrobeAiService при visionLocal=true не трогает consent-репозиторий.
+     *
+     * @return array{0: ?array{category?:?string,colorName?:?string,materialText?:?string,season?:?string}, 1: ?string} [поля, сообщение об ошибке]
+     */
+    private function recognizeFromPhoto(int $id): array
+    {
+        $rawPath = null;
+        $sanitizedPath = null;
+        try {
+            $photoResponse = $this->httpClient->request('GET', $this->prodUrl('/api/v1/wardrobe/daily/prepare/photo/'.$id), [
+                'headers' => ['X-Agent-Token' => $this->apiToken],
+                'timeout' => self::HTTP_TIMEOUT_SEC,
+            ]);
+            if ($photoResponse->getStatusCode() !== 200) {
+                return [null, sprintf('фото не получено (HTTP %d)', $photoResponse->getStatusCode())];
+            }
+
+            $rawPath = tempnam(sys_get_temp_dir(), 'wardrobe_prod_photo_');
+            file_put_contents($rawPath, $photoResponse->getContent(false));
+
+            $sanitized = $this->sanitizer->sanitize(
+                new UploadedFile($rawPath, 'item.jpg', (string) mime_content_type($rawPath), null, true),
+            );
+            $sanitizedPath = $sanitized->getPathname();
+
+            $result = $this->ai->suggestFromPhoto($sanitizedPath, null);
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return [null, $e->getMessage()];
+        } catch (\Throwable $e) {
+            return [null, 'ошибка запроса — '.$e->getMessage()];
+        } finally {
+            if ($rawPath !== null && is_file($rawPath)) {
+                @unlink($rawPath);
+            }
+            if ($sanitizedPath !== null && is_file($sanitizedPath)) {
+                @unlink($sanitizedPath);
+            }
+        }
+
+        if (!($result['ok'] ?? false)) {
+            return [null, $result['error'] ?? 'AI недоступен'];
+        }
+
+        return [$result['fields'] ?? [], null];
+    }
+
+    /** Заполняет поле только если оно ещё не установлено этим же прогоном (WB не переигрывает WB, фото не переигрывает WB, и т.д. — приоритет источников). */
+    private function fillIfMissing(array &$entry, string $key, mixed $value): void
+    {
+        if ($value !== null && !array_key_exists($key, $entry)) {
+            $entry[$key] = $value;
+        }
     }
 
     private function prodUrl(string $path): string
