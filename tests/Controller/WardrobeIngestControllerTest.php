@@ -369,6 +369,12 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         self::assertNull(static::getContainer()->get(EntityManagerInterface::class)->find(WardrobeItem::class, $data['itemId'])->getSeason());
     }
 
+    /**
+     * «Принять всё уверенное» на клиенте шлёт последовательные POST на покарточный
+     * /draft/{id}/accept с текущими значениями полей формы (включая правки
+     * пользователя) — сервер не решает за него. Черновики со средней/низкой
+     * уверенностью в цепочку не попадают и остаются на ручной проверке.
+     */
     public function testAcceptAllPreservesAttributesAndLeavesUncertainDraftForReview(): void
     {
         $client = static::createClient();
@@ -384,12 +390,17 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $mediumId = $medium->getId();
         $client->request('GET', '/account/wardrobe/ingest/'.$batch);
         $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
-        $client->request('POST', '/account/wardrobe/ingest/'.$batch.'/accept-all', [], [], ['HTTP_X_CSRF_TOKEN' => $token]);
+
+        // Правка цвета в браузере перед нажатием «Принять всё уверенное» — должна доехать до вещи.
+        $client->request('POST', '/account/wardrobe/ingest/draft/'.$highId.'/accept', [], [], [
+            'HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['colorName' => 'молочный', 'season' => 'summer']));
         self::assertResponseIsSuccessful();
-        self::assertSame(1, json_decode($client->getResponse()->getContent(), true)['accepted']);
+        self::assertTrue(json_decode($client->getResponse()->getContent(), true)['ok']);
+
         $em = static::getContainer()->get(EntityManagerInterface::class);
         $em->clear();
-        self::assertSame('белый', $em->find(WardrobeItemDraft::class, $highId)->getAcceptedItem()->getColorName());
+        self::assertSame('молочный', $em->find(WardrobeItemDraft::class, $highId)->getAcceptedItem()->getColorName());
         self::assertSame(WardrobeItemDraft::STATUS_RECOGNIZED, $em->find(WardrobeItemDraft::class, $mediumId)->getStatus());
     }
 

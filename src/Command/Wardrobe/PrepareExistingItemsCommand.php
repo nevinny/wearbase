@@ -6,8 +6,10 @@ namespace App\Command\Wardrobe;
 
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeImageSanitizer;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -16,6 +18,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
 #[AsCommand(
@@ -24,6 +27,9 @@ use Vich\UploaderBundle\Storage\StorageInterface;
 )]
 final class PrepareExistingItemsCommand extends Command
 {
+    /** Потолок на прогон: фото идут в единственный инстанс ollama последовательно. */
+    private const MAX_LIMIT = 25;
+
     private $lockHandle = null;
 
     public function __construct(
@@ -31,6 +37,8 @@ final class PrepareExistingItemsCommand extends Command
         private readonly WardrobeItemRepository $items,
         private readonly WardrobeAiService $ai,
         private readonly StorageInterface $storage,
+        private readonly WardrobeConsentRepository $consents,
+        private readonly WardrobeImageSanitizer $sanitizer,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {
@@ -41,7 +49,7 @@ final class PrepareExistingItemsCommand extends Command
     {
         $this
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Email владельца гардероба')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Максимум вещей за запуск', 15)
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Максимум вещей за запуск (не больше '.self::MAX_LIMIT.')', 15)
             ->addOption('after', null, InputOption::VALUE_REQUIRED, 'Начать после ID вещи', 0)
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Только показать найденные вещи');
     }
@@ -64,8 +72,15 @@ final class PrepareExistingItemsCommand extends Command
             $io->error('Пользователь не найден: '.$email);
             return Command::FAILURE;
         }
+        // Тот же гейт, что у веб-путей (WardrobeController::photoConsentError): без
+        // согласия владельца фото в модель не уходят. Из CLI согласие не выдаём —
+        // его даёт только сам владелец в интерфейсе.
+        if (!$this->consents->findForSubject($user)?->isPhotoProcessingGranted()) {
+            $io->error('Нет согласия на обработку фото у '.$email.' — владелец должен подтвердить его в личном кабинете.');
+            return Command::FAILURE;
+        }
 
-        $limit = max(1, min(100, (int) $input->getOption('limit')));
+        $limit = max(1, min(self::MAX_LIMIT, (int) $input->getOption('limit')));
         $after = max(0, (int) $input->getOption('after'));
         $items = $this->items->findNeedingPreparation($user, $after, $limit);
         $hasMore = count($items) > $limit;
@@ -89,7 +104,22 @@ final class PrepareExistingItemsCommand extends Command
                 continue;
             }
 
-            $result = $this->ai->suggestFromPhoto($path, $user);
+            // Пересжатие через GD стирает EXIF (GPS, модель устройства) — оригинал
+            // наружу не уходит, как и на веб-пути aiPhoto().
+            try {
+                $sanitized = $this->sanitizer->sanitize(
+                    new UploadedFile($path, basename($path), (string) mime_content_type($path), null, true),
+                );
+                $result = $this->ai->suggestFromPhoto($sanitized->getPathname(), $user);
+            } catch (\InvalidArgumentException|\RuntimeException $exception) {
+                $skipped++;
+                $io->writeln(sprintf('<comment>%s: %s</comment>', $item->getDisplayNumber(), $exception->getMessage()));
+                continue;
+            } finally {
+                if (isset($sanitized) && is_file($sanitized->getPathname())) {
+                    @unlink($sanitized->getPathname());
+                }
+            }
             if (!($result['ok'] ?? false)) {
                 $skipped++;
                 $io->writeln(sprintf('<comment>%s: %s</comment>', $item->getDisplayNumber(), $result['error'] ?? 'AI недоступен'));
@@ -133,7 +163,8 @@ final class PrepareExistingItemsCommand extends Command
 
     private function acquireLock(): bool
     {
-        $path = $this->projectDir.'/var/wardrobe_prepare_items.lock';
+        // Общий лок с app:wardrobe:ingest-drafts: оба шлют фото в единственный ollama.
+        $path = $this->projectDir.'/var/wardrobe_ingest_drafts.lock';
         $handle = fopen($path, 'c');
         if ($handle === false || !flock($handle, LOCK_EX | LOCK_NB)) {
             return false;

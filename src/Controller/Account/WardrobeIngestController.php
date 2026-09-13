@@ -15,7 +15,6 @@ use App\Service\Wardrobe\WardrobeConsentService;
 use App\Service\Wardrobe\WardrobeImageSanitizer;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
-use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -39,7 +38,6 @@ class WardrobeIngestController extends AbstractController
     public function __construct(
         private readonly FamilyService $familyService,
         private readonly WardrobeOnboardingService $onboardingService,
-        private readonly LoggerInterface $logger,
     ) {}
 
     #[Route('/upload', name: 'upload', methods: ['POST'])]
@@ -290,54 +288,6 @@ class WardrobeIngestController extends AbstractController
         $this->onboardingService->refreshProgress($user, $subject);
 
         return $this->json(['ok' => true]);
-    }
-
-    #[Route('/{batch}/accept-all', name: 'accept_all', methods: ['POST'])]
-    public function acceptAll(
-        string $batch,
-        Request $request,
-        WardrobeItemDraftRepository $draftRepo,
-        WardrobeDraftPromotionService $promotion,
-    ): JsonResponse {
-        if ($fail = $this->csrfOrFail($request)) {
-            return $fail;
-        }
-
-        /** @var User $user */
-        $user = $this->getUser();
-
-        $subject = $this->familyService->resolveMember($user, $this->memberParam($request));
-        $drafts = $draftRepo->findByBatch($subject, $batch);
-        if ($drafts === []) {
-            throw $this->createNotFoundException();
-        }
-
-        $accepted = 0;
-        $skipped = 0;
-
-        foreach ($drafts as $draft) {
-            if ($draft->getStatus() !== WardrobeItemDraft::STATUS_RECOGNIZED
-                || $draft->getConfidence() !== 'high'
-            ) {
-                $skipped++;
-                continue;
-            }
-
-            try {
-                $result = $promotion->promote($user, $draft->getId(), []);
-                $result['idempotent'] ? $skipped++ : $accepted++;
-            } catch (\Throwable $exception) {
-                // Одна неудача не должна валить весь батч — считаем как пропуск и продолжаем
-                $this->logger->error('Не удалось принять wardrobe draft из пачки', [
-                    'draft_id' => $draft->getId(),
-                    'exception' => $exception,
-                ]);
-                $skipped++;
-            }
-        }
-        $this->onboardingService->refreshProgress($user, $subject);
-
-        return $this->json(['ok' => true, 'accepted' => $accepted, 'skipped' => $skipped]);
     }
 
     /** JSON- или form-тело запроса; пустое тело → пустые overrides (используются значения драфта). */

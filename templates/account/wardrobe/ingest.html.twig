@@ -63,10 +63,9 @@
     <div id="ingest-review-section" class="{{ pendingCount > 0 ? 'hidden' : '' }}">
         {% if reviewDrafts|length > 0 %}
             <div class="mb-4 flex items-center justify-between">
-                <h2 class="text-sm font-bold">Проверьте распознанные вещи ({{ reviewDrafts|length }})</h2>
+                <h2 id="ingest-review-heading" class="text-sm font-bold">Проверьте распознанные вещи ({{ reviewDrafts|length }})</h2>
                 {% if highCount > 0 %}
                     <button type="button" id="ingest-accept-all-btn"
-                            data-url="{{ path('account_wardrobe_ingest_accept_all', {batch: batch, member: currentMember.id}) }}"
                             class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black transition disabled:opacity-50">
                         Принять всё уверенное ({{ highCount }})
                     </button>
@@ -372,7 +371,16 @@
             }, Promise.resolve()).catch(function () {
                 errorBox.textContent = 'Сеть недоступна. Принятые вещи сохранены, остальные можно повторить.';
                 errorBox.classList.remove('hidden');
-            }).finally(function () { acceptAllBtn.disabled = false; });
+            }).finally(function () {
+                acceptAllBtn.disabled = false;
+                var remainingHigh = grid.querySelectorAll('[data-confidence="high"]').length;
+                acceptAllBtn.textContent = 'Принять всё уверенное (' + remainingHigh + ')';
+                if (remainingHigh === 0) acceptAllBtn.classList.add('hidden');
+                var reviewHeading = document.getElementById('ingest-review-heading');
+                if (reviewHeading) {
+                    reviewHeading.textContent = 'Проверьте распознанные вещи (' + grid.querySelectorAll('[data-draft-id]').length + ')';
+                }
+            });
         });
     }
 })();
