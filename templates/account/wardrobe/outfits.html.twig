@@ -132,6 +132,12 @@
             </div>
         {% endfor %}
     </div>
+{% else %}
+    <div class="mb-6 rounded-2xl bg-white py-14 text-center text-gray-500 shadow-sm">
+        <div class="mb-4 text-5xl opacity-30">🌙</div>
+        <p class="mb-1 font-semibold text-gray-700">Образы ещё не готовы</p>
+        <p class="mb-4 text-sm">Мы собираем их ночью — загляните с утра, и здесь будет готовый набор на день</p>
+    </div>
 {% endif %}
 
 {% if outfits %}

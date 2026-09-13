@@ -192,7 +192,7 @@
 <script>
 (function () {
     var CSRF_TOKEN = '{{ csrf_token('wardrobe_ai') }}';
-    var PHOTO_URL = '{{ path('account_wardrobe_ai_photo') }}';
+    var PHOTO_URL = '{{ path('account_wardrobe_ai_photo', memberParam) }}';
     var URL_URL = '{{ path('account_wardrobe_ai_url') }}';
     var TOKEN_URL = '{{ path('account_wardrobe_ai_token') }}';
 

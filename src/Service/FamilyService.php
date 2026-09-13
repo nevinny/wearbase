@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\Family;
 use App\Entity\FamilyInvite;
+use App\Entity\FamilyMembershipEvent;
 use App\Entity\User;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
@@ -271,6 +272,14 @@ class FamilyService
             $lockedChild->setEmail($normalizedEmail);
             $lockedChild->setPassword($this->passwordHasher->hashPassword($lockedChild, $password));
             $lockedChild->setClaimedAt(new \DateTimeImmutable());
+            if ($lockedChild->getFamily() !== null) {
+                $this->em->persist(new FamilyMembershipEvent(
+                    $lockedChild->getFamily(),
+                    $lockedChild,
+                    $lockedChild,
+                    FamilyMembershipEvent::TYPE_CHILD_CLAIMED,
+                ));
+            }
             $this->em->flush();
             $connection->commit();
         } catch (\Throwable $exception) {

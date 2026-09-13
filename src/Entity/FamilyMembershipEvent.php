@@ -15,6 +15,7 @@ class FamilyMembershipEvent
     public const TYPE_OWNER_TRANSFERRED = 'owner_transferred';
     public const TYPE_MEMBER_REMOVED = 'member_removed';
     public const TYPE_MEMBER_LEFT = 'member_left';
+    public const TYPE_CHILD_CLAIMED = 'child_claimed';
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -36,7 +37,7 @@ class FamilyMembershipEvent
 
     public function __construct(Family $family, User $actor, User $subject, string $type)
     {
-        if (!in_array($type, [self::TYPE_ADULTHOOD, self::TYPE_OWNER_TRANSFERRED, self::TYPE_MEMBER_REMOVED, self::TYPE_MEMBER_LEFT], true)) {
+        if (!in_array($type, [self::TYPE_ADULTHOOD, self::TYPE_OWNER_TRANSFERRED, self::TYPE_MEMBER_REMOVED, self::TYPE_MEMBER_LEFT, self::TYPE_CHILD_CLAIMED], true)) {
             throw new \InvalidArgumentException('Недопустимое семейное событие');
         }
         $this->family = $family;
