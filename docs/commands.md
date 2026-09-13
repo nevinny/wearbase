@@ -130,6 +130,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | Команда | Зачем | Как часто | Где |
 |---|---|---|---|
 | `app:wardrobe:ingest-drafts` | Фоновое vision-распознавание приватных batch-drafts с lease/retry. | ⏰ `*/2 * * * *` | ☁️ prod |
+| `app:wardrobe:daily-outfits` | Ночной батч «образов на утро»: тянет активный каталог с прода (agent-API `GET /api/v1/wardrobe/daily/catalog`, только гардеробы с согласием на персонализацию), локальной ollama собирает образы на 4 повода (работа/театр/прогулка/встреча) и пушит на прод (`POST .../outfits` — проверяет принадлежность вещей гардеробу, идемпотентно заменяет образы того же дня+повода через soft-delete). Прод не достаёт до домашнего рига — инициирует только Mac. `--wardrobe=ID`, `--dry-run`, `--limit`; `flock var/wardrobe_daily_outfits.lock`. | ⏰ `0 5 * * *` | 🍎 Mac |
 | `app:wardrobe:cleanup-drafts` | Через 7 дней очищает photo/`ai_raw` accepted receipts; через 30 дней удаляет abandoned drafts. `--dry-run`. | ⏰ `17 3 * * *` | ☁️ prod |
 | `app:native-auth:cleanup` | Удаляет истёкшие refresh receipts, отозванные native device sessions и sessions без действующего refresh. | ⏰ `43 3 * * *` | ☁️ prod |
 | `app:wardrobe:ingest-health` | Production gate: scheduler heartbeat 10 мин, oldest pending SLA 15 мин, expired lease, failed/retry и storage. `--json`, `--check`; AI не запускает. Подробнее: [операционная проверка](wardrobe_ingest_operations.md). | ⏰ `*/5 * * * *` + deploy | ☁️ prod |

@@ -6,10 +6,10 @@ namespace App\Controller\Account;
 
 use App\Entity\User;
 use App\Entity\WardrobeWearEvent;
-use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Repository\WardrobeWearEventRepository;
 use App\Service\FamilyService;
+use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeConsentService;
 use App\Service\Wardrobe\WardrobeImageSanitizer;
 use App\Service\Wardrobe\WardrobeWearRecognitionService;
@@ -34,7 +34,7 @@ final class WardrobeWearController extends AbstractController
         WardrobeWearEventRepository $events,
         WardrobeWearService $wear,
         WardrobeWearRecognitionService $recognition,
-        WardrobeConsentRepository $consents,
+        WardrobeAiService $ai,
         WardrobeConsentService $consentService,
         WardrobeImageSanitizer $sanitizer,
         ValidatorInterface $validator,
@@ -74,10 +74,12 @@ final class WardrobeWearController extends AbstractController
                     $this->addFlash('error', (string) $errors->get(0)->getMessage());
                     return $this->redirectToRoute('account_wardrobe_wear_index', $this->memberParams($actor, $subject));
                 }
-                $consent = $consents->findForSubject($subject);
-                if (!$consent?->isPhotoProcessingGranted()) {
+                // Согласие спрашиваем и записываем только когда фото уйдёт внешнему
+                // сервису; при обработке на оборудовании Оператора photoConsent из
+                // запроса игнорируется (иначе пишем согласие, которого не спрашивали).
+                if ($ai->externalPhotoConsentRequired($subject)) {
                     if (!$request->request->getBoolean('photoConsent')) {
-                        $this->addFlash('error', 'Подтвердите приватную обработку фото');
+                        $this->addFlash('error', 'Подтвердите согласие на передачу фото внешнему AI-сервису');
                         return $this->redirectToRoute('account_wardrobe_wear_index', $this->memberParams($actor, $subject));
                     }
                     $consentService->grantPhotoProcessing($actor, $subject);
@@ -104,7 +106,7 @@ final class WardrobeWearController extends AbstractController
             'items' => $items->findActiveForUser($subject),
             'events' => $events->findRecentConfirmed($subject),
             'statistics' => $wear->statistics($subject),
-            'hasPhotoConsent' => $consents->findForSubject($subject)?->isPhotoProcessingGranted() ?? false,
+            'photoConsentRequired' => $ai->externalPhotoConsentRequired($subject),
             'familyCaptureUrl' => $this->generateUrl('account_wardrobe_wear_index', $this->memberParams($actor, $subject)),
             'familyActiveSection' => 'capture',
         ]));

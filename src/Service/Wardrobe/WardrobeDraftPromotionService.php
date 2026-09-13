@@ -27,7 +27,7 @@ final class WardrobeDraftPromotionService
     ) {}
 
     /**
-     * @param array{name?:mixed,category?:mixed,size?:mixed,notes?:mixed} $overrides
+     * @param array{name?:mixed,category?:mixed,size?:mixed,notes?:mixed,colorName?:mixed,materialText?:mixed,season?:mixed} $overrides
      * @return array{item:WardrobeItem,idempotent:bool}
      */
     public function promote(User $actor, int $draftId, array $overrides): array
@@ -60,7 +60,7 @@ final class WardrobeDraftPromotionService
     }
 
     /**
-     * @param array{name?:mixed,category?:mixed,size?:mixed,notes?:mixed} $overrides
+     * @param array{name?:mixed,category?:mixed,size?:mixed,notes?:mixed,colorName?:mixed,materialText?:mixed,season?:mixed} $overrides
      * @return array{item:WardrobeItem,idempotent:bool,correction:bool,durationBucket:string,autofillAccepted:bool}
      */
     private function attempt(?int $actorId, int $draftId, array $overrides): array
@@ -97,6 +97,13 @@ final class WardrobeDraftPromotionService
             $name = $this->value($overrides, 'name', $draft->getName(), 255);
             $size = $this->value($overrides, 'size', $draft->getSize(), 50);
             $notes = $this->value($overrides, 'notes', $draft->getNotes(), 4000);
+            $attributes = $draft->getAttributes();
+            $color = $this->value($overrides, 'colorName', $attributes['colorName'] ?? null, 100);
+            $material = $this->value($overrides, 'materialText', $attributes['materialText'] ?? null, 2000);
+            $season = $this->value($overrides, 'season', $attributes['season'] ?? null, 50);
+            if ($season !== null && !in_array($season, ['all', 'spring', 'summer', 'autumn', 'winter'], true)) {
+                throw new \InvalidArgumentException('Выберите сезон из списка');
+            }
             if ($category === null || $name === null) {
                 throw new \DomainException('Заполните категорию и название');
             }
@@ -104,7 +111,10 @@ final class WardrobeDraftPromotionService
                 || $category !== $draft->getCategory()
                 || $name !== $draft->getName()
                 || $size !== $draft->getSize()
-                || $notes !== $draft->getNotes();
+                || $notes !== $draft->getNotes()
+                || $color !== ($attributes['colorName'] ?? null)
+                || $material !== ($attributes['materialText'] ?? null)
+                || $season !== ($attributes['season'] ?? null);
             $durationBucket = $this->durationBucket($draft->getCreatedAt());
 
             // Сериализует выдачу itemNo для одного владельца между web workers.
@@ -121,6 +131,9 @@ final class WardrobeDraftPromotionService
                 ->setName($name)
                 ->setSize($size)
                 ->setNotes($notes)
+                ->setColorName($color)
+                ->setMaterialText($material)
+                ->setSeason($season)
                 ->setSource(WardrobeItem::SOURCE_IMPORT)
                 ->setUser($subject)
                 ->setWardrobe($wardrobe)
@@ -182,7 +195,7 @@ final class WardrobeDraftPromotionService
     /** @param array<string, mixed> $overrides */
     private function value(array $overrides, string $field, ?string $fallback, int $maxLength): ?string
     {
-        $raw = $overrides[$field] ?? $fallback;
+        $raw = array_key_exists($field, $overrides) ? $overrides[$field] : $fallback;
         if ($raw !== null && !is_string($raw)) {
             throw new \InvalidArgumentException('Некорректное поле '.$field);
         }

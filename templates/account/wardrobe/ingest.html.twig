@@ -6,9 +6,9 @@
 {% set tw_input = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900' %}
 {% set hasBatch = batch is defined and batch %}
 {% set activeDrafts = hasBatch ? (drafts|default([]))|filter(d => d.status not in ['accepted', 'rejected']) : [] %}
-{% set pendingCount = counts is defined ? counts.pending : (activeDrafts|filter(d => d.status == 'pending')|length) %}
+{% set pendingCount = counts is defined ? counts.pending : (activeDrafts|filter(d => d.status in ['pending', 'processing'])|length) %}
 {% set totalCount = counts is defined ? counts.total : activeDrafts|length %}
-{% set reviewDrafts = activeDrafts|filter(d => d.status != 'pending') %}
+{% set reviewDrafts = activeDrafts|filter(d => d.status not in ['pending', 'processing']) %}
 {% set highCount = reviewDrafts|filter(d => d.status == 'recognized' and d.confidence == 'high')|length %}
 
 <div id="wardrobe-ingest-root"
@@ -36,7 +36,9 @@
         <div class="text-xs">JPG, PNG, WebP — можно сразу несколько</div>
         <input type="file" id="ingest-file-input" multiple accept="image/*" class="hidden">
     </div>
-    <label class="mt-3 flex min-h-11 items-start gap-3 rounded-xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-900"><input id="ingest-photo-consent" type="checkbox" class="mt-0.5 h-5 w-5 shrink-0">Я согласен(на) на приватную обработку этих фото для распознавания вещей. Общее обучение AI не включается.</label>
+    {% if photoConsentRequired %}
+        <label class="mt-3 flex min-h-11 items-start gap-3 rounded-xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-900"><input id="ingest-photo-consent" type="checkbox" class="mt-0.5 h-5 w-5 shrink-0">Разрешаю передать эти фотографии внешнему AI-сервису, который распознаёт вещи. Подробнее — в <a href="{{ path('personal_data_consent') }}" target="_blank" class="underline">согласии на обработку персональных данных</a>.</label>
+    {% endif %}
     <div id="ingest-upload-progress" class="mt-3 hidden">
         <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
             <div id="ingest-progress-bar" class="h-full bg-gray-900 transition-all" style="width:0%"></div>
@@ -63,10 +65,9 @@
     <div id="ingest-review-section" class="{{ pendingCount > 0 ? 'hidden' : '' }}">
         {% if reviewDrafts|length > 0 %}
             <div class="mb-4 flex items-center justify-between">
-                <h2 class="text-sm font-bold">Проверьте распознанные вещи ({{ reviewDrafts|length }})</h2>
+                <h2 id="ingest-review-heading" class="text-sm font-bold">Проверьте распознанные вещи ({{ reviewDrafts|length }})</h2>
                 {% if highCount > 0 %}
                     <button type="button" id="ingest-accept-all-btn"
-                            data-url="{{ path('account_wardrobe_ingest_accept_all', {batch: batch, member: currentMember.id}) }}"
                             class="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black transition disabled:opacity-50">
                         Принять всё уверенное ({{ highCount }})
                     </button>
@@ -83,6 +84,7 @@
                 {% for draft in reviewDrafts %}
                 <div class="overflow-hidden rounded-2xl bg-white shadow-sm"
                      data-draft-id="{{ draft.id }}"
+                     data-confidence="{{ draft.confidence }}"
                      data-accept-url="{{ path('account_wardrobe_ingest_accept', {id: draft.id}) }}"
                      data-reject-url="{{ path('account_wardrobe_ingest_reject', {id: draft.id}) }}">
                     <div class="relative aspect-square bg-gray-100">
@@ -101,8 +103,8 @@
                     <div class="p-4">
                         {% if draft.status == 'failed' %}
                             <div class="form-error mb-3 text-sm text-red-600">{{ draft.error ?: 'Не удалось распознать фото' }}</div>
-                            <button type="button" class="ingest-reject-btn w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Отклонить</button>
-                        {% else %}
+                            <p class="mb-3 text-sm text-gray-600">Можно заполнить карточку вручную.</p>
+                        {% endif %}
                             <div class="mb-2">
                                 <label class="{{ tw_label }}">Категория</label>
                                 <input type="text" class="ingest-field {{ tw_input }}" data-field="category" value="{{ draft.category }}" list="wardrobe-ingest-categories">
@@ -115,6 +117,24 @@
                                 <label class="{{ tw_label }}">Размер</label>
                                 <input type="text" class="ingest-field {{ tw_input }}" data-field="size" value="{{ draft.size }}">
                             </div>
+                            {% set attributes = draft.attributes %}
+                            <div class="mb-2">
+                                <label class="{{ tw_label }}" for="draft-color-{{ draft.id }}">Цвет</label>
+                                <input id="draft-color-{{ draft.id }}" type="text" class="ingest-field {{ tw_input }}" data-field="colorName" maxlength="100" value="{{ attributes.colorName ?? '' }}">
+                            </div>
+                            <div class="mb-2">
+                                <label class="{{ tw_label }}" for="draft-material-{{ draft.id }}">Состав с бирки</label>
+                                <textarea id="draft-material-{{ draft.id }}" class="ingest-field {{ tw_input }}" data-field="materialText" maxlength="2000" rows="2">{{ attributes.materialText ?? '' }}</textarea>
+                            </div>
+                            <div class="mb-2">
+                                <label class="{{ tw_label }}" for="draft-season-{{ draft.id }}">Сезон</label>
+                                <select id="draft-season-{{ draft.id }}" class="ingest-field {{ tw_input }}" data-field="season">
+                                    {% for value, label in {'': 'Неизвестно', all: 'Всесезон', spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима'} %}
+                                        <option value="{{ value }}" {{ (attributes.season ?? '') == value ? 'selected' : '' }}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <p class="mb-3 text-xs text-gray-500">Проверьте характеристики. Если значение неизвестно, оставьте поле пустым.</p>
                             <div class="mb-3">
                                 <label class="{{ tw_label }}">Заметки</label>
                                 <textarea class="ingest-field {{ tw_input }}" data-field="notes" rows="2">{{ draft.notes }}</textarea>
@@ -124,7 +144,6 @@
                                 <button type="button" class="ingest-accept-btn flex-1 rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black transition disabled:opacity-50">Принять</button>
                                 <button type="button" class="ingest-reject-btn rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition disabled:opacity-50">Отклонить</button>
                             </div>
-                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
@@ -194,7 +213,7 @@
     function uploadFiles(files) {
         if (!files || !files.length) return;
         var consent = document.getElementById('ingest-photo-consent');
-        if (!consent.checked) {
+        if (consent && !consent.checked) {
             errorBox.textContent = 'Подтвердите согласие на обработку фото';
             errorBox.classList.remove('hidden');
             return;
@@ -202,7 +221,7 @@
 
         var fd = new FormData();
         [].forEach.call(files, function (f) { fd.append('photos', f); });
-        fd.append('photoConsent', '1');
+        if (consent) fd.append('photoConsent', '1');
 
         errorBox.classList.add('hidden');
         rejectedList.classList.add('hidden');
@@ -333,13 +352,37 @@
     if (acceptAllBtn) {
         acceptAllBtn.addEventListener('click', function () {
             acceptAllBtn.disabled = true;
-            fetch(acceptAllBtn.dataset.url, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'X-CSRF-Token': CSRF_TOKEN },
-            })
-                .then(function () { window.location.reload(); })
-                .catch(function () { acceptAllBtn.disabled = false; });
+            var cards = Array.from(grid.querySelectorAll('[data-confidence="high"]'));
+            cards.reduce(function (chain, card) {
+                return chain.then(function () {
+                    var payload = {};
+                    card.querySelectorAll('.ingest-field').forEach(function (el) {
+                        payload[el.dataset.field] = el.value;
+                    });
+                    return fetch(card.dataset.acceptUrl, {
+                        method: 'POST', credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+                        body: JSON.stringify(payload)
+                    }).then(function (response) { return response.json(); }).then(function (data) {
+                        if (data.ok) { card.remove(); return; }
+                        var error = card.querySelector('.ingest-error');
+                        error.textContent = data.error || 'Не удалось принять вещь';
+                        error.classList.remove('hidden');
+                    });
+                });
+            }, Promise.resolve()).catch(function () {
+                errorBox.textContent = 'Сеть недоступна. Принятые вещи сохранены, остальные можно повторить.';
+                errorBox.classList.remove('hidden');
+            }).finally(function () {
+                acceptAllBtn.disabled = false;
+                var remainingHigh = grid.querySelectorAll('[data-confidence="high"]').length;
+                acceptAllBtn.textContent = 'Принять всё уверенное (' + remainingHigh + ')';
+                if (remainingHigh === 0) acceptAllBtn.classList.add('hidden');
+                var reviewHeading = document.getElementById('ingest-review-heading');
+                if (reviewHeading) {
+                    reviewHeading.textContent = 'Проверьте распознанные вещи (' + grid.querySelectorAll('[data-draft-id]').length + ')';
+                }
+            });
         });
     }
 })();

@@ -12,7 +12,6 @@ use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeTransfer;
 use App\Form\Account\WardrobeItemFormType;
 use App\Repository\WardrobeItemRepository;
-use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeTransferRepository;
 use App\Repository\WardrobeItemLifecycleEventRepository;
 use App\Service\AiUsageTracker;
@@ -55,7 +54,7 @@ class WardrobeController extends AbstractController
     ) {}
 
     #[Route('', name: 'index', methods: ['GET'])]
-    public function index(Request $request, WardrobeItemRepository $repo): Response
+    public function index(Request $request, WardrobeItemRepository $repo, WardrobeAiService $ai): Response
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -82,6 +81,7 @@ class WardrobeController extends AbstractController
         $filteredSum = array_sum(array_map(static fn (WardrobeItem $item): float => (float) ($item->getPrice() ?? 0), $items));
 
         return $this->render('account/wardrobe/index.html.twig', [
+            'photoConsentRequired' => $ai->externalPhotoConsentRequired($currentMember),
             'items'         => $items,
             'stats'         => $stats,
             'totalCount'    => $hasFilters || $isArchiveView ? count($items) : (int) array_sum(array_column($stats, 'cnt')),
@@ -277,6 +277,7 @@ class WardrobeController extends AbstractController
         WardrobeItemRepository $repo,
         ManagerRegistry $doctrine,
         WardrobeActivationService $activation,
+        WardrobeAiService $ai,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
@@ -356,6 +357,7 @@ class WardrobeController extends AbstractController
             'item'          => $item,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'photoConsentRequired' => $ai->externalPhotoConsentRequired($currentMember),
             'fullMode'      => true,
         ]);
     }
@@ -388,7 +390,6 @@ class WardrobeController extends AbstractController
         AiUsageTracker $usageTracker,
         LoggerInterface $wardrobeAiLogger,
         ValidatorInterface $validator,
-        WardrobeConsentRepository $consents,
         WardrobeConsentService $consentService,
     ): JsonResponse {
         if (!$this->isCsrfTokenValid('wardrobe_ai', (string) $request->request->get('_token'))) {
@@ -411,7 +412,7 @@ class WardrobeController extends AbstractController
             if ($error = $this->validateAiPhoto($photo, $validator)) {
                 return $error;
             }
-            if ($error = $this->photoConsentError($request, $user, $user, $consents, $consentService)) {
+            if ($error = $this->photoConsentError($request, $ai, $user, $user, $consentService)) {
                 return $error;
             }
 
@@ -449,7 +450,7 @@ class WardrobeController extends AbstractController
             return $this->json(['ok' => false, 'error' => 'Файл фото не найден'], Response::HTTP_BAD_REQUEST);
         }
         $subject = $item->getUser();
-        if ($error = $this->photoConsentError($request, $user, $subject, $consents, $consentService)) {
+        if ($error = $this->photoConsentError($request, $ai, $user, $subject, $consentService)) {
             return $error;
         }
 
@@ -486,18 +487,24 @@ class WardrobeController extends AbstractController
             : $this->json(['ok' => false, 'error' => $violations->get(0)->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
+    /**
+     * Согласие спрашиваем и записываем только когда фото реально уйдёт внешнему
+     * сервису (см. WardrobeAiService::externalPhotoConsentRequired). При обработке
+     * на оборудовании Оператора photoConsent из запроса игнорируется — иначе в базе
+     * появлялись бы отметки о согласии, которого пользователя не спрашивали.
+     */
     private function photoConsentError(
         Request $request,
+        WardrobeAiService $ai,
         User $actor,
         User $subject,
-        WardrobeConsentRepository $consents,
         WardrobeConsentService $consentService,
     ): ?JsonResponse {
-        if ($consents->findForSubject($subject)?->isPhotoProcessingGranted()) {
+        if (!$ai->externalPhotoConsentRequired($subject)) {
             return null;
         }
         if (!$request->request->getBoolean('photoConsent')) {
-            return $this->json(['ok' => false, 'error' => 'Подтвердите согласие на приватную обработку фото'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['ok' => false, 'error' => 'Подтвердите согласие на передачу фото внешнему AI-сервису'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         try {
@@ -583,6 +590,7 @@ class WardrobeController extends AbstractController
         Request $request,
         WardrobeItemRepository $repo,
         EntityManagerInterface $em,
+        WardrobeAiService $ai,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
@@ -648,6 +656,7 @@ class WardrobeController extends AbstractController
             'item'          => $item,
             'currentMember' => $currentMember,
             'isOwnWardrobe' => $currentMember->getId() === $user->getId(),
+            'photoConsentRequired' => $ai->externalPhotoConsentRequired($currentMember),
         ]);
     }
 

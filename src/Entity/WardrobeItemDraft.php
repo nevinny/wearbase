@@ -84,6 +84,9 @@ class WardrobeItemDraft
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $notes = null;
 
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $attributes = null;
+
     #[ORM\Column(name: 'ai_raw', type: Types::JSON, nullable: true)]
     private ?array $aiRaw = null;
 
@@ -255,6 +258,15 @@ class WardrobeItemDraft
         return $this;
     }
 
+    /** @return array{colorName?:?string,materialText?:?string,season?:?string} */
+    public function getAttributes(): array { return $this->attributes ?? []; }
+
+    public function setAttributes(?array $attributes): static
+    {
+        $this->attributes = $attributes;
+        return $this;
+    }
+
     public function getAiRaw(): ?array { return $this->aiRaw; }
 
     public function setAiRaw(?array $aiRaw): static
@@ -299,6 +311,7 @@ class WardrobeItemDraft
     public function clearSensitiveData(): void
     {
         $this->aiRaw = null;
+        $this->attributes = null;
         $this->photo = null;
         $this->fileSize = null;
         $this->updatedAt = new \DateTime();

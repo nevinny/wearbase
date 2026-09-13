@@ -118,90 +118,26 @@
     <div class="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ error }}</div>
 {% endif %}
 
+{% if dailyOutfits %}
+    <div class="mb-6 space-y-6">
+        <h2 class="text-base font-bold">Образы на утро</h2>
+        {% for occasion, group in dailyOutfits %}
+            <div>
+                <h3 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{{ group.label }}</h3>
+                <div class="space-y-6">
+                    {% for outfit in group.outfits %}
+                        {% include 'account/wardrobe/_outfit_card.html.twig' %}
+                    {% endfor %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
 {% if outfits %}
     <div class="space-y-6">
         {% for outfit in outfits %}
-            <section class="rounded-2xl bg-white p-5 shadow-sm">
-                <h2 class="font-bold">{{ outfit.title }}</h2>
-                {% if outfit.explanation %}<p class="mt-1 text-sm text-gray-600">{{ outfit.explanation }}</p>{% endif %}
-                <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                    {% for item in outfit.items %}
-                        <a href="{{ path('account_wardrobe_show', {id: item.id, member: member.id}) }}" class="overflow-hidden rounded-xl border border-gray-100 hover:shadow-sm">
-                            <div class="aspect-square bg-gray-100">
-                                {% if item.coverPhoto %}
-                                    <img src="{{ path('account_wardrobe_media_photo', {id: item.coverPhoto.id}) }}" class="h-full w-full object-cover" alt="{{ item.name }}">
-                                {% elseif item.photo %}
-                                    <img src="{{ path('account_wardrobe_media_item', {id: item.id}) }}" class="h-full w-full object-cover" alt="{{ item.name }}">
-                                {% else %}
-                                    <div class="flex h-full items-center justify-center text-4xl opacity-20">👕</div>
-                                {% endif %}
-                            </div>
-                            <div class="p-3">
-                                <div class="truncate text-sm font-semibold">{{ item.name ?: 'Без названия' }}</div>
-                                <div class="mt-1 text-xs text-gray-500">{{ item.category ?: 'Без категории' }}{% if item.colorName %} · {{ item.colorName }}{% endif %}</div>
-                            </div>
-                        </a>
-                    {% endfor %}
-                </div>
-                <div class="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
-                    {% for reaction, label in {'like': '❤️ Нравится', 'dislike': '👎 Не моё', 'worn': '✅ Я это надел'} %}
-                        <form method="post" action="{{ path('account_wardrobe_outfit_reaction', {id: outfit.feedbackId, member: member.id}) }}">
-                            <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_outfit_reaction_' ~ outfit.feedbackId) }}">
-                            <input type="hidden" name="reaction" value="{{ reaction }}">
-                            <button class="min-h-11 rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50">{{ label }}</button>
-                        </form>
-                    {% endfor %}
-                </div>
-                <div class="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
-                    <form method="post" action="{{ path('account_wardrobe_outfit_share_create', {outfitId: outfit.feedbackId}) }}" class="flex flex-wrap items-end gap-2">
-                        <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_outfit_share_' ~ outfit.feedbackId) }}">
-                        <label class="text-xs text-gray-500">
-                            Срок ссылки
-                            <select name="ttl" class="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold">
-                                {% for value, label in {'24h': '24 часа', '7d': '7 дней', '30d': '30 дней'} %}
-                                    <option value="{{ value }}"{{ value == '7d' ? ' selected' : '' }}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <button class="min-h-11 rounded-full bg-gray-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-black">Поделиться</button>
-                    </form>
-                    <p class="max-w-xs text-[11px] leading-snug text-gray-400">Получатели увидят название образа и фото вещей; бренды скрыты. Ссылка подростка требует подтверждения родителя.</p>
-                </div>
-                {% if circleMemberships %}
-                    <div class="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:items-end">
-                        <form method="post" action="{{ path('account_wardrobe_outfit_share_circle_create', {outfitId: outfit.feedbackId}) }}" class="flex flex-wrap items-end gap-2">
-                            <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_outfit_share_circle_' ~ outfit.feedbackId) }}">
-                            <label class="text-xs text-gray-500">
-                                Показать в кружке
-                                <select name="circle_id" required class="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold">
-                                    {% for entry in circleMemberships %}
-                                        <option value="{{ entry.membership.circle.id }}">{{ entry.membership.circle.title }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <button class="min-h-11 rounded-full border border-gray-900 px-5 py-2.5 text-xs font-semibold text-gray-900 hover:bg-gray-50">В кружок</button>
-                        </form>
-                        <p class="max-w-xs text-[11px] leading-snug text-gray-400">Лук увидят только участники выбранного кружка; гостевая ссылка не создаётся.</p>
-                    </div>
-                {% endif %}
-                {% if circleMemberships %}
-                    <div class="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:items-end">
-                        <form method="post" action="{{ path('account_wardrobe_outfit_share_circle_create', {outfitId: outfit.feedbackId}) }}" class="flex flex-wrap items-end gap-2">
-                            <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_outfit_share_circle_' ~ outfit.feedbackId) }}">
-                            <label class="text-xs text-gray-500">
-                                Показать в кружке
-                                <select name="circle_id" required class="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold">
-                                    {% for entry in circleMemberships %}
-                                        <option value="{{ entry.membership.circle.id }}">{{ entry.membership.circle.title }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <button class="min-h-11 rounded-full border border-gray-900 px-5 py-2.5 text-xs font-semibold text-gray-900 hover:bg-gray-50">В кружок</button>
-                        </form>
-                        <p class="max-w-xs text-[11px] leading-snug text-gray-400">Лук увидят только участники выбранного кружка; гостевой ссылки не создаётся.</p>
-                    </div>
-                {% endif %}
-            </section>
+            {% include 'account/wardrobe/_outfit_card.html.twig' %}
         {% endfor %}
     </div>
 {% endif %}

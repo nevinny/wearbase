@@ -32,6 +32,8 @@ parameters:
     env(SOCIAL_CLICK_LOG_HOST): 'regru'
     env(SOCIAL_CLICK_LOG_GLOB): '/var/www/u3042786/data/logs/wearbase.ru.access.log*'
     env(GEMINI_API_KEY): ''
+    # Погода стилиста гардероба (WeatherAPI.com free tier). Пусто = провайдер выключен.
+    env(WEATHER_API_KEY): ''
     env(CLOUDFLARE_ACCOUNT_ID): ''
     env(CLOUDFLARE_AI_TOKEN): ''
     # Движки SearXNG для автоматики discover (толерантные к объёму с одного IP).
@@ -196,6 +198,10 @@ services:
             $remoteModel: '%env(OPENROUTER_MODEL)%'
             $localModel: '%env(WARDROBE_OUTFIT_LOCAL_MODEL)%'
             $localFirst: '%env(bool:WARDROBE_OUTFIT_LOCAL)%'
+
+    App\Service\Wardrobe\WeatherProvider:
+        arguments:
+            $apiKey: '%env(WEATHER_API_KEY)%'
 
     App\Service\YandexSearchClient:
         arguments:

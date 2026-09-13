@@ -5,6 +5,7 @@ namespace App\Service\Wardrobe;
 use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Repository\WardrobeConsentRepository;
 use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Service\WardrobeAiMeter;
@@ -27,9 +28,12 @@ use Symfony\Contracts\Cache\ItemInterface;
  */
 class WardrobeAiService
 {
+    public const PHOTO_SCHEMA_VERSION = '2';
+
     private const CACHE_TTL = 86400;
     private const MAX_SCRAPE_CHARS = 6000;
     private const DAILY_CAP_ERROR = 'Дневной лимит AI-подсказок исчерпан, попробуйте завтра';
+    private const CONSENT_ERROR = 'Нет согласия на передачу фото внешнему AI-сервису';
     // Наружу при НЕ-WardrobeAiException (детали — только в логе; URL провайдера никогда не утекает)
     private const GENERIC_ERROR = 'Не удалось обработать запрос, попробуйте позже';
 
@@ -44,12 +48,38 @@ class WardrobeAiService
         private readonly bool $visionLocal,
         private readonly string $localModel,
         private readonly LoggerInterface $wardrobeAiLogger,
+        private readonly WardrobeConsentRepository $consents,
     ) {
+    }
+
+    /**
+     * Единственный гейт согласия на фото: фото уходит в модель только отсюда (веб,
+     * CLI, фоновый воркер черновиков, telegram-бот), поэтому вопрос «нужно ли
+     * отдельное согласие» решается по месту отправки, а не по месту загрузки.
+     *
+     * visionLocal — обработка на оборудовании Оператора, третьей стороны нет:
+     * её покрывает общее согласие при регистрации (фото названы в его тексте).
+     * Иначе фото уходит внешнему сервису — нужна отметка субъекта, данная под
+     * текстом, который эту передачу описывает.
+     */
+    public function externalPhotoConsentRequired(?User $subject): bool
+    {
+        if ($this->visionLocal) {
+            return false;
+        }
+
+        return $subject === null || !($this->consents->findForSubject($subject)?->coversExternalPhotoTransfer() ?? false);
     }
 
     /** @return array{ok:bool,fields?:array,confidence?:string,error?:string} */
     public function suggestFromPhoto(string $path, ?User $user = null): array
     {
+        if ($this->externalPhotoConsentRequired($user)) {
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_PHOTO, $user, self::CONSENT_ERROR);
+
+            return ['ok' => false, 'error' => self::CONSENT_ERROR];
+        }
+
         $hash = @sha1_file($path);
         if ($hash === false) {
             $error = 'Не удалось прочитать фото';
@@ -58,9 +88,13 @@ class WardrobeAiService
             return ['ok' => false, 'error' => $error];
         }
 
+        $model = $this->visionLocal ? $this->localModel : $this->visionModel;
+        $provider = $this->visionLocal ? 'local' : 'remote';
+        $cacheKey = 'wardrobe_ai_photo_'.self::PHOTO_SCHEMA_VERSION.'_'.sha1($provider.':'.$model).'_'.$hash;
+
         try {
             return $this->cache->get(
-                "wardrobe_ai_photo_{$hash}",
+                $cacheKey,
                 function (ItemInterface $item) use ($path, $user): array {
                     $item->expiresAfter(self::CACHE_TTL);
 
@@ -77,6 +111,12 @@ class WardrobeAiService
     /** @return array<int, array{name:?string,category:?string,color:?string,confidence:string}> */
     public function recognizeOutfitPhoto(string $path, ?User $user = null): array
     {
+        if ($this->externalPhotoConsentRequired($user)) {
+            $this->logError(AiUsageLog::FEATURE_WARDROBE_PHOTO, $user, self::CONSENT_ERROR, ['flow' => 'outfit']);
+
+            return [];
+        }
+
         $hash = @sha1_file($path);
         if ($hash === false) {
             return [];
@@ -171,8 +211,8 @@ PROMPT;
   "category": "категория (предпочтительно одна из: {$categories}, либо своя короткая на русском) или null",
   "name": "короткое русское название-описание, например «Белая oversize футболка»",
   "color": "цвет или null",
-  "material": "материал, если явно видно/указано на бирке, иначе null",
-  "season": "лето|демисезон|зима|всесезон или null",
+  "material": "состав ТОЛЬКО с читаемой бирки, не угадывай по виду ткани, иначе null",
+  "season": "all|spring|summer|autumn|winter или null; если сезон неоднозначен, null",
   "type": "фасон/крой или null",
   "size": "размер ТОЛЬКО если видна читаемая бирка, иначе null",
   "confidence": "high|med|low"
@@ -193,6 +233,8 @@ EOT;
         return [
             'ok'         => true,
             'fields'     => $this->normalizePhotoFields($data),
+            'model'      => $model,
+            'schemaVersion' => self::PHOTO_SCHEMA_VERSION,
             'confidence' => $this->normalizeConfidence($data['confidence'] ?? null),
         ];
     }
@@ -280,27 +322,36 @@ EOT;
         ];
     }
 
-    /** color/material/season/type → notes; null-поля пропускаются. */
+    /** Structured fields use the same names and season values as WardrobeItemFormType. */
     private function normalizePhotoFields(array $d): array
     {
-        $notesParts = [];
-        foreach ([
-            'Цвет'     => $this->nullableString($d['color'] ?? null),
-            'Материал' => $this->nullableString($d['material'] ?? null),
-            'Сезон'    => $this->nullableString($d['season'] ?? null),
-            'Фасон'    => $this->nullableString($d['type'] ?? null),
-        ] as $label => $value) {
-            if ($value !== null) {
-                $notesParts[] = "{$label}: {$value}";
-            }
-        }
+        $season = $this->nullableString($d['season'] ?? null);
+        $season = match (mb_strtolower($season ?? '')) {
+            'all', 'всесезон' => 'all',
+            'spring', 'весна' => 'spring',
+            'summer', 'лето' => 'summer',
+            'autumn', 'осень' => 'autumn',
+            'winter', 'зима' => 'winter',
+            default => null,
+        };
+        $cut = $this->nullableString($d['type'] ?? null);
 
         return [
-            'category' => $this->nullableString($d['category'] ?? null),
-            'name'     => $this->nullableString($d['name'] ?? null),
-            'size'     => $this->nullableString($d['size'] ?? null),
-            'notes'    => $notesParts !== [] ? implode('; ', $notesParts) : null,
+            'category' => $this->limitedString($d['category'] ?? null, 100),
+            'name' => $this->limitedString($d['name'] ?? null, 255),
+            'size' => $this->limitedString($d['size'] ?? null, 50),
+            'colorName' => $this->limitedString($d['color'] ?? null, 100),
+            'materialText' => $this->limitedString($d['material'] ?? null, 2000),
+            'season' => $season,
+            'notes' => $cut === null ? null : 'Фасон: '.mb_substr($cut, 0, 500),
         ];
+    }
+
+    private function limitedString(mixed $value, int $length): ?string
+    {
+        $value = $this->nullableString($value);
+
+        return $value === null ? null : mb_substr($value, 0, $length);
     }
 
     private function normalizeConfidence(mixed $value): string

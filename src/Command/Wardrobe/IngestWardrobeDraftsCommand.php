@@ -136,10 +136,12 @@ class IngestWardrobeDraftsCommand extends Command
                     'name' => $this->nullableString($fields['name'] ?? null),
                     'size' => $this->nullableString($fields['size'] ?? null),
                     'notes' => $this->nullableString($fields['notes'] ?? null),
+                    'attributes' => array_intersect_key($fields, array_flip(['colorName', 'materialText', 'season'])),
                     'confidence' => $this->nullableString($result['confidence'] ?? null),
                     'aiRaw' => array_filter([
                         'confidence' => $this->nullableString($result['confidence'] ?? null),
                         'model' => $this->nullableString($result['model'] ?? null),
+                        'schemaVersion' => $this->nullableString($result['schemaVersion'] ?? null),
                     ], static fn (mixed $value): bool => $value !== null),
                 ]);
                 if ($saved) {

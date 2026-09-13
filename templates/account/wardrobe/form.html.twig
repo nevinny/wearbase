@@ -16,6 +16,7 @@
 <div class="mb-5 flex items-center gap-3">
     <a href="{{ path('account_wardrobe_index', memberParam) }}"
        class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition">← Назад</a>
+    <a href="{{ path('account_wardrobe_preparation', memberParam) }}" class="text-sm text-gray-600">Подготовить вещи</a>
     <h1 class="text-lg font-bold">{{ item.id ? 'Редактировать вещь' : 'Новая вещь' }}</h1>
 </div>
 
@@ -86,10 +87,12 @@
             {% endif %}
         </div>
     {% endif %}
-    <label class="mb-3 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-        <input id="wardrobe-ai-photo-consent" type="checkbox" class="mt-0.5 h-4 w-4 rounded">
-        <span>Разрешаю приватную обработку выбранного фото для AI-подсказок. Для детского профиля согласие подтверждает родитель.</span>
-    </label>
+    {% if photoConsentRequired %}
+        <label class="mb-3 flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+            <input id="wardrobe-ai-photo-consent" type="checkbox" class="mt-0.5 h-4 w-4 rounded">
+            <span>Разрешаю передать выбранное фото внешнему AI-сервису для подсказок по вещи. Для детского профиля согласие подтверждает родитель. Подробнее — в <a href="{{ path('personal_data_consent') }}" target="_blank" class="underline">согласии на обработку персональных данных</a>.</span>
+        </label>
+    {% endif %}
     {{ form_widget(form.photoFile, {'attr': {'class': 'block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-black'}}) }}
     {{ f.err(form.photoFile) }}
     <div class="mt-4">
@@ -205,12 +208,25 @@
         '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
         '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
 
+    function fieldElement(key) {
+        return document.getElementById('wardrobe_item_form_' + (key === 'category' ? 'categoryRef' : key));
+    }
+
+    function fieldValue(key, value) {
+        if (key !== 'category') return value;
+        var el = fieldElement(key);
+        var option = el && Array.from(el.options).find(function (option) {
+            return option.textContent.trim().toLocaleLowerCase() === String(value).trim().toLocaleLowerCase();
+        });
+        return option ? option.value : null;
+    }
+
     // ── Общий хелпер: заполнить только пустые поля формы ──
     function fillEmpty(map) {
         Object.keys(map || {}).forEach(function (key) {
-            var val = map[key];
+            var val = fieldValue(key, map[key]);
             if (val === undefined || val === null || val === '') return;
-            var el = document.getElementById('wardrobe_item_form_' + key);
+            var el = fieldElement(key);
             if (!el) return;
             if (el.value && el.value.trim() !== '') return;
             el.value = val;
@@ -285,7 +301,7 @@
     var rerunBtn = document.getElementById('wardrobe-ai-rerun-btn');
     var photoDiff = document.getElementById('wardrobe-ai-photo-diff');
     var ITEM_ID = '{{ item.id }}';
-    var AI_FIELD_LABELS = { category: 'Категория', name: 'Название', size: 'Размер', notes: 'Характеристики' };
+    var AI_FIELD_LABELS = { category: 'Категория', name: 'Название', size: 'Размер', colorName: 'Цвет', materialText: 'Состав с бирки', season: 'Сезон', notes: 'Характеристики' };
 
     function escapeHtml(str) {
         return String(str).replace(/[&<>"]/g, function (c) {
@@ -326,21 +342,27 @@
         photoStatus.innerHTML = '✨ AI предлагает изменить заполненные поля';
 
         var parts = Object.keys(diffs).map(function (key) {
-            return '<b>' + AI_FIELD_LABELS[key] + '</b>: «' + escapeHtml(diffs[key]) + '»';
+            var el = fieldElement(key);
+            var label = el && el.tagName === 'SELECT'
+                ? Array.from(el.options).find(function (option) { return option.value === diffs[key]; }).textContent
+                : diffs[key];
+            return '<label class="block mb-2"><input type="checkbox" data-ai-field="' + key + '"> <b>' +
+                AI_FIELD_LABELS[key] + '</b>: «' + escapeHtml(label) + '»</label>';
         });
 
         photoDiff.innerHTML =
             '<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-gray-700">' +
-            '<div class="mb-1.5">AI предлагает: ' + parts.join(' · ') + '</div>' +
+            '<div class="mb-1.5">AI предлагает: ' + parts.join('') + '</div>' +
             '<div class="flex gap-2">' +
-            '<button type="button" id="wardrobe-ai-photo-diff-apply" class="rounded-md bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-black transition">Применить</button>' +
+            '<button type="button" id="wardrobe-ai-photo-diff-apply" class="rounded-md bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-black transition">Применить выбранное</button>' +
             '<button type="button" id="wardrobe-ai-photo-diff-dismiss" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50 transition">✕</button>' +
             '</div></div>';
         photoDiff.classList.remove('hidden');
 
         document.getElementById('wardrobe-ai-photo-diff-apply').addEventListener('click', function () {
-            Object.keys(diffs).forEach(function (key) {
-                var el = document.getElementById('wardrobe_item_form_' + key);
+            photoDiff.querySelectorAll('[data-ai-field]:checked').forEach(function (checkbox) {
+                var key = checkbox.dataset.aiField;
+                var el = fieldElement(key);
                 if (el) markFilled(el, diffs[key]);
             });
             photoDiff.classList.add('hidden');
@@ -360,9 +382,9 @@
     function applyAiSuggestions(fields) {
         var diffs = {};
         Object.keys(AI_FIELD_LABELS).forEach(function (key) {
-            var val = fields[key];
+            var val = fieldValue(key, fields[key]);
             if (val === undefined || val === null || val === '') return;
-            var el = document.getElementById('wardrobe_item_form_' + key);
+            var el = fieldElement(key);
             if (!el) return;
             var current = el.value ? el.value.trim() : '';
             if (current === '') {

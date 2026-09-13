@@ -113,13 +113,28 @@ class WardrobeOutfitService
             }
             $catalog[] = $row;
         }
-        $catalogJson = json_encode($catalog, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return [$this->buildPrompt($catalog, $request, $preferenceContext, $context, $minimized), $itemMap];
+    }
+
+    /**
+     * Собирает текст промпта из уже готовых строк каталога — общая точка для
+     * интерактивного стилиста (каталог из сущностей, см. prompt()) и ночного
+     * пакетного конвейера (каталог приезжает JSON'ом с прода, сущностей нет).
+     *
+     * @param array<int, array{id:int,category:?string,color:?string,season:?string,styles:string[],rotation:string,name?:string,material?:string}> $catalogRows
+     * @param array{event:?string,weather:?string} $context
+     */
+    public function buildPrompt(array $catalogRows, string $request, string $preferenceContext, array $context, bool $minimized, int $maxOutfits = 3): string
+    {
+        $catalogJson = json_encode($catalogRows, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $structuredJson = json_encode([
             'event' => $context['event'],
             'weather' => $context['weather'],
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-        $prompt = <<<PROMPT
-Ты стилист цифрового гардероба. Собери до 3 разных образов только из вещей каталога.
+
+        return <<<PROMPT
+Ты стилист цифрового гардероба. Собери до {$maxOutfits} разных образов только из вещей каталога.
 Учитывай категорию, цвет, сезон и стиль. Не добавляй вещи, которых нет в каталоге.
 В каждом образе должно быть от 2 до 5 вещей с разными функциональными ролями.
 Предпочитай rotation=fresh; rotation=recent используй, только если сочетание заметно лучше.
@@ -134,15 +149,48 @@ class WardrobeOutfitService
 Верни ТОЛЬКО валидный JSON без markdown:
 {"outfits":[{"title":"короткое название","explanation":"одно предложение до 240 символов","item_ids":[1,2]}]}
 PROMPT;
-
-        return [$prompt, $itemMap];
     }
 
     /**
      * @param array<int,WardrobeItem> $byId
      * @return array<int, array{title:string, explanation:string, items:WardrobeItem[]}>
      */
-    private function normalize(string $response, array $byId): array
+    private function normalize(string $response, array $byId, int $maxOutfits = 3): array
+    {
+        $result = [];
+        foreach ($this->parseOutfits($response, $maxOutfits) as $outfit) {
+            $selected = [];
+            foreach ($outfit['item_ids'] as $id) {
+                if (isset($byId[$id])) {
+                    $selected[] = $byId[$id];
+                }
+            }
+            if (count($selected) < 2) {
+                continue;
+            }
+            $result[] = [
+                'title' => $outfit['title'],
+                'explanation' => $outfit['explanation'],
+                'items' => $selected,
+            ];
+        }
+
+        if ($result === []) {
+            throw new WardrobeAiException('Модель не нашла подходящих сочетаний');
+        }
+
+        return $result;
+    }
+
+    /**
+     * Разбирает ответ модели в структурированный список образов с "сырыми" id вещей —
+     * без привязки к сущностям. Используется normalize() (интерактивный стилист,
+     * id → WardrobeItem) и пакетным конвейером (id → сверка со списком вещей гардероба
+     * на стороне прод-контроллера, см. WardrobeDailyController).
+     *
+     * @return array<int, array{title:string, explanation:string, item_ids:int[]}>
+     */
+    public function parseOutfits(string $response, int $maxOutfits = 3): array
     {
         $cleaned = preg_replace('/```(?:json)?\s*([\s\S]*?)```/', '$1', $response) ?? $response;
         if (!preg_match('/\{[\s\S]*\}/', $cleaned, $match)) {
@@ -154,30 +202,23 @@ PROMPT;
         }
 
         $result = [];
-        foreach (array_slice($data['outfits'], 0, 3) as $outfit) {
+        foreach (array_slice($data['outfits'], 0, $maxOutfits) as $outfit) {
             if (!is_array($outfit)) {
                 continue;
             }
             $ids = is_array($outfit['item_ids'] ?? null) ? $outfit['item_ids'] : [];
-            $selected = [];
+            $itemIds = [];
             foreach (array_slice(array_unique($ids), 0, 5) as $id) {
                 $id = filter_var($id, FILTER_VALIDATE_INT);
-                if ($id !== false && isset($byId[$id])) {
-                    $selected[] = $byId[$id];
+                if ($id !== false) {
+                    $itemIds[] = $id;
                 }
-            }
-            if (count($selected) < 2) {
-                continue;
             }
             $result[] = [
                 'title' => mb_substr(trim((string) ($outfit['title'] ?? 'Готовый образ')), 0, 100),
                 'explanation' => mb_substr(trim((string) preg_replace('/\s+/u', ' ', (string) ($outfit['explanation'] ?? ''))), 0, 240),
-                'items' => $selected,
+                'item_ids' => $itemIds,
             ];
-        }
-
-        if ($result === []) {
-            throw new WardrobeAiException('Модель не нашла подходящих сочетаний');
         }
 
         return $result;

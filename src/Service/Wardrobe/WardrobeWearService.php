@@ -13,7 +13,6 @@ use App\Repository\WardrobeOutfitRepository;
 use App\Repository\WardrobeWearEventRepository;
 use App\Service\FamilyService;
 use App\ValueObject\MoneyAmount;
-use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
@@ -79,11 +78,10 @@ final class WardrobeWearService
     {
         $this->assertCanManage($actor, $subject);
         return $this->em->wrapInTransaction(function () use ($actor, $subject, $outfitId): WardrobeWearEvent {
-            $outfit = $this->em->find(WardrobeOutfit::class, $outfitId, LockMode::PESSIMISTIC_WRITE);
-            if (!$outfit instanceof WardrobeOutfit
-                || $outfit->getUser()?->getId() !== $actor->getId()
-                || $outfit->getWardrobeOwner()?->getId() !== $subject->getId()
-            ) {
+            // Владение — по wardrobeOwner ($subject), не по actor'у: пакетный конвейер
+            // и семейный сценарий (родитель отмечает образ ребёнка) ставят их по-разному.
+            $outfit = $this->outfits->lockActiveForOwner($outfitId, $subject);
+            if ($outfit === null) {
                 throw new \DomainException('Образ не найден');
             }
             $today = new \DateTimeImmutable('today');

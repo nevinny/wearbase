@@ -102,7 +102,7 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
             ->execute();
     }
 
-    /** @param array{category?:?string,name?:?string,size?:?string,notes?:?string,confidence?:?string,aiRaw?:?array} $fields */
+    /** @param array{category?:?string,name?:?string,size?:?string,notes?:?string,confidence?:?string,aiRaw?:?array,attributes?:?array} $fields */
     public function finishClaim(int $draftId, string $workerId, string $status, array $fields = [], ?string $error = null): bool
     {
         if (!in_array($status, [WardrobeItemDraft::STATUS_RECOGNIZED, WardrobeItemDraft::STATUS_FAILED], true)) {
@@ -118,6 +118,7 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
             ->set('d.notes', ':notes')
             ->set('d.confidence', ':confidence')
             ->set('d.aiRaw', ':aiRaw')
+            ->set('d.attributes', ':attributes')
             ->set('d.error', ':error')
             ->set('d.workerId', 'NULL')
             ->set('d.leaseUntil', 'NULL')
@@ -133,13 +134,14 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
             'notes' => $fields['notes'] ?? null,
             'confidence' => $fields['confidence'] ?? null,
             'aiRaw' => $fields['aiRaw'] ?? null,
+            'attributes' => $fields['attributes'] ?? null,
             'error' => $error === null ? null : mb_substr($error, 0, 255),
             'updatedAt' => new \DateTime(),
             'id' => $draftId,
             'processing' => WardrobeItemDraft::STATUS_PROCESSING,
             'workerId' => $workerId,
         ] as $name => $value) {
-            $query->setParameter($name, $value, $name === 'aiRaw' ? Types::JSON : null);
+            $query->setParameter($name, $value, in_array($name, ['aiRaw', 'attributes'], true) ? Types::JSON : null);
         }
 
         return 1 === $query->getQuery()->execute();
@@ -207,8 +209,10 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
         foreach ($rows as $row) {
             $cnt = (int) $row['cnt'];
             $counts['total'] += $cnt;
-            if (array_key_exists($row['status'], $counts)) {
-                $counts[$row['status']] = $cnt;
+            if ($row['status'] === WardrobeItemDraft::STATUS_PROCESSING) {
+                $counts['pending'] += $cnt;
+            } elseif (array_key_exists($row['status'], $counts)) {
+                $counts[$row['status']] += $cnt;
             }
         }
 
@@ -260,7 +264,7 @@ class WardrobeItemDraftRepository extends ServiceEntityRepository
     /** @return WardrobeItemDraft[] */
     public function findAcceptedBefore(\DateTimeImmutable $before, int $limit = 100): array
     {
-        return $this->createQueryBuilder('d')->andWhere('d.status = :status')->andWhere('d.acceptedAt < :before')->andWhere('d.photo IS NOT NULL OR d.aiRaw IS NOT NULL')->setParameter('status', WardrobeItemDraft::STATUS_ACCEPTED)->setParameter('before', $before)->orderBy('d.id', 'ASC')->setMaxResults($limit)->getQuery()->getResult();
+        return $this->createQueryBuilder('d')->andWhere('d.status = :status')->andWhere('d.acceptedAt < :before')->andWhere('d.photo IS NOT NULL OR d.aiRaw IS NOT NULL OR d.attributes IS NOT NULL')->setParameter('status', WardrobeItemDraft::STATUS_ACCEPTED)->setParameter('before', $before)->orderBy('d.id', 'ASC')->setMaxResults($limit)->getQuery()->getResult();
     }
 
     /** @return WardrobeItemDraft[] */

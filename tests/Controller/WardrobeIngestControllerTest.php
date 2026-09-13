@@ -307,6 +307,120 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         $this->assertTrue($acceptedEvents[0]->getMetadata()['correction']);
     }
 
+    public function testWorkerAttributesSurviveReviewAndPromotionWithExplicitClearing(): void
+    {
+        $client = static::createClient();
+        $client->disableReboot();
+        $user = $this->loginAsCustomer($client);
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $draft = $this->makeDraft($em, $user, 'attributes-'.uniqid(), WardrobeItemDraft::STATUS_PENDING);
+        $repo = $em->getRepository(WardrobeItemDraft::class);
+        $repo->claimPending(1, 'attributes-worker', $draft->getBatchId());
+        self::assertTrue($repo->finishClaim($draft->getId(), 'attributes-worker', WardrobeItemDraft::STATUS_RECOGNIZED, [
+            'name' => 'Рубашка', 'category' => 'Рубашки', 'confidence' => 'high',
+            'attributes' => ['colorName' => 'белый', 'materialText' => 'лён', 'season' => 'summer'],
+        ]));
+        $em->refresh($draft);
+
+        $crawler = $client->request('GET', '/account/wardrobe/ingest/'.$draft->getBatchId());
+        self::assertResponseIsSuccessful();
+        self::assertSame('белый', $crawler->filter('[data-field="colorName"]')->attr('value'));
+        self::assertSame('лён', $crawler->filter('[data-field="materialText"]')->text());
+        self::assertSame('summer', $crawler->filter('[data-field="season"] option[selected]')->attr('value'));
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+        $client->request('POST', '/account/wardrobe/ingest/draft/'.$draft->getId().'/accept', [], [], [
+            'HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['colorName' => 'голубой', 'materialText' => null]));
+        self::assertResponseIsSuccessful();
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $em->clear();
+        $item = $em->find(WardrobeItem::class, $data['itemId']);
+        self::assertSame('голубой', $item->getColorName());
+        self::assertNull($item->getMaterialText());
+        self::assertSame('summer', $item->getSeason());
+        $client->request('POST', '/account/wardrobe/ingest/draft/'.$draft->getId().'/accept', [], [], [
+            'HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json',
+        ], '{"colorName":"красный"}');
+        self::assertResponseIsSuccessful();
+        $em->clear();
+        self::assertSame('голубой', $em->find(WardrobeItem::class, $data['itemId'])->getColorName());
+    }
+
+    public function testInvalidSeasonDoesNotAcceptDraftAndCanBeCorrected(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $draft = $this->makeDraft($em, $user, 'invalid-season-'.uniqid(), WardrobeItemDraft::STATUS_RECOGNIZED, ['category' => 'Рубашки', 'name' => 'Рубашка']);
+        $id = $draft->getId();
+        $client->request('GET', '/account/wardrobe/ingest/'.$draft->getBatchId());
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+        foreach (['"moon"', '[]'] as $season) {
+            $client->request('POST', '/account/wardrobe/ingest/draft/'.$id.'/accept', [], [], [
+                'HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json',
+            ], '{"season":'.$season.'}');
+            self::assertResponseStatusCodeSame(422);
+        }
+        $client->request('POST', '/account/wardrobe/ingest/draft/'.$id.'/accept', [], [], [
+            'HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json',
+        ], '{"season":""}');
+        self::assertResponseIsSuccessful();
+        $data = json_decode($client->getResponse()->getContent(), true);
+        self::assertNull(static::getContainer()->get(EntityManagerInterface::class)->find(WardrobeItem::class, $data['itemId'])->getSeason());
+    }
+
+    /**
+     * «Принять всё уверенное» на клиенте шлёт последовательные POST на покарточный
+     * /draft/{id}/accept с текущими значениями полей формы (включая правки
+     * пользователя) — сервер не решает за него. Черновики со средней/низкой
+     * уверенностью в цепочку не попадают и остаются на ручной проверке.
+     */
+    public function testAcceptAllPreservesAttributesAndLeavesUncertainDraftForReview(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $batch = 'bulk-attributes-'.uniqid();
+        $high = $this->makeDraft($em, $user, $batch, WardrobeItemDraft::STATUS_RECOGNIZED, ['name' => 'Белая рубашка', 'category' => 'Рубашки']);
+        $high->setConfidence('high')->setAttributes(['colorName' => 'белый', 'season' => 'summer']);
+        $medium = $this->makeDraft($em, $user, $batch, WardrobeItemDraft::STATUS_RECOGNIZED, ['name' => 'Сомнительная рубашка', 'category' => 'Рубашки']);
+        $medium->setConfidence('med');
+        $em->flush();
+        $highId = $high->getId();
+        $mediumId = $medium->getId();
+        $client->request('GET', '/account/wardrobe/ingest/'.$batch);
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+
+        // Правка цвета в браузере перед нажатием «Принять всё уверенное» — должна доехать до вещи.
+        $client->request('POST', '/account/wardrobe/ingest/draft/'.$highId.'/accept', [], [], [
+            'HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json',
+        ], json_encode(['colorName' => 'молочный', 'season' => 'summer']));
+        self::assertResponseIsSuccessful();
+        self::assertTrue(json_decode($client->getResponse()->getContent(), true)['ok']);
+
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $em->clear();
+        self::assertSame('молочный', $em->find(WardrobeItemDraft::class, $highId)->getAcceptedItem()->getColorName());
+        self::assertSame(WardrobeItemDraft::STATUS_RECOGNIZED, $em->find(WardrobeItemDraft::class, $mediumId)->getStatus());
+    }
+
+    public function testProcessingCountsAndFailedDraftManualReview(): void
+    {
+        $client = static::createClient();
+        $user = $this->loginAsCustomer($client);
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $batch = 'processing-'.uniqid();
+        $this->makeDraft($em, $user, $batch, WardrobeItemDraft::STATUS_PENDING);
+        $this->makeDraft($em, $user, $batch, WardrobeItemDraft::STATUS_PROCESSING);
+        $failed = $this->makeDraft($em, $user, $batch, WardrobeItemDraft::STATUS_FAILED);
+        $client->request('GET', '/account/wardrobe/ingest/'.$batch.'/status');
+        self::assertSame(2, json_decode($client->getResponse()->getContent(), true)['pending']);
+        $crawler = $client->request('GET', '/account/wardrobe/ingest/'.$batch);
+        self::assertResponseIsSuccessful();
+        self::assertCount(1, $crawler->filter('[data-draft-id]'));
+        self::assertCount(1, $crawler->filter('[data-draft-id="'.$failed->getId().'"] .ingest-accept-btn'));
+    }
+
     /**
      * Регресс: гонка за item_no во время accept — конкурентная вставка происходит
      * реально внутри flush() (событие prePersist), строго между вычислением

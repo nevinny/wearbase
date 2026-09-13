@@ -38,6 +38,23 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /** @return WardrobeItem[] Up to limit + 1 records for keyset pagination. */
+    public function findNeedingPreparation(User $subject, int $afterId = 0, int $limit = 30): array
+    {
+        return $this->createQueryBuilder('w')
+            ->andWhere('w.user = :subject AND w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus = :active AND w.wearStatus = :wear')
+            ->andWhere("(w.category IS NULL OR TRIM(w.category) = '' OR w.colorName IS NULL OR TRIM(w.colorName) = '' OR w.season IS NULL OR TRIM(w.season) = '')")
+            ->andWhere('w.id > :after')
+            ->setParameter('subject', $subject)
+            ->setParameter('active', WardrobeItem::ITEM_ACTIVE)
+            ->setParameter('wear', WardrobeItem::WEAR_ACTIVE)
+            ->setParameter('after', $afterId)
+            ->orderBy('w.id', 'ASC')
+            ->setMaxResults($limit + 1)
+            ->getQuery()->getResult();
+    }
+
     /**
      * Стабильная страница активных вещей для mobile API. itemNo уникален внутри
      * пользователя, поэтому служит простым непрозрачным для других профилей cursor.

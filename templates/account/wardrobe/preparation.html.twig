@@ -1,0 +1,28 @@
+{% extends 'account/family_wardrobe/layout.html.twig' %}
+{% block title %}Подготовка вещей для стилиста — WEARBASE{% endblock %}
+{% block family_mobile_content %}
+{% set memberParam = currentMember.id == app.user.id ? {} : {member: currentMember.id} %}
+<div class="mb-5">
+    <a class="text-sm text-gray-600" href="{{ path('account_wardrobe_index', memberParam) }}">← В гардероб</a>
+    <h1 class="mt-3 text-lg font-bold">Подготовка вещей для стилиста</h1>
+    <p class="mt-2 text-sm text-gray-600">Активные носимые вещи, у которых не заполнены категория, цвет или сезон. Откройте карточку и запросите AI-подсказки по фото либо заполните поля вручную.</p>
+    <p class="mt-2 text-sm text-gray-600">Проверьте предложения перед сохранением. Неизвестный состав можно оставить пустым.</p>
+</div>
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+{% for item in items %}
+    <article class="rounded-2xl bg-white p-4 shadow-sm" data-preparation-item="{{ item.id }}">
+        <h2 class="font-semibold">{{ item.displayNumber }} · {{ item.name ?: 'Без названия' }}</h2>
+        <p class="mt-2 text-sm text-amber-700">Уточните:
+            {{ not item.category|trim ? 'категорию; ' : '' }}
+            {{ not item.colorName|trim ? 'цвет; ' : '' }}
+            {{ not item.season|trim ? 'сезон' : '' }}
+        </p>
+        {% if not item.photo and not item.coverPhoto %}<p class="mt-2 text-sm text-gray-500">Добавьте фото или заполните вручную.</p>{% endif %}
+        <a class="mt-3 inline-block rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold" href="{{ path('account_wardrobe_edit', {id: item.id}|merge(memberParam)) }}">Проверить карточку</a>
+    </article>
+{% else %}
+    <p class="rounded-2xl bg-white p-5 text-sm text-gray-600">На этой странице нет вещей с пропусками. Заполненные характеристики помогают стилисту; доступность вещей проверяется при подборе.</p>
+{% endfor %}
+</div>
+{% if nextAfter %}<a class="mt-5 inline-block rounded-lg border border-gray-300 px-4 py-2 text-sm" href="{{ path('account_wardrobe_preparation', memberParam|merge({after: nextAfter})) }}">Следующие вещи</a>{% endif %}
+{% endblock %}
