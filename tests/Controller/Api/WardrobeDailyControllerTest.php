@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Entity\Wardrobe;
 use App\Entity\WardrobeConsent;
 use App\Entity\WardrobeItem;
+use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeOutfit;
 use App\Tests\Controller\UserFactory;
 use Doctrine\ORM\EntityManagerInterface;
@@ -268,6 +269,66 @@ class WardrobeDailyControllerTest extends WebTestCase
         $this->assertNotContains($complete->getId(), array_column($data['items'], 'id'));
     }
 
+    /**
+     * Гардероб id=2 на проде: обложка галереи есть у 40 вещей из 44, основное фото —
+     * только у 9 (WardrobeItem.photo). До этой правки prepareQueue() отдавал has_photo
+     * только по последнему, а preparePhoto() резолвил только его — 404 на 31 вещи с
+     * фото. has_photo обязан учитывать ОБА источника.
+     */
+    public function testPrepareQueueMarksHasPhotoTrueForGalleryOnlyItem(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-queue-gallery-photo', 0);
+        $item = (new WardrobeItem())->setUser($owner)->setWardrobe($wardrobe)->setItemNo(1);
+        $em->persist($item);
+        $photo = (new WardrobeItemPhoto())->setItem($item)->setFilePath('placeholder.jpg');
+        $item->addPhoto($photo);
+        $em->persist($photo);
+        $em->flush();
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/queue', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN]);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode((string) $client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $row = current(array_filter($data['items'], static fn (array $r): bool => (int) $r['id'] === $item->getId()));
+        $this->assertTrue($row['has_photo']);
+    }
+
+    /**
+     * Приоритет источников на Mac (WB-карточка → фото → название) читает эти поля из
+     * очереди без дополнительных походов на прод.
+     */
+    public function testPrepareQueueIncludesRoutingFieldsForSourcePriority(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-queue-routing', 0);
+        $item = (new WardrobeItem())
+            ->setUser($owner)
+            ->setWardrobe($wardrobe)
+            ->setItemNo(1)
+            ->setName('Розовое трикотажное поло в полоску NIL')
+            ->setCategory('Поло')
+            ->setMaterialText('трикотаж')
+            ->setProductUrl('https://www.wildberries.ru/catalog/13578826/detail.aspx');
+        $em->persist($item);
+        $em->flush();
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/queue', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN]);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode((string) $client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $row = current(array_filter($data['items'], static fn (array $r): bool => (int) $r['id'] === $item->getId()));
+        $this->assertFalse($row['has_photo']);
+        $this->assertSame('Розовое трикотажное поло в полоску NIL', $row['name']);
+        $this->assertSame('Поло', $row['category']);
+        $this->assertSame('трикотаж', $row['material_text']);
+        $this->assertSame('https://www.wildberries.ru/catalog/13578826/detail.aspx', $row['product_url']);
+    }
+
     public function testPreparePhotoRequiresToken(): void
     {
         $client = static::createClient();
@@ -305,6 +366,46 @@ class WardrobeDailyControllerTest extends WebTestCase
         /** @var StorageInterface $storage */
         $storage = static::getContainer()->get(StorageInterface::class);
         @unlink((string) $storage->resolvePath($item, 'photoFile'));
+    }
+
+    /**
+     * Регрессия основной правки: вещь БЕЗ основного фото (item.photoFile), но с
+     * фото в галерее (WardrobeItemPhoto) — раньше 404, теперь резолвится через
+     * item.coverPhoto (тот же порядок, что в карточке ЛК: show.html.twig).
+     */
+    public function testPreparePhotoResolvesGalleryCoverWhenMainPhotoMissing(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-photo-gallery-cover', 0);
+        $item = (new WardrobeItem())->setUser($owner)->setWardrobe($wardrobe)->setItemNo(1);
+        $em->persist($item);
+        $em->flush();
+
+        $tmp = tempnam(sys_get_temp_dir(), 'wardrobe_daily_prepare_gallery_') . '.jpg';
+        $image = imagecreatetruecolor(4, 4);
+        imagejpeg($image, $tmp, 90);
+        imagedestroy($image);
+        $expectedBytes = file_get_contents($tmp);
+
+        $photo = (new WardrobeItemPhoto())->setItem($item);
+        $photo->setFile(new UploadedFile($tmp, 'gallery.jpg', 'image/jpeg', null, true));
+        $item->addPhoto($photo);
+        $em->persist($photo);
+        $em->flush();
+        @unlink($tmp);
+
+        $client->request('GET', '/api/v1/wardrobe/daily/prepare/photo/' . $item->getId(), [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN]);
+
+        $this->assertResponseIsSuccessful();
+        $response = $client->getResponse();
+        $this->assertInstanceOf(BinaryFileResponse::class, $response);
+        $this->assertSame($expectedBytes, file_get_contents($response->getFile()->getPathname()));
+
+        /** @var StorageInterface $storage */
+        $storage = static::getContainer()->get(StorageInterface::class);
+        @unlink((string) $storage->resolvePath($photo, 'file'));
     }
 
     public function testPreparePhotoReturns404WhenItemHasNoPhoto(): void
@@ -371,6 +472,43 @@ class WardrobeDailyControllerTest extends WebTestCase
         $this->assertSame('белый', $reloaded->getColorName());
         $this->assertSame('хлопок', $reloaded->getMaterialText());
         $this->assertNull($reloaded->getSeason());
+    }
+
+    /**
+     * countryOfOrigin/careText приходят из WB-карточки (WildberriesAdapter::fetchCard())
+     * — то же правило «только пустое поле», что и у остальных четырёх.
+     */
+    public function testPrepareResultsFillsCountryOfOriginAndCareTextOnlyWhenEmpty(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-results-wb', 0);
+        $item = (new WardrobeItem())
+            ->setUser($owner)
+            ->setWardrobe($wardrobe)
+            ->setItemNo(1)
+            ->setCountryOfOrigin('Россия');
+        $em->persist($item);
+        $em->flush();
+        $itemId = $item->getId();
+
+        $body = json_encode([
+            'items' => [
+                ['id' => $itemId, 'countryOfOrigin' => 'Китай', 'careText' => 'деликатная стирка'],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $client->request('POST', '/api/v1/wardrobe/daily/prepare/results', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN, 'CONTENT_TYPE' => 'application/json'], $body);
+
+        $this->assertResponseIsSuccessful();
+        $data = json_decode((string) $client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $data['updated']);
+
+        $em->clear();
+        $reloaded = $em->getRepository(WardrobeItem::class)->find($itemId);
+        $this->assertSame('Россия', $reloaded->getCountryOfOrigin());
+        $this->assertSame('деликатная стирка', $reloaded->getCareText());
     }
 
     public function testPrepareResultsRejectsUnknownItemId(): void
