@@ -71,6 +71,42 @@ final class IngestWardrobeDraftsActivationTest extends TestCase
         }
     }
 
+    public function testWorkerPassesOnlyStructuredAttributesAndMinimalProvenance(): void
+    {
+        $draft = (new WardrobeItemDraft())->setUser($this->user(1))->setBatchId('attributes-batch');
+        (new \ReflectionProperty(WardrobeItemDraft::class, 'id'))->setValue($draft, 10);
+        $drafts = $this->createMock(WardrobeItemDraftRepository::class);
+        $drafts->method('claimPending')->willReturn([$draft]);
+        $drafts->method('extendLease')->willReturn(true);
+        $drafts->method('countsByBatch')->willReturn(['total' => 1, 'pending' => 0, 'recognized' => 1, 'failed' => 0]);
+        $drafts->expects(self::once())->method('finishClaim')->with(10, self::anything(), WardrobeItemDraft::STATUS_RECOGNIZED, self::callback(static function (array $fields): bool {
+            self::assertSame(['colorName' => 'синий', 'season' => 'winter'], $fields['attributes']);
+            self::assertSame(['confidence' => 'high', 'model' => 'test-vision', 'schemaVersion' => '2'], $fields['aiRaw']);
+            return true;
+        }))->willReturn(true);
+        $ai = $this->createStub(WardrobeAiService::class);
+        $ai->method('suggestFromPhoto')->willReturn([
+            'ok' => true, 'fields' => ['colorName' => 'синий', 'season' => 'winter', 'privateUnexpected' => 'exclude'],
+            'confidence' => 'high', 'model' => 'test-vision', 'schemaVersion' => '2', 'raw' => 'exclude',
+        ]);
+        $storage = $this->createStub(StorageInterface::class);
+        $photo = tempnam(sys_get_temp_dir(), 'wardrobe_worker_');
+        $storage->method('resolvePath')->willReturn($photo);
+        $meter = $this->createStub(WardrobeAiMeter::class);
+        $meter->method('allowed')->willReturn(true);
+        $projectDir = sys_get_temp_dir().'/wardrobe_attributes_'.bin2hex(random_bytes(4));
+        mkdir($projectDir.'/var', 0777, true);
+        try {
+            $command = new IngestWardrobeDraftsCommand($drafts, $ai, $storage, $meter, $projectDir);
+            self::assertSame(Command::SUCCESS, (new CommandTester($command))->execute([]));
+        } finally {
+            unlink($photo);
+            unlink($projectDir.'/var/wardrobe_ingest_drafts.lock');
+            rmdir($projectDir.'/var');
+            rmdir($projectDir);
+        }
+    }
+
     private function user(int $id): User
     {
         $user = new User();

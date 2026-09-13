@@ -27,6 +27,8 @@ use Symfony\Contracts\Cache\ItemInterface;
  */
 class WardrobeAiService
 {
+    public const PHOTO_SCHEMA_VERSION = '2';
+
     private const CACHE_TTL = 86400;
     private const MAX_SCRAPE_CHARS = 6000;
     private const DAILY_CAP_ERROR = 'Дневной лимит AI-подсказок исчерпан, попробуйте завтра';
@@ -58,9 +60,13 @@ class WardrobeAiService
             return ['ok' => false, 'error' => $error];
         }
 
+        $model = $this->visionLocal ? $this->localModel : $this->visionModel;
+        $provider = $this->visionLocal ? 'local' : 'remote';
+        $cacheKey = 'wardrobe_ai_photo_'.self::PHOTO_SCHEMA_VERSION.'_'.sha1($provider.':'.$model).'_'.$hash;
+
         try {
             return $this->cache->get(
-                "wardrobe_ai_photo_{$hash}",
+                $cacheKey,
                 function (ItemInterface $item) use ($path, $user): array {
                     $item->expiresAfter(self::CACHE_TTL);
 
@@ -171,8 +177,8 @@ PROMPT;
   "category": "категория (предпочтительно одна из: {$categories}, либо своя короткая на русском) или null",
   "name": "короткое русское название-описание, например «Белая oversize футболка»",
   "color": "цвет или null",
-  "material": "материал, если явно видно/указано на бирке, иначе null",
-  "season": "лето|демисезон|зима|всесезон или null",
+  "material": "состав ТОЛЬКО с читаемой бирки, не угадывай по виду ткани, иначе null",
+  "season": "all|spring|summer|autumn|winter или null; если сезон неоднозначен, null",
   "type": "фасон/крой или null",
   "size": "размер ТОЛЬКО если видна читаемая бирка, иначе null",
   "confidence": "high|med|low"
@@ -193,6 +199,8 @@ EOT;
         return [
             'ok'         => true,
             'fields'     => $this->normalizePhotoFields($data),
+            'model'      => $model,
+            'schemaVersion' => self::PHOTO_SCHEMA_VERSION,
             'confidence' => $this->normalizeConfidence($data['confidence'] ?? null),
         ];
     }
@@ -280,27 +288,36 @@ EOT;
         ];
     }
 
-    /** color/material/season/type → notes; null-поля пропускаются. */
+    /** Structured fields use the same names and season values as WardrobeItemFormType. */
     private function normalizePhotoFields(array $d): array
     {
-        $notesParts = [];
-        foreach ([
-            'Цвет'     => $this->nullableString($d['color'] ?? null),
-            'Материал' => $this->nullableString($d['material'] ?? null),
-            'Сезон'    => $this->nullableString($d['season'] ?? null),
-            'Фасон'    => $this->nullableString($d['type'] ?? null),
-        ] as $label => $value) {
-            if ($value !== null) {
-                $notesParts[] = "{$label}: {$value}";
-            }
-        }
+        $season = $this->nullableString($d['season'] ?? null);
+        $season = match (mb_strtolower($season ?? '')) {
+            'all', 'всесезон' => 'all',
+            'spring', 'весна' => 'spring',
+            'summer', 'лето' => 'summer',
+            'autumn', 'осень' => 'autumn',
+            'winter', 'зима' => 'winter',
+            default => null,
+        };
+        $cut = $this->nullableString($d['type'] ?? null);
 
         return [
-            'category' => $this->nullableString($d['category'] ?? null),
-            'name'     => $this->nullableString($d['name'] ?? null),
-            'size'     => $this->nullableString($d['size'] ?? null),
-            'notes'    => $notesParts !== [] ? implode('; ', $notesParts) : null,
+            'category' => $this->limitedString($d['category'] ?? null, 100),
+            'name' => $this->limitedString($d['name'] ?? null, 255),
+            'size' => $this->limitedString($d['size'] ?? null, 50),
+            'colorName' => $this->limitedString($d['color'] ?? null, 100),
+            'materialText' => $this->limitedString($d['material'] ?? null, 2000),
+            'season' => $season,
+            'notes' => $cut === null ? null : 'Фасон: '.mb_substr($cut, 0, 500),
         ];
+    }
+
+    private function limitedString(mixed $value, int $length): ?string
+    {
+        $value = $this->nullableString($value);
+
+        return $value === null ? null : mb_substr($value, 0, $length);
     }
 
     private function normalizeConfidence(mixed $value): string

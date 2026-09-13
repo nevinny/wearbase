@@ -317,7 +317,7 @@ class WardrobeIngestController extends AbstractController
 
         foreach ($drafts as $draft) {
             if ($draft->getStatus() !== WardrobeItemDraft::STATUS_RECOGNIZED
-                || !in_array($draft->getConfidence(), ['high', 'med'], true)
+                || $draft->getConfidence() !== 'high'
             ) {
                 $skipped++;
                 continue;

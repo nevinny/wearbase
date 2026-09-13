@@ -86,6 +86,30 @@ final class WardrobeItemDraftRepositoryTest extends KernelTestCase
         }
     }
 
+    public function testRetentionFindsAcceptedDraftWithOnlyAttributesRemaining(): void
+    {
+        self::bootKernel();
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $repo = self::getContainer()->get(WardrobeItemDraftRepository::class);
+        $em->beginTransaction();
+        try {
+            $user = (new User())->setEmail('attributes-retention-'.uniqid().'@test.local')->setPassword('test');
+            $draft = (new WardrobeItemDraft())->setUser($user)->setBatchId('retention-'.uniqid())
+                ->setStatus(WardrobeItemDraft::STATUS_ACCEPTED)->setAttributes(['colorName' => 'белый']);
+            (new \ReflectionProperty(WardrobeItemDraft::class, 'acceptedAt'))->setValue($draft, new \DateTimeImmutable('-10 days'));
+            $em->persist($user);
+            $em->persist($draft);
+            $em->flush();
+            self::assertContains($draft, $repo->findAcceptedBefore(new \DateTimeImmutable('-7 days')));
+            $draft->clearSensitiveData();
+            $em->flush();
+            self::assertSame([], $draft->getAttributes());
+            self::assertNotContains($draft, $repo->findAcceptedBefore(new \DateTimeImmutable('-7 days')));
+        } finally {
+            $em->rollback();
+        }
+    }
+
     public function testOnlyClaimOwnerCanExtendLease(): void
     {
         self::bootKernel();
