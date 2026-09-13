@@ -44,8 +44,16 @@
     </style>
 {% endblock %}
 
-{% block header %}{% endblock %}
-{% block footer %}{% endblock %}
+{% block header %}
+    <div class="hidden md:block">
+        {{ parent() }}
+    </div>
+{% endblock %}
+{% block footer %}
+    <div class="hidden md:block">
+        {{ parent() }}
+    </div>
+{% endblock %}
 
 {% block body %}
     {% set currentRoute = app.request.attributes.get('_route')|default('') %}
@@ -63,8 +71,8 @@
         К содержанию
     </a>
 
-    <div class="min-h-screen bg-slate-50">
-        <header class="family-safe-header sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+    <div class="min-h-screen bg-slate-50 md:min-h-0 md:bg-transparent">
+        <header class="family-safe-header sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur md:hidden">
             <div class="mx-auto flex min-h-14 max-w-3xl items-center justify-between gap-3 px-4 py-2">
                 <div class="min-w-0">
                     <a href="{{ path('account_wardrobe_app') }}"
