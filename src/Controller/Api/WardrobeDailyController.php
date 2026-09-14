@@ -11,9 +11,11 @@ use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeItemRepository;
 use App\Repository\WardrobeOutfitRepository;
 use App\Repository\WardrobeRepository;
+use App\Service\Wardrobe\WardrobeOutfitCollageRenderer;
 use App\Service\Wardrobe\WardrobeOutfitLearningService;
 use App\Service\Wardrobe\WardrobeStylistContextBuilder;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -145,6 +147,8 @@ class WardrobeDailyController extends AbstractController
         WardrobeOutfitRepository $outfitRepo,
         WardrobeConsentRepository $consents,
         EntityManagerInterface $em,
+        WardrobeOutfitCollageRenderer $collageRenderer,
+        LoggerInterface $logger,
     ): JsonResponse {
         if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
             return $deny;
@@ -219,6 +223,7 @@ class WardrobeDailyController extends AbstractController
             $todayStart = new \DateTimeImmutable('today');
             $outfitRepo->softDeleteDailyBatch($owner, $occasion, $todayStart, $todayStart->modify('+1 day'));
 
+            $created = [];
             foreach ($accepted as $outfit) {
                 $entity = (new WardrobeOutfit())
                     ->setUser($owner)
@@ -229,8 +234,26 @@ class WardrobeDailyController extends AbstractController
                     ->setExplanation($outfit['explanation'])
                     ->setItems(array_map($this->itemSnapshot(...), $outfit['items']));
                 $em->persist($entity);
+                $created[] = [$entity, $outfit['items']];
             }
             $em->flush();
+
+            // Коллаж — производная от уже сохранённого образа: собирается здесь же, ОДИН раз за
+            // ночной батч (не на лету при открытии /account/wardrobe/outfits, см. докблок
+            // рендерера). Сбой рендера (битое фото, GD-ошибка) не должен ронять ответ агент-API —
+            // WardrobeOutfit к этому моменту уже во флаше, коллаж — необязательная надстройка.
+            foreach ($created as [$entity, $items]) {
+                try {
+                    $collageRenderer->render($entity, $items);
+                } catch (\Throwable $e) {
+                    // Карточка образа деградирует к списку вещей (см. twig) — но лог обязателен,
+                    // иначе «коллажи молча перестали собираться» не увидит никто.
+                    $logger->warning('Не удалось собрать коллаж образа', [
+                        'outfit_id' => $entity->getId(),
+                        'exception' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
 
         return $this->json([

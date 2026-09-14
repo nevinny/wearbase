@@ -16,6 +16,7 @@ use App\Repository\WardrobeOutfitShareRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiException;
+use App\Service\Wardrobe\WardrobeOutfitCollageRenderer;
 use App\Service\Wardrobe\WardrobeConsentService;
 use App\Service\Wardrobe\WardrobeOutfitService;
 use App\Service\Wardrobe\WardrobeOutfitLearningService;
@@ -44,12 +45,13 @@ class WardrobeOutfitController extends AbstractController
         WardrobeAiAllowance $aiAllowance,
         AiUsageTracker $usageTracker,
         WardrobeCircleMemberRepository $circles,
+        WardrobeOutfitCollageRenderer $collageRenderer,
     ): Response {
         /** @var User $actor */
         $actor = $this->getUser();
         $member = $familyService->resolveMember($actor, $request->query->has('member') ? $request->query->getInt('member') : null);
         $wardrobeItems = $items->findActiveForUser($member);
-        $dailyOutfits = $this->hydrateDailyOutfits($outfitRepo, $items, $member);
+        $dailyOutfits = $this->hydrateDailyOutfits($outfitRepo, $items, $member, $collageRenderer);
         $result = [];
         $error = null;
         $prompt = mb_substr(trim((string) $request->request->get('prompt')), 0, 300);
@@ -170,9 +172,9 @@ class WardrobeOutfitController extends AbstractController
      * findActiveOneForUser() молча не вернёт — образ просто выходит с меньшим
      * набором вещей (как WardrobeWearService::recordOutfitWorn()).
      *
-     * @return array<string, array{label:string, outfits: list<array{title:string,explanation:?string,items:list<\App\Entity\WardrobeItem>,feedbackId:int}>}>
+     * @return array<string, array{label:string, outfits: list<array{title:string,explanation:?string,items:list<\App\Entity\WardrobeItem>,feedbackId:int,collageUrl:?string}>}>
      */
-    private function hydrateDailyOutfits(WardrobeOutfitRepository $outfitRepo, WardrobeItemRepository $items, User $member): array
+    private function hydrateDailyOutfits(WardrobeOutfitRepository $outfitRepo, WardrobeItemRepository $items, User $member, WardrobeOutfitCollageRenderer $collageRenderer): array
     {
         $grouped = [];
         foreach ($outfitRepo->findDailyForOwner($member, new \DateTimeImmutable('today')) as $outfit) {
@@ -185,11 +187,17 @@ class WardrobeOutfitController extends AbstractController
                 }
             }
             $grouped[$occasion]['label'] ??= WardrobeOutfit::DAILY_OCCASIONS[$occasion] ?? $occasion;
+            // collageUrl — только если файл реально собран батчем (см. WardrobeOutfitCollageRenderer);
+            // это дешёвая проверка is_file, а не рендер «на лету» (тот запрещён спекой фичи).
+            // Отсутствие файла (сбой рендера в батче/старый образ до фичи) → twig деградирует к сетке вещей.
             $grouped[$occasion]['outfits'][] = [
                 'title' => $outfit->getTitle(),
                 'explanation' => $outfit->getExplanation(),
                 'items' => $hydratedItems,
                 'feedbackId' => $outfit->getId(),
+                'collageUrl' => $collageRenderer->exists((int) $outfit->getId())
+                    ? $this->generateUrl('account_wardrobe_media_outfit', ['id' => $outfit->getId()])
+                    : null,
             ];
         }
 

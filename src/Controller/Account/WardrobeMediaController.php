@@ -8,8 +8,10 @@ use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
 use App\Entity\WardrobeItemPhoto;
+use App\Entity\WardrobeOutfit;
 use App\Entity\WardrobeWearEvent;
 use App\Service\FamilyService;
+use App\Service\Wardrobe\WardrobeOutfitCollageRenderer;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -58,6 +60,22 @@ final class WardrobeMediaController extends AbstractController
         $this->assertCanView($event->getProfileSubject(), $families);
 
         return $this->mediaResponse($storage->resolvePath($event, 'photoFile'), null, 'wardrobe_wear');
+    }
+
+    /**
+     * Коллаж образа «на утро» (WardrobeOutfitCollageRenderer). Владение — wardrobeOwner
+     * (гардероб), не user: ночной пакетный конвейер ставит user=owner, а реагирует/смотрит
+     * может управляющий член семьи — та же авторизация, что у реакций (см. WardrobeOutfitRepository).
+     */
+    #[Route('/outfit/{id}', name: 'outfit', requirements: ['id' => '\\d+'], methods: ['GET'])]
+    public function outfit(WardrobeOutfit $outfit, FamilyService $families, WardrobeOutfitCollageRenderer $collage): Response
+    {
+        if ($outfit->getDeletedAt() !== null) {
+            throw $this->createNotFoundException();
+        }
+        $this->assertCanView($outfit->getWardrobeOwner(), $families);
+
+        return $this->mediaResponse($collage->path((int) $outfit->getId()), null, 'wardrobe');
     }
 
     private function assertCanView(?User $subject, FamilyService $families): void

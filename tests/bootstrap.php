@@ -46,6 +46,17 @@ if (($_SERVER['APP_ENV'] ?? null) === 'test') {
             (new SchemaTool($em))->createSchema($metadata);
         }
 
+        // Id образов гардероба в свежей SQLite стартуют с 1 на каждый прогон, а файлы
+        // коллажей (WardrobeOutfitCollageRenderer, детерминированное имя o{id}.jpg) живут
+        // на диске МЕЖДУ прогонами — без очистки тест одного прогона мог бы получить
+        // is_file()=true на чужой файл из прошлого прогона (тот же id, другое содержимое).
+        $collageDir = dirname(__DIR__).'/var/uploads/wardrobe_outfits';
+        if (is_dir($collageDir)) {
+            foreach (glob($collageDir.'/*') ?: [] as $file) {
+                @unlink($file);
+            }
+        }
+
         // Таблицы без сущности (создаются сырыми миграциями) SchemaTool не видит —
         // мирроим их здесь. brand_related = граф перелинковки (Version20260612_brand_related).
         $connection->executeStatement(<<<'SQL'

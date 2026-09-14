@@ -226,6 +226,59 @@ class WardrobeOutfitControllerTest extends AuthenticatedWebTestCase
     }
 
     /**
+     * Коллаж (WardrobeOutfitCollageRenderer) есть только у образа, для которого ночной батч
+     * реально его собрал — второй образ без файла должен деградировать к прежней сетке вещей
+     * (старый образ до фичи/сбой рендера), а не показывать битую картинку.
+     */
+    public function testDailyOutfitShowsCollageImageOnlyWhenFileWasRendered(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'daily-collage-showcase@test.local');
+        $client->loginUser($user);
+        $em = static::getContainer()->get('doctrine.orm.entity_manager');
+        $shirt = (new WardrobeItem())->setUser($user)->setItemNo(1)->setName('Пиджак')->setCategory('Пиджаки');
+        $em->persist($shirt);
+        $em->flush();
+
+        $withCollage = (new WardrobeOutfit())
+            ->setUser($user)->setWardrobeOwner($user)->setOccasion(WardrobeOutfit::OCCASION_WORK)
+            ->setTitle('Образ с коллажем')->setItems([['id' => $shirt->getId(), 'category' => 'Пиджаки', 'color' => null, 'styles' => []]]);
+        $withoutCollage = (new WardrobeOutfit())
+            ->setUser($user)->setWardrobeOwner($user)->setOccasion(WardrobeOutfit::OCCASION_WALK)
+            ->setTitle('Образ без коллажа')->setItems([['id' => $shirt->getId(), 'category' => 'Пиджаки', 'color' => null, 'styles' => []]]);
+        $em->persist($withCollage);
+        $em->persist($withoutCollage);
+        $em->flush();
+
+        /** @var \App\Service\Wardrobe\WardrobeOutfitCollageRenderer $collageRenderer */
+        $collageRenderer = static::getContainer()->get(\App\Service\Wardrobe\WardrobeOutfitCollageRenderer::class);
+        $collagePath = $collageRenderer->path((int) $withCollage->getId());
+        @mkdir(dirname($collagePath), 0775, true);
+        $im = imagecreatetruecolor(4, 4);
+        imagejpeg($im, $collagePath, 80);
+        imagedestroy($im);
+
+        $crawler = $client->request('GET', '/account/wardrobe/outfits');
+
+        self::assertResponseIsSuccessful();
+        self::assertCount(
+            1,
+            $crawler->filter('img[src="/account/wardrobe/media/outfit/'.$withCollage->getId().'"]'),
+            'у образа с готовым файлом должен быть один <img> на коллаж',
+        );
+        self::assertCount(
+            0,
+            $crawler->filter('img[src="/account/wardrobe/media/outfit/'.$withoutCollage->getId().'"]'),
+            'без файла — не показываем src на несуществующий коллаж',
+        );
+        // Образ без коллажа деградирует к прежней сетке вещей — вещь всё ещё видна.
+        $withoutCollageSection = $crawler->filter('body:contains("Образ без коллажа")');
+        self::assertGreaterThan(0, $withoutCollageSection->count());
+
+        @unlink($collagePath);
+    }
+
+    /**
      * CSRF вне активного запроса: token manager'у нужна сессия в request_stack, которой
      * после завершения request() нет. Пресетим значение в сессию клиента (как
      * LookShareControllerTest::makeCsrfValid) — во время POST isCsrfTokenValid сверит

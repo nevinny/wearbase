@@ -373,6 +373,13 @@ services:
             $projectDir: '%kernel.project_dir%'
             $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'
 
+    # Коллаж образа «на утро» (ночной пакетный конвейер) — GD-рендер в приватное хранилище,
+    # см. докблок класса.
+    App\Service\Wardrobe\WardrobeOutfitCollageRenderer:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $fontPath: '%kernel.project_dir%/config/social/fonts/NotoSans.ttf'
+
     # Нормализация фото брендов в слайды одного холста (IG кадрирует всю карусель по первому
     # слайду) + слайд с логотипом для A/B «логотип первым/последним».
     App\Service\Social\GallerySlideRenderer:
