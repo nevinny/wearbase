@@ -69,6 +69,49 @@ class WardrobeDailyControllerTest extends WebTestCase
         );
     }
 
+    /**
+     * Коллаж — производная ночного батча (WardrobeOutfitCollageRenderer), она обязана появиться
+     * прямо в этом ответе (см. докблок рендерера про «не на лету при открытии страницы»),
+     * а не при первом просмотре /account/wardrobe/outfits.
+     */
+    public function testAcceptedOutfitGetsCollageRenderedByTheBatchEndpointItself(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        /** @var \App\Service\Wardrobe\WardrobeOutfitCollageRenderer $collageRenderer */
+        $collageRenderer = static::getContainer()->get(\App\Service\Wardrobe\WardrobeOutfitCollageRenderer::class);
+
+        [$owner, $wardrobe, $items] = $this->makeWardrobeWithItems($em, 'daily-collage', 2);
+
+        $body = json_encode([
+            'wardrobe_id' => $wardrobe->getId(),
+            'occasion' => WardrobeOutfit::OCCASION_WORK,
+            'request' => WardrobeOutfit::DAILY_OCCASIONS[WardrobeOutfit::OCCASION_WORK],
+            'outfits' => [
+                ['title' => 'Строгий образ', 'explanation' => 'Рубашка и брюки', 'item_ids' => [$items[0]->getId(), $items[1]->getId()]],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->postOutfits($client, $body);
+        $this->assertResponseIsSuccessful();
+
+        $em->clear();
+        $outfit = $em->getRepository(WardrobeOutfit::class)->findOneBy(['wardrobeOwner' => $owner->getId()]);
+        $this->assertNotNull($outfit);
+
+        $path = $collageRenderer->path((int) $outfit->getId());
+        try {
+            $this->assertFileExists($path);
+            $size = getimagesize($path);
+            $this->assertSame(
+                [\App\Service\Wardrobe\WardrobeOutfitCollageRenderer::WIDTH, \App\Service\Wardrobe\WardrobeOutfitCollageRenderer::HEIGHT],
+                [$size[0], $size[1]],
+            );
+        } finally {
+            @unlink($path); // имя файла детерминировано по id — не копим мусор между прогонами
+        }
+    }
+
     public function testSkipsWardrobeWithoutPersonalizationConsent(): void
     {
         $client = static::createClient();
