@@ -248,6 +248,15 @@ class Brand
     #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?\DateTimeInterface $closedAt = null;
 
+    /**
+     * Дубль: эта запись склеена в другой бренд → страница 301-ит на него. NULL = самостоятельный
+     * бренд. Отличается от closedAt: там бренд существовал и закрылся (страница 200 с плашкой),
+     * здесь записи-дубля не должно было быть вовсе.
+     */
+    #[ORM\ManyToOne(targetEntity: self::class)]
+    #[ORM\JoinColumn(name: 'merged_into_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?self $mergedInto = null;
+
     /** Sequence-версия доставки в агент-API: прод пропускает payload с версией ≤ текущей.
      *  ⚠️ Это НЕ версионирование контента (для истории текста см. BrandContentRevision). */
     #[ORM\Column(options: ['default' => 0])]
@@ -1103,6 +1112,27 @@ class Brand
     public function reopen(): static
     {
         $this->closedAt = null;
+
+        return $this;
+    }
+
+    // ─── Склейка дубля ────────────────────────────────────────────────────────
+
+    /** Бренд, в который склеена эта запись (NULL = самостоятельный бренд). */
+    public function getMergedInto(): ?self
+    {
+        return $this->mergedInto;
+    }
+
+    /** Склеен в другой бренд → публичная страница отдаёт 301 на выжившую карточку. */
+    public function isMerged(): bool
+    {
+        return $this->mergedInto !== null;
+    }
+
+    public function setMergedInto(?self $brand): static
+    {
+        $this->mergedInto = $brand;
 
         return $this;
     }
