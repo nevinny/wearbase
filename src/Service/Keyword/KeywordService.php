@@ -14,6 +14,7 @@ class KeywordService
 {
     public function __construct(
         private readonly KeywordProviderInterface $provider,
+        private readonly KeywordBlocklist $blocklist,
     ) {
     }
 
@@ -58,6 +59,12 @@ class KeywordService
 
     private function relevant(string $keyword, string $brandNeedle): bool
     {
+        // Fail-closed: минус-слова раньше релевантности. Порядок важен — «murka
+        // onlyfans» содержит имя бренда, поэтому проверку релевантности проходит.
+        if ($this->blocklist->isBlocked($keyword)) {
+            return false;
+        }
+
         $kw = mb_strtolower($keyword);
         if ($brandNeedle !== '' && mb_strlen($brandNeedle) >= 3
             && str_contains(str_replace([' ', '-', '.'], '', $kw), $brandNeedle)) {
