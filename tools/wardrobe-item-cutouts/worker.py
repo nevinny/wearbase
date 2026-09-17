@@ -38,9 +38,13 @@ def cutout(image):
     name = upload(image)
     workflow = {
         '1': {'class_type': 'LoadImage', 'inputs': {'image': name}},
+        '4': {'class_type': 'ImageScaleToTotalPixels', 'inputs': {
+            'image': ['1', 0], 'upscale_method': 'lanczos', 'megapixels': 1.5,
+            'resolution_steps': 1,
+        }},
         '2': {'class_type': 'BiRefNetRMBG', 'inputs': {
-            'image': ['1', 0], 'model': 'BiRefNet-general', 'background': 'Alpha',
-            'sensitivity': 1.0, 'mask_blur': 1, 'mask_offset': 0,
+            'image': ['4', 0], 'model': 'BiRefNet-general', 'background': 'Alpha',
+            'mask_blur': 1, 'mask_offset': 0,
             'invert_output': False, 'refine_foreground': False,
         }},
         '3': {'class_type': 'SaveImage', 'inputs': {
