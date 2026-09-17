@@ -188,6 +188,12 @@ class WardrobeItem
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $photo = null;
 
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $outfitImagePath = null;
+
+    #[ORM\Column(length: 64, nullable: true)]
+    private ?string $outfitImageSourceHash = null;
+
     #[Vich\UploadableField(mapping: 'wardrobe_item_photo', fileNameProperty: 'photo')]
     #[Assert\Image(
         maxSize: '10M',
@@ -463,8 +469,22 @@ class WardrobeItem
 
     public function getPhoto(): ?string { return $this->photo; }
 
+    public function getOutfitImagePath(): ?string { return $this->outfitImagePath; }
+    public function getOutfitImageSourceHash(): ?string { return $this->outfitImageSourceHash; }
+
+    public function setOutfitImage(string $path, string $sourceHash): static
+    {
+        $this->outfitImagePath = $path;
+        $this->outfitImageSourceHash = $sourceHash;
+        return $this;
+    }
+
     public function setPhoto(?string $photo): static
     {
+        if ($photo !== $this->photo) {
+            $this->outfitImagePath = null;
+            $this->outfitImageSourceHash = null;
+        }
         $this->photo = $photo;
         return $this;
     }

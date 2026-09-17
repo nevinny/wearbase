@@ -38,6 +38,22 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /** @return WardrobeItem[] */
+    public function findImageCandidates(int $afterId, int $limit): array
+    {
+        return $this->createQueryBuilder('w')
+            ->andWhere('w.id > :afterId')
+            ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus NOT IN (:archiveStatuses)')
+            ->andWhere('w.wearStatus != :givenAway')
+            ->setParameter('afterId', $afterId)
+            ->setParameter('archiveStatuses', WardrobeItem::ARCHIVE_STATUSES)
+            ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
+            ->orderBy('w.id', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()->getResult();
+    }
+
     /**
      * Стабильная страница активных вещей для mobile API. itemNo уникален внутри
      * пользователя, поэтому служит простым непрозрачным для других профилей cursor.

@@ -37,14 +37,18 @@
             <section class="rounded-2xl bg-white p-5 shadow-sm">
                 <h2 class="font-bold">{{ outfit.title }}</h2>
                 {% if outfit.explanation %}<p class="mt-1 text-sm text-gray-600">{{ outfit.explanation }}</p>{% endif %}
+                <div class="mt-4 max-w-md">
+                    <canvas class="outfit-collage w-full rounded-xl bg-[#f6f2ec]" width="800" height="1000" aria-label="Коллаж образа {{ outfit.title }}"></canvas>
+                    <button type="button" class="download-outfit mt-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold">Скачать изображение образа</button>
+                </div>
                 <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                     {% for item in outfit.items %}
                         <a href="{{ path('account_wardrobe_show', {id: item.id, member: member.id}) }}" class="overflow-hidden rounded-xl border border-gray-100 hover:shadow-sm">
                             <div class="aspect-square bg-gray-100">
                                 {% if item.coverPhoto %}
-                                    <img src="{{ vich_uploader_asset(item.coverPhoto, 'file') }}" class="h-full w-full object-cover" alt="{{ item.name }}">
+                                    <img src="{{ item.outfitImagePath ?: vich_uploader_asset(item.coverPhoto, 'file') }}" class="outfit-item-image h-full w-full object-contain" alt="{{ item.name }}">
                                 {% elseif item.photo %}
-                                    <img src="{{ vich_uploader_asset(item, 'photoFile') }}" class="h-full w-full object-cover" alt="{{ item.name }}">
+                                    <img src="{{ item.outfitImagePath ?: vich_uploader_asset(item, 'photoFile') }}" class="outfit-item-image h-full w-full object-contain" alt="{{ item.name }}">
                                 {% else %}
                                     <div class="flex h-full items-center justify-center text-4xl opacity-20">👕</div>
                                 {% endif %}
@@ -68,5 +72,37 @@
             </section>
         {% endfor %}
     </div>
+    <script>
+    document.querySelectorAll('.outfit-collage').forEach(canvas => {
+        const section = canvas.closest('section'), images = [...section.querySelectorAll('.outfit-item-image')];
+        const context = canvas.getContext('2d');
+        const draw = async () => {
+            await Promise.all(images.map(image => image.complete ? Promise.resolve() : new Promise(resolve => {
+                image.addEventListener('load', resolve, {once: true});
+                image.addEventListener('error', resolve, {once: true});
+            })));
+            context.fillStyle = '#f6f2ec';
+            context.fillRect(0, 0, 800, 1000);
+            const columns = images.length <= 2 ? 1 : 2;
+            const rows = Math.ceil(images.length / columns);
+            const cellWidth = 760 / columns, cellHeight = 960 / rows;
+            images.forEach((image, index) => {
+                if (!image.naturalWidth) return;
+                const scale = Math.min((cellWidth - 40) / image.naturalWidth, (cellHeight - 40) / image.naturalHeight);
+                const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+                const x = 20 + (index % columns) * cellWidth + (cellWidth - width) / 2;
+                const y = 20 + Math.floor(index / columns) * cellHeight + (cellHeight - height) / 2;
+                context.drawImage(image, x, y, width, height);
+            });
+        };
+        draw();
+        section.querySelector('.download-outfit').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = 'wearbase-outfit.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+    });
+    </script>
 {% endif %}
 {% endblock %}
