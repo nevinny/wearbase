@@ -3,7 +3,7 @@
 Прод хранит исходные снимки в приватном хранилище. Агент на LLM-сервере получает
 очередь через `GET /api/v1/wardrobe/daily/images/queue?after=0`, скачивает снимок
 через существующую защищённую ручку `/api/v1/wardrobe/daily/prepare/photo/{id}`,
-удаляет фон нодой ComfyUI `BiRefNetRMBG` и отправляет PNG как тело
+уменьшает его до 1,5 Мп, удаляет фон нодой ComfyUI `BiRefNetRMBG` и отправляет PNG как тело
 `POST /api/v1/wardrobe/daily/images/result/{id}`. Подпись тела —
 `X-Signature: HMAC-SHA256(PNG, AGENT_API_SECRET)`; исходная версия не меняется.
 
