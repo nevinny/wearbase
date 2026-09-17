@@ -7,6 +7,7 @@ namespace App\Tests\Service\Wardrobe;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeOutfit;
 use App\Service\Wardrobe\WardrobeOutfitCollageRenderer;
+use App\Service\Wardrobe\PreparedWardrobePhoto;
 use PHPUnit\Framework\TestCase;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
@@ -49,6 +50,21 @@ final class WardrobeOutfitCollageRendererTest extends TestCase
         // заполняет ячейку целиком (без полей) — координаты центров см. layout()/row().
         $this->assertPixelCloseTo($canvas, 540, 555, [220, 20, 20]);
         $this->assertPixelCloseTo($canvas, 540, 1168, [20, 20, 220]);
+        imagedestroy($canvas);
+    }
+
+    public function testPreparedPhotoTakesPriorityOverOriginal(): void
+    {
+        $item = $this->item(301, 'Худи', $this->solidImage(100, 100, 20, 20, 220));
+        $item->setPhoto('source.jpg');
+        $prepared = PreparedWardrobePhoto::path($this->projectDir, $item);
+        mkdir(dirname($prepared), 0775, true);
+        copy($this->solidImage(100, 100, 220, 20, 20), $prepared);
+
+        $second = $this->item(302, 'Брюки', $this->solidImage(100, 100, 20, 220, 20));
+        $path = $this->renderer()->render($this->outfit(301), [$item, $second]);
+        $canvas = imagecreatefromjpeg($path);
+        $this->assertPixelCloseTo($canvas, 278, 721, [220, 20, 20]);
         imagedestroy($canvas);
     }
 

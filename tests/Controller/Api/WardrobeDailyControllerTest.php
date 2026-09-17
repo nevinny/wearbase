@@ -10,6 +10,7 @@ use App\Entity\WardrobeConsent;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeOutfit;
+use App\Service\Wardrobe\PreparedWardrobePhoto;
 use App\Tests\Controller\UserFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -33,6 +34,66 @@ class WardrobeDailyControllerTest extends WebTestCase
         $client->request('POST', '/api/v1/wardrobe/daily/outfits', [], [], ['CONTENT_TYPE' => 'application/json'], '{}');
 
         $this->assertResponseStatusCodeSame(401);
+    }
+
+    public function testImageQueueRequiresToken(): void
+    {
+        $client = static::createClient();
+        $client->request('GET', '/api/v1/wardrobe/daily/images/queue');
+        $this->assertResponseStatusCodeSame(401);
+    }
+
+    public function testImageQueueIncludesOnlyConsentedItemsWithPhotos(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        [$owner, , $items] = $this->makeWardrobeWithItems($em, 'cutout-queue', 1);
+        $items[0]->setPhoto('cutout-source.jpg');
+        $consent = $em->getRepository(WardrobeConsent::class)->findOneBy(['subject' => $owner]);
+        $consent->grantPhotoProcessing($owner);
+        $em->flush();
+
+        $client->request('GET', '/api/v1/wardrobe/daily/images/queue?after=' . ($items[0]->getId() - 1), [], [], [
+            'HTTP_X_AGENT_TOKEN' => self::TOKEN,
+        ]);
+        $this->assertResponseIsSuccessful();
+        $body = json_decode((string) $client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($items[0]->getId(), $body['items'][0]['id']);
+        $this->assertSame(64, strlen($body['items'][0]['revision']));
+    }
+
+    public function testImageResultStoresSignedPngPrivately(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        [$owner, , $items] = $this->makeWardrobeWithItems($em, 'cutout-result', 1);
+        $item = $items[0];
+        $item->setPhoto('cutout-source.jpg');
+        $em->getRepository(WardrobeConsent::class)->findOneBy(['subject' => $owner])->grantPhotoProcessing($owner);
+        $em->flush();
+
+        $image = imagecreatetruecolor(2, 2);
+        ob_start();
+        imagepng($image);
+        $bytes = (string) ob_get_clean();
+        imagedestroy($image);
+
+        $path = PreparedWardrobePhoto::path(static::getContainer()->getParameter('kernel.project_dir'), $item);
+        try {
+            $client->request('POST', '/api/v1/wardrobe/daily/images/result/' . $item->getId(), [], [], [
+                'HTTP_X_AGENT_TOKEN' => self::TOKEN,
+                'HTTP_X_SOURCE_REVISION' => PreparedWardrobePhoto::revision($item),
+                'HTTP_X_SIGNATURE' => hash_hmac('sha256', $bytes, 'test-agent-secret'),
+                'CONTENT_TYPE' => 'image/png',
+            ], $bytes);
+            $this->assertResponseIsSuccessful();
+            $this->assertFileExists($path);
+            $this->assertSame($bytes, file_get_contents($path));
+        } finally {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
     }
 
     public function testAcceptsValidOutfitForOwnedWardrobe(): void

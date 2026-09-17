@@ -12,6 +12,7 @@ use App\Repository\WardrobeItemRepository;
 use App\Repository\WardrobeOutfitRepository;
 use App\Repository\WardrobeRepository;
 use App\Service\Wardrobe\WardrobeOutfitCollageRenderer;
+use App\Service\Wardrobe\PreparedWardrobePhoto;
 use App\Service\Wardrobe\WardrobeOutfitLearningService;
 use App\Service\Wardrobe\WardrobeStylistContextBuilder;
 use Doctrine\ORM\EntityManagerInterface;
@@ -60,6 +61,8 @@ class WardrobeDailyController extends AbstractController
     public function __construct(
         #[Autowire('%env(default::AGENT_API_TOKEN)%')]
         private readonly ?string $apiToken,
+        #[Autowire('%env(default::AGENT_API_SECRET)%')]
+        private readonly ?string $apiSecret,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {
@@ -123,6 +126,86 @@ class WardrobeDailyController extends AbstractController
             'styles' => array_map(static fn ($style): string => $style->getTitle(), $item->getStyles()->toArray()),
             'rotation' => $rotation[(int) $item->getId()] ?? 'fresh',
         ];
+    }
+
+    #[Route('/images/queue', name: 'api_wardrobe_daily_images_queue', methods: ['GET'])]
+    public function imageQueue(
+        Request $request,
+        RateLimiterFactory $agentApiLimiter,
+        WardrobeItemRepository $items,
+        WardrobeConsentRepository $consents,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
+            return $deny;
+        }
+
+        $after = max(0, $request->query->getInt('after'));
+        $candidates = $items->findImageCandidates($after);
+        $queue = [];
+        foreach ($candidates as $item) {
+            $owner = $item->getUser();
+            $consent = $owner === null ? null : $consents->findForSubject($owner);
+            $path = PreparedWardrobePhoto::path($this->projectDir, $item);
+            if ($path === null || is_file($path) || !$consent?->isPhotoProcessingGranted()
+                || !$consent->isPersonalizationGranted()) {
+                continue;
+            }
+            $queue[] = ['id' => $item->getId(), 'revision' => PreparedWardrobePhoto::revision($item)];
+        }
+
+        return $this->json([
+            'items' => $queue,
+            'next_after' => $candidates === [] ? null : end($candidates)->getId(),
+        ]);
+    }
+
+    #[Route('/images/result/{id}', name: 'api_wardrobe_daily_images_result', requirements: ['id' => '\\d+'], methods: ['POST'])]
+    public function imageResult(
+        int $id,
+        Request $request,
+        RateLimiterFactory $agentApiLimiter,
+        WardrobeItemRepository $items,
+        WardrobeConsentRepository $consents,
+    ): JsonResponse {
+        if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
+            return $deny;
+        }
+        $bytes = $request->getContent();
+        if ($this->apiSecret === null || $this->apiSecret === '' || !hash_equals(
+            hash_hmac('sha256', $bytes, $this->apiSecret),
+            (string) $request->headers->get('X-Signature'),
+        )) {
+            return $this->json(['error' => 'bad signature'], Response::HTTP_UNAUTHORIZED);
+        }
+        $item = $items->find($id);
+        $owner = $item?->getUser();
+        $consent = $owner === null ? null : $consents->findForSubject($owner);
+        $path = $item === null ? null : PreparedWardrobePhoto::path($this->projectDir, $item);
+        if ($item?->getDeletedAt() !== null || $path === null || !$consent?->isPhotoProcessingGranted()
+            || !$consent->isPersonalizationGranted()) {
+            return $this->json(['error' => 'item unavailable'], Response::HTTP_NOT_FOUND);
+        }
+        if (!hash_equals((string) PreparedWardrobePhoto::revision($item), (string) $request->headers->get('X-Source-Revision'))) {
+            return $this->json(['error' => 'source changed'], Response::HTTP_CONFLICT);
+        }
+        $dimensions = strlen($bytes) <= 10_000_000 ? @getimagesizefromstring($bytes) : false;
+        if ($dimensions === false || $dimensions['mime'] !== 'image/png'
+            || $dimensions[0] > 5000 || $dimensions[1] > 5000) {
+            return $this->json(['error' => 'invalid PNG'], Response::HTTP_BAD_REQUEST);
+        }
+        $directory = dirname($path);
+        if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
+            return $this->json(['error' => 'storage unavailable'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+        $temporary = tempnam($directory, 'prepared-');
+        if ($temporary === false || file_put_contents($temporary, $bytes) === false || !rename($temporary, $path)) {
+            if ($temporary !== false && is_file($temporary)) {
+                unlink($temporary);
+            }
+            return $this->json(['error' => 'storage unavailable'], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return $this->json(['status' => 'saved']);
     }
 
     /**
