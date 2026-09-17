@@ -43,14 +43,12 @@ class WardrobeDailyControllerTest extends WebTestCase
         $this->assertResponseStatusCodeSame(401);
     }
 
-    public function testImageQueueIncludesOnlyConsentedItemsWithPhotos(): void
+    public function testImageQueueIncludesPersonalizedItemsWithPhotosWithoutExternalPhotoConsent(): void
     {
         $client = static::createClient();
         $em = static::getContainer()->get(EntityManagerInterface::class);
-        [$owner, , $items] = $this->makeWardrobeWithItems($em, 'cutout-queue', 1);
+        [, , $items] = $this->makeWardrobeWithItems($em, 'cutout-queue', 1);
         $items[0]->setPhoto('cutout-source.jpg');
-        $consent = $em->getRepository(WardrobeConsent::class)->findOneBy(['subject' => $owner]);
-        $consent->grantPhotoProcessing($owner);
         $em->flush();
 
         $client->request('GET', '/api/v1/wardrobe/daily/images/queue?after=' . ($items[0]->getId() - 1), [], [], [
@@ -66,10 +64,9 @@ class WardrobeDailyControllerTest extends WebTestCase
     {
         $client = static::createClient();
         $em = static::getContainer()->get(EntityManagerInterface::class);
-        [$owner, , $items] = $this->makeWardrobeWithItems($em, 'cutout-result', 1);
+        [, , $items] = $this->makeWardrobeWithItems($em, 'cutout-result', 1);
         $item = $items[0];
         $item->setPhoto('cutout-source.jpg');
-        $em->getRepository(WardrobeConsent::class)->findOneBy(['subject' => $owner])->grantPhotoProcessing($owner);
         $em->flush();
 
         $image = imagecreatetruecolor(2, 2);
