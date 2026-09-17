@@ -39,7 +39,7 @@
                 {% if outfit.explanation %}<p class="mt-1 text-sm text-gray-600">{{ outfit.explanation }}</p>{% endif %}
                 <div class="mt-4 max-w-md">
                     <canvas class="outfit-collage w-full rounded-xl bg-[#f6f2ec]" width="800" height="1000" aria-label="Коллаж образа {{ outfit.title }}"></canvas>
-                    <button type="button" class="download-outfit mt-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold">Скачать изображение образа</button>
+                    <button type="button" disabled class="download-outfit mt-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold disabled:opacity-50">Скачать изображение образа</button>
                 </div>
                 <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                     {% for item in outfit.items %}
@@ -94,6 +94,7 @@
                 const y = 20 + Math.floor(index / columns) * cellHeight + (cellHeight - height) / 2;
                 context.drawImage(image, x, y, width, height);
             });
+            section.querySelector('.download-outfit').disabled = false;
         };
         draw();
         section.querySelector('.download-outfit').addEventListener('click', () => {
