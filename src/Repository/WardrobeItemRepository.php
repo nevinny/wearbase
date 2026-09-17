@@ -38,6 +38,22 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /** @return WardrobeItem[] */
+    public function findImageCandidates(int $afterId, int $limit = 100): array
+    {
+        return $this->createQueryBuilder('w')
+            ->andWhere('w.id > :afterId')
+            ->andWhere('w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus = :active')
+            ->andWhere('w.wearStatus = :wear')
+            ->setParameter('afterId', $afterId)
+            ->setParameter('active', WardrobeItem::ITEM_ACTIVE)
+            ->setParameter('wear', WardrobeItem::WEAR_ACTIVE)
+            ->orderBy('w.id', 'ASC')
+            ->setMaxResults($limit)
+            ->getQuery()->getResult();
+    }
+
     /** @return WardrobeItem[] Up to limit + 1 records for keyset pagination. */
     public function findNeedingPreparation(User $subject, int $afterId = 0, int $limit = 30): array
     {

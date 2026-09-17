@@ -389,6 +389,11 @@ final class WardrobeOutfitCollageRenderer
      */
     private function resolvePhoto(WardrobeItem $item): ?string
     {
+        $prepared = PreparedWardrobePhoto::path($this->projectDir, $item);
+        if ($prepared !== null && is_file($prepared)) {
+            return $prepared;
+        }
+
         $cover = $item->getCoverPhoto();
         if ($cover !== null) {
             $path = $this->resolveMediaPath($this->storage->resolvePath($cover, 'file'), $cover->getFilePath());
