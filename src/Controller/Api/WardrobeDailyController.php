@@ -146,8 +146,7 @@ class WardrobeDailyController extends AbstractController
             $owner = $item->getUser();
             $consent = $owner === null ? null : $consents->findForSubject($owner);
             $path = PreparedWardrobePhoto::path($this->projectDir, $item);
-            if ($path === null || is_file($path) || !$consent?->isPhotoProcessingGranted()
-                || !$consent->isPersonalizationGranted()) {
+            if ($path === null || is_file($path) || !$consent?->isPersonalizationGranted()) {
                 continue;
             }
             $queue[] = ['id' => $item->getId(), 'revision' => PreparedWardrobePhoto::revision($item)];
@@ -181,8 +180,7 @@ class WardrobeDailyController extends AbstractController
         $owner = $item?->getUser();
         $consent = $owner === null ? null : $consents->findForSubject($owner);
         $path = $item === null ? null : PreparedWardrobePhoto::path($this->projectDir, $item);
-        if ($item?->getDeletedAt() !== null || $path === null || !$consent?->isPhotoProcessingGranted()
-            || !$consent->isPersonalizationGranted()) {
+        if ($item?->getDeletedAt() !== null || $path === null || !$consent?->isPersonalizationGranted()) {
             return $this->json(['error' => 'item unavailable'], Response::HTTP_NOT_FOUND);
         }
         if (!hash_equals((string) PreparedWardrobePhoto::revision($item), (string) $request->headers->get('X-Source-Revision'))) {
