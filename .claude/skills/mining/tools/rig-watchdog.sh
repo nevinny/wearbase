@@ -55,6 +55,43 @@ notify_throttled(){
   echo "$now" > "$f"; notify "$msg"
 }
 
+# На A4000 живёт ComfyUI (подготовка картинок гардероба, крон 01:00 UTC). Если майнер
+# займёт её VRAM на полной интенсивности, ночной батч ляжет по OOM. Индекс A4000 в
+# нумерации wildrig не совпадает с nvidia-smi и известен только из лога живого старта,
+# поэтому исключаем её один раз — после первого удачного запуска, и запоминаем в coins.json.
+ensure_a4000_excluded(){
+  grep -q -- '--opencl-devices' "$M/coins.json" && return 1
+  python3 - "$M/coins.json" "$M/wildrig.log" <<'PYEOF'
+import json, re, sys, os
+coins_path, log_path = sys.argv[1], sys.argv[2]
+try:
+    log = open(log_path, errors="replace").read()
+except OSError:
+    sys.exit(2)
+devs = re.findall(r"GPU #(\d+): ([^\[\n\r]+)", log)
+if not devs:
+    sys.exit(2)
+idx = {int(n) for n, _ in devs}
+a4000 = sorted(int(n) for n, name in devs if "A4000" in name)
+if not a4000:
+    sys.exit(2)                      # A4000 в майнинге нет — исключать нечего
+keep = sorted(idx - set(a4000))
+if not keep:
+    sys.exit(2)
+c = json.load(open(coins_path))
+coin = c["coins"][c["active"]]
+extra = list(coin.get("extra_args") or [])
+if any(a.startswith("--opencl-devices") for a in extra):
+    sys.exit(1)
+extra += ["--opencl-devices", ",".join(str(i) for i in keep)]
+coin["extra_args"] = extra
+tmp = coins_path + ".tmp"
+json.dump(c, open(tmp, "w"), ensure_ascii=False, indent=2)
+os.replace(tmp, coins_path)
+print("--opencl-devices=%s (A4000 #%s отдана ComfyUI)" % (",".join(map(str, keep)), ",".join(map(str, a4000))))
+PYEOF
+}
+
 restarts_last_hour(){
   local f=$M/.watchdog-restarts
   local now; now=$(date +%s)
@@ -138,6 +175,16 @@ fi
 # --- 7. майнер жив, но хешрейт стоит --------------------------------------------
 UP=$(ps -o etimes= -p "$PID" 2>/dev/null | tr -d ' ')
 if [ "${UP:-0}" -lt 300 ]; then log "wildrig pid=$PID uptime ${UP}s — даю разогнаться"; exit 0; fi
+
+# однократно: убрать A4000 из майнинга, чтобы не убить ночной батч ComfyUI
+if EXCL=$(ensure_a4000_excluded); then
+  log "правлю coins.json: $EXCL — перезапуск майнера"
+  curl -s -m 20 -X POST "$DASH/stop" >/dev/null 2>&1
+  sleep 5
+  curl -s -m 20 -X POST "$DASH/start" >> "$LOG" 2>&1; echo >> "$LOG"
+  record_restart
+  exit 0
+fi
 
 ZERO=$(tail -n "$STALL_SAMPLES" "$M/hashrate-history.csv" 2>/dev/null | awk -F, '$2+0==0' | wc -l)
 if [ "${ZERO:-0}" -ge "$STALL_SAMPLES" ]; then

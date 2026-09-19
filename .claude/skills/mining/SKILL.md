@@ -30,6 +30,10 @@ ssh llm 'journalctl -k -b --no-pager | grep -c "Oops:"; ps -eo stat=,comm= | awk
 - `~/miner/.mining-enabled` — нет файла → сторож следит, но майнинг не поднимает.
 - `~/miner/.watchdog-off` — сторож не делает вообще ничего.
 
+Сторож сам один раз убирает A4000 из майнинга (`--opencl-devices` в `coins.json`) после первого
+удачного старта — индекс берёт из `wildrig.log`, потому что нумерация wildrig не совпадает с
+nvidia-smi. Это чтобы ночной батч ComfyUI (01:00 UTC) не лёг по OOM.
+
 ⚠️ **`tmux has-session -t mine` и поле `mining_active` дашборда врут**: 19.09.2026 оба
 показывали «майнер жив», а внутри сессии был зомби wildrig. Живость мерить только
 `pgrep -x wildrig-multi` + состояние процесса.
@@ -58,6 +62,10 @@ ssh llm 'journalctl -k -b --no-pager | grep -c "Oops:"; ps -eo stat=,comm= | awk
 
 ## Автозапуск после ребута
 
+- ⚠️ **Автостарт майнинга у дашборда выключен намеренно** (drop-in `no-mining.conf`, 20.08.2026 —
+  на A4000 живёт ComfyUI гардероба). После ребута майнинг поднимает **сторож** (крон `*/5`,
+  см. выше), а не дашборд: он стартует позже гонки с GPU-discovery ollama и только если риг
+  здоров. Не «чинить» `AUTOSTART_MINING=0` обратно в 1 — это не баг.
 - **Дашборд + майнинг**: user-юнит `rig-dashboard.service` (`~/.config/systemd/user/`, `enabled`, linger включён) — поднимает `dashboard.py` с `AUTOSTART_MINING=1`, тот через 15 с стартует активную монету (до 5 попыток: драйвер после ребута готов не сразу). Управление: `systemctl --user {status,restart} rig-dashboard`. **Правку dashboard.py применять через `systemctl --user restart rig-dashboard`**, не ручным `setsid` — иначе поднимутся два экземпляра на один порт.
   ⚠️ В юните обязателен **`KillMode=process`**: tmux-сервер майнера — потомок дашборда и лежит в его cgroup, при дефолтном `control-group` рестарт юнита убивает майнинг вместе с дашбордом.
 - **Power-лимиты + fanctl**: root-юнит `rig-gpu-tune.service` (лимиты в `ExecStartPre`, fanctl демоном). **Поставлен и `enabled` с 2026-09-03** — после ребута поднимается сам, ручной бутстрап больше не нужен. Проверка: `systemctl is-active rig-gpu-tune`. Если не `active` — переставить (см. ниже), иначе карты на дефолтном TDP и драйверной кривой.
