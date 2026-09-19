@@ -16,6 +16,10 @@
 #   ~/miner/.watchdog-off     — файл есть → сторож не делает вообще ничего
 
 set -u
+# Крон даёт пустой PATH и никакого XDG_RUNTIME_DIR: без этого не найдётся lsmod
+# (он в /usr/sbin) и не сработает systemctl --user. Проверено на риге 19.09.2026.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 M=~/miner
 LOG=$M/watchdog.log
 DASH=http://127.0.0.1:8088
@@ -67,7 +71,8 @@ record_restart(){
 [ -f "$M/.watchdog-off" ] && exit 0
 
 # --- 1. тихий режим: драйвер выгружен намеренно, не мешаем ---------------------
-if ! lsmod | grep -q '^nvidia '; then
+# Читаем /proc/modules напрямую, а не lsmod — меньше зависимость от PATH.
+if ! grep -q '^nvidia ' /proc/modules; then
   log "тихий режим (драйвер выгружен) — пропуск"
   exit 0
 fi
