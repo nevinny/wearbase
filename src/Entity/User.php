@@ -91,6 +91,29 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     #[ORM\Column(length: 20, options: ['default' => 'active'])]
     private string $status = 'active';
 
+    // --- Атрибуция регистрации (docs/registration_sources_2026_09.md) ---
+    // Заполняются в RegisterController из куки wb_src (SignupAttributionListener),
+    // хранящей первое касание визитёра. signupUtm — «сырой» JSON {utm_source,utm_medium,
+    // utm_campaign}, чтобы можно было переклассифицировать без повторного визита.
+
+    #[ORM\Column(length: 50, nullable: true)]
+    private ?string $signupSource = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $signupUtm = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $signupReferrer = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    private ?string $signupLanding = null;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $signupFirstSeenAt = null;
+
+    #[ORM\Column(length: 32, nullable: true)]
+    private ?string $signupYmUid = null;
+
     // --- Семейный гардероб ---
 
     #[ORM\ManyToOne(targetEntity: Family::class)]
@@ -352,6 +375,54 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface, Equatab
     public function setStatus(string $status): static
     {
         $this->status = $status;
+        return $this;
+    }
+
+    public function getSignupSource(): ?string { return $this->signupSource; }
+
+    public function setSignupSource(?string $signupSource): static
+    {
+        $this->signupSource = $signupSource;
+        return $this;
+    }
+
+    public function getSignupUtm(): ?string { return $this->signupUtm; }
+
+    public function setSignupUtm(?string $signupUtm): static
+    {
+        $this->signupUtm = $signupUtm;
+        return $this;
+    }
+
+    public function getSignupReferrer(): ?string { return $this->signupReferrer; }
+
+    public function setSignupReferrer(?string $signupReferrer): static
+    {
+        $this->signupReferrer = $signupReferrer;
+        return $this;
+    }
+
+    public function getSignupLanding(): ?string { return $this->signupLanding; }
+
+    public function setSignupLanding(?string $signupLanding): static
+    {
+        $this->signupLanding = $signupLanding;
+        return $this;
+    }
+
+    public function getSignupFirstSeenAt(): ?\DateTimeImmutable { return $this->signupFirstSeenAt; }
+
+    public function setSignupFirstSeenAt(?\DateTimeImmutable $signupFirstSeenAt): static
+    {
+        $this->signupFirstSeenAt = $signupFirstSeenAt;
+        return $this;
+    }
+
+    public function getSignupYmUid(): ?string { return $this->signupYmUid; }
+
+    public function setSignupYmUid(?string $signupYmUid): static
+    {
+        $this->signupYmUid = $signupYmUid;
         return $this;
     }
 
