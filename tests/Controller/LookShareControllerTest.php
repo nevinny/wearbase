@@ -204,7 +204,9 @@ class LookShareControllerTest extends DatabaseDependentWebTestCase
             'target' => '/l/'.$token,
         ]);
 
-        self::assertResponseRedirects('/l/'.$token, null, 'После регистрации гость возвращается на лук');
+        // ?signup=customer — метка цели Метрики (SignupAttributionListener/RegisterController),
+        // дописывается ко всем редиректам после регистрации, включая look-share target_path.
+        self::assertResponseRedirects('/l/'.$token.'?signup=customer', null, 'После регистрации гость возвращается на лук');
 
         /** @var User|null $invitee */
         $invitee = $em->getRepository(User::class)->findOneBy(['email' => $email]);
