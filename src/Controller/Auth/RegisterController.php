@@ -8,6 +8,7 @@ use App\Entity\Brand;
 use App\Entity\BrandModeration;
 use App\Entity\BrandUser;
 use App\Entity\User;
+use App\EventListener\SignupAttributionListener;
 use App\Form\Auth\BrandRegistrationFormType;
 use App\Form\Auth\RegistrationFormType;
 use App\Notification\AdminNotifier;
@@ -19,6 +20,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -107,6 +109,7 @@ class RegisterController extends AbstractController
                 $em->persist($user);
             }
 
+            $this->applySignupAttribution($user, $request);
 
             // Generate email verification token
             $token = bin2hex(random_bytes(32));
@@ -133,11 +136,21 @@ class RegisterController extends AbstractController
             if ($lookShareTarget !== null) {
                 $request->getSession()->set('_security.main.target_path', $lookShareTarget);
             }
-            return $userAuthenticator->authenticateUser(
+            $response = $userAuthenticator->authenticateUser(
                 $user,
                 $authenticator,
                 $request,
             );
+
+            // Цель «регистрация» для Метрики отслеживается по посещению URL — дописываем
+            // маркер в Location редиректа (не трогая уже возможный target_path из look-share).
+            if ($response instanceof RedirectResponse) {
+                $response->setTargetUrl(
+                    $this->appendSignupQueryParam($response->getTargetUrl(), $isBrand ? 'brand' : 'customer')
+                );
+            }
+
+            return $response;
         }
 
         return $this->render(
@@ -180,5 +193,108 @@ class RegisterController extends AbstractController
         }
 
         return $slug;
+    }
+
+    private function appendSignupQueryParam(string $url, string $kind): string
+    {
+        return $url . (str_contains($url, '?') ? '&' : '?') . 'signup=' . $kind;
+    }
+
+    /**
+     * Заполняет signup_* поля User из куки wb_src (SignupAttributionListener) —
+     * первое касание визитёра до регистрации (docs/registration_sources_2026_09.md).
+     * Нет куки (заблокирована/устарела/прямой заход без запроса) — считаем прямым заходом.
+     */
+    private function applySignupAttribution(User $user, Request $request): void
+    {
+        $raw = $request->cookies->get(SignupAttributionListener::COOKIE_NAME);
+        $data = is_string($raw) ? json_decode($raw, true) : null;
+
+        if (!is_array($data)) {
+            $user->setSignupSource('direct');
+            $user->setSignupFirstSeenAt(new \DateTimeImmutable());
+            return;
+        }
+
+        // ysclid тоже сохраняем «сырым» рядом с utm_* — это единственный сигнал, отличающий
+        // yandex_organic от direct, когда браузер обрезал Referer; нужен для переклассификации.
+        $utm = array_filter([
+            'utm_source'   => $data['utm_source'] ?? null,
+            'utm_medium'   => $data['utm_medium'] ?? null,
+            'utm_campaign' => $data['utm_campaign'] ?? null,
+            'ysclid'       => !empty($data['ysclid']) ? true : null,
+        ]);
+
+        $user->setSignupSource($this->classifySignupSource($data));
+        $user->setSignupUtm($utm === [] ? null : mb_substr((string) json_encode($utm, JSON_UNESCAPED_UNICODE), 0, 255));
+        $user->setSignupReferrer(isset($data['ref']) && is_string($data['ref']) ? mb_substr($data['ref'], 0, 255) : null);
+        $user->setSignupLanding(isset($data['lp']) && is_string($data['lp']) ? mb_substr($data['lp'], 0, 255) : null);
+
+        $firstSeen = isset($data['ts']) && is_string($data['ts'])
+            ? \DateTimeImmutable::createFromFormat(DATE_ATOM, $data['ts'])
+            : false;
+        $user->setSignupFirstSeenAt($firstSeen instanceof \DateTimeImmutable ? $firstSeen : new \DateTimeImmutable());
+
+        $ymUid = $request->cookies->get('_ym_uid');
+        $user->setSignupYmUid(is_string($ymUid) ? mb_substr($ymUid, 0, 32) : null);
+    }
+
+    /**
+     * Классификатор канала из сырых полей куки wb_src. Раздельно от applySignupAttribution,
+     * чтобы позже можно было переклассифицировать существующих пользователей по тем же
+     * сырым signup_referrer/signup_utm без повторного визита.
+     */
+    private function classifySignupSource(array $data): string
+    {
+        $utmSource = trim((string) ($data['utm_source'] ?? ''));
+        if ($utmSource !== '') {
+            return mb_substr('utm:' . $utmSource, 0, 50);
+        }
+
+        $ref = isset($data['ref']) && is_string($data['ref']) ? $data['ref'] : '';
+        $host = strtolower(explode('/', $ref, 2)[0]);
+        $hasYsclid = !empty($data['ysclid']);
+
+        if ($host === '' && !$hasYsclid) {
+            return 'direct';
+        }
+
+        if ($this->hostIsOrSubdomainOf($host, 'alice.yandex.ru')) {
+            return 'alice';
+        }
+        if ($hasYsclid || $this->hostIsOrSubdomainOf($host, 'ya.ru') || $this->hostIsBrandDomain($host, 'yandex')) {
+            return 'yandex_organic';
+        }
+        if ($this->hostIsBrandDomain($host, 'google')) {
+            return 'google_organic';
+        }
+        if ($this->hostIsOrSubdomainOf($host, 'chatgpt.com')) {
+            return 'chatgpt';
+        }
+        if ($this->hostIsOrSubdomainOf($host, 'perplexity.ai')) {
+            return 'perplexity';
+        }
+        if ($this->hostIsOrSubdomainOf($host, 'dzen.ru')) {
+            return 'dzen';
+        }
+        if ($this->hostIsOrSubdomainOf($host, 't.me')) {
+            return 'telegram';
+        }
+        if ($this->hostIsOrSubdomainOf($host, 'vk.com') || $this->hostIsOrSubdomainOf($host, 'instagram.com')) {
+            return 'social';
+        }
+
+        return 'referral';
+    }
+
+    private function hostIsOrSubdomainOf(string $host, string $domain): bool
+    {
+        return $host === $domain || str_ends_with($host, '.' . $domain);
+    }
+
+    /** yandex./google. — несколько TLD (yandex.ru, yandex.com, google.ru, google.com…). */
+    private function hostIsBrandDomain(string $host, string $brand): bool
+    {
+        return (bool) preg_match('/(^|\.)' . preg_quote($brand, '/') . '\.[a-z]+$/i', $host);
     }
 }
