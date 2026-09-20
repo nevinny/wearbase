@@ -89,7 +89,9 @@ class SignupAttributionListener
             ->withExpires(time() + self::COOKIE_TTL)
             ->withPath('/')
             ->withSameSite('lax')
-            ->withSecure(true)
+            // Secure по схеме запроса: на проде всегда HTTPS, а на dev-сервере по http
+            // браузер молча выбросил бы Secure-куку и атрибуция локально не проверялась бы.
+            ->withSecure($request->isSecure())
             ->withHttpOnly(true);
 
         $response->headers->setCookie($cookie);

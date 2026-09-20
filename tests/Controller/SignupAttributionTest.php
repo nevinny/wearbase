@@ -24,7 +24,8 @@ class SignupAttributionTest extends AuthenticatedWebTestCase
         $client = static::createClient();
         $client->request(
             'GET',
-            '/login?utm_source=chatgpt.com&utm_medium=referral&utm_campaign=launch',
+            // абсолютный https: кука ставится Secure по схеме запроса (на проде всегда HTTPS)
+            'https://localhost/login?utm_source=chatgpt.com&utm_medium=referral&utm_campaign=launch',
             [],
             [],
             ['HTTP_REFERER' => 'https://chatgpt.com/c/abc123'],
