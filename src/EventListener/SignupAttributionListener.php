@@ -57,6 +57,12 @@ class SignupAttributionListener
             return;
         }
 
+        // Страница сразу после регистрации (редирект несёт ?signup=customer|brand) — не касание:
+        // у кого куки не сохранились, иначе первым источником записался бы собственный /account.
+        if ($request->query->has('signup')) {
+            return;
+        }
+
         $path = $request->getPathInfo();
         foreach (self::SKIP_PREFIXES as $prefix) {
             if (str_starts_with($path, $prefix)) {
