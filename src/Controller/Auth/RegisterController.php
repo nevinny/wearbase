@@ -216,10 +216,13 @@ class RegisterController extends AbstractController
             return;
         }
 
+        // ysclid тоже сохраняем «сырым» рядом с utm_* — это единственный сигнал, отличающий
+        // yandex_organic от direct, когда браузер обрезал Referer; нужен для переклассификации.
         $utm = array_filter([
             'utm_source'   => $data['utm_source'] ?? null,
             'utm_medium'   => $data['utm_medium'] ?? null,
             'utm_campaign' => $data['utm_campaign'] ?? null,
+            'ysclid'       => !empty($data['ysclid']) ? true : null,
         ]);
 
         $user->setSignupSource($this->classifySignupSource($data));
