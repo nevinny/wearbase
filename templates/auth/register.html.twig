@@ -52,7 +52,13 @@
                 {{ form_label(form.plainPassword.second, null, {'label_attr': {'class': tw_label}}) }}
                 {{ form_widget(form.plainPassword.second, {'attr': {'class': tw_input, 'placeholder': '••••••••'}}) }}
                 <div class="mt-1 text-sm text-red-600">{{ form_errors(form.plainPassword.second) }}</div>
-                <div class="form-error mt-1 text-sm text-red-600">{{ form_errors(form.plainPassword) }}</div>
+                {# Ошибки составного RepeatedType (короткий пароль, «пароли не совпадают») висят
+                   на самом plainPassword, а не на .first/.second — без этого блока они уезжали
+                   в form_rest() ниже кнопки, и человек отправлял форму повторно вслепую. #}
+                {% set password_errors = form_errors(form.plainPassword) %}
+                {% if password_errors|trim is not empty %}
+                    <div class="form-error mt-1 text-sm text-red-600">{{ password_errors }}</div>
+                {% endif %}
             </div>
 
             <div class="mb-4">
