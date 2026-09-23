@@ -1,11 +1,11 @@
 {% extends 'tailwind/base.html.twig' %}
 
-{% block title %}Цифровой гардероб для себя и семьи — вещи, образы, статистика | WEARBASE{% endblock %}
+{% block title %}Приложение для гардероба — образы из своих вещей | WEARBASE{% endblock %}
 {% block meta_description %}Соберите личный или семейный гардероб в WEARBASE: добавляйте вещи по фото, составляйте образы, следите за ноской и избегайте повторных покупок.{% endblock %}
-{% block meta_keywords %}цифровой гардероб, семейный гардероб, приложение для гардероба, учёт одежды, образы из своих вещей{% endblock %}
+{% block meta_keywords %}цифровой гардероб, семейный гардероб, приложение для гардероба, учёт одежды, образы из своих вещей, оцифровка гардероба{% endblock %}
 {% block meta_robots %}<meta name="robots" content="index, follow">{% endblock %}
 {% block canonical_url %}{{ url('landing_wardrobe', {_locale: app.request.locale|default('ru')}) }}{% endblock %}
-{% block og_title %}Покупайте реже. Носите больше.{% endblock %}
+{% block og_title %}Собирайте образы из своих вещей{% endblock %}
 {% block og_description %}Личный и семейный гардероб: вещи по фото, образы из своего шкафа и честная статистика носки.{% endblock %}
 {% block pwa_metadata %}
     <meta name="application-name" content="WEARBASE Семья">
@@ -40,8 +40,8 @@
                     Бесплатный цифровой гардероб
                 </div>
                 <h1 class="text-4xl font-black leading-[1.03] tracking-[-.045em] sm:text-6xl lg:text-7xl">
-                    Покупайте реже.<br>
-                    <span class="text-indigo-600">Носите больше.</span>
+                    Собирайте образы<br>
+                    <span class="text-indigo-600">из своих вещей.</span>
                 </h1>
                 <p class="mt-6 max-w-xl text-lg leading-8 text-slate-600 sm:text-xl">
                     Добавляйте вещи по фото, собирайте образы из своего шкафа и сразу видьте, чего действительно не хватает. Начните с себя — семейные профили подключаются позже.
@@ -81,6 +81,20 @@
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
+                        <div class="col-span-2 flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-4">
+                            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-2xl text-white">＋</span>
+                            <div>
+                                <p class="font-bold">Добавить вещь по фото</p>
+                                <p class="text-sm text-slate-500">Карточка заполнится с помощью AI</p>
+                            </div>
+                        </div>
+                        <div class="col-span-2 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-400">
+                            <span>Фото вещи</span>
+                            <span aria-hidden="true">→</span>
+                            <span>Карточка</span>
+                            <span aria-hidden="true">→</span>
+                            <span>Готовый образ</span>
+                        </div>
                         <div class="col-span-2 rounded-3xl bg-slate-950 p-5 text-white">
                             <div class="flex items-end justify-between gap-4">
                                 <div>
@@ -103,13 +117,6 @@
                             <p class="text-xs font-semibold text-sky-700">Готовые образы</p>
                             <p class="mt-4 text-3xl font-black text-sky-950">24</p>
                             <p class="mt-1 text-xs text-sky-700">на работу и выходные</p>
-                        </div>
-                        <div class="col-span-2 flex items-center gap-3 rounded-3xl border border-slate-200 bg-white p-4">
-                            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-2xl text-white">＋</span>
-                            <div>
-                                <p class="font-bold">Добавить вещь по фото</p>
-                                <p class="text-sm text-slate-500">Карточка заполнится с помощью AI</p>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -195,9 +202,9 @@
                 </div>
                 <ol class="space-y-4">
                     {% set steps = [
-                        ['01','Создайте свой гардероб','Войдите на WEARBASE и добавьте первые вещи вручную, по ссылке или фотографии.'],
-                        ['02','Добавьте детские профили','Маленькому ребёнку отдельная регистрация не нужна — родитель ведёт его вещи сам.'],
-                        ['03','Пригласите второго родителя','Муж входит или регистрируется по parent-инвайту и появляется в составе семьи.'],
+                        ['01','Добавьте вещи по фото','Сфотографируйте вещь или пришлите ссылку на товар — можно сразу пачкой. Гардероб оцифровывается сам: AI распознаёт категорию и цвет и создаёт черновик карточки, бренд можно дописать вручную.'],
+                        ['02','Подтвердите черновик и получите образ','Проверьте или поправьте то, что предложил AI, — и сразу получите образ: AI подбирает до трёх сочетаний из ваших активных вещей.'],
+                        ['03','Добавьте профили близких','Маленькому ребёнку отдельная регистрация не нужна — родитель ведёт его вещи сам, а второй родитель входит по parent-инвайту.'],
                         ['04','Дайте ребёнку доступ позже','Claim-ссылка активирует тот же профиль с сохранением вещей и всей истории.']
                     ] %}
                     {% for step in steps %}
@@ -236,9 +243,11 @@
 
     <section class="border-t border-slate-200 bg-white py-20">
         <div class="mx-auto max-w-3xl px-4 sm:px-6">
-            <h2 class="text-center text-3xl font-black sm:text-4xl">Вопросы о семейном гардеробе</h2>
+            <h2 class="text-center text-3xl font-black sm:text-4xl">Частые вопросы о гардеробе WEARBASE</h2>
             <div class="mt-10 space-y-3">
                 {% set faq = {
+                    'Как приложение распознаёт вещи по фото?':'Вы фотографируете вещь или добавляете её по ссылке на товар. AI определяет категорию и цвет и создаёт черновик карточки — его можно принять как есть или поправить любое поле, включая бренд.',
+                    'Это бесплатно?':'Да. Добавление вещей по фото, подбор образов из активных вещей и статистика носки бесплатны — банковская карта не нужна.',
                     'Ребёнку нужна отдельная регистрация?':'Нет. Родитель может создать детский профиль без входа. Позже ребёнок активирует этот же профиль по claim-ссылке и не теряет историю.',
                     'Можно добавить мужа или другого родителя?':'Да. Отправьте parent-инвайт: взрослый войдёт или зарегистрируется и после принятия появится в составе семьи.',
                     'Ребёнок увидит гардероб родителей?':'Нет. Ребёнок видит состав семьи, но имеет доступ только к своему гардеробу. Родитель управляет доступными детскими профилями.',
