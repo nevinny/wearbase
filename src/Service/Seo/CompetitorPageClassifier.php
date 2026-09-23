@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Seo;
 
+use App\Service\KnownHosts;
 use App\Service\UrlFilter;
 
 /**
@@ -14,14 +15,14 @@ use App\Service\UrlFilter;
  * Детерминированная эвристика по домену, без LLM/сети (легко тестируется).
  * Порядок проверки важен (первое совпадение побеждает):
  *   1. self/excluded (UrlFilter — wearbase.ru, job-агрегаторы) → other
- *   2. маркетплейс (wildberries.ru, ozon.ru, …)                → marketplace
- *   3. соцсеть (vk.com, instagram.com, …)                      → social
+ *   2. маркетплейс (KnownHosts::MARKETPLACES)                  → marketplace
+ *   3. соцсеть (KnownHosts::SOCIAL)                             → social
  *   4. официальный сайт бренда (brand_link.link_type=website)  → official_brand_site
  *   5. иначе                                                    → article
  *
- * Список маркетплейсов/соцсетей — отдельный от UrlFilter::JOB_NOISE намеренно:
- * там маркетплейсы НЕ исключаются из скрейпа (у них бывают реальные материалы
- * бренда), здесь же нужно просто не путать их со статьями.
+ * Списки хостов — общие с App\Service\Discovery\SourceTypeClassifier (KnownHosts),
+ * не с UrlFilter::JOB_NOISE: там маркетплейсы НЕ исключаются из скрейпа намеренно
+ * (у них бывают реальные материалы бренда), здесь же нужно просто не путать их со статьями.
  */
 class CompetitorPageClassifier
 {
@@ -30,18 +31,6 @@ class CompetitorPageClassifier
     public const TYPE_SOCIAL          = 'social';
     public const TYPE_OFFICIAL_BRAND  = 'official_brand_site';
     public const TYPE_OTHER           = 'other';
-
-    /** @var string[] */
-    private const MARKETPLACES = [
-        'wildberries.ru', 'ozon.ru', 'lamoda.ru', 'aliexpress.ru', 'aliexpress.com',
-        'market.yandex.ru', 'sbermegamarket.ru', 'avito.ru', 'kupivip.ru', 'goods.ru',
-    ];
-
-    /** @var string[] */
-    private const SOCIAL = [
-        'vk.com', 'instagram.com', 't.me', 'telegram.me', 'ok.ru', 'youtube.com',
-        'tiktok.com', 'facebook.com', 'threads.net', 'pinterest.com',
-    ];
 
     public function __construct(
         private readonly UrlFilter $urlFilter,
@@ -63,10 +52,10 @@ class CompetitorPageClassifier
         if ($this->urlFilter->isExcluded($url)) {
             return self::TYPE_OTHER;
         }
-        if ($this->matchesSuffix($host, self::MARKETPLACES)) {
+        if (KnownHosts::matches($host, KnownHosts::MARKETPLACES)) {
             return self::TYPE_MARKETPLACE;
         }
-        if ($this->matchesSuffix($host, self::SOCIAL)) {
+        if (KnownHosts::matches($host, KnownHosts::SOCIAL)) {
             return self::TYPE_SOCIAL;
         }
         if (in_array($host, $officialHosts, true)) {
@@ -74,17 +63,5 @@ class CompetitorPageClassifier
         }
 
         return self::TYPE_ARTICLE;
-    }
-
-    /** @param string[] $list */
-    private function matchesSuffix(string $host, array $list): bool
-    {
-        foreach ($list as $suffix) {
-            if ($host === $suffix || str_ends_with($host, '.' . $suffix)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

@@ -16,15 +16,32 @@ class SeoCompetitorScanRepository extends ServiceEntityRepository
         parent::__construct($registry, SeoCompetitorScan::class);
     }
 
-    /** Самая свежая проверка фразы (для 30-дневного скип-кэша app:seo:competitor-scan). */
-    public function findLatestByKeyword(string $keyword): ?SeoCompetitorScan
+    /**
+     * Самые свежие проверки набора фраз ОДНИМ запросом (для 30-дневного скип-кэша
+     * app:seo:competitor-scan — раньше дёргалось по одной фразе за раз в цикле кандидатов,
+     * до ~40 запросов за прогон при --limit).
+     *
+     * @param string[] $keywords
+     * @return array<string,SeoCompetitorScan> keyword => самый свежий scan (по id)
+     */
+    public function findLatestByKeywords(array $keywords): array
     {
-        return $this->createQueryBuilder('s')
-            ->where('s.keyword = :keyword')
-            ->setParameter('keyword', $keyword)
-            ->orderBy('s.id', 'DESC')
-            ->setMaxResults(1)
+        if ($keywords === []) {
+            return [];
+        }
+
+        $rows = $this->createQueryBuilder('s')
+            ->where('s.keyword IN (:keywords)')
+            ->setParameter('keywords', $keywords)
+            ->orderBy('s.id', 'ASC')
             ->getQuery()
-            ->getOneOrNullResult();
+            ->getResult();
+
+        $latest = [];
+        foreach ($rows as $scan) {
+            $latest[$scan->getKeyword()] = $scan; // ASC → последняя запись на keyword и есть самая свежая
+        }
+
+        return $latest;
     }
 }

@@ -19,6 +19,7 @@ use App\Service\YandexSearchClient;
 use App\Service\YandexSearchMeter;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -148,6 +149,8 @@ class SeoCompetitorScanCommand extends Command
 
         $poolLimit  = max(40, $limit * 4);
         $candidates = $this->resolveCandidates($source, $poolLimit);
+        // Один batch-запрос вместо N (до ~4×--limit) одиночных — см. SeoCompetitorScanRepository::findLatestByKeywords.
+        $latestScans = $this->scanRepo->findLatestByKeywords(array_column($candidates, 'query'));
 
         $picked = [];
         foreach ($candidates as $c) {
@@ -160,16 +163,21 @@ class SeoCompetitorScanCommand extends Command
             }
             // classifyGroup видит навигационный интент только по ОПУБЛИКОВАННЫМ брендам
             // (SeoQueryGapProvider::fetchPublishedBrandNames — bit-for-bit с app:seo:gap-report,
-            // трогать нельзя). Здесь фильтр шире: unpublished/draft-бренды тоже дают навигационный
-            // спрос (выдача — сайт/соцсети самого бренда, не статьи) и просачиваются в 'other'.
-            // Исключение: если фраза совпала с якорем/стилем — это легитимная цель роутинга
-            // («zara в россии» должна остаться кандидатом на replace-listicle), не шум.
-            if ($this->matchesWordBoundary($c['query'], $allBrandNames)
+            // трогать нельзя). Здесь фильтр шире, но применяется ТОЛЬКО к 'other' — geo_category
+            // и replace_comparison уже прошли собственную классификацию интента и не должны
+            // молча дропаться (запрос про реальный опубликованный бренд без якоря в yaml обязан
+            // дойти до recommendRoute() с пометкой «нет готового пути», а не исчезнуть тут).
+            // unpublished/draft-бренды тоже дают навигационный спрос (выдача — сайт/соцсети
+            // самого бренда, не статьи) и просачиваются в 'other'. Исключение: если фраза
+            // совпала с якорем/стилем — легитимная цель роутинга («zara в россии» должна
+            // остаться кандидатом на replace-listicle), не шум.
+            if ($intent === SeoCompetitorScan::INTENT_OTHER
+                && $this->matchesWordBoundary($c['query'], $allBrandNames)
                 && !$this->matchNeedle($c['query'], $anchorNeedles)
                 && !$this->matchNeedle($c['query'], $styleNeedles)) {
                 continue;
             }
-            $recent = $this->scanRepo->findLatestByKeyword($c['query']);
+            $recent = $latestScans[$c['query']] ?? null;
             $recentFresh = $recent !== null && $recent->getCheckedAt() !== null && $recent->getCheckedAt() > $freshCutoff;
             if ($recentFresh && $recent->getStatus() === SeoCompetitorScan::STATUS_ANALYZED) {
                 continue; // уже полностью проверена недавно — не расходуем лимит и API
@@ -319,12 +327,18 @@ class SeoCompetitorScanCommand extends Command
     private function fetchWordstatRows(int $limit): array
     {
         try {
+            // MIN_SHOWS для консистентности с fetchYandexRows/fetchGscRows (не платим Yandex
+            // Search API за шумные низкочастотники). ParameterType::INTEGER явно — та же
+            // MySQL/SQLite HAVING-типизация, что найдена в SeoQueryGapProvider (docs/testing.md).
             $rows = $this->db->fetchAllAssociative(
                 "SELECT keyword AS query, MAX(monthly_shows) AS shows
                  FROM brand_keyword
                  WHERE type = 'origin' AND monthly_shows IS NOT NULL
                  GROUP BY keyword
+                 HAVING shows >= ?
                  ORDER BY shows DESC LIMIT " . $limit,
+                [self::MIN_SHOWS],
+                [\Doctrine\DBAL\ParameterType::INTEGER],
             );
         } catch (\Throwable) {
             return [];
@@ -461,15 +475,47 @@ class SeoCompetitorScanCommand extends Command
      */
     private function buildSerpResults(array $serp, array $officialHosts, \DateTimeImmutable $now): array
     {
+        // In-memory дедуп по url в РАМКАХ этого вызова (одной фразы): competitor_article.url
+        // имеет unique-индекс, а flush ниже — один на всю выдачу (не на статью). Если бы два
+        // элемента SERP указывали на один и тот же (регистронезависимо, ≤768 симв.) URL, оба
+        // выглядели бы «новыми» до flush → второй INSERT упал бы на unique-constraint и
+        // потерял бы ВЕСЬ прогон фразы уже ПОСЛЕ платного запроса к Yandex Search API.
+        $seenArticles = [];
         $items = [];
         foreach (array_values($serp) as $idx => $r) {
             $pageType = $this->classifier->classify($r['url'], $officialHosts);
-            $article  = $pageType === CompetitorPageClassifier::TYPE_ARTICLE
-                ? $this->fetchOrReuseArticle($r['url'], $r['title'] ?? null, $now)
-                : null;
+            $article = null;
+            if ($pageType === CompetitorPageClassifier::TYPE_ARTICLE) {
+                $urlKey = $this->normalizeUrlKey($r['url']);
+                if (array_key_exists($urlKey, $seenArticles)) {
+                    $article = $seenArticles[$urlKey];
+                } else {
+                    $article = $this->fetchOrReuseArticle($r['url'], $r['title'] ?? null, $now);
+                    $seenArticles[$urlKey] = $article;
+                }
+            }
             $items[] = ['position' => $idx + 1, 'url' => $r['url'], 'page_type' => $pageType, 'article' => $article];
         }
-        $this->em->flush();
+
+        try {
+            $this->em->flush();
+        } catch (\Throwable) {
+            // Крайний случай — гонка с параллельным прогоном на тот же URL (unique-индекс
+            // competitor_article.url) уже после платного запроса: не теряем всю фразу целиком,
+            // откатываем UoW и продолжаем без текстов конкурентов (наблюдаемо в отчёте как
+            // 0 статей — фраза всё равно получит SERP и рекомендацию роутинга).
+            $this->em->clear();
+
+            return [
+                array_map(static function (array $it) {
+                    unset($it['article']);
+                    $it['competitor_article_id'] = null;
+
+                    return $it;
+                }, $items),
+                [],
+            ];
+        }
 
         $serpResults = [];
         $articleTexts = [];
@@ -484,6 +530,12 @@ class SeoCompetitorScanCommand extends Command
         }
 
         return [$serpResults, $articleTexts];
+    }
+
+    /** Ключ дедупа URL: регистронезависимо + обрезка до длины unique-индекса competitor_article.url. */
+    private function normalizeUrlKey(string $url): string
+    {
+        return mb_strtolower(mb_substr($url, 0, 768));
     }
 
     /**
@@ -632,8 +684,15 @@ class SeoCompetitorScanCommand extends Command
                 continue;
             }
             $needles = [mb_strtolower($slug)];
+            // status != deleted — soft-delete-фильтр (CLAUDE.md: «выборки обязаны фильтровать удалённое»).
             /** @var Brand|null $brand */
-            $brand = $this->em->getRepository(Brand::class)->findOneBy(['slug' => $slug]);
+            $brand = $this->em->getRepository(Brand::class)->createQueryBuilder('b')
+                ->where('b.slug = :slug')
+                ->andWhere('b.status != :deleted')
+                ->setParameter('slug', $slug)
+                ->setParameter('deleted', Statuses::Deleted)
+                ->getQuery()
+                ->getOneOrNullResult();
             if ($brand !== null && $brand->getTitle()) {
                 $needles[] = mb_strtolower((string) $brand->getTitle());
             }
@@ -647,8 +706,14 @@ class SeoCompetitorScanCommand extends Command
     private function loadStyleNeedles(): array
     {
         $out = [];
+        // status != deleted — soft-delete-фильтр (CLAUDE.md: «выборки обязаны фильтровать удалённое»).
+        $styles = $this->em->getRepository(BrandStyle::class)->createQueryBuilder('s')
+            ->where('s.status != :deleted')
+            ->setParameter('deleted', Statuses::Deleted)
+            ->getQuery()
+            ->getResult();
         /** @var BrandStyle $style */
-        foreach ($this->em->getRepository(BrandStyle::class)->findAll() as $style) {
+        foreach ($styles as $style) {
             $title = trim((string) $style->getTitle());
             $slug  = $style->getSlug();
             if ($title !== '' && $slug !== null) {

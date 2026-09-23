@@ -117,6 +117,16 @@ class SeoGapReportCommand extends Command
             $io->error(sprintf('Неизвестная полоса --band=%s (ожидается striking|gap|both).', $band));
             return Command::INVALID;
         }
+        // Guard против рассинхронизации констант: BAND_META (UI-метаданные, здесь) и
+        // SeoQueryGapProvider::BAND_BOUNDS (границы позиций) — две отдельные константы
+        // с 2026-09-23 (провайдер переиспользует app:seo:competitor-scan). Добавили полосу
+        // в одну и забыли парную — таблица/TG-дайджест ниже упадут на null-офсете вместо
+        // понятной ошибки. См. SeoGapReportBandMetaTest.
+        foreach ($bands as $bandName) {
+            if (!isset(self::BAND_META[$bandName])) {
+                throw new \LogicException("SeoGapReportCommand::BAND_META не содержит полосу «{$bandName}» из SeoQueryGapProvider::BAND_BOUNDS — рассинхронизация констант.");
+            }
+        }
 
         $io->title('SEO · position-лист (дожим 4–10 + gap >10) — автопилот');
 
