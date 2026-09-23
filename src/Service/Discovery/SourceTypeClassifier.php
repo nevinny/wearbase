@@ -2,6 +2,8 @@
 
 namespace App\Service\Discovery;
 
+use App\Service\KnownHosts;
+
 /**
  * Классифицирует URL источника по типу для очереди/документа/Qdrant payload.
  *
@@ -10,30 +12,13 @@ namespace App\Service\Discovery;
  *
  * Возможные значения: own_site | marketplace | social | article_review | mention.
  * (catalog в этой таксономии не детектим — сворачиваем в mention.)
+ *
+ * Списки хостов — KnownHosts (общие с App\Service\Seo\CompetitorPageClassifier,
+ * вынесено 2026-09-23 — до этого дублировались отдельно и успели разойтись:
+ * ok.ru/facebook.com/threads.net/pinterest.com здесь не детектились).
  */
 class SourceTypeClassifier
 {
-    /** Хосты маркетплейсов (суффиксное совпадение домена). */
-    private const MARKETPLACE_HOSTS = [
-        'ozon.ru',
-        'wildberries.ru',
-        'lamoda.ru',
-        'market.yandex.ru',
-        'aliexpress.ru',
-        'avito.ru',
-        'sbermegamarket.ru',
-    ];
-
-    /** Хосты соцсетей/мессенджеров/видео. */
-    private const SOCIAL_HOSTS = [
-        'instagram.com',
-        'vk.com',
-        't.me',
-        'telegram.me',
-        'youtube.com',
-        'tiktok.com',
-    ];
-
     /** Маркеры отзыва/обзора в заголовке или сниппете. */
     private const REVIEW_MARKERS = ['отзыв', 'обзор', 'рейтинг'];
 
@@ -43,10 +28,10 @@ class SourceTypeClassifier
         $host = preg_replace('/^www\./', '', $host) ?? $host;
 
         if ($host !== '') {
-            if ($this->hostMatches($host, self::MARKETPLACE_HOSTS)) {
+            if (KnownHosts::matches($host, KnownHosts::MARKETPLACES)) {
                 return 'marketplace';
             }
-            if ($this->hostMatches($host, self::SOCIAL_HOSTS)) {
+            if (KnownHosts::matches($host, KnownHosts::SOCIAL)) {
                 return 'social';
             }
         }
@@ -63,17 +48,5 @@ class SourceTypeClassifier
         }
 
         return 'mention';
-    }
-
-    /** Совпадение по самому хосту или его поддомену (suffix match на границе точки). */
-    private function hostMatches(string $host, array $domains): bool
-    {
-        foreach ($domains as $domain) {
-            if ($host === $domain || str_ends_with($host, '.' . $domain)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

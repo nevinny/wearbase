@@ -95,6 +95,55 @@ if (($_SERVER['APP_ENV'] ?? null) === 'test') {
             )
         SQL);
 
+        // Спрос/позиции Яндекс.Вебмастера + GSC (Version20260702_yandex_webmaster,
+        // Version20260719_gsc_query_stats, Version20260728_gsc_query_page,
+        // Version20260728_yandex_query_page_health) — читает SeoQueryGapProvider
+        // (app:seo:gap-report, app:seo:competitor-scan).
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS yandex_query_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query_text VARCHAR(255) NOT NULL,
+                shows INTEGER NOT NULL DEFAULT 0,
+                clicks INTEGER NOT NULL DEFAULT 0,
+                position DECIMAL(5,1) NOT NULL DEFAULT 0.0,
+                date_from DATE DEFAULT NULL,
+                date_to DATE NOT NULL
+            )
+        SQL);
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS gsc_query_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query VARCHAR(255) NOT NULL,
+                day DATE NOT NULL,
+                impressions INTEGER NOT NULL DEFAULT 0,
+                clicks INTEGER NOT NULL DEFAULT 0,
+                ctr DECIMAL(6,4) NOT NULL DEFAULT 0.0,
+                position DECIMAL(5,1) NOT NULL DEFAULT 0.0
+            )
+        SQL);
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS yandex_query_page (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query VARCHAR(255) NOT NULL,
+                page_url VARCHAR(512) NOT NULL,
+                impressions INTEGER NOT NULL DEFAULT 0,
+                clicks INTEGER NOT NULL DEFAULT 0,
+                demand INTEGER NOT NULL DEFAULT 0,
+                captured_on DATE NOT NULL
+            )
+        SQL);
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS gsc_query_page (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query VARCHAR(255) NOT NULL,
+                page_url VARCHAR(512) NOT NULL,
+                impressions INTEGER NOT NULL DEFAULT 0,
+                clicks INTEGER NOT NULL DEFAULT 0,
+                position DECIMAL(5,1) NOT NULL DEFAULT 0.0,
+                captured_on DATE NOT NULL
+            )
+        SQL);
+
         // ── Минимальный сид справочников ──────────────────────────────────────
         if ($em->getRepository(Currency::class)->count([]) === 0) {
             $rub = (new Currency())

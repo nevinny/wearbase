@@ -5,12 +5,14 @@ namespace App\Command;
 use App\Entity\Brand;
 use App\Entity\BrandKeyword;
 use App\Entity\BrandStyle;
+use App\Entity\SeoCompetitorScan;
 use App\Repository\BrandKeywordRepository;
 use App\Repository\BrandRepository;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
 use App\Service\Seo\BrandFactSheet;
+use App\Service\Seo\GapContextResolver;
 use App\Service\Seo\SpellChecker;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -81,6 +83,7 @@ class ReplaceListicleCommand extends Command
         private readonly ContentValidator       $validator,
         private readonly BrandFactSheet         $factSheet,
         private readonly SpellChecker           $spellChecker,
+        private readonly GapContextResolver     $gapContextResolver,
     ) {
         parent::__construct();
     }
@@ -93,6 +96,7 @@ class ReplaceListicleCommand extends Command
             ->addOption('out',     null, InputOption::VALUE_REQUIRED, 'Базовая папка ({out}/blog + {out}/dzen)', 'var/seo')
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Сохранять даже при провале quality-gate (с предупреждением)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Показать план (X, ниша, замены, ключевики) без генерации')
+            ->addOption('gap-context', null, InputOption::VALUE_REQUIRED, 'ID seo_competitor_scan (app:seo:competitor-scan) — подмешать темы конкурентов в промпт')
         ;
     }
 
@@ -105,6 +109,24 @@ class ReplaceListicleCommand extends Command
         $outDir     = rtrim((string) $input->getOption('out'), '/');
         $force      = (bool) $input->getOption('force');
         $dryRun     = (bool) $input->getOption('dry-run');
+        $gapContext = $input->getOption('gap-context');
+
+        // Gap-контекст (app:seo:competitor-scan, docs/seo_competitor_content.md) — один
+        // scan привязан к ОДНОЙ фразе/бренду X, а не ко всему батчу якорей. Без --anchor
+        // --gap-context применился бы ко ВСЕМ якорям батча — бессмысленно и молча неверно,
+        // поэтому требуем --anchor явно (fail loud, не молча ограничиваем область).
+        if ($gapContext !== null && $anchorSlug === null) {
+            $io->error('--gap-context требует --anchor: seo_competitor_scan — gap ОДНОЙ фразы/якоря X, а не всего батча.');
+            return Command::FAILURE;
+        }
+
+        $resolvedGap = $this->gapContextResolver->resolve($gapContext);
+        if ($resolvedGap['error'] !== null) {
+            $io->error($resolvedGap['error']);
+            return Command::FAILURE;
+        }
+        $gapScan = $resolvedGap['scan'];
+        $gapTopics = $resolvedGap['topics'];
 
         $anchors = $this->loadAnchors($io);
         if ($anchors === null) {
@@ -137,10 +159,13 @@ class ReplaceListicleCommand extends Command
             // Resume-скип: обе копии уже на диске → якорь готов (батч на 30 якорей идёт
             // часами и может оборваться; перезапуск не должен пережигать готовое —
             // см. память no-force-overwrite-ready-articles). --force пересоздаёт.
-            if (!$force && !$dryRun
+            // --gap-context ТОЖЕ бypass'ит скип безусловно (не полагаемся на то, что
+            // оператор передаст другой --out): смысл gap-context — перегенерировать
+            // с учётом тем конкурентов, а «уже готово» из прошлого прогона это не отменяет.
+            if (!$force && !$dryRun && $gapContext === null
                 && is_file("{$outDir}/blog/replace-{$slug}-site.md")
                 && is_file("{$outDir}/dzen/replace-{$slug}-dzen.md")) {
-                $io->text('  обе копии уже существуют — пропуск (пересоздать: --force).');
+                $io->text('  обе копии уже существуют — пропуск (пересоздать: --force или --gap-context).');
                 $skipped++;
                 continue;
             }
@@ -229,7 +254,7 @@ class ReplaceListicleCommand extends Command
             $io->text($faq === [] ? '  нет подходящих фраз/фактов — FAQ пропущен' : sprintf('  %d Q/A пар', count($faq)));
 
             foreach (self::PLATFORMS as $platform) {
-                if ($this->generateForPlatform($anchor, $style, $replacements, $llmBrands, $keywords, $anchorFacts, $faq, $platform, $outDir, $force, $io)) {
+                if ($this->generateForPlatform($anchor, $style, $replacements, $llmBrands, $keywords, $anchorFacts, $faq, $platform, $outDir, $force, $io, $gapTopics, $gapScan)) {
                     $ok++;
                 } else {
                     $rejected++;
@@ -269,6 +294,8 @@ class ReplaceListicleCommand extends Command
         string $outDir,
         bool $force,
         SymfonyStyle $io,
+        ?string $gapTopics = null,
+        ?SeoCompetitorScan $gapScan = null,
     ): bool {
         $anchorName = (string) $anchor->getTitle();
         $tone       = self::PLATFORM_TONES[$platform];
@@ -289,7 +316,7 @@ class ReplaceListicleCommand extends Command
         $issues = ['пусто'];
         for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
             try {
-                $raw = $this->llm->generateReplacementListicle($anchorName, (string) $style->getTitle(), $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen', anchorFacts: $anchorFacts);
+                $raw = $this->llm->generateReplacementListicle($anchorName, (string) $style->getTitle(), $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen', anchorFacts: $anchorFacts, gapTopics: $gapTopics);
             } catch (\Throwable $e) {
                 // LLM-блип (gemma под майнингом перезапускается) — ждём и ретраим.
                 $issues = ['LLM ошибка: ' . mb_substr($e->getMessage(), 0, 80)];
@@ -308,6 +335,9 @@ class ReplaceListicleCommand extends Command
             // лишний вызов Speller не нужен).
             if ($issues === []) {
                 $issues = $this->glitchGate($raw, $protected);
+            }
+            if ($issues === []) {
+                $issues = $this->gapContextResolver->nearDuplicateIssues($raw, $gapScan);
             }
             $body = $raw;
             if ($issues === []) {
@@ -712,6 +742,7 @@ class ReplaceListicleCommand extends Command
 
         return [];
     }
+
 
     /**
      * Корректорский LLM-проход: чинит опечатки/грамматику до линковки.

@@ -1111,6 +1111,7 @@ EOT;
         ?string $fixHint = null,
         ?float $temperature = null,
         bool $noTables = false, // Дзен не отображает таблицы — сравнение списком
+        ?string $gapTopics = null, // темы конкурентов в выдаче (app:seo:competitor-scan, --gap-context)
     ): string {
         $n = count($brands);
 
@@ -1128,6 +1129,7 @@ EOT;
         $kwRule = ($keywords !== null && trim($keywords) !== '')
             ? "\n- Темы реального спроса (раскрой их естественным текстом по смыслу, но НЕ вставляй эти фразы дословно и НЕ выделяй жирным): {$keywords}"
             : '';
+        $gapTopicsRule = $this->gapTopicsRule($gapTopics);
 
         $comparisonRule = $this->comparisonBlockRule($noTables);
 
@@ -1153,7 +1155,7 @@ EOT;
 - Заключение: абзац-итог с практическим советом, как выбрать.
 - Живой человеческий язык. ЗАПРЕЩЕНЫ слова с корнями: уникальн- (уникальный/уникальная/уникальные), инноваци-, передов-, лидир-, новатор-, беспрецедент-, несравн-. Подбирай обычные синонимы.
 - НЕ используй жирный шрифт (**...**) в тексте — пиши обычными словами.
-- НЕ добавляй H1 (# …) — начни сразу с блока «## Коротко».{$kwRule}
+- НЕ добавляй H1 (# …) — начни сразу с блока «## Коротко».{$kwRule}{$gapTopicsRule}
 
 Формат: только markdown-тело статьи.
 EOT;
@@ -1188,6 +1190,7 @@ EOT;
         ?float $temperature = null,
         bool $noTables = false, // Дзен не отображает таблицы — сравнение списком; также голос кураторки
         ?string $anchorFacts = null,
+        ?string $gapTopics = null, // темы конкурентов в выдаче (app:seo:competitor-scan, --gap-context)
     ): string {
         $n    = count($brands);
         $year = date('Y');
@@ -1206,6 +1209,7 @@ EOT;
         $kwRule = ($keywords !== null && trim($keywords) !== '')
             ? "\n- Темы реального спроса (раскрой их естественным текстом по смыслу, но НЕ вставляй эти фразы дословно и НЕ выделяй жирным): {$keywords}"
             : '';
+        $gapTopicsRule = $this->gapTopicsRule($gapTopics);
 
         $comparisonRule = $this->comparisonBlockRule($noTables);
 
@@ -1257,7 +1261,7 @@ EOT;
 - Заключение: абзац-итог с практическим советом, как выбрать замену.
 - Живой человеческий язык. ЗАПРЕЩЕНЫ слова с корнями: уникальн- (уникальный/уникальная/уникальные), инноваци-, передов-, лидир-, новатор-, беспрецедент-, несравн-. Подбирай обычные синонимы.
 - НЕ используй жирный шрифт (**...**) в тексте — пиши обычными словами.
-- НЕ добавляй H1 (# …) — начни сразу с блока «## Коротко».{$kwRule}{$dzenVoiceRule}
+- НЕ добавляй H1 (# …) — начни сразу с блока «## Коротко».{$kwRule}{$dzenVoiceRule}{$gapTopicsRule}
 
 Формат: только markdown-тело статьи.
 EOT;
@@ -1355,6 +1359,24 @@ EOT;
     }
 
     /**
+     * Темы конкурентов в выдаче (app:seo:competitor-scan, --gap-context) — ОТДЕЛЬНОЕ
+     * правило от $keywords (Wordstat-спрос): это данные извне (о чужих статьях), а не
+     * инструкция по SEO-вплетению фраз. Намеренно НЕ мержим с $kwRule — intentCoverage()
+     * в quality-gate команд читает именно $keywords, и тема вида «цены» из чужой статьи
+     * не должна требовать от grounded-генерации придумывать цены, которых нет в фактах.
+     */
+    private function gapTopicsRule(?string $gapTopics): string
+    {
+        if ($gapTopics === null || trim($gapTopics) === '') {
+            return '';
+        }
+
+        return "\n- Конкуренты в топе выдачи по этой теме раскрывают следующие темы/разделы "
+            . "(используй КАЖДУЮ только там, где это подтверждается блоком ФАКТЫ; нет факта под "
+            . "тему — пропусти её, НЕ выдумывай данные ради покрытия темы):\n{$gapTopics}";
+    }
+
+    /**
      * Корректорский проход: исправляет орфографию/грамматику/согласование, НЕ меняя
      * смысл, факты, цифры, имена и структуру. Запускать на «голом» тексте ДО линковки
      * (чтобы не сломать markdown-ссылки). Вызывающий обязан сделать гард по длине
@@ -1400,6 +1422,7 @@ EOT;
         ?string $fixHint = null,
         ?float $temperature = null,
         bool $noTables = false, // Дзен не отображает таблицы — сравнение списком
+        ?string $gapTopics = null, // темы конкурентов в выдаче (app:seo:competitor-scan, --gap-context)
     ): string {
         $blocks = [];
         foreach ($brands as $b) {
@@ -1413,6 +1436,7 @@ EOT;
         $kwRule = ($keywords !== null && trim($keywords) !== '')
             ? "\n- Темы реального спроса (раскрой по смыслу естественным текстом, но НЕ вставляй фразы дословно и НЕ выделяй жирным): {$keywords}"
             : '';
+        $gapTopicsRule = $this->gapTopicsRule($gapTopics);
 
         $comparisonRule = $this->comparisonBlockRule($noTables);
 
@@ -1439,7 +1463,7 @@ EOT;
 - Заключение: абзац-итог с практическим советом.
 - Не выдумывай цены, даты, цифры. ЗАПРЕЩЕНЫ слова с корнями: уникальн-, инноваци-, передов-, лидир-, новатор-, беспрецедент-, несравн-.
 - НЕ используй жирный шрифт (**...**) в тексте — пиши обычными словами.
-- НЕ добавляй H1 (# …) — начни сразу с блока «## Коротко».{$kwRule}
+- НЕ добавляй H1 (# …) — начни сразу с блока «## Коротко».{$kwRule}{$gapTopicsRule}
 
 Формат: только markdown-тело.
 EOT;
@@ -1447,6 +1471,81 @@ EOT;
         $prompt = $this->withFixHint($prompt, $fixHint);
 
         return trim($this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 600, temperature: $temperature));
+    }
+
+    /**
+     * Разведка конкурентов в выдаче (docs/seo_competitor_content.md, Skyscraper):
+     * извлекает из текстов статей-конкурентов только ТЕМЫ/подзаголовки/структурные
+     * блоки, которых может не хватать в наших статьях — например «сравнительная
+     * таблица цен», «ответ на где купить», «блок про размеры». Юридический риск
+     * пересказа: НИКАКИХ фактов, цифр, имён или утверждений о конкурентах — только
+     * названия тем. Результат идёт в `gap_summary` и дальше — обычной инструкцией
+     * по покрытию в generateListicle/generateReplacementListicle/generateGuide
+     * (параметр $gapTopics), НЕ как источник фактов.
+     *
+     * @param string[] $competitorTexts тексты статей-конкурентов (WebScraperService/
+     *                                  CompetitorArticle::content), 1 запись = 1 URL
+     * @return string короткий маркированный список тем («- …»), пусто — если нечего добавить
+     */
+    public function extractCompetitorTopics(string $ourNicheOrTopic, array $competitorTexts): string
+    {
+        if ($competitorTexts === []) {
+            return '';
+        }
+
+        // Каждый текст режем (не весь 12000-символьный WebScraperService-лимит на статью) —
+        // иначе N статей вместе легко превысят контекст ollama (generateLocal не задаёт num_ctx,
+        // переполнение молча обрежет начало промпта вместе с запретом на пересказ фактов).
+        $perArticleCap = 2500;
+        $blocks = [];
+        foreach (array_values($competitorTexts) as $i => $text) {
+            $t = trim($text);
+            if ($t === '') {
+                continue;
+            }
+            $blocks[] = sprintf('СТАТЬЯ %d:%s', $i + 1, "\n" . mb_substr($t, 0, $perArticleCap));
+        }
+        if ($blocks === []) {
+            return '';
+        }
+        $articlesBlock = implode("\n\n", $blocks);
+
+        $systemPrompt = 'Ты — SEO-аналитик. Сравниваешь структуру статей конкурентов с нашей темой. '
+            . 'СТРОГО ЗАПРЕЩЕНО пересказывать, копировать или упоминать любые факты, цифры, цены, даты, '
+            . 'имена людей/брендов или конкретные утверждения ИЗ статей конкурентов — это чужой контент, '
+            . 'юридический риск плагиата. Твоя задача — назвать только ТЕМЫ и СТРУКТУРНЫЕ БЛОКИ '
+            . '(разделы/подзаголовки), которые раскрывают статьи конкурентов, в общих словах. '
+            . 'Отвечаешь только валидным JSON.';
+
+        $prompt = <<<EOT
+Наша тема/статья: «{$ourNicheOrTopic}».
+
+Ниже — статьи конкурентов из топа выдачи по той же теме:
+
+{$articlesBlock}
+
+Назови темы и структурные блоки, которые раскрывают эти статьи (например: «сравнительная
+таблица цен», «блок про размерную сетку», «ответ на вопрос где купить», «раздел про уход за
+тканью», «FAQ по доставке») — НЕ факты, цифры или конкретику ИЗ статей, только названия тем
+в общих словах, применимые к любой статье на эту тему. 3–8 тем, без повторов.
+
+Верни ТОЛЬКО валидный JSON (без markdown):
+{"topics": ["тема 1", "тема 2", ...]}
+EOT;
+
+        $response = $this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 180);
+        $decoded  = $this->extractJson($response);
+
+        $topics = [];
+        foreach (($decoded['topics'] ?? []) as $t) {
+            $t = trim((string) $t);
+            if ($t !== '' && mb_strlen($t) <= 200) {
+                $topics[] = $t;
+            }
+        }
+        $topics = array_slice(array_values(array_unique($topics)), 0, 8);
+
+        return $topics === [] ? '' : implode("\n", array_map(static fn (string $t) => "- {$t}", $topics));
     }
 
     /**

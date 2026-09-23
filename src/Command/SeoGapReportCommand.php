@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
-use App\Service\Seo\AioQueryClassifier;
+use App\Service\Seo\SeoQueryGapProvider;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -54,30 +54,20 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class SeoGapReportCommand extends Command
 {
-    /** RU-маркеры «замена/сравнение», не покрытые узким regex classifier'а (comparison там якорен на vs / сравн- / разниц-). */
-    private const REPLACE_EXTRA_PATTERN = '/замен\w*|аналог\w*|\bэто\s+\p{L}/iu';
-
-    /** Стартовый гео-список из реальных данных мониторинга (docs/yandex_ai_visibility_monitoring.md) — расширять по мере появления новых городов в gap-листе. */
-    private const GEO_PATTERN = '/спб|санкт[- ]?петербург|петербург|москв/iu';
-
     /**
-     * Полосы позиций. `min`/`max` — границы (min исключительно, max включительно; null = без границы).
      * `action_prefix` дописывается перед интент-действием: в striking страница уже ранжируется,
-     * поэтому дефолт — правка существующего URL, а не новая посадочная.
+     * поэтому дефолт — правка существующего URL, а не новая посадочная. Границы позиций (min/max)
+     * теперь живут в SeoQueryGapProvider::BAND_BOUNDS — здесь только UI-метаданные.
      */
     private const BAND_META = [
         'striking' => [
             'label'         => 'Дожим (топ-10 без топ-3, позиция 4–10)',
             'icon'          => '🎯',
-            'min'           => 3.0,
-            'max'           => 10.0,
             'action_prefix' => 'страница уже в топ-10 — сверить с топ-3 по главному запросу и добавить недостающее (раздел, таблица, FAQ); ',
         ],
         'gap' => [
             'label'         => 'Gap (2-я страница, позиция >10)',
             'icon'          => '🕳',
-            'min'           => 10.0,
-            'max'           => null,
             'action_prefix' => '',
         ],
     ];
@@ -91,8 +81,8 @@ class SeoGapReportCommand extends Command
     ];
 
     public function __construct(
+        private readonly SeoQueryGapProvider $gapProvider,
         private readonly Connection $db,
-        private readonly AioQueryClassifier $classifier,
         private readonly AdminNotifier $notifier,
     ) {
         parent::__construct();
@@ -122,17 +112,27 @@ class SeoGapReportCommand extends Command
         $json       = (bool) $input->getOption('json');
         $notify     = (bool) $input->getOption('notify');
 
-        $bands = $this->resolveBands($band);
+        $bands = $this->gapProvider->resolveBands($band);
         if ($bands === []) {
             $io->error(sprintf('Неизвестная полоса --band=%s (ожидается striking|gap|both).', $band));
             return Command::INVALID;
+        }
+        // Guard против рассинхронизации констант: BAND_META (UI-метаданные, здесь) и
+        // SeoQueryGapProvider::BAND_BOUNDS (границы позиций) — две отдельные константы
+        // с 2026-09-23 (провайдер переиспользует app:seo:competitor-scan). Добавили полосу
+        // в одну и забыли парную — таблица/TG-дайджест ниже упадут на null-офсете вместо
+        // понятной ошибки. См. SeoGapReportBandMetaTest.
+        foreach ($bands as $bandName) {
+            if (!isset(self::BAND_META[$bandName])) {
+                throw new \LogicException("SeoGapReportCommand::BAND_META не содержит полосу «{$bandName}» из SeoQueryGapProvider::BAND_BOUNDS — рассинхронизация констант.");
+            }
         }
 
         $io->title('SEO · position-лист (дожим 4–10 + gap >10) — автопилот');
 
         $byBand = [];
         foreach ($bands as $bandName) {
-            $rows = $this->fetchBandRows($bandName, $source, $minShows, $limit);
+            $rows = $this->gapProvider->fetchBandRows($bandName, $source, $minShows, $limit);
             if ($rows !== []) {
                 $byBand[$bandName] = $this->buildGroups($rows);
             }
@@ -182,192 +182,16 @@ class SeoGapReportCommand extends Command
     }
 
     /**
-     * Порядок важен: striking идёт первым и в консоли, и в TG — дожим существующей
-     * страницы дешевле новой посадочной, поэтому он должен читаться раньше gap'а.
-     *
-     * @return list<string>
-     */
-    private function resolveBands(string $band): array
-    {
-        if ($band === 'both') {
-            return array_keys(self::BAND_META);
-        }
-
-        return isset(self::BAND_META[$band]) ? [$band] : [];
-    }
-
-    /** @return list<array{query:string,shows:int,position:float,source:string,page:?string}> */
-    private function fetchBandRows(string $band, string $source, int $minShows, int $limit): array
-    {
-        $rows = [];
-        if ($source === 'yandex' || $source === 'both') {
-            $rows = array_merge($rows, $this->fetchYandexRows($band, $minShows, $limit));
-        }
-        if ($source === 'gsc' || $source === 'both') {
-            $rows = array_merge($rows, $this->fetchGscRows($band, $minShows, $limit));
-        }
-
-        return $rows;
-    }
-
-    /**
-     * SQL-условие полосы: min исключительно, max включительно — так striking (3<pos≤10)
-     * и gap (pos>10) не пересекаются и один запрос не попадает в обе полосы.
-     */
-    private function bandCondition(string $band, string $column): string
-    {
-        $meta = self::BAND_META[$band];
-        $cond = sprintf('%s > %.1f', $column, $meta['min']);
-        if ($meta['max'] !== null) {
-            $cond .= sprintf(' AND %s <= %.1f', $column, $meta['max']);
-        }
-
-        return $cond;
-    }
-
-    /** @return list<array{query:string,shows:int,position:float,source:string,page:?string}> */
-    private function fetchYandexRows(string $band, int $minShows, int $limit): array
-    {
-        try {
-            $data = $this->db->fetchAllAssociative(
-                'SELECT query_text AS query, shows, position
-                 FROM yandex_query_stats
-                 WHERE date_to = (SELECT MAX(date_to) FROM yandex_query_stats)
-                   AND ' . $this->bandCondition($band, 'position') . ' AND shows >= ?
-                 ORDER BY shows DESC LIMIT ' . $limit,
-                [$minShows],
-            );
-        } catch (\Throwable) {
-            return []; // таблица не создана / крон синка ещё не отработал
-        }
-
-        // search-queries/popular отдаёт запросы без URL, поэтому страница-владелец берётся
-        // из yandex_query_page (POST query-analytics, пишет app:yandex:sync) — там позиции
-        // нет, а URL есть; связка по тексту запроса.
-        $pages = $this->resolveYandexPages(array_map(static fn (array $r) => (string) $r['query'], $data));
-
-        return array_map(
-            static fn (array $r) => [
-                'query'    => (string) $r['query'],
-                'shows'    => (int) $r['shows'],
-                'position' => round((float) $r['position'], 1),
-                'source'   => 'yandex',
-                'page'     => $pages[(string) $r['query']] ?? null,
-            ],
-            $data,
-        );
-    }
-
-    /** @return list<array{query:string,shows:int,position:float,source:string,page:?string}> */
-    private function fetchGscRows(string $band, int $minShows, int $limit): array
-    {
-        try {
-            $data = $this->db->fetchAllAssociative(
-                'SELECT query, SUM(impressions) shows, AVG(position) position
-                 FROM gsc_query_stats
-                 GROUP BY query
-                 HAVING ' . $this->bandCondition($band, 'position') . ' AND shows >= ?
-                 ORDER BY shows DESC LIMIT ' . $limit,
-                [$minShows],
-            );
-        } catch (\Throwable) {
-            return [];
-        }
-
-        $pages = $this->resolveGscPages(array_map(static fn (array $r) => (string) $r['query'], $data));
-
-        return array_map(
-            static fn (array $r) => [
-                'query'    => (string) $r['query'],
-                'shows'    => (int) $r['shows'],
-                'position' => round((float) $r['position'], 1),
-                'source'   => 'gsc',
-                'page'     => $pages[(string) $r['query']] ?? null,
-            ],
-            $data,
-        );
-    }
-
-    /**
-     * То же для Яндекса — из yandex_query_page (пишет app:yandex:sync). Отдаёт путь без
-     * домена (так его возвращает Вебмастер), в отличие от GSC с абсолютным URL.
-     *
-     * @param list<string> $queries
-     * @return array<string,string> запрос → путь
-     */
-    private function resolveYandexPages(array $queries): array
-    {
-        if ($queries === []) {
-            return [];
-        }
-
-        try {
-            $rows = $this->db->fetchAllAssociative(
-                'SELECT query, page_url, impressions AS shows
-                 FROM yandex_query_page
-                 WHERE query IN (?)
-                 ORDER BY shows DESC',
-                [$queries],
-                [\Doctrine\DBAL\ArrayParameterType::STRING],
-            );
-        } catch (\Throwable) {
-            return [];
-        }
-
-        $pages = [];
-        foreach ($rows as $r) {
-            $pages[(string) $r['query']] ??= (string) $r['page_url'];
-        }
-
-        return $pages;
-    }
-
-    /**
-     * Страница-владелец запроса — из gsc_query_page (срез query×page, пишет app:gsc:sync).
-     * Берём URL с наибольшими показами: именно его и надо дожимать в полосе striking.
-     * Пусто → '—' в отчёте: значит синк ещё не приносил этот срез (fail-open, не ошибка).
-     *
-     * @param list<string> $queries
-     * @return array<string,string> запрос → URL
-     */
-    private function resolveGscPages(array $queries): array
-    {
-        if ($queries === []) {
-            return [];
-        }
-
-        try {
-            $rows = $this->db->fetchAllAssociative(
-                'SELECT query, page_url, impressions AS shows
-                 FROM gsc_query_page
-                 WHERE query IN (?)
-                 ORDER BY shows DESC',
-                [$queries],
-                [\Doctrine\DBAL\ArrayParameterType::STRING],
-            );
-        } catch (\Throwable) {
-            return [];
-        }
-
-        $pages = [];
-        foreach ($rows as $r) {
-            // ORDER BY shows DESC → первая строка на запрос и есть главная страница
-            $pages[(string) $r['query']] ??= (string) $r['page_url'];
-        }
-
-        return $pages;
-    }
-
-    /**
      * Группировка строк полосы по интенту. Возвращает только группы с непустым списком,
-     * порядок — приоритет из GROUP_META.
+     * порядок — приоритет из GROUP_META. Сама классификация (SQL-резолв фраз, бренды,
+     * regex интента) — в SeoQueryGapProvider (переиспользуется app:seo:competitor-scan).
      *
      * @param list<array{query:string,shows:int,position:float,source:string,page:?string}> $rows
      * @return array<string,array{label:string,action:string,rows:list<array{query:string,shows:int,position:float,source:string,page:?string}>}>
      */
     private function buildGroups(array $rows): array
     {
-        $brandNames = $this->fetchPublishedBrandNames();
+        $brandNames = $this->gapProvider->fetchPublishedBrandNames();
 
         $groups = [];
         foreach (self::GROUP_META as $name => $meta) {
@@ -375,7 +199,7 @@ class SeoGapReportCommand extends Command
         }
 
         foreach ($rows as $row) {
-            $groups[$this->classifyGroup($row['query'], $brandNames)]['rows'][] = $row;
+            $groups[$this->gapProvider->classifyGroup($row['query'], $brandNames)]['rows'][] = $row;
         }
 
         foreach ($groups as &$g) {
@@ -383,57 +207,6 @@ class SeoGapReportCommand extends Command
         }
 
         return array_filter($groups, static fn (array $g) => $g['rows'] !== []);
-    }
-
-    private function classifyGroup(string $query, array $brandNames): string
-    {
-        $intent = $this->classifier->classify($query)['name'];
-        if ($intent === 'brand_entity') {
-            return 'brand_entity';
-        }
-        if ($intent === 'comparison' || preg_match(self::REPLACE_EXTRA_PATTERN, $query) === 1) {
-            return 'replace_comparison';
-        }
-        if (preg_match(self::GEO_PATTERN, $query) === 1) {
-            return 'geo_category';
-        }
-        if ($this->matchesKnownBrand($query, $brandNames)) {
-            return 'navigation';
-        }
-
-        return 'other';
-    }
-
-    private function matchesKnownBrand(string $query, array $brandNames): bool
-    {
-        $q = mb_strtolower($query);
-        foreach ($brandNames as $name) {
-            if (mb_strlen($name) >= 3 && mb_stripos($q, $name) !== false) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /** @return list<string> lowercase title+slug опубликованных брендов, для навигационного матча. */
-    private function fetchPublishedBrandNames(): array
-    {
-        $rows = $this->db->fetchAllAssociative(
-            "SELECT title, slug FROM brand WHERE status = 'active' AND published_at IS NOT NULL",
-        );
-
-        $names = [];
-        foreach ($rows as $r) {
-            if (!empty($r['title'])) {
-                $names[] = mb_strtolower((string) $r['title']);
-            }
-            if (!empty($r['slug'])) {
-                $names[] = mb_strtolower((string) $r['slug']);
-            }
-        }
-
-        return array_values(array_unique($names));
     }
 
     /**

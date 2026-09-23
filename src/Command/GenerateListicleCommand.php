@@ -12,6 +12,7 @@ use App\Service\ContentValidator;
 use App\Service\LlmService;
 use App\Service\Seo\ArticleMarkdownParser;
 use App\Service\Seo\BrandFactSheet;
+use App\Service\Seo\GapContextResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -83,6 +84,7 @@ class GenerateListicleCommand extends Command
         private readonly BrandRagService        $rag,
         private readonly ContentValidator       $validator,
         private readonly BrandFactSheet         $factSheet,
+        private readonly GapContextResolver     $gapContextResolver,
     ) {
         parent::__construct();
     }
@@ -100,6 +102,7 @@ class GenerateListicleCommand extends Command
             ->addOption('no-faq',   null, InputOption::VALUE_NONE,     'Не добавлять FAQ-блок и FAQPage JSON-LD')
             ->addOption('force',    null, InputOption::VALUE_NONE,     'Сохранять даже при провале quality-gate (с предупреждением)')
             ->addOption('out',      null, InputOption::VALUE_REQUIRED, 'Папка для сохранения .md (- = вывод в консоль)', 'var/seo')
+            ->addOption('gap-context', null, InputOption::VALUE_REQUIRED, 'ID seo_competitor_scan (app:seo:competitor-scan) — подмешать темы конкурентов в промпт')
         ;
     }
 
@@ -117,11 +120,24 @@ class GenerateListicleCommand extends Command
         $force      = (bool) $input->getOption('force');
         $outDir     = (string) $input->getOption('out');
         $city       = $input->getOption('city');
+        $gapContext = $input->getOption('gap-context');
 
         if (!isset(self::PLATFORM_TONES[$platform])) {
             $io->error("Неизвестная площадка «{$platform}». Доступно: " . implode(', ', array_keys(self::PLATFORM_TONES)));
             return Command::FAILURE;
         }
+
+        // Gap-контекст (app:seo:competitor-scan, docs/seo_competitor_content.md): темы,
+        // которые раскрывают конкуренты в выдаче по этой фразе — обычная инструкция по
+        // покрытию, НЕ источник фактов (см. LlmService::gapTopicsRule). Резолв id и
+        // anti-duplicate — общий сервис GapContextResolver (не дублируем в 3 командах).
+        $resolvedGap = $this->gapContextResolver->resolve($gapContext);
+        if ($resolvedGap['error'] !== null) {
+            $io->error($resolvedGap['error']);
+            return Command::FAILURE;
+        }
+        $gapScan = $resolvedGap['scan'];
+        $gapTopics = $resolvedGap['topics'];
 
         /** @var Brand|null $target */
         $target = $this->em->find(Brand::class, $brandId);
@@ -216,7 +232,7 @@ class GenerateListicleCommand extends Command
             $issues = ['пусто'];
             for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
                 try {
-                    $raw = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $vPlatform === 'dzen');
+                    $raw = $this->llm->generateListicle($nicheTitle, $llmBrands, $vPersona, $vTone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $vPlatform === 'dzen', gapTopics: $gapTopics);
                 } catch (\Throwable $e) {
                     // LLM-блип (gemma под майнингом перезапускается) — не рушим батч,
                     // ждём и ретраим: транзиентный сбой переживём, не теряем остаток прогона.
@@ -231,6 +247,9 @@ class GenerateListicleCommand extends Command
                 }
                 $raw = $this->softenCliches($raw);
                 $issues = $this->qualityGate($raw, $orderedBrands, $keywords);
+                if ($issues === []) {
+                    $issues = $this->gapContextResolver->nearDuplicateIssues($raw, $gapScan);
+                }
                 $body = $raw;
                 if ($issues === []) {
                     break;

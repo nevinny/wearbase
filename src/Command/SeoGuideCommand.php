@@ -10,6 +10,7 @@ use App\Repository\BrandRepository;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
+use App\Service\Seo\GapContextResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -68,6 +69,7 @@ class SeoGuideCommand extends Command
         private readonly LlmService             $llm,
         private readonly BrandRagService        $rag,
         private readonly ContentValidator       $validator,
+        private readonly GapContextResolver     $gapContextResolver,
     ) {
         parent::__construct();
     }
@@ -83,6 +85,7 @@ class SeoGuideCommand extends Command
             ->addOption('persona',  null, InputOption::VALUE_REQUIRED, 'Индекс автора-персоны (0..' . (count(self::PERSONAS) - 1) . ')', '0')
             ->addOption('force',    null, InputOption::VALUE_NONE,     'Сохранять вопреки quality-gate')
             ->addOption('out',      null, InputOption::VALUE_REQUIRED, 'Папка (- = консоль)', 'var/seo/guides')
+            ->addOption('gap-context', null, InputOption::VALUE_REQUIRED, 'ID seo_competitor_scan (app:seo:competitor-scan) — подмешать темы конкурентов в промпт')
         ;
     }
 
@@ -96,11 +99,21 @@ class SeoGuideCommand extends Command
         $persona  = self::PERSONAS[((int) $input->getOption('persona')) % count(self::PERSONAS)];
         $force    = (bool) $input->getOption('force');
         $outDir   = (string) $input->getOption('out');
+        $gapContext = $input->getOption('gap-context');
 
         if (!isset(self::PLATFORM_TONES[$platform])) {
             $io->error("Неизвестная площадка «{$platform}».");
             return Command::FAILURE;
         }
+
+        // Gap-контекст (app:seo:competitor-scan, docs/seo_competitor_content.md).
+        $resolvedGap = $this->gapContextResolver->resolve($gapContext);
+        if ($resolvedGap['error'] !== null) {
+            $io->error($resolvedGap['error']);
+            return Command::FAILURE;
+        }
+        $gapScan = $resolvedGap['scan'];
+        $gapTopics = $resolvedGap['topics'];
 
         /** @var BrandStyle|null $style */
         $style = $this->em->getRepository(BrandStyle::class)->findOneBy(['slug' => $niche]);
@@ -166,7 +179,7 @@ class SeoGuideCommand extends Command
         $issues = ['пусто'];
         for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
             try {
-                $raw = $this->llm->generateGuide($nicheTitle, $cityDisp, $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen');
+                $raw = $this->llm->generateGuide($nicheTitle, $cityDisp, $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen', gapTopics: $gapTopics);
             } catch (\Throwable $e) {
                 // LLM-блип — не падаем, ждём и ретраим (переживаем транзиентный сбой gemma).
                 $issues = ['LLM ошибка: ' . mb_substr($e->getMessage(), 0, 80)];
@@ -180,6 +193,9 @@ class SeoGuideCommand extends Command
             }
             $raw = $this->softenCliches($raw);
             $issues = $this->qualityGate($raw, $brands, $keywords);
+            if ($issues === []) {
+                $issues = $this->gapContextResolver->nearDuplicateIssues($raw, $gapScan);
+            }
             $body = $raw;
             if ($issues === []) {
                 break;
