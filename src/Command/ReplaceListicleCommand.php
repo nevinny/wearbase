@@ -5,11 +5,14 @@ namespace App\Command;
 use App\Entity\Brand;
 use App\Entity\BrandKeyword;
 use App\Entity\BrandStyle;
+use App\Entity\CompetitorArticle;
+use App\Entity\SeoCompetitorScan;
 use App\Repository\BrandKeywordRepository;
 use App\Repository\BrandRepository;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
+use App\Service\NearDuplicateDetector;
 use App\Service\Seo\BrandFactSheet;
 use App\Service\Seo\SpellChecker;
 use Doctrine\ORM\EntityManagerInterface;
@@ -81,6 +84,7 @@ class ReplaceListicleCommand extends Command
         private readonly ContentValidator       $validator,
         private readonly BrandFactSheet         $factSheet,
         private readonly SpellChecker           $spellChecker,
+        private readonly NearDuplicateDetector  $nearDup,
     ) {
         parent::__construct();
     }
@@ -93,6 +97,7 @@ class ReplaceListicleCommand extends Command
             ->addOption('out',     null, InputOption::VALUE_REQUIRED, 'Базовая папка ({out}/blog + {out}/dzen)', 'var/seo')
             ->addOption('force',   null, InputOption::VALUE_NONE,     'Сохранять даже при провале quality-gate (с предупреждением)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Показать план (X, ниша, замены, ключевики) без генерации')
+            ->addOption('gap-context', null, InputOption::VALUE_REQUIRED, 'ID seo_competitor_scan (app:seo:competitor-scan) — подмешать темы конкурентов в промпт')
         ;
     }
 
@@ -105,6 +110,20 @@ class ReplaceListicleCommand extends Command
         $outDir     = rtrim((string) $input->getOption('out'), '/');
         $force      = (bool) $input->getOption('force');
         $dryRun     = (bool) $input->getOption('dry-run');
+        $gapContext = $input->getOption('gap-context');
+
+        // Gap-контекст (app:seo:competitor-scan, docs/seo_competitor_content.md) — один
+        // scan на один якорь (--anchor обычно задан вместе с --gap-context).
+        $gapScan = null;
+        $gapTopics = null;
+        if ($gapContext !== null) {
+            $gapScan = $this->em->find(SeoCompetitorScan::class, (int) $gapContext);
+            if ($gapScan === null) {
+                $io->error("seo_competitor_scan ID {$gapContext} не найден.");
+                return Command::FAILURE;
+            }
+            $gapTopics = $gapScan->getGapSummary();
+        }
 
         $anchors = $this->loadAnchors($io);
         if ($anchors === null) {
@@ -229,7 +248,7 @@ class ReplaceListicleCommand extends Command
             $io->text($faq === [] ? '  нет подходящих фраз/фактов — FAQ пропущен' : sprintf('  %d Q/A пар', count($faq)));
 
             foreach (self::PLATFORMS as $platform) {
-                if ($this->generateForPlatform($anchor, $style, $replacements, $llmBrands, $keywords, $anchorFacts, $faq, $platform, $outDir, $force, $io)) {
+                if ($this->generateForPlatform($anchor, $style, $replacements, $llmBrands, $keywords, $anchorFacts, $faq, $platform, $outDir, $force, $io, $gapTopics, $gapScan)) {
                     $ok++;
                 } else {
                     $rejected++;
@@ -269,6 +288,8 @@ class ReplaceListicleCommand extends Command
         string $outDir,
         bool $force,
         SymfonyStyle $io,
+        ?string $gapTopics = null,
+        ?SeoCompetitorScan $gapScan = null,
     ): bool {
         $anchorName = (string) $anchor->getTitle();
         $tone       = self::PLATFORM_TONES[$platform];
@@ -289,7 +310,7 @@ class ReplaceListicleCommand extends Command
         $issues = ['пусто'];
         for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
             try {
-                $raw = $this->llm->generateReplacementListicle($anchorName, (string) $style->getTitle(), $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen', anchorFacts: $anchorFacts);
+                $raw = $this->llm->generateReplacementListicle($anchorName, (string) $style->getTitle(), $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen', anchorFacts: $anchorFacts, gapTopics: $gapTopics);
             } catch (\Throwable $e) {
                 // LLM-блип (gemma под майнингом перезапускается) — ждём и ретраим.
                 $issues = ['LLM ошибка: ' . mb_substr($e->getMessage(), 0, 80)];
@@ -308,6 +329,9 @@ class ReplaceListicleCommand extends Command
             // лишний вызов Speller не нужен).
             if ($issues === []) {
                 $issues = $this->glitchGate($raw, $protected);
+            }
+            if ($issues === []) {
+                $issues = $this->nearDuplicateIssues($raw, $gapScan);
             }
             $body = $raw;
             if ($issues === []) {
@@ -711,6 +735,38 @@ class ReplaceListicleCommand extends Command
         }
 
         return [];
+    }
+
+    /**
+     * Anti-duplicate (docs/seo_competitor_content.md, «Anti-duplicate»): сгенерированный
+     * текст не должен совпадать со статьёй конкурента, у которого позаимствовали темы
+     * (--gap-context). Сверяем ТОЛЬКО article-конкурентов из serp_results скана.
+     * @return string[]
+     */
+    private function nearDuplicateIssues(string $body, ?SeoCompetitorScan $gapScan): array
+    {
+        if ($gapScan === null) {
+            return [];
+        }
+
+        $issues = [];
+        $bodyShingles = $this->nearDup->shingles($body);
+        foreach ($gapScan->getSerpResults() as $r) {
+            $articleId = $r['competitor_article_id'] ?? null;
+            if ($articleId === null) {
+                continue;
+            }
+            $article = $this->em->find(CompetitorArticle::class, (int) $articleId);
+            if ($article === null || $article->getContent() === null || trim($article->getContent()) === '') {
+                continue;
+            }
+            $sim = $this->nearDup->jaccard($bodyShingles, $this->nearDup->shingles($article->getContent()));
+            if ($sim >= NearDuplicateDetector::DROP_THRESHOLD) {
+                $issues[] = sprintf('near-duplicate с конкурентом %s (jaccard=%.2f ≥ %.2f) — перепиши своими словами', $article->getDomain(), $sim, NearDuplicateDetector::DROP_THRESHOLD);
+            }
+        }
+
+        return $issues;
     }
 
     /**

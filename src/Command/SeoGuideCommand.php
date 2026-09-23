@@ -5,11 +5,14 @@ namespace App\Command;
 use App\Entity\Brand;
 use App\Entity\BrandKeyword;
 use App\Entity\BrandStyle;
+use App\Entity\CompetitorArticle;
+use App\Entity\SeoCompetitorScan;
 use App\Repository\BrandKeywordRepository;
 use App\Repository\BrandRepository;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
+use App\Service\NearDuplicateDetector;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -68,6 +71,7 @@ class SeoGuideCommand extends Command
         private readonly LlmService             $llm,
         private readonly BrandRagService        $rag,
         private readonly ContentValidator       $validator,
+        private readonly NearDuplicateDetector  $nearDup,
     ) {
         parent::__construct();
     }
@@ -83,6 +87,7 @@ class SeoGuideCommand extends Command
             ->addOption('persona',  null, InputOption::VALUE_REQUIRED, 'Индекс автора-персоны (0..' . (count(self::PERSONAS) - 1) . ')', '0')
             ->addOption('force',    null, InputOption::VALUE_NONE,     'Сохранять вопреки quality-gate')
             ->addOption('out',      null, InputOption::VALUE_REQUIRED, 'Папка (- = консоль)', 'var/seo/guides')
+            ->addOption('gap-context', null, InputOption::VALUE_REQUIRED, 'ID seo_competitor_scan (app:seo:competitor-scan) — подмешать темы конкурентов в промпт')
         ;
     }
 
@@ -96,10 +101,23 @@ class SeoGuideCommand extends Command
         $persona  = self::PERSONAS[((int) $input->getOption('persona')) % count(self::PERSONAS)];
         $force    = (bool) $input->getOption('force');
         $outDir   = (string) $input->getOption('out');
+        $gapContext = $input->getOption('gap-context');
 
         if (!isset(self::PLATFORM_TONES[$platform])) {
             $io->error("Неизвестная площадка «{$platform}».");
             return Command::FAILURE;
+        }
+
+        // Gap-контекст (app:seo:competitor-scan, docs/seo_competitor_content.md).
+        $gapScan = null;
+        $gapTopics = null;
+        if ($gapContext !== null) {
+            $gapScan = $this->em->find(SeoCompetitorScan::class, (int) $gapContext);
+            if ($gapScan === null) {
+                $io->error("seo_competitor_scan ID {$gapContext} не найден.");
+                return Command::FAILURE;
+            }
+            $gapTopics = $gapScan->getGapSummary();
         }
 
         /** @var BrandStyle|null $style */
@@ -166,7 +184,7 @@ class SeoGuideCommand extends Command
         $issues = ['пусто'];
         for ($att = 0; $att < self::MAX_GEN_ATTEMPTS; $att++) {
             try {
-                $raw = $this->llm->generateGuide($nicheTitle, $cityDisp, $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen');
+                $raw = $this->llm->generateGuide($nicheTitle, $cityDisp, $llmBrands, $persona, $tone, $keywords, $fixHint, $temps[$att] ?? 0.5, noTables: $platform === 'dzen', gapTopics: $gapTopics);
             } catch (\Throwable $e) {
                 // LLM-блип — не падаем, ждём и ретраим (переживаем транзиентный сбой gemma).
                 $issues = ['LLM ошибка: ' . mb_substr($e->getMessage(), 0, 80)];
@@ -180,6 +198,9 @@ class SeoGuideCommand extends Command
             }
             $raw = $this->softenCliches($raw);
             $issues = $this->qualityGate($raw, $brands, $keywords);
+            if ($issues === []) {
+                $issues = $this->nearDuplicateIssues($raw, $gapScan);
+            }
             $body = $raw;
             if ($issues === []) {
                 break;
@@ -389,6 +410,38 @@ class SeoGuideCommand extends Command
         }
 
         return [];
+    }
+
+    /**
+     * Anti-duplicate (docs/seo_competitor_content.md, «Anti-duplicate»): сгенерированный
+     * текст не должен совпадать со статьёй конкурента, у которого позаимствовали темы
+     * (--gap-context). Сверяем ТОЛЬКО article-конкурентов из serp_results скана.
+     * @return string[]
+     */
+    private function nearDuplicateIssues(string $body, ?SeoCompetitorScan $gapScan): array
+    {
+        if ($gapScan === null) {
+            return [];
+        }
+
+        $issues = [];
+        $bodyShingles = $this->nearDup->shingles($body);
+        foreach ($gapScan->getSerpResults() as $r) {
+            $articleId = $r['competitor_article_id'] ?? null;
+            if ($articleId === null) {
+                continue;
+            }
+            $article = $this->em->find(CompetitorArticle::class, (int) $articleId);
+            if ($article === null || $article->getContent() === null || trim($article->getContent()) === '') {
+                continue;
+            }
+            $sim = $this->nearDup->jaccard($bodyShingles, $this->nearDup->shingles($article->getContent()));
+            if ($sim >= NearDuplicateDetector::DROP_THRESHOLD) {
+                $issues[] = sprintf('near-duplicate с конкурентом %s (jaccard=%.2f ≥ %.2f) — перепиши своими словами', $article->getDomain(), $sim, NearDuplicateDetector::DROP_THRESHOLD);
+            }
+        }
+
+        return $issues;
     }
 
     private function brandUrl(Brand $b, string $platform, string $campaign): string
