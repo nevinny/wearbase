@@ -63,6 +63,16 @@ class MyFlowTest extends AuthenticatedWebTestCase
 (портируется и в MySQL, и в SQLite). Читающий путь графа (`findRelatedHard`) NOW() не использует,
 поэтому страница бренда и остальные тесты графа зелёные.
 
+⚠️ **MySQL/SQLite разъезд по типу параметра в `HAVING`** (найдено 2026-09-23,
+`SeoQueryGapProviderTest`): `$db->fetchAllAssociative($sql, [$intParam])` без явного типа
+биндит параметр как TEXT. На MySQL разницы нет — числовое сравнение работает всегда. На
+SQLite сравнение TEXT-литерала с агрегатным ВЫРАЖЕНИЕМ без column affinity (напр.
+`HAVING SUM(impressions) shows >= ?` — `shows` тут алиас, не колонка) идёт по
+storage-class порядку (TEXT > INTEGER/REAL всегда) → строки молча теряются. На чистом
+`WHERE column >= ?` (реальная колонка с affinity) проблемы нет — affinity-коэрсия
+применяется. Лечится `fetchAllAssociative($sql, $params, [\Doctrine\DBAL\ParameterType::INTEGER])`.
+Проверять при любом новом raw-SQL с `HAVING`/агрегатами по числовым параметрам.
+
 ## TODO
 - `phpunit.dist.xml`: `failOnDeprecation` временно `false` — прод-форма регистрации (`RegistrationFormType`) задаёт `Assert\IsTrue` массивом опций (deprecated в symfony/validator 7.3). Вернуть `true` после перевода на именованные аргументы (правка src/).
 - Тесты ревенью-путей (формы импорта/переводов/оферты/счёта, вебхук-путь заказа) — следующий шаг поверх починенного харнеса.

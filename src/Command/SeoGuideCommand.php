@@ -118,6 +118,10 @@ class SeoGuideCommand extends Command
                 return Command::FAILURE;
             }
             $gapTopics = $gapScan->getGapSummary();
+            if ($gapTopics === null || trim($gapTopics) === '') {
+                $io->error(sprintf('seo_competitor_scan ID %d: gap_summary пуст (status=%s) — нечего подмешивать. Запустите без --gap-context либо дождитесь анализа (app:seo:competitor-scan).', $gapScan->getId(), $gapScan->getStatus()));
+                return Command::FAILURE;
+            }
         }
 
         /** @var BrandStyle|null $style */

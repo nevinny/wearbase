@@ -141,6 +141,7 @@ class SeoCompetitorScanCommand extends Command
         $now        = new \DateTimeImmutable();
         $freshCutoff = $now->modify('-' . self::FRESH_DAYS . ' days');
         $brandNames = $this->gapProvider->fetchPublishedBrandNames();
+        $allBrandNames = $this->fetchAllBrandNames();
         $officialHosts = $this->officialHosts();
         $anchorNeedles = $this->loadAnchorNeedles();
         $styleNeedles  = $this->loadStyleNeedles();
@@ -156,6 +157,17 @@ class SeoCompetitorScanCommand extends Command
             $intent = $this->gapProvider->classifyGroup($c['query'], $brandNames);
             if (!in_array($intent, self::ALLOWED_INTENTS, true) || !in_array($intent, $intents, true)) {
                 continue; // brand_entity/navigation исключены безусловно + фильтр --intent
+            }
+            // classifyGroup видит навигационный интент только по ОПУБЛИКОВАННЫМ брендам
+            // (SeoQueryGapProvider::fetchPublishedBrandNames — bit-for-bit с app:seo:gap-report,
+            // трогать нельзя). Здесь фильтр шире: unpublished/draft-бренды тоже дают навигационный
+            // спрос (выдача — сайт/соцсети самого бренда, не статьи) и просачиваются в 'other'.
+            // Исключение: если фраза совпала с якорем/стилем — это легитимная цель роутинга
+            // («zara в россии» должна остаться кандидатом на replace-listicle), не шум.
+            if ($this->matchesWordBoundary($c['query'], $allBrandNames)
+                && !$this->matchNeedle($c['query'], $anchorNeedles)
+                && !$this->matchNeedle($c['query'], $styleNeedles)) {
+                continue;
             }
             $recent = $this->scanRepo->findLatestByKeyword($c['query']);
             $recentFresh = $recent !== null && $recent->getCheckedAt() !== null && $recent->getCheckedAt() > $freshCutoff;
@@ -188,11 +200,6 @@ class SeoCompetitorScanCommand extends Command
 
         $report = [];
         foreach ($picked as $p) {
-            if (!$this->searchMeter->allowed()) {
-                $io->warning(sprintf('Дневной потолок Yandex Search API исчерпан (%d/%d) — прерываю прогон.', $this->searchMeter->todayCount(), $this->searchMeter->dailyCap()));
-                break;
-            }
-
             $query = $p['row']['query'];
             $io->section($query);
 
@@ -202,6 +209,13 @@ class SeoCompetitorScanCommand extends Command
                 $io->text('  досниманиe из ранее сохранённого SERP (без повторного платного запроса)');
                 $articleTexts = $this->articleTextsFromSerpResults($scan->getSerpResults());
             } else {
+                // Потолок API проверяем ТОЛЬКО здесь (не для resume-ветки выше) — доснятие
+                // зависшего scanned-скана не тратит платный запрос, капом не блокируется.
+                if (!$this->searchMeter->allowed()) {
+                    $io->warning(sprintf('Дневной потолок Yandex Search API исчерпан (%d/%d) — прерываю прогон.', $this->searchMeter->todayCount(), $this->searchMeter->dailyCap()));
+                    break;
+                }
+
                 $serp = $this->yandexSearch->search($query, $serpLimit);
                 if ($serp === []) {
                     $io->text('  пустая выдача (нет результатов / ошибка API) — пропуск');
@@ -245,7 +259,13 @@ class SeoCompetitorScanCommand extends Command
                 ->setStatus(SeoCompetitorScan::STATUS_ANALYZED);
             $this->em->flush();
 
-            $route = $this->recommendRoute($p['intent'], $query, (string) $scan->getId(), $anchorNeedles, $styleNeedles);
+            // Без тем --gap-context нечего подмешивать (все 3 команды сами откажут на
+            // пустой gap_summary) — не советуем флаг, которым нельзя воспользоваться.
+            $scanIdForRoute = $topicsCount > 0 ? (string) $scan->getId() : null;
+            $route = $this->recommendRoute($p['intent'], $query, $scanIdForRoute, $anchorNeedles, $styleNeedles);
+            if ($topicsCount === 0) {
+                $route .= ' (тем не выявлено — можно сгенерировать без доп. контекста конкурентов)';
+            }
             $report[] = [
                 'keyword'  => $query,
                 'intent'   => $p['intent'],
@@ -355,6 +375,54 @@ class SeoCompetitorScanCommand extends Command
         usort($out, static fn (array $a, array $b) => $b['shows'] <=> $a['shows']);
 
         return $out;
+    }
+
+    /**
+     * ВСЕ (не только опубликованные) названия/slug брендов каталога — для фильтра
+     * навигационного шума в 'other' (см. execute()). rtrim точки/др. пунктуации:
+     * данные каталога иногда хранят название с висящей точкой («смехстудия.»).
+     *
+     * @return string[]
+     */
+    private function fetchAllBrandNames(): array
+    {
+        $rows = $this->db->fetchAllAssociative("SELECT title, slug FROM brand WHERE status != 'deleted'");
+
+        $names = [];
+        foreach ($rows as $r) {
+            if (!empty($r['title'])) {
+                $names[] = mb_strtolower(rtrim((string) $r['title'], " .!?"));
+            }
+            if (!empty($r['slug'])) {
+                $names[] = mb_strtolower(str_replace('-', ' ', (string) $r['slug']));
+            }
+        }
+
+        return array_values(array_unique(array_filter($names, static fn (string $n) => mb_strlen($n) >= 3)));
+    }
+
+    /**
+     * Матч ПО ГРАНИЦЕ СЛОВА (не substring) — короткие омонимы («нет», «код», 3+ симв.)
+     * не должны цеплять «интернет»/«промокод». SeoQueryGapProvider::matchesKnownBrand
+     * (substring) здесь не переиспользуется намеренно — там уже оттестированное
+     * поведение app:seo:gap-report, трогать нельзя.
+     *
+     * @param string[] $names
+     */
+    private function matchesWordBoundary(string $query, array $names): bool
+    {
+        $q = mb_strtolower($query);
+        foreach ($names as $name) {
+            if ($name === '') {
+                continue;
+            }
+            $pattern = '/(?<![\p{L}\p{N}])' . preg_quote($name, '/') . '(?![\p{L}\p{N}])/u';
+            if (preg_match($pattern, $q) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -477,15 +545,24 @@ class SeoCompetitorScanCommand extends Command
      * @param array<string,list<string>> $anchorNeedles
      * @param array<string,string> $styleNeedles
      */
-    private function recommendRoute(string $intent, string $query, string $scanId, array $anchorNeedles, array $styleNeedles): string
+    /**
+     * $scanId === null → нет тем для подмешивания (пустой gap_summary): рекомендуем
+     * команду БЕЗ --gap-context/--out (все 3 команды сами откажут на пустом gap_summary).
+     * $scanId непусто → добавляем --gap-context=<id> --out=var/seo/gap-<id>: отдельная
+     * папка отводит вывод от дефолтного var/seo — иначе, например, replace-listicle
+     * молча пропустит уже сгенерированный якорь (resume-скип по существующим файлам)
+     * и придётся добавлять --force, который заодно снимает quality-gate.
+     */
+    private function recommendRoute(string $intent, string $query, ?string $scanId, array $anchorNeedles, array $styleNeedles): string
     {
         $city = $this->extractCity($query);
+        $gapSuffix = $scanId !== null ? sprintf(' --gap-context=%s --out=var/seo/gap-%s', $scanId, $scanId) : '';
 
         if ($intent === SeoCompetitorScan::INTENT_GEO_CATEGORY) {
             return sprintf(
-                'app:seo:listicle <BRAND_ID> <STYLE_SLUG>%s --gap-context=%s (подставьте бренд/нишу вручную)',
+                'app:seo:listicle <BRAND_ID> <STYLE_SLUG>%s%s (подставьте бренд/нишу вручную)',
                 $city !== null ? sprintf(' --city=%s', $city) : '',
-                $scanId,
+                $gapSuffix,
             );
         }
 
@@ -493,14 +570,14 @@ class SeoCompetitorScanCommand extends Command
             $anchorSlug = $this->matchNeedle($query, $anchorNeedles);
 
             return $anchorSlug !== null
-                ? sprintf('app:seo:replace-listicle --anchor=%s --gap-context=%s', $anchorSlug, $scanId)
+                ? sprintf('app:seo:replace-listicle --anchor=%s%s', $anchorSlug, $gapSuffix)
                 : 'нет готового пути — якорь не найден в replacement_anchors.yaml, нужна курация';
         }
 
         // other
         $styleSlug = $this->matchNeedle($query, $styleNeedles);
         if ($styleSlug !== null) {
-            return sprintf('app:seo:guide %s%s --gap-context=%s', $styleSlug, $city !== null ? sprintf(' --city=%s', $city) : '', $scanId);
+            return sprintf('app:seo:guide %s%s%s', $styleSlug, $city !== null ? sprintf(' --city=%s', $city) : '', $gapSuffix);
         }
 
         return 'нет готового пути — нужна курация';
