@@ -15,6 +15,13 @@ use Doctrine\DBAL\Connection;
  * Поведение бит-в-бит как было в команде: те же полосы позиций, тот же порядок
  * группировки интента, те же источники резолва our_url. `SeoGapReportCommand`
  * теперь только вызывает эти методы — сам больше не содержит SQL.
+ *
+ * `shows >= ?` явно типизирован ParameterType::INTEGER: на MySQL (прод) любой тип
+ * биндинга даёт одинаковый результат (числовое сравнение всегда), но на SQLite
+ * (тест-БД, CLAUDE.md) параметр без явного типа биндится как TEXT — а сравнение
+ * TEXT-литерала с агрегатным выражением без column affinity (HAVING SUM(...) shows
+ * >= '10') идёт по storage-class порядку (TEXT > INTEGER/REAL всегда), из-за чего
+ * строки молча отфильтровываются. Явный тип убирает расхождение MySQL/SQLite.
  */
 final class SeoQueryGapProvider
 {
@@ -93,6 +100,7 @@ final class SeoQueryGapProvider
                    AND ' . $this->bandCondition($band, 'position') . ' AND shows >= ?
                  ORDER BY shows DESC LIMIT ' . $limit,
                 [$minShows],
+                [\Doctrine\DBAL\ParameterType::INTEGER],
             );
         } catch (\Throwable) {
             return []; // таблица не создана / крон синка ещё не отработал
@@ -126,6 +134,7 @@ final class SeoQueryGapProvider
                  HAVING ' . $this->bandCondition($band, 'position') . ' AND shows >= ?
                  ORDER BY shows DESC LIMIT ' . $limit,
                 [$minShows],
+                [\Doctrine\DBAL\ParameterType::INTEGER],
             );
         } catch (\Throwable) {
             return [];
