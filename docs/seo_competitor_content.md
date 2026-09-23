@@ -179,3 +179,45 @@ proofread, near-dup) остаётся как есть.
    первого прогона на реальных данных, не блокирует MVP.
 4. Wordstat 401 (см. `wordstat-api-key-invalid` в памяти) — `demand_source=wordstat`
    даст только протухшие данные, пока ключ не заменят; `gsc`/`yandex` не затронуты.
+
+## Реализовано (2026-09-23)
+
+Всё выше реализовано в ветке `feat/seo-competitor-content`. Решения по открытым вопросам
+и отклонения от дизайна:
+
+- **Шаг 0**: SQL вынесен в `App\Service\Seo\SeoQueryGapProvider`
+  (`fetchBandRows`/`resolveBands`/`classifyGroup`/`fetchPublishedBrandNames`/
+  `resolveYandexPages`/`resolveGscPages`). `SeoGapReportCommand` — тонкая обёртка,
+  bit-for-bit проверено (`--json --stdout-only` до/после рефакторинга на dev MySQL).
+  Попутно найден и исправлен реальный MySQL/SQLite разъезд: `shows >= ?` без явного
+  `ParameterType::INTEGER` биндится как TEXT на SQLite → HAVING-сравнение с агрегатным
+  выражением без column affinity молча теряет строки (на MySQL разницы нет).
+- **Маркетплейсы**: wildberries.ru, ozon.ru, lamoda.ru, aliexpress.ru/.com,
+  market.yandex.ru, sbermegamarket.ru, avito.ru, kupivip.ru, goods.ru.
+  **Соцсети**: vk.com, instagram.com, t.me/telegram.me, ok.ru, youtube.com, tiktok.com,
+  facebook.com, threads.net, pinterest.com. Официальный сайт — точное совпадение хоста
+  (без www.) с `brand_link.link_type='website'`, проверяется ПОСЛЕ маркетплейсов/соцсетей
+  (см. `CompetitorPageClassifier`).
+- **`priority_score`**: `shows × (2.0, если our_url пуст, иначе 1.0) + topics_count × 10`.
+  Простая эвристика для калибровки после первого прогона, как и предполагалось.
+- **`--source=both`** = яндекс+GSC (как у `app:seo:gap-report`); `wordstat` — отдельное
+  значение, читает `brand_keyword` напрямую (без position/our_url — там их нет),
+  подтверждённо протухшее (см. открытый вопрос №4) — на реальном прогоне выдало явно
+  шумные/нерелевантные топ-фразы, что и ожидалось.
+- **Идемпотентность/деньги**: фраза `status=analyzed` младше 30 дней не пересканируется;
+  зависшая на `status=scanned` (LLM упал) доснимается из уже сохранённого `serp_results`
+  БЕЗ повторного платного запроса к Yandex Search API. Дневной потолок
+  (`YandexSearchMeter`) проверяется перед каждой фразой — прогон останавливается с
+  понятным сообщением, а не тихо получает пустую выдачу на все оставшиеся фразы.
+- **Роутинг `other`**: упрощение против дизайна — сматчено только на `app:seo:guide`
+  (по подстроке названия `BrandStyle` в фразе), **audience-hub НЕ реализован** (в фразах
+  из реальных данных пока не встретился этот паттерн; если появится — добавить по
+  аналогии). Не найдено соответствия — «нет готового пути, нужна курация», как и
+  предполагал дизайн.
+- **`geo_category`/`other`-guide** печатают плейсхолдер `<BRAND_ID>`/`<STYLE_SLUG>` —
+  скан физически не может знать, каким брендом закрывать фразу (только город/стиль
+  из текста запроса), куратор подставляет вручную.
+- Проверено на реальных dev-данных: `--dry-run` для всех источников/интентов (включая
+  живой матч якоря `uniqlo` на фразе «uset это uniqlo»). Живой прогон с реальным Yandex
+  Search API (SERP+скрейп+LLM) НЕ выполнялся — ключ не сконфигурирован на dev-машине;
+  команда фейлится с понятным сообщением и подсказкой на `--dry-run`, если ключа нет.
