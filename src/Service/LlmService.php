@@ -1450,6 +1450,81 @@ EOT;
     }
 
     /**
+     * Разведка конкурентов в выдаче (docs/seo_competitor_content.md, Skyscraper):
+     * извлекает из текстов статей-конкурентов только ТЕМЫ/подзаголовки/структурные
+     * блоки, которых может не хватать в наших статьях — например «сравнительная
+     * таблица цен», «ответ на где купить», «блок про размеры». Юридический риск
+     * пересказа: НИКАКИХ фактов, цифр, имён или утверждений о конкурентах — только
+     * названия тем. Результат идёт в `gap_summary` и дальше — обычной инструкцией
+     * по покрытию в generateListicle/generateReplacementListicle/generateGuide
+     * (параметр $gapTopics), НЕ как источник фактов.
+     *
+     * @param string[] $competitorTexts тексты статей-конкурентов (WebScraperService/
+     *                                  CompetitorArticle::content), 1 запись = 1 URL
+     * @return string короткий маркированный список тем («- …»), пусто — если нечего добавить
+     */
+    public function extractCompetitorTopics(string $ourNicheOrTopic, array $competitorTexts): string
+    {
+        if ($competitorTexts === []) {
+            return '';
+        }
+
+        // Каждый текст режем (не весь 12000-символьный WebScraperService-лимит на статью) —
+        // иначе N статей вместе легко превысят контекст ollama (generateLocal не задаёт num_ctx,
+        // переполнение молча обрежет начало промпта вместе с запретом на пересказ фактов).
+        $perArticleCap = 2500;
+        $blocks = [];
+        foreach (array_values($competitorTexts) as $i => $text) {
+            $t = trim($text);
+            if ($t === '') {
+                continue;
+            }
+            $blocks[] = sprintf('СТАТЬЯ %d:%s', $i + 1, "\n" . mb_substr($t, 0, $perArticleCap));
+        }
+        if ($blocks === []) {
+            return '';
+        }
+        $articlesBlock = implode("\n\n", $blocks);
+
+        $systemPrompt = 'Ты — SEO-аналитик. Сравниваешь структуру статей конкурентов с нашей темой. '
+            . 'СТРОГО ЗАПРЕЩЕНО пересказывать, копировать или упоминать любые факты, цифры, цены, даты, '
+            . 'имена людей/брендов или конкретные утверждения ИЗ статей конкурентов — это чужой контент, '
+            . 'юридический риск плагиата. Твоя задача — назвать только ТЕМЫ и СТРУКТУРНЫЕ БЛОКИ '
+            . '(разделы/подзаголовки), которые раскрывают статьи конкурентов, в общих словах. '
+            . 'Отвечаешь только валидным JSON.';
+
+        $prompt = <<<EOT
+Наша тема/статья: «{$ourNicheOrTopic}».
+
+Ниже — статьи конкурентов из топа выдачи по той же теме:
+
+{$articlesBlock}
+
+Назови темы и структурные блоки, которые раскрывают эти статьи (например: «сравнительная
+таблица цен», «блок про размерную сетку», «ответ на вопрос где купить», «раздел про уход за
+тканью», «FAQ по доставке») — НЕ факты, цифры или конкретику ИЗ статей, только названия тем
+в общих словах, применимые к любой статье на эту тему. 3–8 тем, без повторов.
+
+Верни ТОЛЬКО валидный JSON (без markdown):
+{"topics": ["тема 1", "тема 2", ...]}
+EOT;
+
+        $response = $this->generate($prompt, $systemPrompt, local: true, think: false, timeout: 180);
+        $decoded  = $this->extractJson($response);
+
+        $topics = [];
+        foreach (($decoded['topics'] ?? []) as $t) {
+            $t = trim((string) $t);
+            if ($t !== '' && mb_strlen($t) <= 200) {
+                $topics[] = $t;
+            }
+        }
+        $topics = array_slice(array_values(array_unique($topics)), 0, 8);
+
+        return $topics === [] ? '' : implode("\n", array_map(static fn (string $t) => "- {$t}", $topics));
+    }
+
+    /**
      * Извлечение структурированных атрибутов бренда из накопленного текста краула
      * (стадия extract). Grounded: ТОЛЬКО из переданных фактов, не выдумывать.
      * Размерные сетки приходят markdown-таблицами (table-preserving fetch).
