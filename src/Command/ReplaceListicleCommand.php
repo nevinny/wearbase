@@ -5,15 +5,14 @@ namespace App\Command;
 use App\Entity\Brand;
 use App\Entity\BrandKeyword;
 use App\Entity\BrandStyle;
-use App\Entity\CompetitorArticle;
 use App\Entity\SeoCompetitorScan;
 use App\Repository\BrandKeywordRepository;
 use App\Repository\BrandRepository;
 use App\Service\BrandRagService;
 use App\Service\ContentValidator;
 use App\Service\LlmService;
-use App\Service\NearDuplicateDetector;
 use App\Service\Seo\BrandFactSheet;
+use App\Service\Seo\GapContextResolver;
 use App\Service\Seo\SpellChecker;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -84,7 +83,7 @@ class ReplaceListicleCommand extends Command
         private readonly ContentValidator       $validator,
         private readonly BrandFactSheet         $factSheet,
         private readonly SpellChecker           $spellChecker,
-        private readonly NearDuplicateDetector  $nearDup,
+        private readonly GapContextResolver     $gapContextResolver,
     ) {
         parent::__construct();
     }
@@ -113,21 +112,21 @@ class ReplaceListicleCommand extends Command
         $gapContext = $input->getOption('gap-context');
 
         // Gap-контекст (app:seo:competitor-scan, docs/seo_competitor_content.md) — один
-        // scan на один якорь (--anchor обычно задан вместе с --gap-context).
-        $gapScan = null;
-        $gapTopics = null;
-        if ($gapContext !== null) {
-            $gapScan = $this->em->find(SeoCompetitorScan::class, (int) $gapContext);
-            if ($gapScan === null) {
-                $io->error("seo_competitor_scan ID {$gapContext} не найден.");
-                return Command::FAILURE;
-            }
-            $gapTopics = $gapScan->getGapSummary();
-            if ($gapTopics === null || trim($gapTopics) === '') {
-                $io->error(sprintf('seo_competitor_scan ID %d: gap_summary пуст (status=%s) — нечего подмешивать. Запустите без --gap-context либо дождитесь анализа (app:seo:competitor-scan).', $gapScan->getId(), $gapScan->getStatus()));
-                return Command::FAILURE;
-            }
+        // scan привязан к ОДНОЙ фразе/бренду X, а не ко всему батчу якорей. Без --anchor
+        // --gap-context применился бы ко ВСЕМ якорям батча — бессмысленно и молча неверно,
+        // поэтому требуем --anchor явно (fail loud, не молча ограничиваем область).
+        if ($gapContext !== null && $anchorSlug === null) {
+            $io->error('--gap-context требует --anchor: seo_competitor_scan — gap ОДНОЙ фразы/якоря X, а не всего батча.');
+            return Command::FAILURE;
         }
+
+        $resolvedGap = $this->gapContextResolver->resolve($gapContext);
+        if ($resolvedGap['error'] !== null) {
+            $io->error($resolvedGap['error']);
+            return Command::FAILURE;
+        }
+        $gapScan = $resolvedGap['scan'];
+        $gapTopics = $resolvedGap['topics'];
 
         $anchors = $this->loadAnchors($io);
         if ($anchors === null) {
@@ -160,10 +159,13 @@ class ReplaceListicleCommand extends Command
             // Resume-скип: обе копии уже на диске → якорь готов (батч на 30 якорей идёт
             // часами и может оборваться; перезапуск не должен пережигать готовое —
             // см. память no-force-overwrite-ready-articles). --force пересоздаёт.
-            if (!$force && !$dryRun
+            // --gap-context ТОЖЕ бypass'ит скип безусловно (не полагаемся на то, что
+            // оператор передаст другой --out): смысл gap-context — перегенерировать
+            // с учётом тем конкурентов, а «уже готово» из прошлого прогона это не отменяет.
+            if (!$force && !$dryRun && $gapContext === null
                 && is_file("{$outDir}/blog/replace-{$slug}-site.md")
                 && is_file("{$outDir}/dzen/replace-{$slug}-dzen.md")) {
-                $io->text('  обе копии уже существуют — пропуск (пересоздать: --force).');
+                $io->text('  обе копии уже существуют — пропуск (пересоздать: --force или --gap-context).');
                 $skipped++;
                 continue;
             }
@@ -335,7 +337,7 @@ class ReplaceListicleCommand extends Command
                 $issues = $this->glitchGate($raw, $protected);
             }
             if ($issues === []) {
-                $issues = $this->nearDuplicateIssues($raw, $gapScan);
+                $issues = $this->gapContextResolver->nearDuplicateIssues($raw, $gapScan);
             }
             $body = $raw;
             if ($issues === []) {
@@ -741,37 +743,6 @@ class ReplaceListicleCommand extends Command
         return [];
     }
 
-    /**
-     * Anti-duplicate (docs/seo_competitor_content.md, «Anti-duplicate»): сгенерированный
-     * текст не должен совпадать со статьёй конкурента, у которого позаимствовали темы
-     * (--gap-context). Сверяем ТОЛЬКО article-конкурентов из serp_results скана.
-     * @return string[]
-     */
-    private function nearDuplicateIssues(string $body, ?SeoCompetitorScan $gapScan): array
-    {
-        if ($gapScan === null) {
-            return [];
-        }
-
-        $issues = [];
-        $bodyShingles = $this->nearDup->shingles($body);
-        foreach ($gapScan->getSerpResults() as $r) {
-            $articleId = $r['competitor_article_id'] ?? null;
-            if ($articleId === null) {
-                continue;
-            }
-            $article = $this->em->find(CompetitorArticle::class, (int) $articleId);
-            if ($article === null || $article->getContent() === null || trim($article->getContent()) === '') {
-                continue;
-            }
-            $sim = $this->nearDup->jaccard($bodyShingles, $this->nearDup->shingles($article->getContent()));
-            if ($sim >= NearDuplicateDetector::DROP_THRESHOLD) {
-                $issues[] = sprintf('near-duplicate с конкурентом %s (jaccard=%.2f ≥ %.2f) — перепиши своими словами', $article->getDomain(), $sim, NearDuplicateDetector::DROP_THRESHOLD);
-            }
-        }
-
-        return $issues;
-    }
 
     /**
      * Корректорский LLM-проход: чинит опечатки/грамматику до линковки.
