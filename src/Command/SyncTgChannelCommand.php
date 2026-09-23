@@ -31,6 +31,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *   php bin/console app:kb:sync-tg --channel=drmaxseo --dry-run
  *   php bin/console app:kb:sync-tg --channel=drmaxseo --limit=5
  *   php -d memory_limit=512M bin/console app:kb:sync-tg --channel=drmaxseo --no-debug
+ *   php -d memory_limit=512M bin/console app:kb:sync-tg --no-debug   # без --channel: все каналы реестра
+ *   php -d memory_limit=512M bin/console app:kb:sync-tg --channel=drmaxseo --backfill --no-debug   # вглубь истории
  */
 #[AsCommand(
     name: 'app:kb:sync-tg',
@@ -48,10 +50,12 @@ class SyncTgChannelCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('channel', null, InputOption::VALUE_REQUIRED, 'TG-канал (' . implode(', ', $this->ingestor->channels()) . ')')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Только показать новые посты, без записи/эмбеддинга')
-            ->addOption('limit',   null, InputOption::VALUE_REQUIRED, 'Первые N постов из выдачи (для теста)')
-            ->addOption('path',    null, InputOption::VALUE_REQUIRED, 'Корень транскриптов (default $HOME/yt-kb/txt)')
+            ->addOption('channel',   null, InputOption::VALUE_REQUIRED, 'TG-канал (' . implode(', ', $this->ingestor->channels()) . '); без опции — все каналы реестра')
+            ->addOption('dry-run',   null, InputOption::VALUE_NONE,     'Только показать новые посты, без записи/эмбеддинга')
+            ->addOption('limit',     null, InputOption::VALUE_REQUIRED, 'Первые N постов из выдачи (для теста)')
+            ->addOption('path',      null, InputOption::VALUE_REQUIRED, 'Корень транскриптов (default $HOME/yt-kb/txt)')
+            ->addOption('backfill',  null, InputOption::VALUE_NONE,     'Листать `?before=` вглубь истории, а не только последнюю страницу')
+            ->addOption('max-pages', null, InputOption::VALUE_REQUIRED, 'Лимит страниц при --backfill (default 50)')
         ;
     }
 
@@ -59,16 +63,43 @@ class SyncTgChannelCommand extends Command
     {
         $io      = new SymfonyStyle($input, $output);
         $channel = $input->getOption('channel');
-        $dryRun  = (bool) $input->getOption('dry-run');
-        $limit   = $input->getOption('limit') !== null ? max(1, (int) $input->getOption('limit')) : null;
 
-        if ($channel === null || $this->ingestor->roleFor($channel) === null) {
+        if ($channel !== null && $this->ingestor->roleFor($channel) === null) {
             $io->error(sprintf(
-                'Нужен известный --channel. Доступны: %s',
+                'Неизвестный --channel. Доступны: %s',
                 implode(', ', $this->ingestor->channels()),
             ));
             return Command::FAILURE;
         }
+
+        $channels = $channel !== null ? [$channel] : $this->ingestor->channels();
+        $failed   = 0;
+
+        foreach ($channels as $ch) {
+            if (!$this->syncChannel($io, $input, $ch)) {
+                $failed++;
+            }
+        }
+
+        if ($channel === null) {
+            $io->newLine();
+            $io->text(sprintf('Каналов обработано: %d, с ошибкой: %d', count($channels), $failed));
+        }
+
+        // Разовый прогон конкретного канала — падать, если он не удался.
+        // Батч по всем каналам — падать только если ВСЕ каналы упали (сеть/Qdrant лежит целиком),
+        // единичный сбой одного канала (напр. TG отдал 404) не должен рушить остальные.
+        if ($failed > 0 && $failed === count($channels)) {
+            return Command::FAILURE;
+        }
+
+        return Command::SUCCESS;
+    }
+
+    private function syncChannel(SymfonyStyle $io, InputInterface $input, string $channel): bool
+    {
+        $dryRun = (bool) $input->getOption('dry-run');
+        $limit  = $input->getOption('limit') !== null ? max(1, (int) $input->getOption('limit')) : null;
 
         $base = rtrim((string) ($input->getOption('path') ?: (getenv('HOME') . '/yt-kb/txt')), '/');
         $dir  = "{$base}/{$channel}";
@@ -78,11 +109,16 @@ class SyncTgChannelCommand extends Command
 
         $io->title("KB · синк TG-канала @{$channel} в topic_chunks");
 
+        $backfill = (bool) $input->getOption('backfill');
+        $maxPages = $input->getOption('max-pages') !== null ? max(1, (int) $input->getOption('max-pages')) : 50;
+
         try {
-            $posts = $this->scraper->fetchPosts($channel);
+            $posts = $backfill
+                ? $this->fetchAllPages($io, $channel, $dir, $maxPages)
+                : $this->scraper->fetchPosts($channel);
         } catch (\Throwable $e) {
             $io->error("Не удалось получить t.me/s/{$channel}: " . $e->getMessage());
-            return Command::FAILURE;
+            return false;
         }
 
         if ($limit !== null) {
@@ -107,7 +143,7 @@ class SyncTgChannelCommand extends Command
                 ));
             }
             $io->note('dry-run — без записи файлов и обращения к эмбеддеру/Qdrant');
-            return Command::SUCCESS;
+            return true;
         }
 
         try {
@@ -147,6 +183,54 @@ class SyncTgChannelCommand extends Command
             ['Пропущено чанков',  $skipped],
         ]);
 
-        return Command::SUCCESS;
+        return true;
+    }
+
+    /**
+     * Листает `?before=` вглубь истории, пока страница не окажется пустой
+     * (дошли до самого начала канала) или самый старый пост страницы уже
+     * лежит на диске (дальше — уже синканное в прошлых прогонах). Дедуп по
+     * id на случай, если соседние страницы пересекаются на границе.
+     *
+     * @return list<array{id:int,text:string,date:\DateTimeImmutable,title:string}>
+     */
+    private function fetchAllPages(SymfonyStyle $io, string $channel, string $dir, int $maxPages): array
+    {
+        $all    = [];
+        $seen   = [];
+        $before = null;
+
+        for ($page = 1; $page <= $maxPages; $page++) {
+            $posts = $this->scraper->fetchPosts($channel, $before);
+            if ($posts === []) {
+                $io->text("  страница {$page}: пусто — дошли до начала канала");
+                break;
+            }
+
+            $ids = array_map(static fn (array $p) => $p['id'], $posts);
+            $oldest = min($ids);
+
+            foreach ($posts as $post) {
+                if (!isset($seen[$post['id']])) {
+                    $seen[$post['id']] = true;
+                    $all[] = $post;
+                }
+            }
+
+            $io->text(sprintf('  страница %d: %d постов, старейший id=%d', $page, count($posts), $oldest));
+
+            // Страница 1 всегда пересекается с тем, что уже взял обычный (не-backfill)
+            // синк — проверять «уже на диске» тут рано, иначе backfill ни разу не
+            // доберётся до страницы 2. Проверка имеет смысл только начиная со 2-й
+            // страницы — это значит, что мы уже когда-то прошли backfill'ом дальше.
+            if ($page > 1 && is_file("{$dir}/{$oldest}.txt")) {
+                $io->text('  старейший пост страницы уже на диске — стоп');
+                break;
+            }
+
+            $before = $oldest - 1;
+        }
+
+        return $all;
     }
 }
