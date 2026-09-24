@@ -84,6 +84,7 @@
 | [production.md](production.md) | Прод-окружение (reg.ru): env-карта, деплой, известные проблемы |
 | [commands.md](commands.md) | Справочник всех console-команд (зачем/как часто/где + cron) |
 | [llm_infra_handoff.md](llm_infra_handoff.md) | Домашний AI-сервер: snapshot железа, Gemma, vision TBD, embedder, Qdrant и LAN-доступ |
+| [v100_nvlink_video_takeaways.md](v100_nvlink_video_takeaways.md) | Выводы из обзора 4× V100 + NVLink vs 2× 3090: доп. карты = контекст, а не скорость; pipeline (llama.cpp/ollama) vs tensor (vLLM) ×2; MoE быстрее плотных; грабли Open WebUI/BF16/квантованного энкодера; что применимо к нашему ригу. 2026-09-24 |
 | [llm_relay_handoff.md](llm_relay_handoff.md) | Pull-relay `llmq.php` для локального тестирования вне LAN; production endpoint отдельно |
 
 ## Трекеры и история
