@@ -24,6 +24,6 @@
 
 Команда падает с «Нет подходящих товаров» — на Mac (`wearbase` MySQL, 127.0.0.1) сейчас
 всего 8 демо-товаров: `product_image` — 0 строк, все 29 `product_variant.color` — NULL,
-`product.image` (legacy-поле) тоже пусто. Реальный каталог с фото и цветом живёт на проде
-(см. память `publish-truth-is-on-prod` / `mac-prod-brand-ids-diverged`) — команда рассчитана
-на будущий импорт таких данных на Mac, сегодня прогнать некуда.
+`product.image` (legacy-поле) тоже пусто. Прод не проверялся (задача — только Mac).
+Precondition для запуска: на Mac должны появиться строки `product_image` и хотя бы
+по одному непустому `product_variant.color` на товар.

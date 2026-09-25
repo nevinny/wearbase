@@ -212,6 +212,7 @@ class BenchVisionCommand extends Command
         file_put_contents($path, implode("\n", $lines) . "\n");
     }
 
+    /** Дописывает строку в существующий docs/model-vision-bench.md (шапка+таблица уже в репо, как у app:bench:models). */
     private function appendSummaryRow(string $doc, string $model, array $rows): void
     {
         $n = count($rows);
@@ -227,38 +228,8 @@ class BenchVisionCommand extends Command
             array_sum(array_column($rows, 'seconds')) / $n,
         );
 
-        if (!is_file($doc)) {
-            file_put_contents($doc, $this->docHeader());
-        }
-        file_put_contents($doc, $line, FILE_APPEND);
-    }
-
-    private function docHeader(): string
-    {
-        return <<<MD
-        # Бенч vision-моделей (распознавание одежды по фото)
-
-        Сравнение локальных ollama-моделей на распознавании товаров каталога по фото:
-        `app:bench:vision <model> [--limit=30] [--doc=]`.
-
-        Метод: N товаров каталога (активные, с категорией, с фото на диске и с известным
-        цветом хотя бы одного варианта), детерминированный набор (`ORDER BY product.id`,
-        одни и те же товары для всех моделей). Промпт и парсинг ответа — те же, что в проде
-        (`WardrobeAiService::suggestFromPhoto`/`analyzePhoto`), вызов идёт через
-        `analyzePhotoWithLocalModel()` — без кеша/согласия/лимита/usage-лога.
-
-        Эталон: `product_category.title` (категория) и цвет первого варианта товара с
-        непустым `color` (`product_variant.color`). Совпадение — простое: регистр/ё/небуквенные
-        символы игнорируются, засчитывается точное совпадение, вхождение подстроки или общий
-        4-символьный префикс.
-
-        Метрики: доля валидных JSON-ответов, доля совпадений категории/цвета, среднее время
-        запроса (сек). Поштучный лог каждого прогона — `var/bench/vision-<model>.jsonl`.
-
-        | модель | N | valid json | категория | цвет | среднее, с |
-        |---|---|---|---|---|---|
-
-        MD;
+        $path = str_starts_with($doc, '/') ? $doc : $this->projectDir . '/' . $doc;
+        file_put_contents($path, $line, FILE_APPEND);
     }
 
     private function sanitizeModel(string $model): string
