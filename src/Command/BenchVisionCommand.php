@@ -31,6 +31,19 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  *   php bin/console app:bench:vision gemma4:26b
  *   php bin/console app:bench:vision gemma4:31b-it-qat-mmap --limit=10
  *
+ * --manifest=path.jsonl: набор берётся не из каталога, а из готового JSONL (строки
+ * {"id":..,"path":"<путь>","category":"..","color":"..","ai_prefilled":true|false|null}) —
+ * используется для эталона на реальных вещах гардероба (личные фото, путь и manifest
+ * готовятся отдельно, вне этой команды, и живут только на Mac вне git). ai_prefilled
+ * (вещь была принята из AI-черновика с подсказкой) прокидывается в лог и разбивает
+ * сводку на когорты — так виден возможный уклон эталона к модели, которая его подсказала.
+ *
+ * Метрика двухуровневая — точное совпадение (matches()) плюс более мягкое групповое:
+ * категория сводится к одной из ~6 групп (верх/низ/платья/верхняя одежда/обувь/
+ * аксессуары), цвет — к одному из ~12 семейств (colorFamilies()); эталон-строка может
+ * перечислять несколько цветов через ";" — групповое совпадение засчитывается, если
+ * семейства пересекаются хотя бы по одному значению.
+ *
  * Пишет поштучный лог var/bench/vision-<model>.jsonl (перезаписывается на каждый запуск)
  * и дописывает сводную строку в docs/model-vision-bench.md.
  */
@@ -56,19 +69,23 @@ class BenchVisionCommand extends Command
     {
         $this
             ->addArgument('model', InputArgument::REQUIRED, 'ollama vision-тег (gemma4:26b, gemma4:31b-it-qat-mmap)')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'сколько товаров каталога взять', '30')
-            ->addOption('doc', null, InputOption::VALUE_REQUIRED, 'markdown-документ для сводной строки', self::DEFAULT_DOC);
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'сколько товаров/вещей взять', '30')
+            ->addOption('doc', null, InputOption::VALUE_REQUIRED, 'markdown-документ для сводной строки', self::DEFAULT_DOC)
+            ->addOption('manifest', null, InputOption::VALUE_REQUIRED, 'JSONL с готовым набором (id,path,category,color,ai_prefilled) вместо товаров каталога');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $model = (string) $input->getArgument('model');
-        $limit = max(1, (int) $input->getOption('limit'));
-        $doc   = (string) $input->getOption('doc');
+        $model    = (string) $input->getArgument('model');
+        $limit    = max(1, (int) $input->getOption('limit'));
+        $doc      = (string) $input->getOption('doc');
+        $manifest = (string) $input->getOption('manifest');
 
-        $products = $this->eligibleProducts($limit);
+        $products = $manifest !== '' ? $this->manifestItems($manifest, $limit) : $this->eligibleProducts($limit);
         if ($products === []) {
-            $output->writeln('<error>Нет подходящих товаров (нужны: активный статус, категория, фото на диске, цвет хотя бы одного варианта)</error>');
+            $output->writeln($manifest !== ''
+                ? '<error>Manifest пуст или ни один путь к фото не найден на диске</error>'
+                : '<error>Нет подходящих товаров (нужны: активный статус, категория, фото на диске, цвет хотя бы одного варианта)</error>');
 
             return Command::FAILURE;
         }
@@ -101,6 +118,8 @@ class BenchVisionCommand extends Command
 
             $categoryMatch = $validJson && self::matches($gotCategory, $p['category']);
             $colorMatch = $validJson && self::matches($gotColor, $p['color']);
+            $categoryGroupMatch = $validJson && self::categoryGroupMatches($gotCategory, $p['category']);
+            $colorFamilyMatch = $validJson && self::colorFamilyMatches($gotColor, $p['color']);
 
             $rows[] = [
                 'product_id' => $p['id'],
@@ -110,16 +129,21 @@ class BenchVisionCommand extends Command
                 'got_color' => $gotColor,
                 'valid_json' => $validJson,
                 'category_match' => $categoryMatch,
+                'category_group_match' => $categoryGroupMatch,
                 'color_match' => $colorMatch,
+                'color_family_match' => $colorFamilyMatch,
                 'seconds' => round($seconds, 2),
+                'ai_prefilled' => $p['ai_prefilled'] ?? null,
             ];
 
             $output->writeln(sprintf(
-                '  #%d %s · категория %s · цвет %s · %.1fs',
+                '  #%d %s · категория %s(%s) · цвет %s(%s) · %.1fs',
                 $p['id'],
                 $validJson ? 'ok' : 'invalid-json',
                 $categoryMatch ? 'match' : 'miss',
+                $categoryGroupMatch ? 'group' : '-',
                 $colorMatch ? 'match' : 'miss',
+                $colorFamilyMatch ? 'family' : '-',
                 $seconds,
             ));
         }
@@ -177,6 +201,39 @@ class BenchVisionCommand extends Command
         return $out;
     }
 
+    /**
+     * Набор из готового JSONL (см. докблок класса) вместо запроса к каталогу — для
+     * эталона на реальных вещах гардероба. Строки без читаемого файла на диске
+     * пропускаются молча (manifest готовится заранее и может отставать от rsync).
+     *
+     * @return list<array{id:int,path:string,category:?string,color:?string,ai_prefilled:?bool}>
+     */
+    public static function manifestItems(string $manifestPath, int $limit): array
+    {
+        $lines = file($manifestPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+
+        $out = [];
+        foreach ($lines as $line) {
+            if (count($out) >= $limit) {
+                break;
+            }
+            $row = json_decode($line, true);
+            $path = is_array($row) ? (string) ($row['path'] ?? '') : '';
+            if ($path === '' || !is_file($path)) {
+                continue;
+            }
+            $out[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'path' => $path,
+                'category' => $row['category'] ?? null,
+                'color' => $row['color'] ?? null,
+                'ai_prefilled' => $row['ai_prefilled'] ?? null,
+            ];
+        }
+
+        return $out;
+    }
+
     /** Простая нормализация: регистр/ё/небуквенные символы; совпадение — точное, вхождение или общий 4-символьный префикс. */
     public static function matches(?string $actual, ?string $expected): bool
     {
@@ -200,6 +257,97 @@ class BenchVisionCommand extends Command
         return mb_strlen($a) >= 4 && mb_strlen($e) >= 4 && mb_substr($a, 0, 4) === mb_substr($e, 0, 4);
     }
 
+    /**
+     * ~12 базовых семейств цвета (ключевые слова — грубый, но простой классификатор:
+     * оттенки/уточнения вроде «мокрый асфальт» или «пыльная роза» ловятся ключевыми
+     * словами конкретного семейства). Строка может попасть в НЕСКОЛЬКО семейств
+     * («серо-голубой» → серый + синий) — это осознанно, см. colorFamilyMatches().
+     */
+    private const COLOR_FAMILY_KEYWORDS = [
+        'черный' => ['черн', 'графит', 'уголь', 'антрацит'],
+        'белый' => ['бел', 'молочн', 'айвори', 'слонов'],
+        'серый' => ['сер', 'асфальт', 'дымч'],
+        'бежевый_коричневый' => ['беж', 'корич', 'шоколад', 'кофе', 'какао', 'песоч', 'карамель', 'хаки', 'терракот', 'капуч', 'леопард', 'нюд', 'телесн'],
+        'красный_бордовый' => ['красн', 'бордов', 'вишн', 'бургунд', 'малинов', 'винн'],
+        'розовый' => ['розов', 'роза', 'фуксия'],
+        'оранжевый' => ['оранж', 'морков'],
+        'желтый' => ['желт', 'горчич', 'лимонн'],
+        'зеленый_оливковый' => ['зелен', 'олив', 'салатов', 'мятн', 'изумруд'],
+        'голубой_синий' => ['голуб', 'син', 'бирюз', 'джинс', 'индиго'],
+        'фиолетовый' => ['фиолет', 'сирен', 'лавенд', 'баклажан'],
+        'металлик' => ['серебр', 'золот', 'металл', 'хром'],
+    ];
+
+    /** @return list<string> семейства, найденные в строке (может быть несколько, может быть пусто) */
+    public static function colorFamilies(string $raw): array
+    {
+        $lower = str_replace('ё', 'е', mb_strtolower($raw));
+        $found = [];
+        foreach (self::COLOR_FAMILY_KEYWORDS as $family => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (str_contains($lower, $keyword)) {
+                    $found[$family] = true;
+                    break;
+                }
+            }
+        }
+
+        return array_keys($found);
+    }
+
+    /**
+     * Групповое совпадение цвета: $expected может перечислять несколько цветов через
+     * ";"/"," (напр. «розовый; салатовый; белый») — совпадение, если семейства
+     * пересекаются хотя бы по одному значению.
+     */
+    public static function colorFamilyMatches(?string $actual, ?string $expected): bool
+    {
+        if ($actual === null || $expected === null) {
+            return false;
+        }
+        $expectedFamilies = [];
+        foreach (preg_split('/[;,]/u', $expected) ?: [] as $part) {
+            $expectedFamilies = array_merge($expectedFamilies, self::colorFamilies($part));
+        }
+
+        return array_intersect($expectedFamilies, self::colorFamilies($actual)) !== [];
+    }
+
+    /** Грубая группировка категории одежды/обуви/аксессуаров ключевыми словами. */
+    private const CATEGORY_GROUP_KEYWORDS = [
+        'верх' => ['майка', 'футболк', 'топ', 'лонгслив', 'водолазк', 'рубашк', 'блуз', 'свитер', 'свитшот', 'худи', 'кофт', 'поло', 'джемпер'],
+        'низ' => ['джинс', 'брюк', 'штан', 'шорт', 'юбк', 'легинс', 'джоггер'],
+        'платья' => ['плать', 'сарафан'],
+        'верхняя одежда' => ['куртк', 'пальто', 'косух', 'пуховик', 'плащ', 'жилет', 'ветровк', 'бомбер', 'шуб', 'парк'],
+        'обувь' => ['туфл', 'кроссовк', 'ботин', 'ботильон', 'сапог', 'сандал', 'кед', 'лофер', 'мокасин', 'обув'],
+        'аксессуары' => ['ремен', 'ремн', 'шапк', 'шарф', 'перчатк', 'сумк', 'очк', 'украшен', 'носк', 'платок', 'аксессуар'],
+    ];
+
+    public static function categoryGroup(?string $raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+        $lower = str_replace('ё', 'е', mb_strtolower($raw));
+        foreach (self::CATEGORY_GROUP_KEYWORDS as $group => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (str_contains($lower, $keyword)) {
+                    return $group;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public static function categoryGroupMatches(?string $actual, ?string $expected): bool
+    {
+        $a = self::categoryGroup($actual);
+        $e = self::categoryGroup($expected);
+
+        return $a !== null && $e !== null && $a === $e;
+    }
+
     private function writeJsonl(string $model, array $rows): void
     {
         $dir = $this->projectDir . '/var/bench';
@@ -212,24 +360,50 @@ class BenchVisionCommand extends Command
         file_put_contents($path, implode("\n", $lines) . "\n");
     }
 
-    /** Дописывает строку в существующий docs/model-vision-bench.md (шапка+таблица уже в репо, как у app:bench:models). */
+    /**
+     * Дописывает строку(и) в существующий docs/model-vision-bench.md (шапка+таблица уже
+     * в репо, как у app:bench:models). Если среди строк реально встречается больше одного
+     * значения ai_prefilled (manifest-режим на вещах гардероба — true/false/null, null —
+     * своя когорта, не «неизвестно=false») — вдобавок к общей строке дописывает разбивку
+     * по когортам, чтобы был виден возможный уклон эталона к модели, подсказавшей его.
+     * Каталожный режим (ai_prefilled всегда null) разбивку не получает — она не несёт
+     * информации, когда когорта одна.
+     */
     private function appendSummaryRow(string $doc, string $model, array $rows): void
+    {
+        $lines = $this->summaryLine($model, $rows);
+
+        $cohorts = array_unique(array_map(static fn (array $r): string => json_encode($r['ai_prefilled'] ?? null), $rows));
+        if (count($cohorts) > 1) {
+            foreach ([true, false, null] as $flag) {
+                $subset = array_values(array_filter($rows, static fn (array $r): bool => ($r['ai_prefilled'] ?? null) === $flag));
+                if ($subset !== []) {
+                    $label = $flag === null ? 'null' : ($flag ? 'true' : 'false');
+                    $lines .= $this->summaryLine($model . " [ai_prefilled={$label}]", $subset);
+                }
+            }
+        }
+
+        $path = str_starts_with($doc, '/') ? $doc : $this->projectDir . '/' . $doc;
+        file_put_contents($path, $lines, FILE_APPEND);
+    }
+
+    private function summaryLine(string $label, array $rows): string
     {
         $n = count($rows);
         $rate = static fn (string $key): float => 100 * array_sum(array_column($rows, $key)) / $n;
 
-        $line = sprintf(
-            "| %s | %d | %.0f%% | %.0f%% | %.0f%% | %.1f |\n",
-            $model,
+        return sprintf(
+            "| %s | %d | %.0f%% | %.0f%% | %.0f%% | %.0f%% | %.0f%% | %.1f |\n",
+            $label,
             $n,
             $rate('valid_json'),
             $rate('category_match'),
+            $rate('category_group_match'),
             $rate('color_match'),
+            $rate('color_family_match'),
             array_sum(array_column($rows, 'seconds')) / $n,
         );
-
-        $path = str_starts_with($doc, '/') ? $doc : $this->projectDir . '/' . $doc;
-        file_put_contents($path, $line, FILE_APPEND);
     }
 
     private function sanitizeModel(string $model): string
