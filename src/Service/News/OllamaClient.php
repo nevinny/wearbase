@@ -9,8 +9,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 /**
  * Ollama HTTP-клиент (/api/chat). URL и модель из env:
  * OLLAMA_URL (по умолчанию http://127.0.0.1:11434), OLLAMA_MODEL
- * (по умолчанию qwen3.5:27b — проверенная текстовая модель этого стека,
- * см. BenchModelsCommand).
+ * (по умолчанию gemma4:26b — победитель бенча, см. docs/model-ab-bench.md).
  */
 final class OllamaClient implements NewsLlmClientInterface
 {
@@ -19,7 +18,7 @@ final class OllamaClient implements NewsLlmClientInterface
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         ?string $ollamaUrl = null,
-        private readonly string $model = 'qwen3.5:27b',
+        private readonly string $model = 'gemma4:26b',
         private readonly float $timeoutSeconds = 120.0,
     ) {
         $this->baseUrl = rtrim($ollamaUrl ?: self::DEFAULT_URL, '/');

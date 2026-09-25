@@ -65,7 +65,7 @@ parameters:
 
     # News pipeline (парсер → рерайт → модерация): ollama и предохранитель автопубликации
     env(OLLAMA_URL): 'http://127.0.0.1:11434'
-    env(OLLAMA_MODEL): 'qwen3.5:27b'
+    env(OLLAMA_MODEL): 'gemma4:26b'
     env(NEWS_AUTO_PUBLISH): '0'
 
 services:
