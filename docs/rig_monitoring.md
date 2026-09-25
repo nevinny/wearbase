@@ -109,3 +109,16 @@ disown
 - Автостарт Grafana при перезагрузке Mac (упирается в системную проблему launchd + внешний том, см. выше)
 - Смена пароля admin/admin — не сделал, оставил как есть по умолчанию
 - Текстовый коллектор `~/llm-mem.log` — пропущен по заданию (п.3, "не нужен")
+
+## Свои дашборды (2026-09-25)
+Файлы провижининга: `/opt/homebrew/etc/grafana/provisioning/dashboards/json/` (на Mac, вне git).
+- **LLM rig — здоровье** — `http://localhost:3300/d/llm-rig-health`: CPU/load/RAM/swap/диск + все 5 GPU одним экраном
+  (VRAM %, загрузка, температура, вентилятор; графики загрузки/VRAM/температуры/мощности). Имена карт — через
+  `renameByRegex` по префиксу UUID (при замене карты поправить маппинг в JSON).
+- **Proxmox — здоровье** — `http://localhost:3300/d/proxmox-health`: хост + гости (статус, CPU, RAM) + хранилища.
+
+## Proxmox 192.168.2.63 (PVE 9.2.3, `ssh root@192.168.2.63` по ключу)
+- `prometheus-node-exporter` (Debian-пакет) :9100 — хост.
+- `pve-exporter` (venv `/opt/pve-exporter`, юнит `pve-exporter.service`, :9221, MemoryMax=128M) — гости/хранилища;
+  пользователь `prometheus@pve`, роль `PVEAuditor` (только чтение), токен `exporter` в `/etc/prometheus/pve.yml` (600).
+- В Prometheus рига: jobs `proxmox_node` (15s) и `proxmox_pve` (30s, `/pve?target=127.0.0.1&cluster=1&node=1`).
