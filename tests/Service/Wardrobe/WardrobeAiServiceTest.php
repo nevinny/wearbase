@@ -93,6 +93,32 @@ final class WardrobeAiServiceTest extends TestCase
         self::assertArrayNotHasKey(999, $result);
     }
 
+    public function testAnalyzePhotoWithLocalModelUsesGivenModelWithoutCacheOrConsentGate(): void
+    {
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::once())
+            ->method('generateVision')
+            ->with(self::isType('string'), self::anything(), 'bench-model', true)
+            ->willReturn(json_encode([
+                'category' => 'Футболки', 'color' => 'белый', 'confidence' => 'high',
+            ], JSON_THROW_ON_ERROR));
+        // visionLocal=false + no consent record — сервис сконфигурирован как для REMOTE-прода,
+        // но analyzePhotoWithLocalModel обязан игнорировать это (нет consent-гейта/meter/кеша).
+        $service = new WardrobeAiService(
+            $llm, $this->createStub(WebScraperService::class), $this->createStub(WildberriesAdapter::class),
+            $this->createStub(WardrobeAiMeter::class), $this->createStub(AiUsageTracker::class),
+            new ArrayAdapter(), 'remote-test', false, 'prod-local-model', new NullLogger(),
+            $this->createStub(WardrobeConsentRepository::class),
+        );
+
+        $result = $service->analyzePhotoWithLocalModel('/tmp/whatever.jpg', 'bench-model');
+
+        self::assertTrue($result['ok']);
+        self::assertSame('Футболки', $result['fields']['category']);
+        self::assertSame('белый', $result['fields']['colorName']);
+        self::assertSame('bench-model', $result['model']);
+    }
+
     public function testAttributesFromNamesReturnsEmptyArrayWithoutCallingLlmWhenInputEmpty(): void
     {
         $llm = $this->createMock(LlmService::class);

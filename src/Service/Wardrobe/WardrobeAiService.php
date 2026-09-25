@@ -291,8 +291,36 @@ PROMPT;
             throw new WardrobeAiException(self::DAILY_CAP_ERROR);
         }
 
+        if (!$this->visionLocal) {
+            $this->meter->record();
+        }
+        $model = $this->visionLocal ? $this->localModel : $this->visionModel;
+        $response = $this->llm->generateVision($this->photoPrompt(), [$path], $model, $this->visionLocal);
+        $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_PHOTO);
+
+        return $this->parsePhotoResponse($response, $model);
+    }
+
+    /**
+     * Тот же анализ фото, что и продовый suggestFromPhoto/analyzePhoto (промпт + парсинг
+     * ответа), но с произвольной локальной моделью и БЕЗ согласия/лимитов/кеша/usage-лога —
+     * нужен только для app:bench:vision (сравнение моделей на каталожных фото). Прод этим
+     * методом не пользуется.
+     *
+     * @return array{ok:bool,fields?:array,confidence?:string,error?:string}
+     */
+    public function analyzePhotoWithLocalModel(string $path, string $model): array
+    {
+        $response = $this->llm->generateVision($this->photoPrompt(), [$path], $model, true);
+
+        return $this->parsePhotoResponse($response, $model);
+    }
+
+    private function photoPrompt(): string
+    {
         $categories = implode(', ', WardrobeItem::SUGGESTED_CATEGORIES);
-        $prompt = <<<EOT
+
+        return <<<EOT
 Ты определяешь параметры одежды/обуви по фото для личного гардероба. Отвечай ТОЛЬКО
 валидным JSON без markdown. Не выдумывай не видимое на фото — такие поля null.
 
@@ -308,13 +336,11 @@ PROMPT;
   "confidence": "high|med|low"
 }
 EOT;
+    }
 
-        if (!$this->visionLocal) {
-            $this->meter->record();
-        }
-        $model = $this->visionLocal ? $this->localModel : $this->visionModel;
-        $response = $this->llm->generateVision($prompt, [$path], $model, $this->visionLocal);
-        $this->usageTracker->record($user, AiUsageLog::FEATURE_WARDROBE_PHOTO);
+    /** @return array{ok:bool,fields?:array,model?:string,schemaVersion?:string,confidence?:string} */
+    private function parsePhotoResponse(string $response, string $model): array
+    {
         $data = $this->extractJson($response);
         if ($data === null) {
             throw new WardrobeAiException('Не удалось распознать фото');
