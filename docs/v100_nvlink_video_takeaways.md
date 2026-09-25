@@ -82,7 +82,7 @@ ollama.service: `OLLAMA_NUM_PARALLEL=1`, `OLLAMA_CONTEXT_LENGTH=8192`, `OLLAMA_K
 4 границы pipeline-передачи по PCIe x1, самая быстрая карта загружена на 40 %. `flash_attn = auto`.
 Load с диска ~106 с, mmap ollama отключает «due to host memory pressure».
 
-🛑 **Ограничение: CPU рига слабый (i7-2670QM) — расчёты LLM на CPU не пускаем.** Годятся только раскладки со `100% GPU`; CPU-offload слоёв и MoE-экспертов (`--n-cpu-moe`) отброшены заранее.
+⚠️ **Предпочтение: CPU рига слабый (i7-2670QM) — стараемся не отдавать ему расчёты LLM.** Варианты с CPU-offload (слои, `--n-cpu-moe`) не отбрасываем, а меряем; выбор — по цифрам.
 
 ### Замеры (харнесс `~/llmbench/bench.py` на риге, лог всех настроек — `~/llmbench/results.jsonl`)
 
