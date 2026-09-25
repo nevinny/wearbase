@@ -106,13 +106,15 @@ class BenchVisionCommand extends Command
             $validJson = false;
             $gotCategory = null;
             $gotColor = null;
+            $error = null;
             try {
                 $res = $this->wardrobeAi->analyzePhotoWithLocalModel($p['path'], $model);
                 $validJson = (bool) ($res['ok'] ?? false);
                 $gotCategory = $res['fields']['category'] ?? null;
                 $gotColor = $res['fields']['colorName'] ?? null;
             } catch (\Throwable $e) {
-                $output->writeln("  ERR #{$p['id']}: " . $e->getMessage());
+                $error = $e->getMessage();
+                $output->writeln("  ERR #{$p['id']}: " . $error);
             }
             $seconds = microtime(true) - $start;
 
@@ -134,6 +136,7 @@ class BenchVisionCommand extends Command
                 'color_family_match' => $colorFamilyMatch,
                 'seconds' => round($seconds, 2),
                 'ai_prefilled' => $p['ai_prefilled'] ?? null,
+                'error' => $error,
             ];
 
             $output->writeln(sprintf(
