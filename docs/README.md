@@ -114,3 +114,4 @@
 |---|---|
 | [archive/seo_rules_2.3.0.md](archive/seo_rules_2.3.0.md) | → [seo_rules.md](seo_rules.md) Часть 1 (нормативные правила) |
 | [archive/seo_rules_SEO_GUIDE.md](archive/seo_rules_SEO_GUIDE.md) | → [seo_rules.md](seo_rules.md) Часть 0 (WEARBASE-константы) |
+- [hindsight.md](hindsight.md) — Hindsight (память агентов, vectorize-io): что это, применимость, вывод «сейчас не нужен»
