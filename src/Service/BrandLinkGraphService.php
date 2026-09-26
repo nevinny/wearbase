@@ -116,7 +116,12 @@ class BrandLinkGraphService
             try {
                 $this->db->insert('brand_related', ['brand_id' => $brandId, 'related_brand_id' => $candidateId, 'position' => $pos, 'source' => $source]);
             } catch (UniqueConstraintViolationException) {
-                continue; // гонка с параллельным weave — слот/пара уже заняты (бывший INSERT IGNORE, переносимо на SQLite)
+                // Гонка с параллельным weave/push — слот или пара уже заняты (бывший INSERT IGNORE,
+                // переносимо на SQLite). Перечитываем состояние, чтобы следующий кандидат не бился в тот же слот.
+                $existing  = array_map('intval', $this->db->fetchFirstColumn('SELECT related_brand_id FROM brand_related WHERE brand_id = :id', ['id' => $brandId]));
+                $positions = array_map('intval', $this->db->fetchFirstColumn('SELECT position FROM brand_related WHERE brand_id = :id', ['id' => $brandId]));
+                $pos       = 1;
+                continue;
             }
             $existing[]  = $candidateId;
             $positions[] = $pos;
