@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Service\BrandLinkGraphService;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -74,6 +75,9 @@ final class OrphanLinkExperimentCommand extends Command
             $arms = ['treatment' => 0, 'control' => 0, 'missing' => 0];
             foreach ($plan['population'] as $p) {
                 $id = $ids[$p['slug']] ?? null;
+                if (!in_array($p['arm'] ?? null, ['treatment', 'control'], true)) {
+                    throw new \InvalidArgumentException("arm должен быть treatment|control: {$p['slug']}");
+                }
                 if ($id === null) {
                     $arms['missing']++;
                     continue;
@@ -223,9 +227,14 @@ final class OrphanLinkExperimentCommand extends Command
             foreach ($edges as $e) {
                 $where = ['brand_id' => $e['donor_id'], 'related_brand_id' => $e['target_id']];
                 // Системная операция отката графа — физический delete допустим (CLAUDE.md).
-                $e['old_target_id'] === null
-                    ? $this->db->delete('brand_related', $where)
-                    : $this->db->update('brand_related', ['related_brand_id' => $e['old_target_id'], 'source' => $e['old_source']], $where);
+                try {
+                    $e['old_target_id'] === null
+                        ? $this->db->delete('brand_related', $where)
+                        : $this->db->update('brand_related', ['related_brand_id' => $e['old_target_id'], 'source' => $e['old_source']], $where);
+                } catch (UniqueConstraintViolationException) {
+                    // донор уже сам ссылается на старый таргет — просто убираем экспериментальное ребро
+                    $this->db->delete('brand_related', $where);
+                }
                 $this->db->executeStatement('UPDATE link_experiment_edge SET reverted_at = CURRENT_TIMESTAMP WHERE id = :id', ['id' => $e['id']]);
             }
             $this->db->executeStatement(
