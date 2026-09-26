@@ -174,17 +174,47 @@ class NicheCheckCommand extends Command
     private function buildPrompt(Brand $brand, array $topKeywords): string
     {
         $lines = ['Бренд: ' . $brand->getTitle()];
-        if (($anons = trim((string) ($brand->getAnons() ?? $brand->getTagline()))) !== '') {
+        $anons = trim((string) ($brand->getAnons() ?? $brand->getTagline()));
+        if ($anons !== '') {
             $lines[] = $anons;
         }
-        if (($desc = trim(strip_tags((string) $brand->getDescription()))) !== '') {
+        $desc = trim(strip_tags((string) $brand->getDescription()));
+        if ($desc !== '') {
             $lines[] = 'Описание: ' . mb_substr($desc, 0, 400);
         }
         if ($topKeywords !== []) {
             $lines[] = 'Поисковые запросы: ' . implode(', ', array_map(fn ($k) => $k->getKeyword(), $topKeywords));
         }
 
+        // Свежий лид: описания нет, ключевиков нет — LLM судит по одному названию и системно
+        // валит мелкие незнакомые бренды («не относится к категориям моды»). На выборке из
+        // 505 лидов ProVybor так отсеялись 202 бренда, у которых на площадке лежат десятки
+        // товаров одежды. Поэтому при отсутствии описания подкладываем факты из корпуса.
+        if ($desc === '' && $anons === '' && ($facts = $this->corpusFacts($brand)) !== null) {
+            $lines[] = 'Факты из источников: ' . $facts;
+        }
+
         return implode("\n", $lines);
+    }
+
+    /** Выжимка из собранного корпуса бренда (самые релевантные документы), до 900 знаков. */
+    private function corpusFacts(Brand $brand): ?string
+    {
+        $texts = $this->em->getConnection()->fetchFirstColumn(
+            'SELECT clean_text FROM brand_source_document
+             WHERE brand_id = ? AND deleted_at IS NULL AND char_count > 0
+             ORDER BY relevance_score DESC, char_count DESC
+             LIMIT 2',
+            [$brand->getId()]
+        );
+
+        if ($texts === []) {
+            return null;
+        }
+
+        $joined = trim(preg_replace('/\s+/u', ' ', implode(' ', $texts)) ?? '');
+
+        return $joined !== '' ? mb_substr($joined, 0, 900) : null;
     }
 
     /** @return array{0: 'in'|'off'|null, 1: string|null} */
