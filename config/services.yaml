@@ -23,6 +23,8 @@ parameters:
     env(WARDROBE_VISION_LOCAL): '0'
     env(WARDROBE_OUTFIT_LOCAL): '0'
     env(WARDROBE_OUTFIT_LOCAL_MODEL): 'gemma4:26b'
+    # Авторазбор shared cart включается только после provider-specific contract fixtures.
+    env(PURCHASE_SHARED_CART_ENABLED): '0'
     # Соц-автоматизация: дрип-рамп (предохранитель)
     env(SOCIAL_LAUNCH_DATE): ''
     env(SOCIAL_START_RATE): '3'

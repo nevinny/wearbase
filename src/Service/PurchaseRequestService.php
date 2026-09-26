@@ -12,6 +12,7 @@ use App\Entity\FittingFeedback;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Notification\NotificationDispatcher;
+use App\Service\Purchase\PurchaseProductImporter;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\DBAL\LockMode;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
@@ -23,6 +24,7 @@ class PurchaseRequestService
         private readonly FamilyService $families,
         private readonly FamilyBudgetService $budgets,
         private readonly NotificationDispatcher $notifications,
+        private readonly PurchaseProductImporter $productImporter,
     ) {}
 
     public function create(
@@ -32,25 +34,26 @@ class PurchaseRequestService
         ?string $comment,
         ?string $estimatedPrice = null,
         array $additionalUrls = [],
+        bool $sharedCart = false,
     ): PurchaseRequest
     {
         $this->assertCanCreate($actor, $subject);
 
-        if (count($additionalUrls) > 9) {
-            throw new \InvalidArgumentException('В одном запросе можно до 10 вещей');
-        }
+        $snapshots = $sharedCart
+            ? $this->productImporter->importSharedCart($productUrl)
+            : $this->productImporter->importLinks($productUrl, $additionalUrls, $estimatedPrice);
 
-        return $this->transactional(function () use ($actor, $subject, $productUrl, $comment, $estimatedPrice, $additionalUrls): PurchaseRequest {
+        return $this->transactional(function () use ($actor, $subject, $comment, $snapshots): PurchaseRequest {
+            $first = $snapshots[0];
             $request = (new PurchaseRequest())
                 ->setFamily($subject->getFamily())
                 ->setSubject($subject)
                 ->setCreatedBy($actor)
-                ->setProductUrl($productUrl)
-                ->setEstimatedPrice($estimatedPrice)
+                ->setProductUrl($first->sourceUrl)
+                ->setEstimatedPrice($first->estimatedPrice)
                 ->setComment($comment !== null && trim($comment) !== '' ? trim($comment) : null);
-            $request->addItem(new PurchaseRequestItem($productUrl, $estimatedPrice));
-            foreach ($additionalUrls as $url) {
-                $request->addItem(new PurchaseRequestItem($url));
+            foreach ($snapshots as $snapshot) {
+                $request->addItem(new PurchaseRequestItem($snapshot->sourceUrl, $snapshot->estimatedPrice));
             }
             $request->addEvent(new PurchaseRequestEvent($actor, PurchaseRequestEvent::TYPE_CREATED));
 
