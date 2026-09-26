@@ -113,6 +113,41 @@ class BrandRelatedGraphTest extends KernelTestCase
         $this->assertSame(0, $this->outCount($disabled), 'исходящие рёбра non-active источника должны уйти');
     }
 
+    public function testControlArmOfRunningExperimentGetsNoInboundEdges(): void
+    {
+        // HADI-эксперимент (docs/hadi_orphan_links.md): control заморожен, пока ended_at IS NULL.
+        $donor   = $this->brand('graph-donor', Statuses::Active);
+        $control = $this->brand('graph-ctrl', Statuses::Active);
+        $treat   = $this->brand('graph-treat', Statuses::Active);
+        $this->db->insert('link_experiment', ['experiment' => 'exp-test', 'brand_id' => $control->getId(), 'arm' => 'control']);
+        $this->db->insert('link_experiment', ['experiment' => 'exp-test', 'brand_id' => $treat->getId(), 'arm' => 'treatment']);
+
+        $added = $this->graph->addEdges($donor->getId(), [$control->getId(), $treat->getId()], 'style');
+
+        $this->assertSame(1, $added);
+        $this->assertFalse($this->hasEdge($donor, $control), 'control не получает входящих');
+        $this->assertTrue($this->hasEdge($donor, $treat));
+
+        // После закрытия эксперимента control разморожен
+        $this->db->executeStatement("UPDATE link_experiment SET ended_at = CURRENT_TIMESTAMP WHERE experiment = 'exp-test'");
+        $this->graph->addEdges($donor->getId(), [$control->getId()], 'style');
+        $this->assertTrue($this->hasEdge($donor, $control));
+    }
+
+    public function testExperimentDonorIsDetectedOnlyWhileRunning(): void
+    {
+        $donor = $this->brand('graph-donor', Statuses::Active);
+        $treat = $this->brand('graph-treat', Statuses::Active);
+        $this->db->insert('link_experiment', ['experiment' => 'exp-test', 'brand_id' => $treat->getId(), 'arm' => 'treatment']);
+        $this->db->insert('link_experiment_edge', [
+            'experiment' => 'exp-test', 'donor_id' => $donor->getId(), 'target_id' => $treat->getId(), 'position' => 1, 'tier' => 'free',
+        ]);
+
+        $this->assertTrue($this->graph->isExperimentDonor($donor->getId()));
+        $this->db->executeStatement("UPDATE link_experiment SET ended_at = CURRENT_TIMESTAMP WHERE experiment = 'exp-test'");
+        $this->assertFalse($this->graph->isExperimentDonor($donor->getId()));
+    }
+
     public function testFindRelatedHardReturnsOnlyActiveTargets(): void
     {
         // Рендер-фильтр: блок «похожие» не должен отдавать ссылки на non-active бренды.

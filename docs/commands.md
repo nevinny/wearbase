@@ -122,6 +122,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:brand:push` | Доставка готовых брендов (`isPublishReady`) на прод через `/api/v1/brands/upsert` (HMAC). Приземляются как `new`+`publish_pending`. `--id=N --publish` — приоритетная публикация ручного бренда сразу (минуя дрип, `/api/v1/brands/publish` + IndexNow; `published_at` входит в дневной таргет ramp'а). | 🔁 фон / 👆 ре-пуш с `--force` | 🖥 .43 |
 | `app:brand:publish-tick` | Дрип-публикация: ramp-up (5→28/день), окно 9–23 МСК, случайный выбор. Тик раз в 5 мин (диспетчер), но публикация в часе ровно одна — джиттер решает намеченную минуту через `var/publish_tick_state.json`, не блокирующим `sleep` (не держит глобальный крон-лок). Имитирует ручной ввод (анти-SpamBrain). При публикации вплетает бренд в жёсткий граф перелинковки (fail-open). `--now` — публиковать сразу, игнорируя джиттер. | ⏰ `*/5 * * * *` | ☁️ prod |
 | `app:brand:build-link-graph` | Жёсткий граф «Похожих брендов» (`brand_related`, 5 исходящих + гарантия ≥2 входящих, нет сирот). Qdrant-эмбеддинги → стили → город → fill. Идемпотентна: существующие рёбра не трогает; `--rebuild` — снести и заново. См. `docs/seo_adoption_plan.md` п.2. | 👆 после массовых публикаций / смены статусов | 🖥 Mac (нужен Qdrant; без него — SQL fallback) |
+| `app:linkgraph:orphan-experiment` | HADI-эксперимент с сиротами графа (`apply --plan` / `status` / `end --verdict` / `revert`). ⚠️ Пока эксперимент идёт — не делать `build-link-graph --rebuild`. См. `docs/hadi_orphan_links.md` | 👆 старт / замеры W2–W8 / решение | 🌐 прод |
 
 ---
 
