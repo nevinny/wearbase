@@ -177,10 +177,11 @@ final class OrphanLinkExperimentCommand extends Command
 
     private function status(SymfonyStyle $io, string $exp): int
     {
+        // Входящие считаем только от active-источников: рёбра от disabled-брендов не рендерятся (страница 404).
         $rows = $this->db->fetchAllAssociative(
             "SELECT x.arm, COUNT(*) n, MIN(x.assigned_at) assigned, MAX(x.ended_at) ended,
-                    SUM(CASE WHEN (SELECT COUNT(*) FROM brand_related r WHERE r.related_brand_id = x.brand_id) = 0 THEN 1 ELSE 0 END) in0,
-                    SUM(CASE WHEN (SELECT COUNT(*) FROM brand_related r WHERE r.related_brand_id = x.brand_id) >= 2 THEN 1 ELSE 0 END) in2
+                    SUM(CASE WHEN (SELECT COUNT(*) FROM brand_related r JOIN brand s ON s.id = r.brand_id AND s.status = 'active' WHERE r.related_brand_id = x.brand_id) = 0 THEN 1 ELSE 0 END) in0,
+                    SUM(CASE WHEN (SELECT COUNT(*) FROM brand_related r JOIN brand s ON s.id = r.brand_id AND s.status = 'active' WHERE r.related_brand_id = x.brand_id) >= 2 THEN 1 ELSE 0 END) in2
              FROM link_experiment x WHERE x.experiment = :e GROUP BY x.arm",
             ['e' => $exp],
         );
