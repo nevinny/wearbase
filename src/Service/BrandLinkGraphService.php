@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 
 /**
  * Жёсткий граф внутренней перелинковки брендов (brand_related).
@@ -45,6 +46,36 @@ class BrandLinkGraphService
     }
 
     /**
+     * Контрольная группа идущего эксперимента (docs/hadi_orphan_links.md): пока
+     * link_experiment.ended_at IS NULL, этим брендам нельзя давать входящие рёбра —
+     * иначе эксперимент испорчен. Единая точка для addEdges/replaceDeadEdges.
+     *
+     * @return array<int,true>
+     */
+    public function frozenTargets(): array
+    {
+        $ids = $this->db->fetchFirstColumn(
+            "SELECT brand_id FROM link_experiment WHERE arm = 'control' AND ended_at IS NULL",
+        );
+
+        return array_fill_keys(array_map('intval', $ids), true);
+    }
+
+    /**
+     * Донор рёбер идущего эксперимента: его исходящие нельзя перезаписывать
+     * (push из агент-API делает delete-and-replace и стёр бы рёбра treatment-группы).
+     */
+    public function isExperimentDonor(int $brandId): bool
+    {
+        return (bool) $this->db->fetchOne(
+            'SELECT 1 FROM link_experiment_edge e
+             JOIN link_experiment x ON x.experiment = e.experiment AND x.brand_id = e.target_id AND x.ended_at IS NULL
+             WHERE e.donor_id = :id AND e.reverted_at IS NULL LIMIT 1',
+            ['id' => $brandId],
+        );
+    }
+
+    /**
      * Жёсткая запись исходящих рёбер бренда. Существующие рёбра не трогаем —
      * только добиваем свободные позиции. $candidates — id в порядке убывания близости.
      *
@@ -64,6 +95,8 @@ class BrandLinkGraphService
         );
         $positions = array_map('intval', $positions);
 
+        $frozen = $this->frozenTargets();
+
         $added = 0;
         $pos   = 1;
         foreach ($candidates as $candidateId) {
@@ -71,7 +104,7 @@ class BrandLinkGraphService
                 break;
             }
             $candidateId = (int) $candidateId;
-            if ($candidateId === $brandId || in_array($candidateId, $existing, true)) {
+            if ($candidateId === $brandId || in_array($candidateId, $existing, true) || isset($frozen[$candidateId])) {
                 continue;
             }
             while (in_array($pos, $positions, true)) {
@@ -80,11 +113,16 @@ class BrandLinkGraphService
             if ($pos > self::OUT_DEGREE) {
                 break;
             }
-            $this->db->executeStatement(
-                'INSERT IGNORE INTO brand_related (brand_id, related_brand_id, position, source)
-                 VALUES (:brand, :related, :pos, :source)',
-                ['brand' => $brandId, 'related' => $candidateId, 'pos' => $pos, 'source' => $source],
-            );
+            try {
+                $this->db->insert('brand_related', ['brand_id' => $brandId, 'related_brand_id' => $candidateId, 'position' => $pos, 'source' => $source]);
+            } catch (UniqueConstraintViolationException) {
+                // Гонка с параллельным weave/push — слот или пара уже заняты (бывший INSERT IGNORE,
+                // переносимо на SQLite). Перечитываем состояние, чтобы следующий кандидат не бился в тот же слот.
+                $existing  = array_map('intval', $this->db->fetchFirstColumn('SELECT related_brand_id FROM brand_related WHERE brand_id = :id', ['id' => $brandId]));
+                $positions = array_map('intval', $this->db->fetchFirstColumn('SELECT position FROM brand_related WHERE brand_id = :id', ['id' => $brandId]));
+                $pos       = 1;
+                continue;
+            }
             $existing[]  = $candidateId;
             $positions[] = $pos;
             $added++;
@@ -239,6 +277,7 @@ class BrandLinkGraphService
              WHERE b.status != 'active'",
         );
 
+        $frozen = $this->frozenTargets();
         foreach ($dead as $edge) {
             $brandId = (int) $edge['brand_id'];
             $linked  = array_map('intval', $this->db->fetchFirstColumn(
@@ -247,7 +286,7 @@ class BrandLinkGraphService
             ));
             $candidate = null;
             foreach ($this->fallbackCandidates($brandId) as $cid) {
-                if ($cid !== $brandId && !in_array($cid, $linked, true)) {
+                if ($cid !== $brandId && !in_array($cid, $linked, true) && !isset($frozen[$cid])) {
                     $candidate = $cid;
                     break;
                 }

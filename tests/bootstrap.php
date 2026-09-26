@@ -70,6 +70,35 @@ if (($_SERVER['APP_ENV'] ?? null) === 'test') {
             )
         SQL);
 
+        // HADI-эксперимент с сиротами графа (Version20260926_link_experiment).
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS link_experiment (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experiment VARCHAR(40) NOT NULL,
+                brand_id INTEGER NOT NULL,
+                arm VARCHAR(10) NOT NULL,
+                baseline_state VARCHAR(80) DEFAULT NULL,
+                assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                ended_at DATETIME DEFAULT NULL,
+                verdict VARCHAR(20) DEFAULT NULL
+            )
+        SQL);
+        $connection->executeStatement(<<<'SQL'
+            CREATE TABLE IF NOT EXISTS link_experiment_edge (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experiment VARCHAR(40) NOT NULL,
+                donor_id INTEGER NOT NULL,
+                target_id INTEGER NOT NULL,
+                position SMALLINT NOT NULL,
+                tier VARCHAR(10) NOT NULL,
+                score DECIMAL(5,3) DEFAULT NULL,
+                old_target_id INTEGER DEFAULT NULL,
+                old_source VARCHAR(20) DEFAULT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                reverted_at DATETIME DEFAULT NULL
+            )
+        SQL);
+
         // Находки тех-аудита с дельтой (Version20260728_seo_tech_finding).
         $connection->executeStatement(<<<'SQL'
             CREATE TABLE IF NOT EXISTS seo_tech_finding (

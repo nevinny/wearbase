@@ -25,6 +25,7 @@ class BrandIngestService
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly string $projectDir,
+        private readonly \App\Service\BrandLinkGraphService $linkGraph,
     ) {
     }
 
@@ -381,12 +382,19 @@ class BrandIngestService
      */
     private function replaceRelated(Brand $brand, array $rows): void
     {
+        // Донор идущего эксперимента с сиротами (docs/hadi_orphan_links.md) — его рёбра
+        // не перезаписываем до конца эксперимента, иначе push сотрёт treatment-рёбра.
+        if ($this->linkGraph->isExperimentDonor((int) $brand->getId())) {
+            return;
+        }
+        $frozen = $this->linkGraph->frozenTargets();
+
         $db = $this->em->getConnection();
 
         // DELETE + повторная вставка — в одной транзакции: иначе при сбое (или
         // наложении weave() из publish-tick на тот же brand_id) бренд может
         // остаться с пустыми исходящими рёбрами между DELETE и INSERT.
-        $db->transactional(function () use ($db, $brand, $rows): void {
+        $db->transactional(function () use ($db, $brand, $rows, $frozen): void {
             $db->executeStatement('DELETE FROM brand_related WHERE brand_id = :id', ['id' => $brand->getId()]);
 
             foreach (array_slice($rows, 0, \App\Service\BrandLinkGraphService::OUT_DEGREE) as $row) {
@@ -396,7 +404,7 @@ class BrandIngestService
                     continue;
                 }
                 $targetId = $db->fetchOne('SELECT id FROM brand WHERE slug = :slug', ['slug' => $slug]);
-                if ($targetId === false) {
+                if ($targetId === false || isset($frozen[(int) $targetId])) {
                     continue;
                 }
                 $db->executeStatement(
