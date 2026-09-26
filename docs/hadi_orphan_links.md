@@ -82,6 +82,9 @@ GSC с Mac + `bots.log`).
 | −5 … +5 п.п. | **inconclusive**: продлить до W10 один раз, дальше `end --verdict=inconclusive` — ссылки оставить, но не считать рычагом роста |
 | ≤ −5 п.п. | **revert**: `revert` (журнал вернёт fill-рёбра и слоты) |
 
+⚠️ При `validated`: после `end` защита доноров снимается, и push агент-API (delete-and-replace рёбер из Mac-графа) сотрёт
+экспериментальные рёбра. До `end` перенести их в Mac-граф (или раскатить ротационные слоты в `BrandLinkGraphService`).
+
 Итог и выученный урок — сюда и в playbook §6.
 
 | Замер | Дата | known T / C | Δ | Googlebot T / C | Комментарий |
