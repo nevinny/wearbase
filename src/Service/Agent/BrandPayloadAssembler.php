@@ -55,7 +55,7 @@ class BrandPayloadAssembler
             'keyword'       => $k->getKeyword(),
             'type'          => $k->getType(),
             'monthly_shows' => $k->getMonthlyShows(),
-        ], $this->em->getRepository(BrandKeyword::class)->findBy(['brand' => $brand]));
+        ], $this->em->getRepository(BrandKeyword::class)->findExportableByBrand($brand));
 
         $payload['faq'] = array_map(static fn(BrandFaq $f) => [
             'question' => $f->getQuestion(),
