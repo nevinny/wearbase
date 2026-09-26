@@ -25,7 +25,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *
  * Кандидат генерируется локально (ollama) либо, с --api, через OpenRouter (для облачных
  * моделей > 40ГБ VRAM, напр. nvidia/nemotron-3-super/ultra). Судья grounding и article-QA
- * ВСЕГДА локальные (фиксированный qwen3.5:27b) → сравнение моделей честное.
+ * ВСЕГДА локальные (фиксированный qwen3.6:27b; до 2026-09-25 — qwen3.5:27b, снята с рига) → сравнение моделей честное.
  *
  *   php bin/console app:bench:models qwen3.6:27b docs/model-ab-bench.md
  *   php bin/console app:bench:models nvidia/nemotron-3-super-120b-a12b:free --api
@@ -35,7 +35,7 @@ class BenchModelsCommand extends Command
 {
     private const RUNS   = 5;
     private const BRANDS = 5;
-    private const JUDGE  = 'qwen3.5:27b'; // фиксированный судья grounding (один на все модели → честно)
+    private const JUDGE  = 'qwen3.6:27b'; // фиксированный судья grounding (один на все модели → честно)
     private const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
     public function __construct(
@@ -152,7 +152,7 @@ class BenchModelsCommand extends Command
             return Command::FAILURE;
         }
 
-        // Grounding: фиксированный судья (qwen3.5:27b) оценивает заземлённость каждого текста на контекст.
+        // Grounding: фиксированный судья (self::JUDGE) оценивает заземлённость каждого текста на контекст.
         // Один свап на судью после генерации кандидата, затем судим все 25 (без свапа на каждый).
         $output->writeln('  grounding-судья (' . self::JUDGE . ')...');
         $gscores = [];
