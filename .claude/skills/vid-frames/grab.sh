@@ -6,7 +6,8 @@ set -euo pipefail
 
 FFMPEG=/opt/homebrew/bin/ffmpeg
 FFPROBE=/opt/homebrew/bin/ffprobe
-YTDLP=/opt/homebrew/bin/yt-dlp
+# /opt/homebrew/bin/yt-dlp — устаревшая pip-обёртка (2026.07, YouTube отдаёт 403); берём свежий из Cellar
+YTDLP=$(ls /opt/homebrew/Cellar/yt-dlp/*/bin/yt-dlp 2>/dev/null | tail -1); YTDLP=${YTDLP:-/opt/homebrew/bin/yt-dlp}
 COLS=5
 ROWS=5
 

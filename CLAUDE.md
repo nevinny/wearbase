@@ -59,6 +59,7 @@ BASE_URL=http://localhost:8000 npx playwright test           # custom base URL
 
 - «Host key verification failed» после смены IP → `ssh-keygen -R <ip>`, не бороться вслепую.
 - На LLM-сервере диск и RAM ограничены (модели ~20 ГБ не влезают, диск забивался в 100%) — перед скачиванием моделей проверять `df -h` и свободную RAM.
+- CPU LLM-сервера слабый (i7-2670QM, 4C/8T) — стараемся, чтобы расчёты LLM на него не уходили (`ollama ps` → `100% GPU`, в journal `offloaded N/N layers`). Не запрет: варианты с CPU-offload мерим наравне, решаем по цифрам.
 
 ## Правила взаимодействия
 
