@@ -10,11 +10,12 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * без бота/API/токена, доступно напрямую с Mac (прод РФ для Meta заблокирован,
  * t.me — нет). Отдаёт посты с непустым текстом (чистое медиа/сервисные — пропуск).
  *
- * ⚠️ Известное ограничение: `/s/<channel>` отдаёт только последнюю страницу
- * превью (~20 постов), листания вперёд без `?before=` нет. При ежедневном
- * запуске (см. app:kb:sync-tg) окна хватает; при длительном пропуске крона
- * возможен gap — тогда ручной backfill той же цепочкой `discover?before=`,
- * что использовалась при разовой заливке DrMax (см. docs/drmax_seo_2026_digest.md).
+ * `/s/<channel>` без параметров отдаёт последнюю страницу превью (~20 постов).
+ * Более старые страницы — через `?before=<id>` (id — минимальный/самый старый
+ * id уже полученной страницы). Листания вперёд (к более новым) нет — не нужно,
+ * ежедневный `app:kb:sync-tg` и так берёт последнюю страницу. Глубокий backfill
+ * истории — через `--backfill` у `app:kb:sync-tg`, идёт страница за страницей
+ * пока не упрётся в пустую страницу или в уже сохранённый пост.
  */
 class TgChannelScraper
 {
@@ -29,9 +30,10 @@ class TgChannelScraper
     /**
      * @return list<array{id:int,text:string,date:\DateTimeImmutable,title:string}>
      */
-    public function fetchPosts(string $channel): array
+    public function fetchPosts(string $channel, ?int $before = null): array
     {
-        $response = $this->httpClient->request('GET', self::BASE_URL . $channel, [
+        $url = self::BASE_URL . $channel . ($before !== null ? '?before=' . $before : '');
+        $response = $this->httpClient->request('GET', $url, [
             'headers' => ['User-Agent' => self::USER_AGENT],
             'timeout' => 30,
         ]);

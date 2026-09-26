@@ -87,7 +87,7 @@
 | [claude-code-multiple-accounts.md](claude-code-multiple-accounts.md) | Настройка нескольких изолированных аккаунтов Claude Code через `CLAUDE_CONFIG_DIR`: Zsh/Bash, Fish, PowerShell, проверка авторизации и безопасность MCP. От 2026-08-20 |
 | [production.md](production.md) | Прод-окружение (reg.ru): env-карта, деплой, известные проблемы |
 | [commands.md](commands.md) | Справочник всех console-команд (зачем/как часто/где + cron) |
-| [llm_infra_handoff.md](llm_infra_handoff.md) | Домашний AI-сервер: snapshot железа, Gemma, vision TBD, embedder, Qdrant и LAN-доступ |
+| [llm_infra_handoff.md](llm_infra_handoff.md) | Домашний AI-сервер (риг делит GPU между контентом/vision/майнингом/кодинг-экспериментами): железо, **PCIe x1 у всех карт** и цена дробления модели по GPU, краш `nvidia_uvm` на open-драйвере (фикс), CUDA vs Vulkan visibility, Gemma, embedder, Qdrant, LAN-доступ. Обновлено 2026-09-23 |
 | [llm_relay_handoff.md](llm_relay_handoff.md) | Pull-relay `llmq.php` для локального тестирования вне LAN; production endpoint отдельно |
 
 ## Трекеры и история
