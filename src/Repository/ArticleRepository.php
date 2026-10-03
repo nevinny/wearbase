@@ -65,6 +65,25 @@ class ArticleRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * Листиклы этого стиля для блока «Статьи» на стиль-хабе. Связи article↔стиль в схеме
+     * нет (M2M не вводим, docs/seo_sitewide_backlog.md HIGH-4), поэтому берём её из имени
+     * исходника: `listicle-{styleSlug}-{brandSlug}-site-pN.md` (GenerateListicleCommand::
+     * saveDocument). Префикс с дефисом не путает `casual` и `business-casual`.
+     *
+     * @return Article[]
+     */
+    public function findListiclesByStyleSlug(string $styleSlug, string $locale, int $limit = 6): array
+    {
+        return $this->publishedQb($locale)
+            ->andWhere('a.sourceFile LIKE :prefix')
+            ->setParameter('prefix', 'listicle-' . $styleSlug . '-%')
+            ->orderBy('a.publishedAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+    }
+
     /** @return Article[] */
     public function findPublishedByAuthor(int $authorId, string $locale, int $limit = 50): array
     {
