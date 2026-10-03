@@ -3,6 +3,7 @@
 namespace App\Controller\Brands;
 
 use App\Entity\Brand;
+use App\Repository\ArticleRepository;
 use App\Repository\BrandAudienceRepository;
 use App\Repository\BrandRepository;
 use App\Repository\BrandStyleRepository;
@@ -682,7 +683,7 @@ class BrandsController extends AbstractController
     }
 
     #[Route('/{_locale}/style/{slug}', name: 'brand_style', requirements: ['_locale' => 'en|ru|zh|ar|tr|de|fr|es|ko', 'slug' => '[a-z0-9-]+'], defaults: ['_locale' => 'ru'])]
-    public function styleShow(string $slug, BrandRepository $repo, BrandStyleRepository $styleRepo, Request $request): Response
+    public function styleShow(string $slug, BrandRepository $repo, BrandStyleRepository $styleRepo, ArticleRepository $articleRepo, Request $request): Response
     {
         $style = $styleRepo->findOneBy(['slug' => $slug]);
         if (!$style || !$style->isPublished()) {
@@ -735,6 +736,9 @@ class BrandsController extends AbstractController
             'brands' => $brands,
             'indexable' => $indexable,
             'topCities' => $topCities,
+            // Листиклы «ТОП-N брендов {стиль} — {город}»: единственный внутренний вход на них,
+            // кроме noindex-пагинации блога (SEO тех-аудит 03.10 — 8 страниц-сирот).
+            'articles' => $articleRepo->findListiclesByStyleSlug($slug, $request->getLocale()),
             'locale' => $request->getLocale(),
         ]);
     }
