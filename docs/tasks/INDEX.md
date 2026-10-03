@@ -4,7 +4,7 @@
 > изменения затрутся. Правьте шапку самой задачи, затем
 > `python3 tools/tasks/task.py index`.
 
-Всего задач: 13 · обновлено 2026-09-07
+Всего задач: 14 · обновлено 2026-10-03
 
 ## новая (9)
 
@@ -19,6 +19,12 @@
 | 0011 | [Очередь публикации иссякла 26.08, а метрики этого не показывали](0011-ochered-publikacii-issyakla-26-08-a-metriki-etogo-ne-pokazyv.md) | не назначен | 2026-09-07 |
 | 0012 | [Дешёвые резервы публикации: 60 брендов ждут только FAQ, 131 с publish_pending=0](0012-deshevye-rezervy-publikacii-60-brendov-zhdut-tolko-faq-131-s.md) | не назначен | 2026-09-07 |
 | 0013 | [BrandsController::show() без ниша-гейта — 41 off-niche бренд публично доступен](0013-brandscontroller-show-bez-nisha-geyta-41-off-niche-brend-pub.md) | не назначен | 2026-09-07 |
+
+## в работе (1)
+
+| # | Задача | Владелец | Обновлена |
+|---|---|---|---|
+| 0014 | [694 опубликованных бренда показывают boilerplate-FAQ без JSON-LD](0014-694-opublikovannyh-brenda-pokazyvayut-boilerplate-faq-bez-js.md) | не назначен | 2026-10-03 |
 
 ## ждёт решения (4)
 
