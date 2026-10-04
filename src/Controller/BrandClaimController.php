@@ -281,7 +281,13 @@ class BrandClaimController extends AbstractController
         /** @var User $admin */
         $admin = $this->getUser();
         $claim->setAdminNote(trim((string) $request->request->get('admin_note', '')) ?: null);
-        $this->claimService->grantOwnership($claim, $admin instanceof User ? $admin : null, 'admin');
+
+        try {
+            $this->claimService->grantOwnership($claim, $admin instanceof User ? $admin : null, 'admin');
+        } catch (\DomainException $e) {
+            $this->addFlash('error', $e->getMessage());
+            return $this->redirectToRoute('admin_brand_claims');
+        }
 
         $this->addFlash('success', sprintf(
             'Заявка одобрена. %s теперь владелец бренда «%s»',
@@ -298,13 +304,12 @@ class BrandClaimController extends AbstractController
     {
         /** @var User $admin */
         $admin = $this->getUser();
-        $claim->setStatus(BrandClaim::STATUS_REJECTED);
-        $claim->setAdminNote(trim((string) $request->request->get('admin_note', '')) ?: null);
-        $claim->setReviewedBy($admin instanceof User ? $admin : null);
-        $claim->setReviewedAt(new \DateTimeImmutable());
-        $this->em->flush();
+        $note  = trim((string) $request->request->get('admin_note', '')) ?: null;
 
-        $this->notifyUser($claim, approved: false);
+        if (!$this->claimService->reject($claim, $admin instanceof User ? $admin : null, $note)) {
+            $this->addFlash('error', 'Заявка уже обработана');
+            return $this->redirectToRoute('admin_brand_claims');
+        }
 
         $this->addFlash('success', 'Заявка отклонена');
         return $this->redirectToRoute('admin_brand_claims');
@@ -487,26 +492,5 @@ class BrandClaimController extends AbstractController
             htmlspecialchars((string) $user->getEmail(), ENT_QUOTES, 'UTF-8'),
             htmlspecialchars($claim->getComment() ?? '—', ENT_QUOTES, 'UTF-8'),
         ));
-    }
-
-    private function notifyUser(BrandClaim $claim, bool $approved): void
-    {
-        $brand = $claim->getBrand();
-        $user  = $claim->getUser();
-
-        $this->notifier->dispatch(
-            $user,
-            Notification::TYPE_SYSTEM,
-            $approved
-                ? "Заявка на бренд «{$brand->getTitle()}» одобрена!"
-                : "Заявка на бренд «{$brand->getTitle()}» отклонена",
-            $approved
-                ? "Поздравляем! Вы стали владельцем бренда «{$brand->getTitle()}»."
-                : ($claim->getAdminNote() ? "Причина: {$claim->getAdminNote()}" : 'К сожалению, ваша заявка отклонена.'),
-            ['brand_id' => $brand->getId(), 'claim_id' => $claim->getId()],
-            $approved ? 'brand_claim_approved' : 'brand_claim_rejected',
-            ['claim' => $claim],
-        );
-        $this->em->flush();
     }
 }

@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace App\Controller\Admin;
 
 use App\Entity\BrandClaim;
-use App\Entity\Notification;
-use App\Notification\NotificationDispatcher;
 use App\Repository\BrandClaimRepository;
 use App\Service\BrandClaimService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -24,7 +22,6 @@ class BrandClaimAdminController extends AbstractController
         private readonly BrandClaimRepository   $claimRepo,
         private readonly BrandClaimService      $claimService,
         private readonly EntityManagerInterface $em,
-        private readonly NotificationDispatcher $notifier,
     ) {}
 
     #[Route('', name: '')]
@@ -58,11 +55,17 @@ class BrandClaimAdminController extends AbstractController
         /** @var \App\Entity\User|null $admin */
         $admin = $this->getUser();
         $claim->setAdminNote($note ?: null);
-        $this->claimService->grantOwnership(
-            $claim,
-            $admin instanceof \App\Entity\User ? $admin : null,
-            'admin',
-        );
+
+        try {
+            $this->claimService->grantOwnership(
+                $claim,
+                $admin instanceof \App\Entity\User ? $admin : null,
+                'admin',
+            );
+        } catch (\DomainException $e) {
+            $this->addFlash('error', $e->getMessage());
+            return $this->redirectToRoute('admin_brand_claims');
+        }
 
         $this->addFlash('success', sprintf(
             '%s → владелец бренда «%s»',
@@ -76,24 +79,15 @@ class BrandClaimAdminController extends AbstractController
     #[Route('/reject/{id}', name: '_reject', methods: ['POST'])]
     public function reject(BrandClaim $claim, Request $request): Response
     {
-        $note = trim((string) $request->request->get('admin_note', ''));
+        $note = trim((string) $request->request->get('admin_note', '')) ?: null;
 
-        $claim->setStatus(BrandClaim::STATUS_REJECTED);
-        $claim->setAdminNote($note ?: null);
-        $claim->setReviewedAt(new \DateTimeImmutable());
-        $this->em->flush();
+        /** @var \App\Entity\User|null $admin */
+        $admin = $this->getUser();
 
-        $this->notifier->dispatch(
-            $claim->getUser(),
-            Notification::TYPE_SYSTEM,
-            "Заявка на бренд «{$claim->getBrand()->getTitle()}» отклонена",
-            $note ? "Причина: {$note}" : null,
-            ['brand_id' => $claim->getBrand()->getId(), 'claim_id' => $claim->getId()],
-            'brand_claim_rejected',
-            ['claim' => $claim],
-        );
-        // dispatch только persist'ит in-app — коммитим
-        $this->em->flush();
+        if (!$this->claimService->reject($claim, $admin instanceof \App\Entity\User ? $admin : null, $note)) {
+            $this->addFlash('error', 'Заявка уже обработана');
+            return $this->redirectToRoute('admin_brand_claims');
+        }
 
         $this->addFlash('success', 'Заявка отклонена');
         return $this->redirectToRoute('admin_brand_claims');

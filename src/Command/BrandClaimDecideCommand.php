@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Entity\BrandClaim;
-use App\Entity\Notification;
-use App\Notification\NotificationDispatcher;
 use App\Service\BrandClaimService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -18,9 +16,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Решение по заявке на владение брендом (BrandClaim) с консоли прода — точная реплика
- * BrandClaimAdminController::approve()/reject() (админ-UI требует логина, а решения по
- * заявкам иногда нужно принять прямо с консоли).
+ * Решение по заявке на владение брендом (BrandClaim) с консоли прода (админ-UI требует
+ * логина, а решения по заявкам иногда нужно принять прямо с консоли). Вся логика — в
+ * BrandClaimService, чтобы консоль и админка не расходились в проверках.
  *
  *   php bin/console app:brand:claim-decide <claimId> approve [--note="..."]
  *   php bin/console app:brand:claim-decide <claimId> reject  [--note="..."]
@@ -34,7 +32,6 @@ class BrandClaimDecideCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly BrandClaimService $claimService,
-        private readonly NotificationDispatcher $notifier,
     ) {
         parent::__construct();
     }
@@ -70,40 +67,32 @@ class BrandClaimDecideCommand extends Command
             : $this->reject($claim, $note, $io);
     }
 
-    /** Точная реплика BrandClaimAdminController::approve(). */
     private function approve(BrandClaim $claim, string $note, SymfonyStyle $io): int
     {
-        if (!in_array($claim->getStatus(), [BrandClaim::STATUS_PENDING, BrandClaim::STATUS_EMAIL_VERIFIED], true)) {
+        if (!$this->claimService->isDecidable($claim)) {
             $io->error(sprintf('Заявка #%d уже обработана (статус: %s)', $claim->getId(), $claim->getStatus()));
             return Command::FAILURE;
         }
 
         $claim->setAdminNote($note !== '' ? $note : null);
-        $this->claimService->grantOwnership($claim, null, 'admin');
+
+        try {
+            $this->claimService->grantOwnership($claim, null, 'admin');
+        } catch (\DomainException $e) {
+            $io->error($e->getMessage());
+            return Command::FAILURE;
+        }
 
         $io->success(sprintf('%s → владелец бренда «%s»', $claim->getUser()->getEmail(), $claim->getBrand()->getTitle()));
         return Command::SUCCESS;
     }
 
-    /** Точная реплика BrandClaimAdminController::reject() (включая второй flush). */
     private function reject(BrandClaim $claim, string $note, SymfonyStyle $io): int
     {
-        $claim->setStatus(BrandClaim::STATUS_REJECTED);
-        $claim->setAdminNote($note !== '' ? $note : null);
-        $claim->setReviewedAt(new \DateTimeImmutable());
-        $this->em->flush();
-
-        $this->notifier->dispatch(
-            $claim->getUser(),
-            Notification::TYPE_SYSTEM,
-            "Заявка на бренд «{$claim->getBrand()->getTitle()}» отклонена",
-            $note !== '' ? "Причина: {$note}" : null,
-            ['brand_id' => $claim->getBrand()->getId(), 'claim_id' => $claim->getId()],
-            'brand_claim_rejected',
-            ['claim' => $claim],
-        );
-        // dispatch только persist'ит in-app — коммитим
-        $this->em->flush();
+        if (!$this->claimService->reject($claim, null, $note !== '' ? $note : null)) {
+            $io->error(sprintf('Заявка #%d уже обработана (статус: %s)', $claim->getId(), $claim->getStatus()));
+            return Command::FAILURE;
+        }
 
         $io->success(sprintf('Заявка #%d отклонена', $claim->getId()));
         return Command::SUCCESS;
