@@ -34,9 +34,7 @@
 {% block stylesheets %}
     {{ parent() }}
     <style>
-        @media (min-width: 1024px) {
-            #family-main { max-width: 90rem; }
-        }
+        #family-main { max-width: none; }
     </style>
 {% endblock %}
 
@@ -74,7 +72,7 @@
             {% for season, section in matrix.sections %}
                 <section class="mt-8 min-w-0" aria-labelledby="matrix-season-{{ season }}">
                     <h2 id="matrix-season-{{ season }}" class="mb-3 text-xl font-semibold text-slate-950">{{ section.label }}</h2>
-                    <div class="max-h-[70vh] w-full max-w-full overflow-auto overscroll-contain rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600" tabindex="0" role="region" aria-labelledby="matrix-season-{{ season }}" aria-describedby="matrix-help">
+                    <div class="w-full rounded-2xl border border-slate-200 bg-white" role="region" aria-labelledby="matrix-season-{{ season }}" aria-describedby="matrix-help">
                         <table class="w-full border-separate border-spacing-0 text-left text-sm [font-variant-numeric:tabular-nums]">
                             <caption class="sr-only">{{ section.label }}: вещи и потребности каждого ребёнка</caption>
                             <thead>
