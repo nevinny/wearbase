@@ -34,7 +34,9 @@ final class WardrobeMediaController extends AbstractController
     {
         $this->assertCanView($item->getUser(), $families);
 
-        return $this->mediaResponse($storage->resolvePath($item, 'photoFile'), $item->getPhoto(), 'wardrobe', $variants, $request->query->get('size', 'preview'));
+        $cover = $item->getCoverPhoto();
+        $rotation = $cover?->getFilePath() === $item->getPhoto() ? $cover?->getRotation() ?? 0 : 0;
+        return $this->mediaResponse($storage->resolvePath($item, 'photoFile'), $item->getPhoto(), 'wardrobe', $variants, $request->query->getString('size', 'preview'), $rotation);
     }
 
     #[Route('/photo/{id}', name: 'photo', requirements: ['id' => '\\d+'], methods: ['GET'])]
@@ -113,7 +115,7 @@ final class WardrobeMediaController extends AbstractController
         if ($variants !== null) {
             try {
                 $path = $variants->path($path, in_array($size, ['preview', 'medium', 'original'], true) ? $size : 'preview', $rotation);
-            } catch (\Throwable $exception) {
+            } catch (\InvalidArgumentException $exception) {
                 throw $this->createNotFoundException(previous: $exception);
             }
         }

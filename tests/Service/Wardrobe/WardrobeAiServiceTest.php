@@ -166,14 +166,32 @@ final class WardrobeAiServiceTest extends TestCase
         self::assertSame([], $result);
     }
 
-    private function service(LlmService $llm, ArrayAdapter $cache, string $model = 'vision-test', ?array $catalog = null): WardrobeAiService
+    public function testProductUrlUsesTheSameCategoryDictionaryAsPhotos(): void
+    {
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::once())->method('generate')->willReturnCallback(static function (string $prompt): string {
+            self::assertStringContainsString('categoryCode', $prompt);
+            self::assertStringContainsString('"code":"shirt"', $prompt);
+            return '{"categoryCode":"shirt","category":"Рубашки","name":"Льняная рубашка","price":2500}';
+        });
+        $scraper = $this->createStub(WebScraperService::class);
+        $scraper->method('fetchCleanText')->willReturn('Льняная рубашка, 2500 рублей');
+        $result = $this->service($llm, new ArrayAdapter(), scraper: $scraper)->suggestFromUrl('https://shop.example.test/shirt');
+        self::assertTrue($result['ok']);
+        self::assertSame('Рубашка', $result['fields']['category']);
+        self::assertSame(2500, $result['fields']['price']);
+    }
+
+    private function service(LlmService $llm, ArrayAdapter $cache, string $model = 'vision-test', ?array $catalog = null, ?WebScraperService $scraper = null): WardrobeAiService
     {
         $categories = $this->getMockBuilder(WardrobeCategoryRepository::class)
             ->disableOriginalConstructor()->onlyMethods(['findActiveTree'])->getMock();
         $categories->method('findActiveTree')->willReturn($catalog ?? $this->catalog());
+        $meter = $this->createStub(WardrobeAiMeter::class);
+        $meter->method('allowed')->willReturn(true);
         return new WardrobeAiService(
-            $llm, $this->createStub(WebScraperService::class), $this->createStub(WildberriesAdapter::class),
-            $this->createStub(WardrobeAiMeter::class), $this->createStub(AiUsageTracker::class),
+            $llm, $scraper ?? $this->createStub(WebScraperService::class), $this->createStub(WildberriesAdapter::class),
+            $meter, $this->createStub(AiUsageTracker::class),
             $cache, 'remote-test', true, $model, new NullLogger(),
             $this->createStub(WardrobeConsentRepository::class),
             $categories,

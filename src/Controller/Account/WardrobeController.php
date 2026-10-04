@@ -17,6 +17,7 @@ use App\Repository\WardrobeItemLifecycleEventRepository;
 use App\Service\AiUsageTracker;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeImageVariants;
 use App\Service\Wardrobe\WardrobeActivationService;
 use App\Service\Wardrobe\WardrobeManager;
 use App\Service\Wardrobe\WardrobePhotoManager;
@@ -227,7 +228,8 @@ class WardrobeController extends AbstractController
 
         return $this->json([
             'ok' => true,
-            'uri' => $this->generateUrl('account_wardrobe_media_photo', ['id' => $photo->getId()]).'?v='.$photo->getUpdatedAt()->getTimestamp(),
+            'uri' => $this->generateUrl('account_wardrobe_media_photo', ['id' => $photo->getId(), 'size' => 'preview', 'v' => $photo->getRotation()]),
+            'mediumUri' => $this->generateUrl('account_wardrobe_media_photo', ['id' => $photo->getId(), 'size' => 'medium', 'v' => $photo->getRotation()]),
         ]);
     }
 
@@ -391,6 +393,7 @@ class WardrobeController extends AbstractController
         LoggerInterface $wardrobeAiLogger,
         ValidatorInterface $validator,
         WardrobeConsentService $consentService,
+        WardrobeImageVariants $variants,
     ): JsonResponse {
         if (!$this->isCsrfTokenValid('wardrobe_ai', (string) $request->request->get('_token'))) {
             return $this->json(['ok' => false, 'error' => 'Недействительный токен'], Response::HTTP_BAD_REQUEST);
@@ -464,14 +467,11 @@ class WardrobeController extends AbstractController
         }
 
         try {
-            $sanitized = $this->imageSanitizer->sanitize($savedPhoto);
-            $result = $ai->suggestFromPhoto($sanitized->getPathname(), $subject);
+            $cover = $item->getCoverPhoto();
+            $rotation = $cover?->getFilePath() === $item->getPhoto() ? $cover?->getRotation() ?? 0 : 0;
+            $result = $ai->suggestFromPhoto($variants->path($absPath, 'medium', $rotation), $subject);
         } catch (\InvalidArgumentException $exception) {
             return $this->json(['ok' => false, 'error' => $exception->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
-        } finally {
-            if (isset($sanitized) && is_file($sanitized->getPathname())) {
-                @unlink($sanitized->getPathname());
-            }
         }
 
         return $this->json($result, $result['ok'] ? Response::HTTP_OK : Response::HTTP_BAD_REQUEST);

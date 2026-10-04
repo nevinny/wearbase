@@ -33,7 +33,8 @@ final class WardrobeClassificationControllerTest extends AuthenticatedWebTestCas
         }
     }
 
-    public function testParentCanClassifyChildItemInlineWithoutChangingOtherFields(): void
+    #[DataProvider('classificationSeasons')]
+    public function testParentCanClassifyChildItemInlineWithoutChangingOtherFields(string $season, string $visibleSeason): void
     {
         $client = static::createClient();
         $parent = UserFactory::withEmail(static::getContainer(), 'classification-parent@test.local');
@@ -50,14 +51,14 @@ final class WardrobeClassificationControllerTest extends AuthenticatedWebTestCas
         $name = 'wardrobe_classification_'.$item->getId();
         self::assertSame('', $crawler->filter('select[name="'.$name.'[season]"] option[selected]')->attr('value'));
         $client->submit($crawler->filter('form[name="'.$name.'"]')->form([
-            $name.'[category]' => (string) $category->getId(), $name.'[season]' => 'winter',
+            $name.'[category]' => (string) $category->getId(), $name.'[season]' => $season,
         ]));
-        self::assertResponseRedirects('/account/family/matrix?season=winter');
+        self::assertResponseRedirects('/account/family/matrix?season='.$visibleSeason.'#matrix-'.$visibleSeason.'-'.$category->getId().'-'.$child->getId());
         $this->em()->clear();
         $saved = $this->em()->find(WardrobeItem::class, $item->getId());
         self::assertSame($category->getId(), $saved->getCategoryRef()->getId());
         self::assertSame($category->getName(), $saved->getCategory());
-        self::assertSame('winter', $saved->getSeason());
+        self::assertSame($season, $saved->getSeason());
         self::assertSame('Неопределённая вещь', $saved->getName());
         self::assertSame('128', $saved->getSize());
         self::assertSame('Нужна новая молния', $saved->getNotes());
@@ -68,6 +69,11 @@ final class WardrobeClassificationControllerTest extends AuthenticatedWebTestCas
         self::assertResponseIsSuccessful();
         self::assertSelectorNotExists('[data-classification-item="'.$item->getId().'"]');
         self::assertSelectorTextContains('[data-matrix-cell][data-category="'.$category->getId().'"][data-member="'.$child->getId().'"]', 'Неопределённая вещь');
+    }
+
+    public static function classificationSeasons(): array
+    {
+        return [['winter', 'winter'], ['summer', 'summer'], ['all', 'winter']];
     }
 
     public function testUserWithoutFamilyCanClassifyTheirOwnItem(): void
@@ -83,7 +89,7 @@ final class WardrobeClassificationControllerTest extends AuthenticatedWebTestCas
         $name = 'wardrobe_classification_'.$item->getId();
         self::assertSame((string) $category->getId(), $crawler->filter('select[name="'.$name.'[category]"] option[selected]')->attr('value'));
         $client->submit($crawler->filter('form[name="'.$name.'"]')->form([$name.'[season]' => 'all']));
-        self::assertResponseRedirects('/account/family/matrix');
+        self::assertResponseRedirects('/account/family/matrix#matrix-winter-'.$category->getId().'-'.$user->getId());
         self::assertSame('all', $this->em()->find(WardrobeItem::class, $item->getId())->getSeason());
     }
 

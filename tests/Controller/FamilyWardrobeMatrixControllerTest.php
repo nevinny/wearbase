@@ -281,6 +281,8 @@ final class FamilyWardrobeMatrixControllerTest extends AuthenticatedWebTestCase
         $summerNeed = $this->need($parent, $child, 'summer');
         $closedNeed = $this->need($parent, $child);
         static::getContainer()->get(WardrobeNeedService::class)->setOpen($parent, $closedNeed, false);
+        $closedSummerNeed = $this->need($parent, $child, 'summer');
+        static::getContainer()->get(WardrobeNeedService::class)->setOpen($parent, $closedSummerNeed, false);
 
         $matrix = $this->matrix()->overview($parent, 'winter');
         self::assertEqualsCanonicalizing([$winterNeed->getId(), $allNeed->getId()], $this->ids($matrix['openNeeds']));

@@ -263,15 +263,16 @@ PROMPT;
             return ['ok' => false, 'error' => $error];
         }
 
-        $cacheKey = 'wardrobe_ai_url_' . sha1($this->normalizeUrl($url));
-
         try {
+            $categories = $this->categories->findActiveTree();
+            $catalog = $this->categoryCatalog($categories);
+            $cacheKey = 'wardrobe_ai_url_'.self::PHOTO_SCHEMA_VERSION.'_'.sha1($this->normalizeUrl($url).':'.$catalog);
             return $this->cache->get(
                 $cacheKey,
-                function (ItemInterface $item) use ($url, $user): array {
+                function (ItemInterface $item) use ($url, $user, $categories, $catalog): array {
                     $item->expiresAfter(self::CACHE_TTL);
 
-                    return $this->analyzeUrl($url, $user);
+                    return $this->analyzeUrl($url, $user, $categories, $catalog);
                 },
             );
         } catch (\Throwable $e) {
@@ -350,7 +351,7 @@ EOT;
         return $value === '' ? null : mb_substr($value, 0, $length);
     }
 
-    private function analyzeUrl(string $url, ?User $user): array
+    private function analyzeUrl(string $url, ?User $user, array $categories, string $catalog): array
     {
         if (str_contains(strtolower($url), 'wildberries.ru')) {
             $wb = $this->wbAdapter->fetch($url);
@@ -382,7 +383,6 @@ EOT;
         }
         $text = mb_substr($text, 0, self::MAX_SCRAPE_CHARS);
 
-        $categories = implode(', ', WardrobeItem::SUGGESTED_CATEGORIES);
         $prompt = <<<EOT
 Извлеки параметры товара со страницы карточки товара. Не выдумывай данные, которых
 нет на странице — такие поля null.
@@ -390,9 +390,12 @@ EOT;
 ТЕКСТ СТРАНИЦЫ:
 {$text}
 
+ЕДИНЫЙ СПРАВОЧНИК КАТЕГОРИЙ (JSON): {$catalog}
+Выбери наиболее конкретный code из справочника. Не придумывай новые коды.
+
 Верни ТОЛЬКО валидный JSON без markdown:
 {
-  "category": "категория (предпочтительно одна из: {$categories}, либо своя короткая на русском) или null",
+  "categoryCode": "code из справочника или null",
   "name": "короткое русское название товара",
   "size": "размер(ы) как на странице (строка) или null",
   "price": число в рублях (целое) или null,
@@ -413,7 +416,7 @@ EOT;
         return [
             'ok' => true,
             'fields' => [
-                'category'   => $this->nullableString($data['category'] ?? null),
+                'category'   => $this->normalizePhotoFields($data, $categories)['category'],
                 'name'       => $this->nullableString($data['name'] ?? null),
                 'size'       => $this->nullableString($data['size'] ?? null),
                 'price'      => is_numeric($data['price'] ?? null) ? (int) $data['price'] : null,

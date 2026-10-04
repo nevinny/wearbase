@@ -10,7 +10,7 @@ final class WardrobeImageSanitizer
 {
     public function sanitize(UploadedFile $file): UploadedFile
     {
-        $image = $this->orientedImage($file->getPathname());
+        $image = $this->orientedImage($file->getPathname(), 1280);
         $path = tempnam(sys_get_temp_dir(), 'wardrobe_clean_');
         if ($path === false || !imagejpeg($image, $path, 90)) {
             imagedestroy($image);
@@ -23,13 +23,13 @@ final class WardrobeImageSanitizer
     /** Validate the image without changing the uploaded original. */
     public function preserveOriginal(UploadedFile $file): UploadedFile
     {
-        $image = $this->orientedImage($file->getPathname());
+        $image = $this->orientedImage($file->getPathname(), 1);
         imagedestroy($image);
 
         return $file;
     }
 
-    public function orientedImage(string $path): \GdImage
+    public function orientedImage(string $path, ?int $maxSide = null): \GdImage
     {
         $size = @getimagesize($path);
         if ($size === false || $size[0] * $size[1] > 25_000_000) {
@@ -43,6 +43,17 @@ final class WardrobeImageSanitizer
         };
         if ($image === false) {
             throw new \InvalidArgumentException('Не удалось безопасно обработать изображение');
+        }
+
+        // Shrink before rotating: a phone photo must not allocate two full-size canvases.
+        if ($maxSide !== null && max($size[0], $size[1]) > $maxSide) {
+            $scale = $maxSide / max($size[0], $size[1]);
+            $resized = imagecreatetruecolor(max(1, (int) round($size[0] * $scale)), max(1, (int) round($size[1] * $scale)));
+            imagealphablending($resized, false);
+            imagesavealpha($resized, true);
+            imagecopyresampled($resized, $image, 0, 0, 0, 0, imagesx($resized), imagesy($resized), $size[0], $size[1]);
+            imagedestroy($image);
+            $image = $resized;
         }
 
         return $this->applyExifOrientation($image, $path);

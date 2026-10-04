@@ -16,7 +16,8 @@ final class PreparedWardrobePhoto
             return null;
         }
 
-        return hash('sha256', ($cover?->getId() ?? 'legacy') . ':' . $source);
+        $rotation = $cover?->getRotation() ?? 0;
+        return hash('sha256', ($cover?->getId() ?? 'legacy') . ':' . $source . ($rotation === 0 ? '' : ':rotation:'.$rotation));
     }
 
     public static function path(string $projectDir, WardrobeItem $item): ?string

@@ -64,11 +64,11 @@ final class FamilyWardrobeMatrix
         $openNeeds = [];
         $closedNeeds = [];
         foreach ($this->needs->findVisibleTo($actor, $children) as $need) {
-            if (!$need->isOpen()) {
-                $closedNeeds[] = $need;
+            if ($season !== '' && $need->getSeason() !== 'all' && $need->getSeason() !== $season) {
                 continue;
             }
-            if ($season !== '' && $need->getSeason() !== 'all' && $need->getSeason() !== $season) {
+            if (!$need->isOpen()) {
+                $closedNeeds[] = $need;
                 continue;
             }
             $openNeeds[] = $need;

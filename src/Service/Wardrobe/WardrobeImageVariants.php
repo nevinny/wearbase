@@ -37,9 +37,8 @@ final class WardrobeImageVariants
         if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) {
             throw new \RuntimeException('Не удалось подготовить фото');
         }
-        $image = $this->sanitizer->orientedImage($source);
+        $image = $this->sanitizer->orientedImage($source, self::SIZES[$variant]);
         $temporary = null;
-        $resized = null;
         try {
             if ($rotation !== 0) {
                 $rotated = imagerotate($image, -$rotation, imagecolorallocatealpha($image, 0, 0, 0, 127));
@@ -49,15 +48,10 @@ final class WardrobeImageVariants
                 imagedestroy($image);
                 $image = $rotated;
             }
-            $scale = min(1, self::SIZES[$variant] / max(imagesx($image), imagesy($image)));
-            $width = max(1, (int) round(imagesx($image) * $scale));
-            $height = max(1, (int) round(imagesy($image) * $scale));
-            $resized = imagecreatetruecolor($width, $height);
-            imagealphablending($resized, false);
-            imagesavealpha($resized, true);
-            imagecopyresampled($resized, $image, 0, 0, 0, 0, $width, $height, imagesx($image), imagesy($image));
+            imagepalettetotruecolor($image);
+            imagesavealpha($image, true);
             $temporary = tempnam($directory, '.variant-');
-            if ($temporary === false || !imagewebp($resized, $temporary, 82) || !rename($temporary, $path)) {
+            if ($temporary === false || !imagewebp($image, $temporary, 82) || !rename($temporary, $path)) {
                 throw new \RuntimeException('Не удалось подготовить фото');
             }
             chmod($path, 0640);
@@ -65,9 +59,6 @@ final class WardrobeImageVariants
             return $path;
         } finally {
             imagedestroy($image);
-            if ($resized instanceof \GdImage) {
-                imagedestroy($resized);
-            }
             if (is_string($temporary) && is_file($temporary)) {
                 unlink($temporary);
             }

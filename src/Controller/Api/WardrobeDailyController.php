@@ -9,10 +9,12 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeOutfit;
 use App\Repository\WardrobeConsentRepository;
 use App\Repository\WardrobeItemRepository;
+use App\Repository\WardrobeCategoryRepository;
 use App\Repository\WardrobeOutfitRepository;
 use App\Repository\WardrobeRepository;
 use App\Service\Wardrobe\WardrobeOutfitCollageRenderer;
 use App\Service\Wardrobe\PreparedWardrobePhoto;
+use App\Service\Wardrobe\WardrobeImageVariants;
 use App\Service\Wardrobe\WardrobeOutfitLearningService;
 use App\Service\Wardrobe\WardrobeStylistContextBuilder;
 use Doctrine\ORM\EntityManagerInterface;
@@ -413,6 +415,7 @@ class WardrobeDailyController extends AbstractController
         RateLimiterFactory $agentApiLimiter,
         WardrobeItemRepository $items,
         StorageInterface $storage,
+        WardrobeImageVariants $variants,
     ): Response {
         if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
             return $deny;
@@ -433,14 +436,16 @@ class WardrobeDailyController extends AbstractController
         $path = $cover !== null
             ? $this->resolveMediaPath($storage->resolvePath($cover, 'file'), $cover->getFilePath())
             : null;
+        $rotation = $cover?->getRotation() ?? 0;
         if ($path === null) {
             $path = $this->resolveMediaPath($storage->resolvePath($item, 'photoFile'), $item->getPhoto());
+            $rotation = 0;
         }
         if ($path === null) {
             return $this->json(['error' => 'photo_not_found'], Response::HTTP_NOT_FOUND);
         }
 
-        $response = new BinaryFileResponse($path);
+        $response = new BinaryFileResponse($variants->path($path, 'medium', $rotation));
         $response->setPrivate();
         $response->setMaxAge(0);
         $response->headers->addCacheControlDirective('no-store');
@@ -468,6 +473,7 @@ class WardrobeDailyController extends AbstractController
         RateLimiterFactory $agentApiLimiter,
         WardrobeItemRepository $items,
         EntityManagerInterface $em,
+        WardrobeCategoryRepository $categories,
     ): JsonResponse {
         if (($deny = $this->authorize($request, $agentApiLimiter)) !== null) {
             return $deny;
@@ -482,6 +488,7 @@ class WardrobeDailyController extends AbstractController
         $updated = 0;
         $skipped = 0;
         $rejected = [];
+        $catalog = $categories->findActiveTree();
         foreach (array_slice($rows, 0, self::MAX_PREPARE_RESULTS) as $row) {
             $id = is_array($row) ? filter_var($row['id'] ?? null, FILTER_VALIDATE_INT) : false;
             $item = $id !== false ? $items->find($id) : null;
@@ -493,6 +500,10 @@ class WardrobeDailyController extends AbstractController
             $changed = false;
             if ($this->isEmpty($item->getCategory()) && $this->isNonEmptyString($row['category'] ?? null)) {
                 $item->setCategory(mb_substr(trim((string) $row['category']), 0, 100));
+                $category = $categories->resolveActive($item->getCategory(), $catalog);
+                if ($category !== null) {
+                    $item->setCategoryRef($category);
+                }
                 $changed = true;
             }
             if ($this->isEmpty($item->getColorName()) && $this->isNonEmptyString($row['colorName'] ?? null)) {

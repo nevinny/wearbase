@@ -75,7 +75,13 @@ final class FamilyWardrobeMatrixController extends AbstractController
             $wardrobes->refreshCompletionStatus($item);
             $em->flush();
             $this->addFlash('success', 'Тип вещи и сезон сохранены');
-            return $this->matrixRedirect($season);
+            if ($season !== '' && $data['season'] !== 'all' && $data['season'] !== $season) {
+                $season = $data['season'];
+            }
+            $cellSeason = $season ?: ($data['season'] === 'all' ? 'winter' : $data['season']);
+            return $this->privateResponse($this->redirectToRoute('account_family_matrix', [
+                '_fragment' => 'matrix-'.$cellSeason.'-'.$data['category']->getId().'-'.$item->getUser()->getId(),
+            ] + ($season === '' ? [] : ['season' => $season])));
         }
         return $this->renderMatrix($actor, $season, $matrix, $form, $item);
     }

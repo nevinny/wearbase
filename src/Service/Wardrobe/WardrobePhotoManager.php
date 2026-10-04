@@ -118,7 +118,7 @@ final class WardrobePhotoManager
         if ($path === null || !is_file($path)) {
             throw new \InvalidArgumentException('Файл фото не найден.');
         }
-        $image = $this->sanitizer->orientedImage($path);
+        $image = $this->sanitizer->orientedImage($path, 1);
         imagedestroy($image);
         $photo->rotate($degrees);
         $this->entityManager->flush();
