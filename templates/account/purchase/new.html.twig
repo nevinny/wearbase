@@ -14,8 +14,21 @@
         </div>
     </div>
 
+    {% if wardrobeNeed|default(null) %}
+        <div class="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+            <p class="font-semibold">Для {{ wardrobeNeed.subject.fullName }}: {{ wardrobeNeed.title }}</p>
+            <p class="mt-1">{{ wardrobeNeed.quantity }} шт.{% if wardrobeNeed.size %} · размер {{ wardrobeNeed.size }}{% endif %}</p>
+            <a href="{{ path('account_family_matrix', {season: wardrobeNeed.season}) }}"
+               class="mt-2 inline-flex min-h-11 items-center font-semibold underline-offset-4 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-600">Вернуться к матрице</a>
+        </div>
+    {% endif %}
+
     <p class="mt-4 text-sm leading-6 text-slate-600">
-        Вставьте одну или несколько ссылок на товары из любого магазина и расскажите, почему выбрали эти вещи.
+        {% if wardrobeNeed|default(null) %}
+            Вставьте ссылку на товар из любого магазина для этой потребности.
+        {% else %}
+            Вставьте одну или несколько ссылок на товары из любого магазина и расскажите, почему выбрали эти вещи.
+        {% endif %}
     </p>
 
     {{ form_start(form, {'attr': {'class': 'mt-5'}}) }}
@@ -45,7 +58,9 @@
 
             <div class="mt-5 rounded-xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-800">
                 Магазин может быть любым: неизвестные ссылки сохраняются вручную и никогда не скачиваются автоматически.
-                Если shared cart не поддерживается, вставьте отдельные ссылки — по одной на строку.
+                {% if not wardrobeNeed|default(null) %}
+                    Если shared cart не поддерживается, вставьте отдельные ссылки — по одной на строку.
+                {% endif %}
             </div>
         </div>
 

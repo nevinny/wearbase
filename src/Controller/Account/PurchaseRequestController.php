@@ -16,6 +16,7 @@ use App\Service\FamilyService;
 use App\Service\PurchaseRequestService;
 use App\Service\Purchase\PurchaseProductImporter;
 use App\Service\Wardrobe\PurchaseToWardrobeService;
+use App\Service\Family\WardrobeNeedService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Form\FormError;
 use Symfony\Component\HttpFoundation\Request;
@@ -59,23 +60,48 @@ class PurchaseRequestController extends AbstractController
         FamilyService $families,
         PurchaseRequestService $purchaseRequests,
         PurchaseProductImporter $productImporter,
+        WardrobeNeedService $needs,
     ): Response {
         /** @var User $user */
         $user = $this->getUser();
         $subjects = $this->childSubjects($user, $families);
+        $needId = $request->query->getInt('need');
+        $need = $needId > 0 ? $needs->findForActor($user, $needId) : null;
+        if ($need !== null) {
+            if (!$need->isOpen()) {
+                $this->addFlash('error', 'Потребность уже закрыта');
+                return $this->privateResponse($this->redirectToRoute('account_family_matrix'));
+            }
+            if ($need->getPurchaseRequest() !== null) {
+                return $this->privateResponse($this->redirectToRoute('account_purchase_show', ['id' => $need->getPurchaseRequest()->getId()]));
+            }
+            $subjects = [$need->getSubject()];
+        }
         if ($subjects === []) {
             throw $this->createAccessDeniedException('Сначала добавьте ребёнка в семью');
         }
 
-        $form = $this->createForm(PurchaseRequestFormType::class, null, [
+        $initial = $need === null ? null : [
+            'subject' => $need->getSubject(),
+            'comment' => $need->getTitle().' · '.$need->getQuantity().' шт.'
+                .($need->getSize() === null ? '' : ' · размер '.$need->getSize())
+                .($need->getNotes() === null ? '' : "\n".$need->getNotes()),
+        ];
+        $form = $this->createForm(PurchaseRequestFormType::class, $initial, [
             'subjects' => $subjects,
             'shared_cart_enabled' => $productImporter->isSharedCartEnabled(),
         ]);
+        if ($need !== null) {
+            $form->remove('additionalUrls');
+            $form->remove('importMode');
+        }
         $form->handleRequest($request);
         if ($form->isSubmitted() && $form->isValid()) {
             $data = $form->getData();
             try {
-                $purchaseRequest = $purchaseRequests->create(
+                $purchaseRequest = $need !== null
+                    ? $needs->purchase($user, $need, $data, $purchaseRequests)
+                    : $purchaseRequests->create(
                     $user,
                     $data['subject'],
                     $data['productUrl'],
@@ -93,8 +119,9 @@ class PurchaseRequestController extends AbstractController
 
         return $this->privateResponse($this->render('account/purchase/new.html.twig', [
             'form' => $form,
+            'wardrobeNeed' => $need,
             'activeSection' => 'purchases',
-        ]));
+        ], new Response(status: $form->isSubmitted() && !$form->isValid() ? 422 : 200)));
     }
 
     #[Route('/{id}', name: 'show', requirements: ['id' => '\d+'], methods: ['GET'])]

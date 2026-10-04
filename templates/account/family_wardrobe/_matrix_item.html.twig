@@ -1,0 +1,24 @@
+{% set itemParams = {id: item.id, member: item.user.id} %}
+{% set isCurrent = item.itemStatus == 'active' and item.wearStatus == 'active' %}
+<a href="{{ path('account_wardrobe_show', itemParams) }}"
+   class="flex min-h-11 items-start gap-3 rounded-xl p-2 text-slate-900 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+   aria-label="{{ item.name ?: 'Вещь без названия' }} — {{ item.user.fullName }}">
+    {% if item.coverPhoto %}
+        <img src="{{ path('account_wardrobe_media_photo', {id: item.coverPhoto.id}) }}" alt="" loading="lazy" width="48" height="56" class="h-14 w-12 shrink-0 rounded-lg bg-slate-100 object-contain">
+    {% elseif item.photo %}
+        <img src="{{ path('account_wardrobe_media_item', {id: item.id}) }}" alt="" loading="lazy" width="48" height="56" class="h-14 w-12 shrink-0 rounded-lg bg-slate-100 object-contain">
+    {% else %}
+        <span class="flex h-14 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-500" aria-hidden="true">Фото</span>
+    {% endif %}
+    <span class="min-w-0 flex-1">
+        <span class="block break-words text-sm font-semibold">{{ item.name ?: 'Вещь без названия' }}</span>
+        <span class="mt-1 block text-sm text-slate-600">{{ item.size ? 'Размер ' ~ item.size : 'Размер не указан' }}</span>
+        <span class="mt-1 inline-block rounded-md px-2 py-1 text-xs font-semibold {{ isCurrent ? 'bg-indigo-50 text-indigo-800' : 'bg-amber-50 text-amber-900' }}">
+            {{ item.itemStatus == 'active' ? item.wearStatusLabel : item.itemStatusLabel }}
+        </span>
+        {% if item.itemStatus != 'active' and item.wearStatus != 'active' %}
+            <span class="mt-1 block text-xs text-slate-600">{{ item.wearStatusLabel }}</span>
+        {% endif %}
+        {% if item.season == 'all' %}<span class="mt-1 block text-xs text-slate-600">Всесезонная вещь</span>{% endif %}
+    </span>
+</a>
