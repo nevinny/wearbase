@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\Entity\Wardrobe;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
+use App\Repository\WardrobeCategoryRepository;
 use App\Service\FamilyService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\LockMode;
@@ -23,6 +24,7 @@ final class WardrobeDraftPromotionService
         private readonly ManagerRegistry $doctrine,
         private readonly FamilyService $families,
         private readonly StorageInterface $storage,
+        private readonly WardrobeCategoryRepository $categories,
         private readonly ?WardrobeActivationService $activation = null,
     ) {}
 
@@ -139,6 +141,10 @@ final class WardrobeDraftPromotionService
                 ->setWardrobe($wardrobe)
                 ->setOriginalOwner($subject)
                 ->setItemNo($items->nextItemNo($subject));
+            $categoryRef = $this->categories->resolveActive($category, $this->categories->findActiveTree());
+            if ($categoryRef !== null) {
+                $item->setCategoryRef($categoryRef);
+            }
 
             $path = $draft->getPhoto() !== null ? $this->storage->resolvePath($draft, 'photoFile') : null;
             if (is_string($path) && is_file($path)) {

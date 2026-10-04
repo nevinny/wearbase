@@ -896,7 +896,7 @@ class WardrobeController extends AbstractController
     {
         $file = $item->getPhotoFile();
         if ($file instanceof UploadedFile) {
-            $item->setPhotoFile($this->imageSanitizer->sanitize($file));
+            $item->setPhotoFile($this->imageSanitizer->preserveOriginal($file));
         }
     }
 

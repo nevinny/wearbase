@@ -56,7 +56,7 @@ final class WardrobePhotoManager
                 throw new \InvalidArgumentException('Разрешены JPG, PNG и WebP размером до 10 МБ.');
             }
 
-            $cleanFile = $this->sanitizer->sanitize($file);
+            $cleanFile = $this->sanitizer->preserveOriginal($file);
             $photo = (new WardrobeItemPhoto())
                 ->setFile($cleanFile)
                 ->setPhotoType($photoType)
@@ -118,20 +118,9 @@ final class WardrobePhotoManager
         if ($path === null || !is_file($path)) {
             throw new \InvalidArgumentException('Файл фото не найден.');
         }
-        $raw = file_get_contents($path);
-        $image = is_string($raw) ? @imagecreatefromstring($raw) : false;
-        if ($image === false) {
-            throw new \RuntimeException('Не удалось прочитать изображение.');
-        }
-        $rotated = imagerotate($image, -$degrees, 0);
+        $image = $this->sanitizer->orientedImage($path);
         imagedestroy($image);
-        if ($rotated === false || !imagejpeg($rotated, $path, 90)) {
-            imagedestroy($rotated);
-            throw new \RuntimeException('Не удалось повернуть изображение.');
-        }
-        imagedestroy($rotated);
-        $photo->setFileSize((int) filesize($path))
-            ->setUpdatedAt(new \DateTimeImmutable());
+        $photo->rotate($degrees);
         $this->entityManager->flush();
     }
 

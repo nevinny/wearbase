@@ -97,7 +97,7 @@ final class WardrobeWearController extends AbstractController
                 $candidates = $recognition->candidates($sanitized->getPathname(), $subject);
             }
 
-            $event = $wear->createReview($actor, $subject, $candidates, $day, $sanitized);
+            $event = $wear->createReview($actor, $subject, $candidates, $day, $photo instanceof UploadedFile ? $photo : null);
             return $this->redirectToRoute('account_wardrobe_wear_review', ['id' => $event->getId()] + $this->memberParams($actor, $subject));
         }
 

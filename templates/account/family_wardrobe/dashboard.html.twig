@@ -35,14 +35,12 @@
         <h1 id="wardrobe-app-title" class="mt-1 text-2xl font-black tracking-tight text-slate-950">Что хотите сделать?</h1>
 
         <div class="mt-5 grid grid-cols-2 gap-3">
-            {% if app.user.familyRole == 'parent' %}
             <a href="{{ path('account_family_matrix') }}"
                class="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-950 transition hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
                 <span class="block text-2xl" aria-hidden="true">▦</span>
                 <span class="mt-5 block text-sm font-bold">Матрица вещей</span>
-                <span class="mt-1 block text-xs text-indigo-800">Что есть у детей и что купить</span>
+                <span class="mt-1 block text-xs text-indigo-800">Вещи по сезонам и план покупок</span>
             </a>
-            {% endif %}
             {% if app.user.familyRole == 'child' %}
             <a href="{{ path('account_purchase_new') }}"
                class="rounded-2xl bg-rose-500 p-4 text-white shadow-sm transition hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2">
