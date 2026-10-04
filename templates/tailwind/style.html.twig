@@ -109,6 +109,27 @@
             {% endfor %}
         </div>
 
+        {# Статьи-рейтинги этого стиля (listicle-{slug}-…): до этого блока единственным входом
+           на них была пагинация блога под noindex — все восемь уходили в сироты (SEO тех-аудит
+           03.10). Локаль блога — только ru/en, у хаба их девять: иначе path() отдаёт пустой href. #}
+        {% if articles|length > 0 %}
+            {% set blog_locale = page_locale == 'en' ? 'en' : 'ru' %}
+            <section class="mt-12">
+                <h2 class="text-xl font-semibold mb-4">Статьи о брендах в стиле «{{ style.title }}»</h2>
+                <ul class="grid gap-4 sm:grid-cols-2">
+                    {% for article in articles %}
+                        <li class="rounded-2xl bg-white shadow-sm p-5">
+                            <a href="{{ path('blog_show', {_locale: blog_locale, slug: article.slug}) }}"
+                               class="font-medium text-gray-900 hover:underline">{{ article.title }}</a>
+                            {% if article.excerpt %}
+                                <p class="mt-2 text-sm text-gray-600 line-clamp-3">{{ article.excerpt }}</p>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            </section>
+        {% endif %}
+
         <div class="mt-12 p-6 bg-gray-50 rounded-xl text-center">
             <p class="font-semibold mb-2">Знаете бренд в стиле «{{ style.title }}», которого здесь нет?</p>
             <p class="text-sm text-gray-600 mb-4">Размещение в каталоге — без комиссии с продаж, деньги за заказы идут напрямую бренду.</p>
