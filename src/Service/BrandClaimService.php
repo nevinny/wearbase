@@ -98,10 +98,25 @@ class BrandClaimService
 
     // ── Выдача доступа (используется и админ-апрувом, и self-serve) ──────────
 
+    /**
+     * @throws \DomainException если бренд уже принадлежит ДРУГОМУ пользователю
+     *
+     * Гард стоит здесь, а не в вызывающем коде: self-serve ветка проверяла
+     * brandHasOtherOwner() сама, а три админских пути (контроллер, админ-контроллер,
+     * claim-decide) звали grantOwnership() напрямую и молча заводили второго owner'а
+     * с полными правами (docs/brand_claim_review.md, находка 2).
+     */
     public function grantOwnership(BrandClaim $claim, ?User $admin = null, ?string $via = null): void
     {
         $brand = $claim->getBrand();
         $user  = $claim->getUser();
+
+        if ($this->brandHasOtherOwner($brand, $user)) {
+            throw new \DomainException(sprintf(
+                'У бренда «%s» уже есть другой владелец — сначала снимите текущего.',
+                (string) $brand->getTitle(),
+            ));
+        }
 
         // BrandUser(owner) — идемпотентно
         $existing = $this->brandUserRepo->findOneBy(['brand' => $brand, 'user' => $user]);
@@ -147,6 +162,53 @@ class BrandClaimService
         );
 
         $this->em->flush();
+    }
+
+    /**
+     * Отклонение заявки. Единая точка для админ-контроллеров и claim-decide: раньше
+     * логика была скопирована трижды и разъехалась — проверки статуса не было нигде,
+     * а reviewedBy ставил только один из путей (docs/brand_claim_review.md, находки 3 и 4).
+     *
+     * @return bool false — заявка уже обработана, ничего не меняли
+     */
+    public function reject(BrandClaim $claim, ?User $admin = null, ?string $note = null): bool
+    {
+        if (!$this->isDecidable($claim)) {
+            return false;
+        }
+
+        $brand = $claim->getBrand();
+        $user  = $claim->getUser();
+
+        $claim->setStatus(BrandClaim::STATUS_REJECTED);
+        $claim->setAdminNote($note);
+        $claim->setReviewedBy($admin);
+        $claim->setReviewedAt(new \DateTimeImmutable());
+
+        // dispatch только persist'ит in-app — коммитим одним flush ниже
+        $this->notifier->dispatch(
+            $user,
+            Notification::TYPE_SYSTEM,
+            "Заявка на бренд «{$brand->getTitle()}» отклонена",
+            $note ? "Причина: {$note}" : 'К сожалению, ваша заявка отклонена.',
+            ['brand_id' => $brand->getId(), 'claim_id' => $claim->getId()],
+            'brand_claim_rejected',
+            ['claim' => $claim],
+        );
+
+        $this->em->flush();
+
+        return true;
+    }
+
+    /** Заявку ещё можно одобрить или отклонить. */
+    public function isDecidable(BrandClaim $claim): bool
+    {
+        return in_array(
+            $claim->getStatus(),
+            [BrandClaim::STATUS_PENDING, BrandClaim::STATUS_EMAIL_VERIFIED],
+            true,
+        );
     }
 
     // ── Email-код ───────────────────────────────────────────────────────────
