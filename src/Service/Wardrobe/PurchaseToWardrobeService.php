@@ -10,6 +10,7 @@ use App\Entity\PurchaseRequestItem;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Repository\WardrobeItemRepository;
+use App\Repository\WardrobeNeedRepository;
 use App\Service\FamilyService;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
@@ -22,6 +23,7 @@ final class PurchaseToWardrobeService
         private readonly FamilyService $families,
         private readonly WardrobeManager $wardrobes,
         private readonly WardrobeItemRepository $items,
+        private readonly WardrobeNeedRepository $needs,
         private readonly ?WardrobeActivationService $activation = null,
     ) {}
 
@@ -44,12 +46,19 @@ final class PurchaseToWardrobeService
                 throw new \DomainException('В гардероб можно добавить только выкупленную вещь');
             }
             $this->em->lock($subject, LockMode::PESSIMISTIC_WRITE);
+            $need = $this->needs->findOneBy([
+                'purchaseRequest' => $request,
+                'family' => $subject->getFamily(),
+                'subject' => $subject,
+            ]);
             $wardrobeItem = (new WardrobeItem())
                 ->setUser($subject)
                 ->setOriginalOwner($subject)
                 ->setWardrobe($this->wardrobes->getOrCreateDefault($subject))
                 ->setItemNo($this->items->nextItemNo($subject))
-                ->setName('Покупка из магазина')
+                ->setName($need?->getTitle() ?? 'Покупка из магазина')
+                ->setCategoryRef($need?->getCategory())
+                ->setSeason($need?->getSeason())
                 ->setProductUrl($item->getSourceUrl())
                 ->setPrice($item->getActualPrice() ?? $item->getEstimatedPrice())
                 ->setPurchasedAt(new \DateTimeImmutable('today'))

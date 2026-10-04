@@ -38,6 +38,32 @@ class WardrobeItemRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /** @param User[] $users
+     *  @return WardrobeItem[]
+     */
+    public function findForFamilyMatrix(array $users): array
+    {
+        if ($users === []) {
+            return [];
+        }
+
+        return $this->createQueryBuilder('w')
+            ->addSelect('category', 'parent', 'photos')
+            ->leftJoin('w.categoryRef', 'category')
+            ->leftJoin('category.parent', 'parent')
+            ->leftJoin('w.photos', 'photos')
+            ->andWhere('w.user IN (:users) AND w.deletedAt IS NULL')
+            ->andWhere('w.itemStatus NOT IN (:unavailable) AND w.wearStatus != :givenAway')
+            ->setParameter('users', $users)
+            ->setParameter('unavailable', [...WardrobeItem::ARCHIVE_STATUSES, WardrobeItem::ITEM_TRANSFERRED])
+            ->setParameter('givenAway', WardrobeItem::WEAR_GIVEN_AWAY)
+            ->orderBy('w.itemNo', 'DESC')
+            ->addOrderBy('photos.isCover', 'DESC')
+            ->addOrderBy('photos.sortOrder', 'ASC')
+            ->addOrderBy('photos.id', 'ASC')
+            ->getQuery()->getResult();
+    }
+
     /** @return WardrobeItem[] */
     public function findImageCandidates(int $afterId, int $limit = 100): array
     {

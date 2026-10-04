@@ -1,0 +1,176 @@
+{% extends 'account/family_wardrobe/layout.html.twig' %}
+
+{% macro needCard(need, selectedSeason, seasons) %}
+    <article class="rounded-xl border border-slate-200 bg-white p-4" data-wardrobe-need="{{ need.id }}">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+                <h3 class="break-words text-base font-semibold text-slate-950">{{ need.title }}</h3>
+                <p class="mt-1 text-sm text-slate-600">{{ need.subject.fullName }} · {{ seasons[need.season] }} · {{ need.category.name }}</p>
+                <p class="mt-1 text-sm text-slate-600">{{ need.quantity }} шт.{% if need.size %} · Размер {{ need.size }}{% endif %}</p>
+                {% if need.notes %}<p class="mt-2 max-w-prose whitespace-pre-line break-words text-sm text-slate-700">{{ need.notes }}</p>{% endif %}
+            </div>
+            <span class="rounded-lg px-3 py-1 text-sm font-semibold {{ need.open ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-600' }}">{{ need.open ? 'Нужно купить' : 'Закрыта' }}</span>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+            {% if need.open %}
+                <a href="{{ path('account_family_need_edit', {id: need.id, returnSeason: selectedSeason}) }}" class="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-600">Изменить</a>
+            {% endif %}
+            {% if need.purchaseRequest %}
+                <a href="{{ path('account_purchase_show', {id: need.purchaseRequest.id}) }}" class="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-600">Открыть покупку</a>
+            {% elseif need.open %}
+                <a href="{{ path('account_purchase_new', {need: need.id}) }}" class="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-600">Выбрать товар</a>
+            {% endif %}
+            <form method="post" action="{{ path('account_family_need_status', {id: need.id, season: selectedSeason}) }}">
+                <input type="hidden" name="_token" value="{{ csrf_token('wardrobe_need_' ~ need.id) }}">
+                <input type="hidden" name="action" value="{{ need.open ? 'close' : 'reopen' }}">
+                <button type="submit" class="min-h-11 rounded-lg px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-600">{{ need.open ? 'Закрыть потребность' : 'Открыть снова' }}</button>
+            </form>
+        </div>
+    </article>
+{% endmacro %}
+
+{% block family_mobile_title %}Матрица вещей{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    <style>
+        @media (min-width: 1024px) {
+            #family-main { max-width: 90rem; }
+        }
+    </style>
+{% endblock %}
+
+{% block family_mobile_content %}
+    {% set seasons = constant('App\\Entity\\WardrobeNeed::SEASONS') %}
+    {% set groups = constant('App\\Service\\Family\\FamilyWardrobeMatrix::GROUPS') %}
+    <div class="min-w-0 max-w-full" data-testid="family-wardrobe-matrix">
+        <a href="{{ path('account_family_index') }}" class="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-600">← Семья</a>
+        <div class="mt-4 flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-950">Матрица вещей</h1>
+                <p class="mt-2 max-w-prose text-base leading-relaxed text-slate-600">Что есть у детей и что нужно докупить на сезон.</p>
+            </div>
+            {% if matrix.children|length > 0 %}
+                <a href="{{ path('account_family_need_new', {season: selectedSeason ?: 'all', returnSeason: selectedSeason}) }}" class="inline-flex min-h-12 items-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">Запланировать покупку</a>
+            {% endif %}
+        </div>
+
+        {% if matrix.children|length == 0 %}
+            <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+                <h2 class="text-lg font-semibold text-slate-950">Добавьте ребёнка в семью</h2>
+                <p class="mt-2 text-base text-slate-600">Здесь появятся гардеробы детей и план покупок для каждого.</p>
+                <a href="{{ path('account_family_add') }}" class="mt-4 inline-flex min-h-12 items-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">Добавить ребёнка</a>
+            </div>
+        {% else %}
+            <nav aria-label="Сезон матрицы" class="mt-5 flex flex-wrap gap-2">
+                <a href="{{ path('account_family_matrix') }}" class="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ selectedSeason == '' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100' }}" {% if selectedSeason == '' %}aria-current="page"{% endif %}>Все сезоны</a>
+                {% for code, label in seasons %}
+                    <a href="{{ path('account_family_matrix', {season: code}) }}" class="inline-flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600 {{ selectedSeason == code ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100' }}" {% if selectedSeason == code %}aria-current="page"{% endif %}>{{ label }}</a>
+                {% endfor %}
+            </nav>
+            <p id="matrix-help" class="mt-4 max-w-prose text-sm leading-relaxed text-slate-600">«Носится сейчас» учитывает только вещи в использовании. Вещи на вырост, малые и в ремонте показаны отдельно. Пустая ячейка означает «нет записей»; покупку планируете вы.</p>
+            {% if selectedSeason == '' %}<p class="mt-2 max-w-prose text-sm leading-relaxed text-slate-600">Всесезонные вещи повторяются в сезонных блоках. Общее число записей для ребёнка учитывает каждую вещь один раз.</p>{% endif %}
+
+            {% for season, section in matrix.sections %}
+                <section class="mt-8 min-w-0" aria-labelledby="matrix-season-{{ season }}">
+                    <h2 id="matrix-season-{{ season }}" class="mb-3 text-xl font-semibold text-slate-950">{{ section.label }}</h2>
+                    <div class="max-h-[70vh] w-full max-w-full overflow-auto overscroll-contain rounded-2xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600" tabindex="0" role="region" aria-labelledby="matrix-season-{{ season }}" aria-describedby="matrix-help">
+                        <table class="w-full border-separate border-spacing-0 text-left text-sm [font-variant-numeric:tabular-nums]">
+                            <caption class="sr-only">{{ section.label }}: вещи и потребности каждого ребёнка</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="sticky left-0 top-0 z-30 min-w-[9rem] border-b border-slate-200 bg-slate-50 px-3 py-4 font-semibold text-slate-700">Тип вещи</th>
+                                    {% for child in matrix.children %}
+                                        <th scope="col" class="sticky top-0 z-20 min-w-[15rem] border-b border-slate-200 bg-slate-50 px-4 py-3 align-top">
+                                            <a href="{{ path('account_wardrobe_index', {member: child.id}) }}" class="flex min-h-11 items-center rounded-lg text-base font-semibold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600">{{ child.fullName }}</a>
+                                            <span class="block text-sm font-normal text-slate-600">{{ matrix.totals[child.id] }} всего записей</span>
+                                            {% if child.clothingSize %}<span class="mt-1 block text-sm font-normal text-slate-600">Одежда: {{ child.clothingSize }}</span>{% endif %}
+                                            {% if child.shoeSize %}<span class="mt-1 block text-sm font-normal text-slate-600">Обувь: {{ child.shoeSize }}</span>{% endif %}
+                                        </th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            {% for group, rows in section.groups %}
+                                {% if rows|length > 0 %}
+                                    <tbody>
+                                        <tr>
+                                            <th scope="rowgroup" class="sticky left-0 z-10 border-b border-slate-100 bg-slate-100 px-3 py-3 font-semibold text-slate-800">{{ groups[group] }}</th>
+                                            <td colspan="{{ matrix.children|length }}" class="border-b border-slate-100 bg-slate-100"><span class="sr-only">{{ groups[group] }}</span></td>
+                                        </tr>
+                                        {% for categoryId, row in rows %}
+                                            <tr>
+                                                <th scope="row" class="sticky left-0 z-10 border-b border-slate-100 bg-white px-3 py-4 align-top font-semibold text-slate-700">{{ row.category.name }}</th>
+                                                {% for child in matrix.children %}
+                                                    {% set cell = row.cells[child.id]|default({}) %}
+                                                    {% set items = cell.items|default([]) %}
+                                                    {% set needs = cell.needs|default([]) %}
+                                                    {% set currentCount = 0 %}
+                                                    {% for item in items %}{% if item.itemStatus == 'active' and item.wearStatus == 'active' %}{% set currentCount = currentCount + 1 %}{% endif %}{% endfor %}
+                                                    <td class="border-b border-slate-100 px-3 py-4 align-top" data-matrix-cell data-season="{{ season }}" data-category="{{ categoryId }}" data-member="{{ child.id }}">
+                                                        {% if items|length > 0 %}
+                                                            <p class="mb-2 px-2 text-sm font-semibold text-slate-800">Носится сейчас: {{ currentCount }}</p>
+                                                            {% for item in items|slice(0, 3) %}{% include 'account/family_wardrobe/_matrix_item.html.twig' with {item: item} only %}{% endfor %}
+                                                            {% if items|length > 3 %}
+                                                                <details class="mt-1">
+                                                                    <summary class="min-h-11 cursor-pointer rounded-lg px-2 py-3 font-semibold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600">Ещё {{ items|length - 3 }}</summary>
+                                                                    {% for item in items|slice(3) %}{% include 'account/family_wardrobe/_matrix_item.html.twig' with {item: item} only %}{% endfor %}
+                                                                </details>
+                                                            {% endif %}
+                                                        {% else %}
+                                                            <p class="px-2 py-2 text-sm text-slate-500">Нет записей</p>
+                                                        {% endif %}
+                                                        {% for need in needs %}
+                                                            <a href="#need-{{ need.id }}" class="mt-2 block min-h-11 rounded-xl bg-amber-50 p-3 text-sm text-amber-950 focus:outline-none focus:ring-2 focus:ring-indigo-600">
+                                                                <span class="block font-semibold">Нужно купить: {{ need.title }}</span>
+                                                                <span class="mt-1 block">{{ need.quantity }} шт.{% if need.size %} · Размер {{ need.size }}{% endif %}</span>
+                                                            </a>
+                                                        {% endfor %}
+                                                        <a href="{{ path('account_family_need_new', {member: child.id, category: categoryId, season: season, returnSeason: selectedSeason}) }}" class="mt-2 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-600">+ Нужно купить</a>
+                                                    </td>
+                                                {% endfor %}
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                {% endif %}
+                            {% endfor %}
+                        </table>
+                    </div>
+                </section>
+            {% endfor %}
+
+            {% if matrix.uncategorized|length > 0 %}
+                <details class="mt-6 rounded-2xl border border-amber-200 bg-white p-4">
+                    <summary class="min-h-11 cursor-pointer rounded-lg py-3 text-base font-semibold text-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-600">Нужно уточнить: {{ matrix.uncategorized|length }} записей</summary>
+                    <p class="mt-2 max-w-prose text-sm text-slate-600">У этих вещей не указан сезон или тип. Откройте карточку и уточните данные, чтобы они появились в матрице.</p>
+                    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                        {% for item in matrix.uncategorized %}
+                            <div class="rounded-xl border border-slate-200 p-2">
+                                <p class="px-2 pt-2 text-sm font-semibold text-slate-600">{{ item.user.fullName }}</p>
+                                {% include 'account/family_wardrobe/_matrix_item.html.twig' with {item: item} only %}
+                                <a href="{{ path('account_wardrobe_edit', {id: item.id, member: item.user.id}) }}" class="inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600">Уточнить данные</a>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </details>
+            {% endif %}
+
+            <section id="shopping-plan" class="mt-8" aria-labelledby="shopping-plan-title">
+                <h2 id="shopping-plan-title" class="text-xl font-semibold text-slate-950">План покупок</h2>
+                <p class="mt-2 max-w-prose text-sm leading-relaxed text-slate-600">Потребность закрываете вы, когда вопрос решён. Выбор товара и статус покупки не закрывают её автоматически.</p>
+                <div class="mt-4 space-y-3">
+                    {% for need in matrix.openNeeds %}
+                        <div id="need-{{ need.id }}" class="scroll-mt-24">{{ _self.needCard(need, selectedSeason, seasons) }}</div>
+                    {% else %}
+                        <p class="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{{ selectedSeason ? 'На выбранный сезон покупок пока не запланировано.' : 'Покупок пока не запланировано.' }}</p>
+                    {% endfor %}
+                </div>
+                {% if matrix.closedNeeds|length > 0 %}
+                    <details class="mt-4">
+                        <summary class="min-h-11 cursor-pointer rounded-lg py-3 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-600">Закрытые потребности: {{ matrix.closedNeeds|length }}</summary>
+                        <div class="mt-3 space-y-3">{% for need in matrix.closedNeeds %}{{ _self.needCard(need, selectedSeason, seasons) }}{% endfor %}</div>
+                    </details>
+                {% endif %}
+            </section>
+        {% endif %}
+    </div>
+{% endblock %}
