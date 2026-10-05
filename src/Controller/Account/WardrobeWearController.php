@@ -89,6 +89,7 @@ final class WardrobeWearController extends AbstractController
                     return $this->redirectToRoute('account_wardrobe_wear_index', $this->memberParams($actor, $subject));
                 }
                 try {
+                    $photo = $sanitizer->preserveOriginal($photo);
                     $sanitized = $sanitizer->sanitize($photo);
                     $candidates = $recognition->candidates($sanitized->getPathname(), $subject);
                 } catch (\InvalidArgumentException $exception) {

@@ -13,6 +13,43 @@ final class WardrobeImageSanitizerTest extends TestCase
 {
     private const RED = [255, 0, 0];
 
+    public function testFullResolutionCleaningPreservesPngAndWebpTransparency(): void
+    {
+        foreach (['png', 'webp'] as $format) {
+            $input = tempnam(sys_get_temp_dir(), 'wardrobe_alpha_');
+            $image = imagecreate(1600, 800);
+            $transparent = imagecolorallocate($image, 0, 0, 0);
+            imagecolortransparent($image, $transparent);
+            imagefilledrectangle($image, 100, 100, 200, 200, imagecolorallocate($image, ...self::RED));
+            if ($format === 'webp') {
+                imagepalettetotruecolor($image);
+                imagewebp($image, $input);
+            } else {
+                imagepng($image, $input);
+            }
+            imagedestroy($image);
+            file_put_contents($input, 'PRIVATE-GPS-METADATA', FILE_APPEND);
+            $hash = hash_file('sha256', $input);
+            $clean = null;
+            try {
+                $upload = new UploadedFile($input, 'photo.'.$format, 'image/'.$format, null, true);
+                $clean = (new WardrobeImageSanitizer())->preserveOriginal($upload);
+                self::assertSame('image/'.$format, $clean->getMimeType());
+                self::assertSame([1600, 800], array_slice(getimagesize($clean->getPathname()), 0, 2));
+                self::assertStringNotContainsString('PRIVATE-GPS-METADATA', file_get_contents($clean->getPathname()));
+                self::assertSame($hash, hash_file('sha256', $input));
+                $result = imagecreatefromstring(file_get_contents($clean->getPathname()));
+                self::assertSame(127, imagecolorsforindex($result, imagecolorat($result, 0, 0))['alpha']);
+                imagedestroy($result);
+            } finally {
+                unlink($input);
+                if ($clean !== null) {
+                    unlink($clean->getPathname());
+                }
+            }
+        }
+    }
+
     #[DataProvider('exifOrientationProvider')]
     public function testRotatesPhotoByExifOrientation(int $orientation, int $expectedX, int $expectedY): void
     {

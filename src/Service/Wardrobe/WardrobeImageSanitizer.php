@@ -20,13 +20,39 @@ final class WardrobeImageSanitizer
         return new UploadedFile($path, pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME).'.jpg', 'image/jpeg', null, true);
     }
 
-    /** Validate the image without changing the uploaded original. */
+    /** Strip metadata at full resolution, baking EXIF orientation into the stored pixels. */
     public function preserveOriginal(UploadedFile $file): UploadedFile
     {
-        $image = $this->orientedImage($file->getPathname(), 1);
-        imagedestroy($image);
+        $image = $this->orientedImage($file->getPathname());
+        $path = tempnam(sys_get_temp_dir(), 'wardrobe_original_');
+        $saved = false;
+        try {
+            if ($path === false) {
+                throw new \RuntimeException('Не удалось очистить фото');
+            }
+            imagepalettetotruecolor($image);
+            imagesavealpha($image, true);
+            [$extension, $mime] = match ($file->getMimeType()) {
+                'image/png' => ['png', 'image/png'],
+                'image/webp' => ['webp', 'image/webp'],
+                default => ['jpg', 'image/jpeg'],
+            };
+            $saved = match ($extension) {
+                'png' => imagepng($image, $path),
+                'webp' => imagewebp($image, $path, 90),
+                default => imagejpeg($image, $path, 95),
+            };
+            if (!$saved) {
+                throw new \RuntimeException('Не удалось очистить фото');
+            }
 
-        return $file;
+            return new UploadedFile($path, pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME).'.'.$extension, $mime, null, true);
+        } finally {
+            imagedestroy($image);
+            if (!$saved && is_string($path)) {
+                unlink($path);
+            }
+        }
     }
 
     public function orientedImage(string $path, ?int $maxSide = null): \GdImage

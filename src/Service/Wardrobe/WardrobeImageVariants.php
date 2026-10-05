@@ -18,9 +18,6 @@ final class WardrobeImageVariants
 
     public function path(string $source, string $variant, int $rotation = 0): string
     {
-        if ($variant === 'original') {
-            return $source;
-        }
         if (!isset(self::SIZES[$variant]) || !in_array($rotation, [0, 90, 180, 270], true)) {
             throw new \InvalidArgumentException('Неизвестный размер или поворот фото');
         }

@@ -114,7 +114,7 @@ final class WardrobeMediaController extends AbstractController
 
         if ($variants !== null) {
             try {
-                $path = $variants->path($path, in_array($size, ['preview', 'medium', 'original'], true) ? $size : 'preview', $rotation);
+                $path = $variants->path($path, in_array($size, ['preview', 'medium'], true) ? $size : 'preview', $rotation);
             } catch (\InvalidArgumentException $exception) {
                 throw $this->createNotFoundException(previous: $exception);
             }

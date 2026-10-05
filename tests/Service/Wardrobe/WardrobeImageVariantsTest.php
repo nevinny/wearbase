@@ -35,7 +35,12 @@ final class WardrobeImageVariantsTest extends TestCase
         $source = $this->jpeg(2400, 1600);
         $hash = hash_file('sha256', $source);
         $upload = new UploadedFile($source, 'original.jpg', 'image/jpeg', null, true);
-        self::assertSame($upload, (new WardrobeImageSanitizer())->preserveOriginal($upload));
+        $clean = (new WardrobeImageSanitizer())->preserveOriginal($upload);
+        try {
+            self::assertSame([2400, 1600], array_slice(getimagesize($clean->getPathname()), 0, 2));
+        } finally {
+            unlink($clean->getPathname());
+        }
         foreach (['preview' => [320, 213], 'medium' => [1280, 853]] as $size => $dimensions) {
             $path = $this->variants->path($source, $size);
             self::assertSame($dimensions, array_slice(getimagesize($path), 0, 2));
@@ -43,8 +48,14 @@ final class WardrobeImageVariantsTest extends TestCase
             self::assertLessThan(filesize($source), filesize($path));
             self::assertSame($path, $this->variants->path($source, $size));
         }
-        self::assertSame($source, $this->variants->path($source, 'original'));
         self::assertSame($hash, hash_file('sha256', $source));
+    }
+
+    public function testOriginalIsNotAnAvailableVariant(): void
+    {
+        $source = $this->jpeg(80, 40);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->variants->path($source, 'original');
     }
 
     public function testExifAndManualRotationComposeWithoutUpscalingOrOverwritingSource(): void

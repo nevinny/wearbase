@@ -827,7 +827,9 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         }
         $client->request('GET', '/account/wardrobe/media/photo/'.$photo1->getId().'?size=original');
         self::assertResponseIsSuccessful();
-        self::assertSame($originalHash, hash_file('sha256', $client->getResponse()->getFile()->getPathname()));
+        self::assertResponseHeaderSame('Content-Type', 'image/webp');
+        self::assertSame([4, 8], array_slice(getimagesize($client->getResponse()->getFile()->getPathname()), 0, 2));
+        self::assertSame($originalHash, hash_file('sha256', $absPath));
 
         $em->clear();
         /** @var WardrobeItemPhoto $reloaded */
