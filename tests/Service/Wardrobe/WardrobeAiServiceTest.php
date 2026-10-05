@@ -119,6 +119,27 @@ final class WardrobeAiServiceTest extends TestCase
         self::assertSame('bench-model', $result['model']);
     }
 
+    public function testPhotoResponseAsArrayOfItemsTakesFirstItem(): void
+    {
+        // gemma4:31b на фото образа перечисляет все вещи массивом; основная — первая.
+        $llm = $this->createMock(LlmService::class);
+        $llm->method('generateVision')->willReturn(json_encode([
+            ['category' => 'Футболки', 'color' => 'белый', 'confidence' => 'high'],
+            ['category' => 'Джинсы', 'color' => 'голубой', 'confidence' => 'high'],
+        ], JSON_THROW_ON_ERROR));
+        $service = new WardrobeAiService(
+            $llm, $this->createStub(WebScraperService::class), $this->createStub(WildberriesAdapter::class),
+            $this->createStub(WardrobeAiMeter::class), $this->createStub(AiUsageTracker::class),
+            new ArrayAdapter(), 'remote-test', false, 'prod-local-model', new NullLogger(),
+            $this->createStub(WardrobeConsentRepository::class),
+        );
+
+        $result = $service->analyzePhotoWithLocalModel('/tmp/whatever.jpg', 'bench-model');
+
+        self::assertSame('Футболки', $result['fields']['category']);
+        self::assertSame('белый', $result['fields']['colorName']);
+    }
+
     public function testAttributesFromNamesReturnsEmptyArrayWithoutCallingLlmWhenInputEmpty(): void
     {
         $llm = $this->createMock(LlmService::class);

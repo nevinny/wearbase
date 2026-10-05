@@ -501,6 +501,13 @@ EOT;
     private function extractJson(string $response): ?array
     {
         $cleaned = preg_replace('/```(?:json)?\s*([\s\S]*?)```/', '$1', $response);
+        // На фото образа модель (gemma4:31b) перечисляет все вещи массивом — основная идёт первой.
+        if (preg_match('/^\s*\[[\s\S]*\]\s*$/', $cleaned ?? $response, $m)) {
+            $decoded = json_decode($m[0], true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded[0] ?? null)) {
+                return $decoded[0];
+            }
+        }
         if (preg_match('/\{[\s\S]*\}/', $cleaned ?? $response, $m)) {
             $decoded = json_decode($m[0], true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
