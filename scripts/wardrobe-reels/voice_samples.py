@@ -44,11 +44,17 @@ def check_resources(engine):
         "nvidia-smi", "--query-compute-apps=gpu_uuid", "--format=csv,noheader,nounits",
     ], text=True, capture_output=True, check=True)
     occupied = set(processes.stdout.split())
-    minimum = 8192 if engine == "qwen" else 6144
+    # Measured: Qwen3-TTS 1.7B peaks at ~4.3 GiB VRAM.
+    minimum = 6144
+    # QWEN_TTS_GPU pins a GPU (uuid) chosen by the operator; other workloads on it are allowed.
+    pin_file = Path(__file__).with_name("gpu-pin")
+    pinned = os.environ.get("QWEN_TTS_GPU", "").strip() or (pin_file.read_text().strip() if pin_file.exists() else "")
     candidates = []
     for row in csv.reader(result.stdout.splitlines(), skipinitialspace=True):
         uuid, name, free, utilization, temperature = [value.strip() for value in row]
-        if uuid not in occupied and int(free) >= minimum and int(utilization) <= 10 and int(temperature) < 75:
+        if pinned and uuid != pinned:
+            continue
+        if (pinned or uuid not in occupied) and int(free) >= minimum and int(utilization) <= 10 and int(temperature) < 75:
             candidates.append({"uuid": uuid, "name": name, "free_mib": int(free)})
     if not candidates:
         raise RuntimeError(f"No unoccupied GPU with {minimum} MiB free. Existing workloads have not been stopped.")
