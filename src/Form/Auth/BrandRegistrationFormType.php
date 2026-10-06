@@ -73,10 +73,19 @@ class BrandRegistrationFormType extends AbstractType
             ->add('turnstile', TurnstileType::class, [
                 'label' => false,
             ]);
+
+        // Появляется только когда гард нашёл бренд с таким именем (RegisterController).
+        if ($options['confirm_different']) {
+            $builder->add('notDuplicate', \Symfony\Component\Form\Extension\Core\Type\CheckboxType::class, [
+                'label'    => false,
+                'mapped'   => false,
+                'required' => false,
+            ]);
+        }
     }
 
     public function configureOptions(OptionsResolver $resolver): void
     {
-        $resolver->setDefaults(['data_class' => User::class]);
+        $resolver->setDefaults(['data_class' => User::class, 'confirm_different' => false]);
     }
 }

@@ -113,6 +113,48 @@ class BrandRepository extends ServiceEntityRepository
     }
 
     /**
+     * Живой бренд с ТОЧНО тем же именем (нормализованным: нижний регистр, только буквы/цифры)
+     * или тем же базовым слагом — гард самостоятельной регистрации от дублей
+     * (docs/brand_duplicates.md). Живой = не удалён и не склеен (merged_into IS NULL).
+     * Нечёткого сравнения нет намеренно: короткие общие имена гасит чекбокс «Это другой бренд».
+     */
+    public function findLiveExactDuplicate(string $title, string $baseSlug): ?Brand
+    {
+        $norm = self::normalizeTitle($title);
+        if ($norm === '') {
+            return null;
+        }
+
+        $first = mb_substr($norm, 0, 1);
+        $rows = $this->createQueryBuilder('b')
+            ->select('b.id, b.title, b.slug')
+            ->where('b.status != :deleted')
+            ->andWhere('b.mergedInto IS NULL')
+            ->andWhere('b.slug = :slug OR b.title LIKE :lower OR b.title LIKE :upper')
+            ->setParameter('deleted', Statuses::Deleted)
+            ->setParameter('slug', $baseSlug)
+            ->setParameter('lower', '%' . mb_strtolower($first) . '%')
+            ->setParameter('upper', '%' . mb_strtoupper($first) . '%')
+            ->orderBy('b.id', 'ASC')
+            ->getQuery()
+            ->getArrayResult();
+
+        foreach ($rows as $row) {
+            if ($row['slug'] === $baseSlug || self::normalizeTitle((string) $row['title']) === $norm) {
+                return $this->find($row['id']);
+            }
+        }
+
+        return null;
+    }
+
+    /** Нижний регистр + только буквы/цифры (unicode): «Test-Brand!» → «testbrand». */
+    public static function normalizeTitle(string $title): string
+    {
+        return (string) preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($title));
+    }
+
+    /**
      * Все активные бренды
      */
     public function findAllActiveBrands(): array
