@@ -7,6 +7,8 @@ namespace App\Tests\Command;
 use App\Entity\Brand;
 use App\Entity\BrandUser;
 use App\Entity\Product;
+use App\Entity\Subscription;
+use App\Entity\Tariff;
 use App\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
@@ -123,6 +125,30 @@ class BrandMergeCommandTest extends KernelTestCase
         $this->assertSame(Command::SUCCESS, $this->merge($dup, $surv));
         $this->em->clear();
         $this->assertSame($dup->getId(), $this->em->find(Product::class, $conflict->getId())->getBrand()->getId());
+    }
+
+    public function testActiveSubscriptionNotDuplicatedOnSurvivor(): void
+    {
+        [$dup, $surv, $dupOnly, $target] = [$this->brand(), $this->brand(), $this->brand(), $this->brand()];
+        $this->subscription($surv);
+        $kept  = $this->subscription($dup);
+        $moved = $this->subscription($dupOnly);
+        $this->em->flush();
+
+        $this->assertSame(Command::SUCCESS, $this->merge($dup, $surv));
+        $this->assertSame(Command::SUCCESS, $this->merge($dupOnly, $target));
+        $this->em->clear();
+        $this->assertSame($dup->getId(), $this->em->find(Subscription::class, $kept->getId())->getBrand()->getId());
+        $this->assertSame($target->getId(), $this->em->find(Subscription::class, $moved->getId())->getBrand()->getId());
+    }
+
+    private function subscription(Brand $b): Subscription
+    {
+        $tariff = $this->em->getRepository(Tariff::class)->findOneBy(['code' => Tariff::CODE_FREE]);
+        $s = (new Subscription())->setBrand($b)->setTariff($tariff)
+            ->setCurrentPeriodEnd(new \DateTimeImmutable('+30 days'));
+        $this->em->persist($s);
+        return $s;
     }
 
     private function merge(Brand $dup, Brand $surv): int
