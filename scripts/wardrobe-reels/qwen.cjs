@@ -34,8 +34,8 @@ function validateVoice(data, texts) {
 }
 function prepareVoice(scenes, cache, execute = spawnSync) {
     const texts = scenes.map(scene => spokenText(scene.voice));
-    const host = process.env.WARDROBE_TTS_SSH || 'zyablik@192.168.2.43';
-    if (!/^[a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+$/.test(host)) throw new Error('WARDROBE_TTS_SSH must be user@host');
+    const host = process.env.WARDROBE_TTS_SSH || 'llm';
+    if (!/^([a-zA-Z0-9_.-]+@)?[a-zA-Z0-9_.-]+$/.test(host)) throw new Error('WARDROBE_TTS_SSH must be an SSH alias or [user@]host');
     const request = JSON.stringify({version: 1, texts});
     const command = 'exec "$HOME/wearbase-qwen-tts/.venv/bin/python" "$HOME/wearbase-qwen-tts/qwen_voice.py"';
     const result = execute('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', host, command], {

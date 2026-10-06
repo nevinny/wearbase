@@ -78,3 +78,16 @@ test('poor speech recognition match is refused', () => {
     const data = fixture(); data.asr_similarity = .4;
     assert.throws(() => validateVoice(data, texts), /metadata/);
 });
+test('SSH target defaults to the llm alias and accepts bare aliases', () => {
+    const old = process.env.WARDROBE_TTS_SSH;
+    delete process.env.WARDROBE_TTS_SSH;
+    try {
+        let host;
+        prepareVoice(texts.map(voice => ({voice})), fs.mkdtempSync(path.join(os.tmpdir(), 'wardrobe-qwen-')), (command, args) => {
+            host = args.at(-2); return {status: 0, stdout: JSON.stringify(fixture())};
+        });
+        assert.equal(host, 'llm');
+        process.env.WARDROBE_TTS_SSH = 'bad host; rm';
+        assert.throws(() => prepareVoice(texts.map(voice => ({voice})), '/unused', () => ({status: 0})), /SSH alias/);
+    } finally { if (old === undefined) delete process.env.WARDROBE_TTS_SSH; else process.env.WARDROBE_TTS_SSH = old; }
+});

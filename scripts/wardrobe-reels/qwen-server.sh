@@ -2,8 +2,8 @@
 set -euo pipefail
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 if [[ "${1:-}" != "--server" ]]; then
-    destination="${1:-zyablik@192.168.2.43}"
-    [[ "$destination" =~ ^[a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+$ ]] || { echo 'Expected user@host.' >&2; exit 2; }
+    destination="${1:-llm}"
+    [[ "$destination" =~ ^([a-zA-Z0-9_.-]+@)?[a-zA-Z0-9_.-]+$ ]] || { echo 'Expected SSH alias or [user@]host.' >&2; exit 2; }
     tar -C "$script_dir" -cf - qwen-server.sh qwen_voice.py voice_samples.py requirements-tts.txt | ssh -o ConnectTimeout=10 "$destination" '
         set -eu
         umask 077
