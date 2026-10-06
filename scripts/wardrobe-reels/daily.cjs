@@ -43,7 +43,7 @@ function main() {
                 console.warn(`HF generation failed; using local motion graphics. ${error.message}`);
             }
         }
-        const out = path.join(root, 'public_html/images/social/wardrobe-daily');
+        const out = path.join(root, 'public_html/images/social/wardrobe-qwen-daily');
         run(process.execPath, [path.join(__dirname, 'render.cjs'), '--episode', episode.id, '--variant', String(variant), '--out', out]);
         if (args.includes('--schedule')) {
             run('php', ['bin/console', 'app:social:enqueue-wardrobe-reels', path.join(out, `${episode.id}-v${variant + 1}`, 'manifest.json'), '--start', today, '--schedule']);

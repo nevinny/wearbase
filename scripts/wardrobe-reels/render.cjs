@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Offline motion graphics + local Russian speech. Optional HF clips are generated separately.
+// Motion graphics + Qwen narration from the owned GPU server.
 const fs = require('node:fs');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
@@ -7,6 +7,7 @@ const {createHash} = require('node:crypto');
 const {spawn, spawnSync} = require('node:child_process');
 const {once} = require('node:events');
 const {chromium} = require('playwright');
+const {prepareVoice} = require('./qwen.cjs');
 
 const root = path.resolve(__dirname, '../..');
 const catalog = JSON.parse(fs.readFileSync(path.join(root, 'config/social/wardrobe_reels.json'), 'utf8'));
@@ -41,7 +42,7 @@ function validate() {
     }
 }
 
-async function render(page, episode, variant, out, clipDir) {
+async function render(page, episode, variant, out, clipDir, voice) {
     const id = `${episode.id}-v${variant + 1}`;
     const work = path.join(out, id);
     fs.mkdirSync(work, {recursive: true});
@@ -51,6 +52,7 @@ async function render(page, episode, variant, out, clipDir) {
         .update(JSON.stringify({episode, variant, version: catalog.version}))
         .update(fs.readFileSync(__filename))
         .update(fs.readFileSync(path.join(__dirname, 'scene.html')))
+        .update(JSON.stringify(voice.metadata))
         .update(fs.existsSync(clip) ? fs.readFileSync(clip) : 'no-clip')
         .digest('hex');
     const manifestPath = path.join(work, 'manifest.json');
@@ -60,17 +62,10 @@ async function render(page, episode, variant, out, clipDir) {
         if (duration(output) > 0) { console.log(`Cached ${id}`); return existing; }
     }
     const scenes = [{kind: 'hook', ...episode.hooks[variant]}, ...episode.scenes].map(s => ({...s}));
-    for (const [i, scene] of scenes.entries()) {
-        const input = path.join(work, `voice-${i}.txt`), audio = path.join(work, `voice-${i}.aiff`);
-        fs.writeFileSync(input, scene.voice, 'utf8');
-        run('say', ['-v', 'Milena', '-r', '175', '-f', input, '-o', audio]);
-        scene.duration = Math.ceil(Math.max(3.2, duration(audio) + .25) * 15) / 15;
-        scene.audio = audio;
-    }
+    scenes.forEach((scene, i) => { scene.duration = voice.metadata.scenes[i].end - voice.metadata.scenes[i].start; });
     const total = scenes.reduce((n, s) => n + s.duration, 0);
     const audioPath = path.join(work, 'voice.wav');
-    run('ffmpeg', ['-v','error','-y', ...scenes.flatMap(s => ['-i',s.audio]), '-filter_complex',
-        scenes.map((s,i) => `[${i}:a]apad,atrim=duration=${s.duration},asetpts=PTS-STARTPTS[a${i}]`).join(';') + ';' + scenes.map((_,i)=>`[a${i}]`).join('') + `concat=n=${scenes.length}:v=0:a=1,loudnorm=I=-16:TP=-1.5:LRA=7[a]`, '-map','[a]','-ar','48000',audioPath]);
+    run('ffmpeg', ['-v','error','-y','-i',voice.audioPath,'-af','loudnorm=I=-16:TP=-1.5:LRA=7','-ar','48000',audioPath]);
     await page.goto(pathToFileURL(path.join(__dirname, 'scene.html')).href);
     await page.evaluate(data => window.setup(data), {episode, scenes, clip: fs.existsSync(clip) ? pathToFileURL(clip).href : null});
     await page.evaluate(() => window.render(.5));
@@ -93,7 +88,7 @@ async function render(page, episode, variant, out, clipDir) {
         if (code !== 0) throw new Error(errors);
     } catch (error) { encoder.kill(); throw error; }
     run('ffmpeg', ['-v','error','-y','-i',silent,'-i',audioPath,'-map','0:v:0','-map','1:a:0','-c:v','copy','-c:a','aac','-b:a','128k','-shortest','-movflags','+faststart','-use_editlist','0',output]);
-    const manifest = {version:1,campaign:catalog.campaign,id,series:episode.id,variant,hook:episode.hooks[variant].text,fingerprint,video:output,cover,duration_ms:Math.round(duration(output)*1000),caption:episode.hooks[variant].text.replaceAll('\n',' ')+'\n\n'+episode.caption,cta_url:episode.cta_url,cta_label:'Цифровой гардероб',scenes:scenes.map(({audio,...s})=>s),ai_generated:true,synthetic_clip:fs.existsSync(clip),claim_notes:episode.claim,publication_status:'preview'};
+    const manifest = {version:1,campaign:catalog.campaign,id,series:episode.id,variant,hook:episode.hooks[variant].text,fingerprint,video:output,cover,duration_ms:Math.round(duration(output)*1000),caption:episode.hooks[variant].text.replaceAll('\n',' ')+'\n\n'+episode.caption,cta_url:episode.cta_url,cta_label:'Цифровой гардероб',scenes,voice:voice.metadata,ai_generated:true,synthetic_clip:fs.existsSync(clip),claim_notes:episode.claim,publication_status:'preview'};
     fs.writeFileSync(manifestPath, JSON.stringify(manifest,null,2)+'\n');
     console.log(`Rendered ${id}: ${(manifest.duration_ms/1000).toFixed(1)} s, ${manifest.synthetic_clip ? 'HF clip + motion' : 'motion graphics'}, ${output}`);
     return manifest;
@@ -108,14 +103,22 @@ async function main() {
     const id = option('--episode','');
     if (id) selected = selected.filter(e => e.id === id);
     if (!selected.length) throw new Error('Unknown episode');
-    const out = path.resolve(option('--out',path.join(root,'public_html/images/social/wardrobe-v1')));
+    const out = path.resolve(option('--out',path.join(root,'public_html/images/social/wardrobe-qwen-v1')));
     const clips = path.resolve(option('--clips',path.join(root,'var/wardrobe-reels/clips')));
     fs.mkdirSync(out,{recursive:true});
+    const voices = new Map();
+    for (const e of selected) {
+        const voice = prepareVoice([e.hooks[variant], ...e.scenes], path.join(root, 'var/wardrobe-reels/qwen-audio'));
+        if (Math.abs(duration(voice.audioPath) - voice.metadata.duration) > .05) throw new Error('Qwen WAV duration differs from scene timings');
+        voices.set(e.id, voice);
+        console.log(`Qwen ${e.id}: ${voice.metadata.duration.toFixed(1)} s, ${voice.audioPath}`);
+    }
+    if (args.includes('--voice-only')) return;
     const browser = await chromium.launch({headless:true,args:['--allow-file-access-from-files']});
     try {
         const page = await browser.newPage({viewport:{width:1080,height:1920},deviceScaleFactor:1});
         const manifests = [];
-        for (const e of selected) manifests.push(await render(page,e,variant,out,clips));
+        for (const e of selected) manifests.push(await render(page,e,variant,out,clips,voices.get(e.id)));
         const index = path.join(out, 'manifest.json');
         const previous = fs.existsSync(index) ? JSON.parse(fs.readFileSync(index, 'utf8')) : [];
         const merged = new Map(previous.map(m => [m.id, m]));
