@@ -63,10 +63,22 @@
             <hr class="flex-1 border-gray-200"><span>или</span><hr class="flex-1 border-gray-200">
         </div>
 
-        <p class="text-center text-sm text-gray-500">
-            Вы бренд?
-            <a href="{{ path('app_register', {brand: 1}) }}" class="font-semibold text-gray-900 hover:underline">Зарегистрировать бренд →</a>
-        </p>
+        {% if claim_flow|default(false) %}
+            {# Флоу заявки на карточку: нужен обычный аккаунт, новый бренд создавать нельзя #}
+            <div class="claim-flow-cta rounded-2xl bg-white shadow-sm p-4 text-center text-sm text-gray-500">
+                {% if claim_brand|default(null) %}
+                    Создайте аккаунт, чтобы подтвердить владение брендом «{{ claim_brand.title }}»
+                {% else %}
+                    Создайте аккаунт, чтобы подтвердить владение брендом
+                {% endif %}
+                <a href="{{ path('app_register') }}" class="mt-2 block font-semibold text-gray-900 hover:underline">Создать аккаунт →</a>
+            </div>
+        {% else %}
+            <p class="text-center text-sm text-gray-500">
+                Вы бренд?
+                <a href="{{ path('app_register', {brand: 1}) }}" class="font-semibold text-gray-900 hover:underline">Зарегистрировать бренд →</a>
+            </p>
+        {% endif %}
     {% endblock %}
 {% endembed %}
 {% endblock %}
