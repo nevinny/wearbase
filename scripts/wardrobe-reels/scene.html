@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>Wearbase — сценарий рилса</title>
+<style>
+@font-face { font-family: Wardrobe; src: url('../../config/social/fonts/NotoSans.ttf'); }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #151817; overflow: hidden; }
+canvas { display: block; width: 1080px; height: 1920px; }
+video { display: none; }
+</style>
+<canvas width="1080" height="1920"></canvas>
+<video muted playsinline></video>
+<script>
+const c = document.querySelector('canvas'), g = c.getContext('2d');
+let episode, scenes, clipReady = false;
+const video = document.querySelector('video');
+const ink = '#151817', paper = '#F3F1E8', muted = '#AAAFA6';
+const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+function box(x, y, w, h, fill, radius = 24) {
+    g.fillStyle = fill; g.beginPath(); g.roundRect(x, y, w, h, radius); g.fill();
+}
+function text(value, x, y, size = 32, color = paper, weight = 400, width = 600) {
+    g.fillStyle = color; g.font = `${weight} ${size}px Wardrobe`; g.textBaseline = 'top';
+    const lines = [];
+    for (const paragraph of value.split('\n')) {
+        let line = '';
+        for (const word of paragraph.split(' ')) {
+            const next = line ? `${line} ${word}` : word;
+            if (g.measureText(next).width > width && line) { lines.push(line); line = word; }
+            else line = next;
+        }
+        lines.push(line);
+    }
+    lines.forEach((line, i) => g.fillText(line, x, y + i * size * 1.22));
+    return lines.length * size * 1.22;
+}
+function shirt(x, y, scale, color, angle = 0, type = 0) {
+    g.save(); g.translate(x, y); g.rotate(angle); g.scale(scale, scale);
+    g.fillStyle = color; g.strokeStyle = '#15181744'; g.lineWidth = 2;
+    g.beginPath();
+    if (type % 3 === 1) {
+        g.moveTo(-38, -60); g.lineTo(38, -60); g.lineTo(47, 68); g.lineTo(10, 68);
+        g.lineTo(0, -5); g.lineTo(-10, 68); g.lineTo(-47, 68);
+    } else {
+        g.moveTo(-20, -65); g.lineTo(-63, -45); g.lineTo(-88, -2); g.lineTo(-51, 18);
+        g.lineTo(-40, -1); g.lineTo(-40, 68); g.lineTo(40, 68); g.lineTo(40, -1);
+        g.lineTo(51, 18); g.lineTo(88, -2); g.lineTo(63, -45); g.lineTo(20, -65);
+        g.quadraticCurveTo(0, -39, -20, -65);
+    }
+    g.closePath(); g.fill(); g.stroke();
+    g.strokeStyle = '#15181733'; g.beginPath(); g.moveTo(-28, 56); g.lineTo(28, 56); g.stroke();
+    g.restore();
+}
+function pill(label, x, y, color = episode.accent, w = 200) {
+    box(x, y, w, 48, color, 24); text(label, x + 17, y + 10, 21, ink, 600, w - 30);
+}
+function clothes(t, tidy = false) {
+    const colors = ['#D4C5B0', '#668398', '#A9B49F', '#D9DCE1', '#705B63', '#A2957D'];
+    for (let i = 0; i < 6; i++) {
+        const x = 155 + (i % 3) * 180, y = 500 + Math.floor(i / 3) * 230;
+        box(x - 76, y - 93, 152, 190, tidy ? '#FFFFFF0C' : '#FFFFFF04', 18);
+        shirt(x, y + Math.sin(t * 1.5 + i) * (tidy ? 2 : 10), .73, colors[i], tidy ? 0 : Math.sin(i + t * .4) * .22, i);
+        if (tidy) text(['Рубашка','Джинсы','Худи','Футболка','Брюки','Свитер'][i], x - 65, y + 108, 18, muted, 400, 150);
+    }
+}
+function outfit(t, compact = false) {
+    const shift = compact ? 40 : 0;
+    box(100, 415, 490, 470, '#FFFFFF0B');
+    shirt(260, 548, .98, '#D8CABA', Math.sin(t) * .035);
+    shirt(448, 656, .95, '#658093', Math.sin(t + 1) * .025, 1);
+    box(170, 770 + shift, 150, 38, '#DFE3D7', 19);
+    pill('Из своих вещей', 199, 899, episode.accent, 285);
+}
+function visual(kind, t, p) {
+    const a = episode.accent;
+    if (kind === 'hook' || kind === 'pain') {
+        if (kind === 'hook' && clipReady) {
+            g.save(); g.beginPath(); g.roundRect(48, 385, 590, 485, 26); g.clip();
+            const k = Math.max(590 / video.videoWidth, 485 / video.videoHeight);
+            g.drawImage(video, 48 + (590 - video.videoWidth * k) / 2, 385 + (485 - video.videoHeight * k) / 2, video.videoWidth * k, video.videoHeight * k);
+            g.restore();
+            pill('Знакомая ситуация?', 165, 889, a, 337);
+        } else if (episode.id === 'requests') {
+            ['Мам, купи?', 'Вот ссылка', 'И ещё вот это…'].forEach((v,i) => {
+                const x = i % 2 ? 70 : 174;
+                box(x, 436 + i * 146 + (1 - ease(p * 4 - i * .4)) * 80, 400, 105, i % 2 ? '#323A35' : a);
+                text(v, x + 25, 465 + i * 146 + (1 - ease(p * 4 - i * .4)) * 80, 30, i % 2 ? paper : ink);
+            });
+        } else if (episode.id === 'family') visual('family', t, p);
+        else if (episode.id === 'capsule') visual('combine', t, p);
+        else if (episode.id === 'lifecycle') visual('status', t, p);
+        else if (episode.id === 'morning') {
+            box(74, 415, 540, 460, '#FFFFFF0B');
+            text('07:40', 120, 444, 126, a, 700, 450);
+            shirt(208, 728, .91, '#D4C5B0', -.12);
+            shirt(475, 728, .91, '#668398', .13, 1);
+            text('?', 318, 683, 78, a, 700, 100);
+        } else clothes(t, false);
+    } else if (kind === 'scan') {
+        box(145, 400, 392, 470, '#FFFFFF0B'); shirt(342, 590, 1.55, '#D4C5B0');
+        box(174, 433 + (p % 1) * 300, 334, 4, a, 2);
+        pill('Черновик', 221, 770, a, 210); text('Проверь и подтверди', 170, 899, 27, paper);
+    } else if (kind === 'closet' || kind === 'capsule') clothes(t, true);
+    else if (kind === 'family' || kind === 'transfer') {
+        ['Вы', 'Старший', 'Младший'].forEach((n,i) => {
+            box(54 + i * 207, 430, 187, 360, '#FFFFFF0B');
+            g.fillStyle = ['#D4C5B0', a, '#718774'][i]; g.beginPath(); g.arc(147+i*207, 494, 34, 0, Math.PI * 2); g.fill();
+            text(n, 76+i*207, 552, 25, paper, 600, 155);
+            shirt(146+i*207, 689, .64, ['#D4C5B0','#7891AE','#B6C99D'][i], 0, i);
+        });
+        if (kind === 'transfer') {
+            box(276, 823, 344, 80, a); text('Старшему мала →', 295, 846, 29, ink, 600, 310);
+        } else text('Профили и доступы', 167, 849, 32, a);
+    } else if (kind === 'outfit' || kind === 'choose' || kind === 'travel') {
+        outfit(t); if (kind === 'travel') pill('Повод: поездка', 199, 359, a, 285);
+    } else if (kind === 'combine') {
+        for (let i = 0; i < 3; i++) {
+            const x = 153 + 192 * i;
+            box(x - 80, 430, 162, 410, '#FFFFFF0B');
+            shirt(x, 535, .61, ['#D4C5B0','#AABAA6','#D9DCE1'][i]);
+            shirt(x, 714, .7, i % 2 ? '#54554D' : '#668398', 0, 1);
+            text('Образ ' + (i+1), x-60, 859, 25, a);
+        }
+    } else if (kind === 'chat' || kind === 'budget') {
+        box(83, 410, 520, 474, '#F3F1E8'); shirt(212, 560, .96, '#88A492');
+        text('Худи', 345, 485, 33, ink, 600, 220); text('4 000 ₽', 345, 545, 33, ink, 600, 220);
+        text('Запрос на покупку', 112, 690, 26, ink); text('Бюджет: 6 000 ₽', 112, 738, 29, ink, 600);
+        box(112, 802, 460, 15, '#D8DCD3', 7); box(112, 802, 460 * ease(p) * 2/3, 15, '#5B8468', 7);
+        text('Цифры для примера', 208, 903, 23, muted);
+    } else if (kind === 'wear') {
+        box(98, 415, 500, 470, '#FFFFFF0B'); shirt(348, 555, 1.12, '#88A492');
+        text('Отмечай, когда носишь', 137, 718, 31, a, 600, 425);
+        text('Носки → история вещи', 143, 794, 27, paper, 400, 425);
+    } else if (kind === 'status') {
+        ['Чистая', 'В стирке', 'В ремонте'].forEach((v,i) => {
+            box(72, 424+i*157, 535, 131, '#FFFFFF0B');
+            shirt(142, 487+i*157, .48, ['#B6C99D','#91A8BD','#C0AECF'][i]);
+            text(v, 230, 467+i*157, 35, paper, 600, 345);
+        });
+    } else if (kind === 'cta') {
+        box(66, 427, 559, 349, a, 32); text('Твои вещи.\nТвои решения.', 99, 473, 54, ink, 700, 489);
+        text('wearbase.ru', 99, 668, 44, ink, 700, 489);
+        pill('Гардероб — в профиле', 110, 834, a, 471);
+    }
+}
+window.setup = async data => {
+    episode = data.episode; scenes = data.scenes;
+    await document.fonts.ready; await document.fonts.load('600 30px Wardrobe');
+    if (data.clip) {
+        video.src = data.clip;
+        await new Promise((resolve, reject) => { video.onloadeddata = resolve; video.onerror = () => reject(new Error('Video loading failed')); });
+        clipReady = true;
+    }
+};
+window.render = async time => {
+    let elapsed = 0, index = scenes.length - 1;
+    for (let i=0;i<scenes.length;i++) { if (time < elapsed + scenes[i].duration) { index=i; break; } elapsed += scenes[i].duration; }
+    const scene = scenes[index], local = Math.max(0,time-elapsed), p = local / scene.duration;
+    if (clipReady && scene.kind === 'hook') {
+        const target = local % Math.max(.01, video.duration - .04);
+        if (Math.abs(video.currentTime - target) > .015) {
+            await new Promise(resolve => { video.onseeked=resolve; video.currentTime=target; });
+        }
+    }
+    g.setTransform(1.5, 0, 0, 1.5, 0, 0);
+    g.fillStyle=ink;g.fillRect(0,0,720,1280);
+    text('WEARBASE', 48, 72, 23, paper, 600);
+    text('Цифровой гардероб', 278, 75, 19, muted);
+    box(48, 123, 587, 3, '#FFFFFF16', 1); box(48, 123, 587*(index+p)/scenes.length, 3, episode.accent, 1);
+    text(episode.name, 48, 149, 21, episode.accent, 600);
+    const titleY=205+(1-ease(local*3))*22;
+    text(scene.text, 48, titleY, scene.text.length>44 ? 46 : 54, paper, 700, 587);
+    visual(scene.kind, time, p);
+    text('Иллюстрация сценария', 48, 969, 17, muted, 400, 580);
+    const h=text(scene.voice, 48, 1011, 29, paper, 400, 570);
+    if (1011+h > 1204) throw new Error('Subtitle text overflows safe zone');
+};
+</script>
+</html>
