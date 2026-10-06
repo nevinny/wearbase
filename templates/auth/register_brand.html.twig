@@ -32,14 +32,22 @@
 
         {% if duplicate|default(null) and form.notDuplicate is defined %}
             <div class="duplicate-guard mb-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-200">
-                <h2 class="text-base font-bold mb-1">Бренд «{{ duplicate.title }}» уже есть в каталоге</h2>
+                <h2 class="text-base font-bold mb-1">Бренд «{{ duplicate.title }}» уже есть {{ duplicate_public ? 'в каталоге' : 'в нашей базе' }}</h2>
                 <p class="text-sm text-gray-500 mb-4">
-                    Посмотрите <a href="{{ path('brand_show', {slug: duplicate.slug, _locale: 'ru'}) }}" target="_blank" class="text-gray-900 underline">карточку бренда</a>.
-                    Если это ваш бренд, не создавайте вторую карточку — подтвердите владение первой.
+                    {% if duplicate_public %}
+                        Посмотрите <a href="{{ path('brand_show', {slug: duplicate.slug, _locale: 'ru'}) }}" target="_blank" class="text-gray-900 underline">карточку бренда</a>.
+                    {% endif %}
+                    {% if not duplicate.foreignOrigin %}
+                        Если это ваш бренд, не создавайте вторую карточку — подтвердите владение первой.
+                    {% else %}
+                        Если это другой бренд, отметьте это ниже.
+                    {% endif %}
                 </p>
-                <a href="{{ path('brand_claim_new', {id: duplicate.id}) }}" class="block w-full rounded-xl bg-gray-900 py-3.5 text-center text-sm font-semibold text-white hover:bg-black transition">
-                    Это мой бренд — подтвердить владение
-                </a>
+                {% if not duplicate.foreignOrigin %}
+                    <a href="{{ path('brand_claim_new', {id: duplicate.id}) }}" class="block w-full rounded-xl bg-gray-900 py-3.5 text-center text-sm font-semibold text-white hover:bg-black transition">
+                        Это мой бренд — подтвердить владение
+                    </a>
+                {% endif %}
             </div>
         {% endif %}
 

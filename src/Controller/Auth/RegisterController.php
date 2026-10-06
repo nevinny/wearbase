@@ -88,6 +88,7 @@ class RegisterController extends AbstractController
                     'form' => $form,
                     'isBrand' => true,
                     'duplicate' => $duplicate,
+                    'duplicate_public' => $duplicate->getStatus() === Statuses::Active,
                     'look_share_ref' => $this->lookShareParam($request),
                     'look_share_target' => $this->validatedLookShareTarget($request),
                 ]);
@@ -206,6 +207,7 @@ class RegisterController extends AbstractController
                 'form' => $form,
                 'isBrand' => $isBrand,
                 'duplicate' => $duplicate,
+                'duplicate_public' => $duplicate?->getStatus() === Statuses::Active,
                 // Скрытые поля CTA лендинга: переживают POST при ошибках валидации формы.
                 'look_share_ref' => $this->lookShareParam($request),
                 'look_share_target' => $this->validatedLookShareTarget($request),

@@ -146,6 +146,41 @@ class BrandSignupDedupeControllerTest extends DatabaseDependentWebTestCase
         $this->assertNotNull($this->em()->getRepository(BrandUser::class)->findOneBy(['user' => $user]));
     }
 
+    public function testUnpublishedMatchHasClaimLinkButNoBrandPageLink(): void
+    {
+        $this->skipIfNoDatabase();
+        $client = static::createClient();
+        $slug = 'lead-new-' . uniqid();
+        $existing = $this->makeBrand('Lead New Brand', $slug);
+        $existing->setStatus(\Nevinny\AdminCoreBundle\Enum\Statuses::New);
+        $this->em()->flush();
+
+        $crawler = $client->request('GET', '/register?brand=1');
+        $this->postBrandForm($client, $crawler->filter('input[name="brand_registration_form[_token]"]')->attr('value'), 'lead-new-brand', 'lead-' . uniqid() . '@example.com');
+
+        $html = $client->getResponse()->getContent();
+        $this->assertStringContainsString('уже есть в нашей базе', $html);
+        $this->assertStringContainsString('/brand-claim/' . $existing->getId(), $html);
+        $this->assertStringNotContainsString('/brands/' . $slug, $html);
+    }
+
+    public function testForeignMatchHasNoClaimLinkButHasCheckbox(): void
+    {
+        $this->skipIfNoDatabase();
+        $client = static::createClient();
+        $existing = $this->makeBrand('Foreign Guard Brand', 'foreign-guard-' . uniqid());
+        $existing->markOrigin('foreign', null, new \DateTimeImmutable());
+        $this->em()->flush();
+
+        $crawler = $client->request('GET', '/register?brand=1');
+        $this->postBrandForm($client, $crawler->filter('input[name="brand_registration_form[_token]"]')->attr('value'), 'foreign guard brand', 'foreign-' . uniqid() . '@example.com');
+
+        $html = $client->getResponse()->getContent();
+        $this->assertStringContainsString('уже есть', $html);
+        $this->assertStringNotContainsString('/brand-claim/' . $existing->getId(), $html);
+        $this->assertStringContainsString('notDuplicate', $html);
+    }
+
     public function testGuardMatchesBySlugAndIgnoresDeletedAndMerged(): void
     {
         $this->skipIfNoDatabase();
