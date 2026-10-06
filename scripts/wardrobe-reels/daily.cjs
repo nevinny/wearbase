@@ -19,6 +19,15 @@ function run(command, parameters) {
     const result = spawnSync(command, parameters, {cwd: root, stdio: 'inherit'});
     if (result.status !== 0) throw new Error(`${command} failed: ${result.error?.message || result.status}`);
 }
+function removeStaleLock(lock) {
+    if (!fs.existsSync(lock)) return;
+    const pid = parseInt(fs.readFileSync(lock, 'utf8'), 10);
+    if (Number.isInteger(pid) && pid > 0) {
+        try { process.kill(pid, 0); return; } catch (error) { if (error.code !== 'ESRCH') return; }
+    }
+    console.warn(`Removing stale lock ${lock} (pid ${pid} is not alive).`);
+    fs.unlinkSync(lock);
+}
 function main() {
     const start = parseDate(option('--start', ''));
     const today = option('--date', new Intl.DateTimeFormat('en-CA', {timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()));
@@ -32,7 +41,12 @@ function main() {
     const work = path.join(root, 'var/wardrobe-reels');
     fs.mkdirSync(work, {recursive: true});
     const lock = path.join(work, 'daily.lock');
-    const fd = fs.openSync(lock, 'wx');
+    removeStaleLock(lock);
+    let fd;
+    try { fd = fs.openSync(lock, 'wx'); } catch (error) {
+        if (error.code === 'EEXIST') throw new Error(`Daily run already in progress (lock ${lock}).`);
+        throw error;
+    }
     fs.writeFileSync(fd, String(process.pid));
     try {
         const clip = path.join(work, 'clips', `${episode.id}.mp4`);
@@ -46,7 +60,7 @@ function main() {
         const out = path.join(root, 'public_html/images/social/wardrobe-qwen-daily');
         run(process.execPath, [path.join(__dirname, 'render.cjs'), '--episode', episode.id, '--variant', String(variant), '--out', out]);
         if (args.includes('--schedule')) {
-            run('php', ['bin/console', 'app:social:enqueue-wardrobe-reels', path.join(out, `${episode.id}-v${variant + 1}`, 'manifest.json'), '--start', today, '--schedule']);
+            run(process.env.PHP_BIN || '/opt/homebrew/bin/php', ['-d', 'memory_limit=512M', 'bin/console', 'app:social:enqueue-wardrobe-reels', path.join(out, `${episode.id}-v${variant + 1}`, 'manifest.json'), '--start', today, '--schedule']);
         }
     } finally {
         fs.closeSync(fd);
