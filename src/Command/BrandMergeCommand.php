@@ -33,7 +33,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * они описывают URL и историю дубля и остаются на нём.
  *
  * Конфликты уникальности (товар с тем же slug у survivor) — строка дубля остаётся на дубле,
- * попадает в отчёт «пропущено». Участник команды, уже состоящий в survivor, не переносится:
+ * попадает в отчёт «пропущено». Подписки дубля не переносятся, если у survivor уже есть
+ * действующая (trial/active) — иначе у бренда окажется две; они остаются на удалённом дубле.
+ * Участник команды, уже состоящий в survivor, не переносится:
  * его дублирующая связь удаляется (системная операция консоли). Повторный запуск — no-op.
  *
  *   php bin/console app:brand:merge <duplicateId> <survivorId> [--dry-run]
@@ -47,7 +49,6 @@ class BrandMergeCommand extends Command
     /** Сущности, у которых бренд просто переназначается (без особых конфликтов). */
     private const SIMPLE_ENTITIES = [
         'order'               => Order::class,
-        'subscription'        => Subscription::class,
         'seller_legal_entity' => SellerLegalEntity::class,
         'brand_invite'        => BrandInvite::class,
         'brand_claim'         => BrandClaim::class,
@@ -105,6 +106,7 @@ class BrandMergeCommand extends Command
         $work   = function () use ($duplicate, $survivor, $dryRun, &$report): void {
             $report['product']    = $this->moveProducts($duplicate, $survivor, $dryRun);
             $report['brand_user'] = $this->moveMembers($duplicate, $survivor, $dryRun);
+            $report['subscription'] = $this->moveSubscriptions($duplicate, $survivor, $dryRun);
             foreach (self::SIMPLE_ENTITIES as $table => $class) {
                 $rows = $this->em->getRepository($class)->findBy(['brand' => $duplicate]);
                 foreach ($rows as $row) {
@@ -192,5 +194,27 @@ class BrandMergeCommand extends Command
         }
 
         return ['moved' => $moved, 'dropped' => $dropped, 'skipped' => 0];
+    }
+
+    /** @return array{moved:int, dropped:int, skipped:int} */
+    private function moveSubscriptions(Brand $duplicate, Brand $survivor, bool $dryRun): array
+    {
+        $repo = $this->em->getRepository(Subscription::class);
+        $survivorHasActive = array_filter($repo->findBy(['brand' => $survivor]), static fn(Subscription $s) => $s->isActive()) !== [];
+
+        $moved = $skipped = 0;
+        foreach ($repo->findBy(['brand' => $duplicate]) as $subscription) {
+            // Две действующие подписки у одного бренда — хуже, чем подписка на удалённом дубле.
+            if ($survivorHasActive && $subscription->isActive()) {
+                $skipped++;
+                continue;
+            }
+            if (!$dryRun) {
+                $subscription->setBrand($survivor);
+            }
+            $moved++;
+        }
+
+        return ['moved' => $moved, 'dropped' => 0, 'skipped' => $skipped];
     }
 }
