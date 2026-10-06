@@ -66,6 +66,7 @@ class SocialEnqueueWardrobeReelsCommandTest extends TestCase
         self::assertSame('scheduled', $saved[0]->getStatus());
         self::assertSame('wardrobe-v1.family-v1', $saved[1]->getScriptKey());
         self::assertSame('reels', $saved[1]->getMediaType());
+        self::assertNull($saved[0]->getCtaUrl());
     }
 
     public function testBrokenSecondEntryDoesNotPartiallyQueueBatch(): void

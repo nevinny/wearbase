@@ -103,7 +103,7 @@ class SocialEnqueueWardrobeReelsCommand extends Command
                     ->setScriptKey($key)->setScriptJson(json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))
                     ->setVariant('hook_' . substr($id, -1))->setDurationMs((int) $entry['duration_ms'])
                     ->setSlideCount(count($entry['scenes'] ?? []))->setAiGenerated(true)
-                    ->setCtaLabel('Цифровой гардероб')->setCtaUrl($entry['cta_url'])
+                    ->setCtaLabel('Цифровой гардероб')
                     ->setScheduledAt(\DateTime::createFromImmutable($slot->setTime(19, 0)));
             }
             // Валидируем всю пачку до первой записи в БД.
