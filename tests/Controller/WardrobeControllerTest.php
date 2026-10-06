@@ -22,6 +22,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
@@ -777,7 +778,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertNull($stillActive->getDeletedAt());
     }
 
-    public function testRotatePhotoReturnsJsonAndRotatesFile(): void
+    public function testRotatePhotoPreservesOriginalAndServesRotatedVariants(): void
     {
         $client = static::createClient();
         $user = $this->loginAsCustomer($client);
@@ -796,6 +797,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         imagedestroy($im);
         $this->tmpFiles[] = $absPath;
         $originalSize = filesize($absPath);
+        $originalHash = hash_file('sha256', $absPath);
         $photo1->setFileSize($originalSize)->setUpdatedAt(new \DateTimeImmutable('2020-01-01'));
         $em->flush();
 
@@ -814,16 +816,26 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $this->assertTrue($data['ok']);
         $this->assertStringContainsString('v=', $data['uri']);
 
-        $imNew = @imagecreatefromstring(file_get_contents($absPath));
-        $this->assertNotFalse($imNew);
-        $this->assertSame(4, imagesx($imNew));
-        $this->assertSame(8, imagesy($imNew));
-        imagedestroy($imNew);
+        self::assertSame($originalHash, hash_file('sha256', $absPath));
+        foreach ([$data['uri'], $data['mediumUri'], '/account/wardrobe/media/item/'.$id] as $uri) {
+            $client->request('GET', $uri);
+            self::assertResponseIsSuccessful();
+            self::assertResponseHeaderSame('Content-Type', 'image/webp');
+            $response = $client->getResponse();
+            self::assertInstanceOf(BinaryFileResponse::class, $response);
+            self::assertSame([4, 8], array_slice(getimagesize($response->getFile()->getPathname()), 0, 2));
+        }
+        $client->request('GET', '/account/wardrobe/media/photo/'.$photo1->getId().'?size=original');
+        self::assertResponseIsSuccessful();
+        self::assertResponseHeaderSame('Content-Type', 'image/webp');
+        self::assertSame([4, 8], array_slice(getimagesize($client->getResponse()->getFile()->getPathname()), 0, 2));
+        self::assertSame($originalHash, hash_file('sha256', $absPath));
 
         $em->clear();
         /** @var WardrobeItemPhoto $reloaded */
         $reloaded = $em->find(WardrobeItemPhoto::class, $photo1->getId());
         $this->assertNotNull($reloaded->getFileSize());
+        self::assertSame(90, $reloaded->getRotation());
         $this->assertNotSame('2020-01-01', $reloaded->getUpdatedAt()->format('Y-m-d'));
     }
 
@@ -1133,7 +1145,9 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         if (!is_dir(dirname($legacyPath))) {
             mkdir(dirname($legacyPath), 0755, true);
         }
-        file_put_contents($legacyPath, 'legacy-photo');
+        $image = imagecreatetruecolor(8, 4);
+        imagejpeg($image, $legacyPath);
+        imagedestroy($image);
         $this->tmpFiles[] = $legacyPath;
 
         foreach ([
@@ -2022,7 +2036,7 @@ class WardrobeControllerTest extends AuthenticatedWebTestCase
         $aiMock->expects($this->once())
             ->method('suggestFromPhoto')
             ->with(
-                $this->callback(static fn (string $path): bool => $path !== $absPath && is_file($path) && mime_content_type($path) === 'image/jpeg'),
+                $this->callback(static fn (string $path): bool => $path !== $absPath && is_file($path) && mime_content_type($path) === 'image/webp'),
                 $this->callback(static fn (User $u): bool => $u->getId() === $user->getId()),
             )
             ->willReturn(['ok' => true, 'fields' => ['category' => 'Обувь'], 'confidence' => 'high']);

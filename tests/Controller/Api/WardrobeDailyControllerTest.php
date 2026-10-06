@@ -7,6 +7,7 @@ namespace App\Tests\Controller\Api;
 use App\Entity\User;
 use App\Entity\Wardrobe;
 use App\Entity\WardrobeConsent;
+use App\Entity\WardrobeCategory;
 use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeOutfit;
@@ -439,7 +440,7 @@ class WardrobeDailyControllerTest extends WebTestCase
         $this->assertResponseStatusCodeSame(401);
     }
 
-    public function testPreparePhotoReturnsRealFileBytes(): void
+    public function testPreparePhotoReturnsOptimizedCopyAndPreservesOriginal(): void
     {
         $client = static::createClient();
         $em = static::getContainer()->get(EntityManagerInterface::class);
@@ -462,10 +463,12 @@ class WardrobeDailyControllerTest extends WebTestCase
         $this->assertResponseIsSuccessful();
         $response = $client->getResponse();
         $this->assertInstanceOf(BinaryFileResponse::class, $response);
-        $this->assertSame($expectedBytes, file_get_contents($response->getFile()->getPathname()));
+        $this->assertSame('image/webp', mime_content_type($response->getFile()->getPathname()));
+        $this->assertSame([3, 3], array_slice(getimagesize($response->getFile()->getPathname()), 0, 2));
 
         /** @var StorageInterface $storage */
         $storage = static::getContainer()->get(StorageInterface::class);
+        $this->assertSame($expectedBytes, file_get_contents($storage->resolvePath($item, 'photoFile')));
         @unlink((string) $storage->resolvePath($item, 'photoFile'));
     }
 
@@ -485,12 +488,13 @@ class WardrobeDailyControllerTest extends WebTestCase
         $em->flush();
 
         $tmp = tempnam(sys_get_temp_dir(), 'wardrobe_daily_prepare_gallery_') . '.jpg';
-        $image = imagecreatetruecolor(4, 4);
+        $image = imagecreatetruecolor(8, 4);
         imagejpeg($image, $tmp, 90);
         imagedestroy($image);
         $expectedBytes = file_get_contents($tmp);
 
         $photo = (new WardrobeItemPhoto())->setItem($item);
+        $photo->rotate(90);
         $photo->setFile(new UploadedFile($tmp, 'gallery.jpg', 'image/jpeg', null, true));
         $item->addPhoto($photo);
         $em->persist($photo);
@@ -502,10 +506,12 @@ class WardrobeDailyControllerTest extends WebTestCase
         $this->assertResponseIsSuccessful();
         $response = $client->getResponse();
         $this->assertInstanceOf(BinaryFileResponse::class, $response);
-        $this->assertSame($expectedBytes, file_get_contents($response->getFile()->getPathname()));
+        $this->assertSame('image/webp', mime_content_type($response->getFile()->getPathname()));
+        $this->assertSame([4, 8], array_slice(getimagesize($response->getFile()->getPathname()), 0, 2));
 
         /** @var StorageInterface $storage */
         $storage = static::getContainer()->get(StorageInterface::class);
+        $this->assertSame($expectedBytes, file_get_contents($storage->resolvePath($photo, 'file')));
         @unlink((string) $storage->resolvePath($photo, 'file'));
     }
 
@@ -531,6 +537,27 @@ class WardrobeDailyControllerTest extends WebTestCase
         $client->request('POST', '/api/v1/wardrobe/daily/prepare/results', [], [], ['CONTENT_TYPE' => 'application/json'], '{}');
 
         $this->assertResponseStatusCodeSame(401);
+    }
+
+    public function testPrepareResultsResolvesLegacyCategoryIntoDictionaryReference(): void
+    {
+        $client = static::createClient();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        [$owner, $wardrobe] = $this->makeWardrobeWithItems($em, 'prepare-canonical-category', 0);
+        $category = $em->getRepository(WardrobeCategory::class)->findOneBy(['code' => 'shirt'])
+            ?? (new WardrobeCategory())->setCode('shirt')->setName('Рубашка');
+        $item = (new WardrobeItem())->setUser($owner)->setWardrobe($wardrobe)->setItemNo(1);
+        $em->persist($category);
+        $em->persist($item);
+        $em->flush();
+        $client->request('POST', '/api/v1/wardrobe/daily/prepare/results', [], [], ['HTTP_X_AGENT_TOKEN' => self::TOKEN, 'CONTENT_TYPE' => 'application/json'], json_encode([
+            'items' => [['id' => $item->getId(), 'category' => 'Рубашки']],
+        ], JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        $em->clear();
+        $saved = $em->find(WardrobeItem::class, $item->getId());
+        self::assertSame($category->getId(), $saved->getCategoryRef()->getId());
+        self::assertSame('Рубашка', $saved->getCategory());
     }
 
     /**

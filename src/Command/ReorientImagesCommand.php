@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\WardrobeItemPhoto;
 use App\Repository\WardrobeItemPhotoRepository;
+use App\Service\Wardrobe\WardrobeImageSanitizer;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -34,6 +35,7 @@ final class ReorientImagesCommand extends Command
         private readonly WardrobeItemPhotoRepository $photos,
         private readonly EntityManagerInterface $entityManager,
         #[Autowire('%kernel.project_dir%/var/uploads/wardrobe')] private readonly string $uploadDir,
+        private readonly WardrobeImageSanitizer $sanitizer,
     ) {
         parent::__construct();
     }
@@ -116,14 +118,16 @@ final class ReorientImagesCommand extends Command
                 $errors[] = sprintf('#%d %s: файл отсутствует', $photo->getId(), $photo->getFilePath());
                 continue;
             }
-            $image = @imagecreatefromstring((string) file_get_contents($path));
-            if ($image === false || !imagejpeg(imagerotate($image, -(int) $angle, 0), $path, 90)) {
-                $errors[] = sprintf('#%d %s: не удалось перезаписать', $photo->getId(), $photo->getFilePath());
+            try {
+                $image = $this->sanitizer->orientedImage($path, 1);
+                imagedestroy($image);
+            } catch (\InvalidArgumentException $exception) {
+                $errors[] = sprintf('#%d %s: %s', $photo->getId(), $photo->getFilePath(), $exception->getMessage());
                 continue;
             }
-            imagedestroy($image);
-            $photo->setFileSize((int) filesize($path))
-                ->setUpdatedAt(new \DateTimeImmutable());
+            for ($turn = 0; $turn < (int) $angle / 90; ++$turn) {
+                $photo->rotate(90);
+            }
             ++$rotated;
         }
 

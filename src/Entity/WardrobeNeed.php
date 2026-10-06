@@ -26,8 +26,8 @@ class WardrobeNeed
     private ?int $id = null;
 
     #[ORM\ManyToOne]
-    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
-    private Family $family;
+    #[ORM\JoinColumn(nullable: true, onDelete: 'CASCADE')]
+    private ?Family $family;
 
     #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
@@ -62,7 +62,7 @@ class WardrobeNeed
     #[ORM\Column(nullable: true)]
     private ?\DateTimeImmutable $closedAt = null;
 
-    public function __construct(Family $family, User $subject)
+    public function __construct(?Family $family, User $subject)
     {
         $this->family = $family;
         $this->subject = $subject;
@@ -70,7 +70,7 @@ class WardrobeNeed
     }
 
     public function getId(): ?int { return $this->id; }
-    public function getFamily(): Family { return $this->family; }
+    public function getFamily(): ?Family { return $this->family; }
     public function getSubject(): User { return $this->subject; }
     public function getCategory(): WardrobeCategory { return $this->category; }
     public function getSeason(): string { return $this->season; }
@@ -115,10 +115,10 @@ class WardrobeNeed
         if (!$this->isOpen()) {
             throw new \DomainException('Потребность уже закрыта');
         }
-        if ($request->getFamily()?->getId() !== $this->family->getId()
+        if ($request->getFamily()?->getId() !== $this->family?->getId()
             || $request->getSubject()?->getId() !== $this->subject->getId()
         ) {
-            throw new \DomainException('Покупка должна быть для того же ребёнка и семьи');
+            throw new \DomainException('Покупка должна быть для того же владельца и семьи');
         }
         if ($this->purchaseRequest !== null && $this->purchaseRequest->getId() !== $request->getId()) {
             throw new \DomainException('К потребности уже привязана покупка');

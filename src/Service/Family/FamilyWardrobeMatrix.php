@@ -31,12 +31,10 @@ final class FamilyWardrobeMatrix
         if ($season !== '' && !isset(WardrobeNeed::SEASONS[$season])) {
             throw new \InvalidArgumentException('Неизвестный сезон');
         }
-        $children = $this->needsService->childrenFor($actor);
+        $children = $this->needsService->subjectsFor($actor);
         $categories = $this->categories->findActiveTree();
-        $categoryNames = [];
         $categoryCodes = [];
         foreach ($categories as $category) {
-            $categoryNames[mb_strtolower(trim($category->getName()))] = $category;
             $categoryCodes[$category->getCode()] = $category;
         }
         $seasons = array_diff_key(WardrobeNeed::SEASONS, ['all' => true]);
@@ -51,7 +49,7 @@ final class FamilyWardrobeMatrix
         $totals = array_fill_keys(array_map(static fn (User $child): int => $child->getId(), $children), 0);
         foreach ($this->items->findForFamilyMatrix($children) as $item) {
             ++$totals[$item->getUser()->getId()];
-            $category = $item->getCategoryRef() ?? $categoryNames[mb_strtolower(trim((string) $item->getCategory()))] ?? null;
+            $category = $item->getCategoryRef() ?? $this->categories->resolveActive((string) $item->getCategory(), $categories);
             if ($category === null || !isset(WardrobeNeed::SEASONS[$item->getSeason() ?? ''])) {
                 $uncategorized[] = $item;
                 continue;
@@ -65,12 +63,12 @@ final class FamilyWardrobeMatrix
         }
         $openNeeds = [];
         $closedNeeds = [];
-        foreach ($this->needs->findForFamily($actor->getFamily(), $children) as $need) {
-            if (!$need->isOpen()) {
-                $closedNeeds[] = $need;
+        foreach ($this->needs->findVisibleTo($actor, $children) as $need) {
+            if ($season !== '' && $need->getSeason() !== 'all' && $need->getSeason() !== $season) {
                 continue;
             }
-            if ($season !== '' && $need->getSeason() !== 'all' && $need->getSeason() !== $season) {
+            if (!$need->isOpen()) {
+                $closedNeeds[] = $need;
                 continue;
             }
             $openNeeds[] = $need;
@@ -109,7 +107,7 @@ final class FamilyWardrobeMatrix
         }
         unset($section);
 
-        return compact('children', 'sections', 'uncategorized', 'totals', 'openNeeds', 'closedNeeds');
+        return compact('children', 'sections', 'uncategorized', 'totals', 'openNeeds', 'closedNeeds', 'categories');
     }
 
     private function addToCell(array &$groups, WardrobeCategory $category, User $child, string $field, WardrobeItem|WardrobeNeed $record): void

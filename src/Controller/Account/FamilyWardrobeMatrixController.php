@@ -6,33 +6,84 @@ namespace App\Controller\Account;
 
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Form\FormError;
+use Symfony\Component\Form\FormInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 use App\Entity\User;
+use App\Entity\WardrobeItem;
 use App\Entity\WardrobeNeed;
+use App\Form\Account\WardrobeClassificationFormType;
 use App\Form\Account\WardrobeNeedFormType;
 use App\Repository\WardrobeCategoryRepository;
+use App\Repository\WardrobeItemRepository;
+use App\Service\FamilyService;
 use App\Service\Family\FamilyWardrobeMatrix;
 use App\Service\Family\WardrobeNeedService;
+use App\Service\Wardrobe\WardrobeManager;
+use Doctrine\ORM\EntityManagerInterface;
 
 #[Route('/account/family/matrix', name: 'account_family_')]
 final class FamilyWardrobeMatrixController extends AbstractController
 {
+    public function __construct(private readonly WardrobeCategoryRepository $categories) {}
+
     #[Route('', name: 'matrix', methods: ['GET'])]
     public function index(Request $request, FamilyWardrobeMatrix $matrix): Response
     {
         /** @var User $actor */
         $actor = $this->getUser();
         $season = $this->season($request->query->getString('season'));
-        return $this->privateResponse($this->render('account/family_wardrobe/matrix.html.twig', [
-            'matrix' => $matrix->overview($actor, $season),
-            'selectedSeason' => $season,
-            'seasons' => WardrobeNeed::SEASONS,
-            'groups' => FamilyWardrobeMatrix::GROUPS,
-            'familyActiveSection' => 'family',
-        ]));
+        return $this->renderMatrix($actor, $season, $matrix);
+    }
+
+    #[Route('/items/{id}/classify', name: 'item_classify', requirements: ['id' => '\d+'], methods: ['POST'])]
+    public function classify(
+        int $id,
+        Request $request,
+        WardrobeItemRepository $items,
+        FamilyService $families,
+        FamilyWardrobeMatrix $matrix,
+        WardrobeManager $wardrobes,
+        EntityManagerInterface $em,
+    ): Response {
+        /** @var User $actor */
+        $actor = $this->getUser();
+        $item = $items->findActiveOne($id);
+        if ($item === null) {
+            throw $this->createNotFoundException('Вещь не найдена');
+        }
+        if (!$families->canManage($actor, $item->getUser())) {
+            throw $this->createAccessDeniedException('Нет доступа к этому гардеробу');
+        }
+        if (in_array($item->getItemStatus(), [...WardrobeItem::ARCHIVE_STATUSES, WardrobeItem::ITEM_TRANSFERRED], true)
+            || $item->getWearStatus() === WardrobeItem::WEAR_GIVEN_AWAY
+        ) {
+            throw $this->createNotFoundException('Вещь недоступна в матрице');
+        }
+        $season = $this->season($request->query->getString('season'));
+        $form = $this->classificationForm($item, $this->categories->findActiveTree(), $season);
+        $token = $request->request->all($form->getName())['_token'] ?? null;
+        if (!is_string($token) || !$this->isCsrfTokenValid($form->getName(), $token)) {
+            throw $this->createAccessDeniedException('Недействительный CSRF-токен');
+        }
+        $form->handleRequest($request);
+        if ($form->isSubmitted() && $form->isValid()) {
+            $data = $form->getData();
+            $item->setCategoryRef($data['category'])->setSeason($data['season']);
+            $wardrobes->refreshCompletionStatus($item);
+            $em->flush();
+            $this->addFlash('success', 'Тип вещи и сезон сохранены');
+            if ($season !== '' && $data['season'] !== 'all' && $data['season'] !== $season) {
+                $season = $data['season'];
+            }
+            $cellSeason = $season ?: ($data['season'] === 'all' ? 'winter' : $data['season']);
+            return $this->privateResponse($this->redirectToRoute('account_family_matrix', [
+                '_fragment' => 'matrix-'.$cellSeason.'-'.$data['category']->getId().'-'.$item->getUser()->getId(),
+            ] + ($season === '' ? [] : ['season' => $season])));
+        }
+        return $this->renderMatrix($actor, $season, $matrix, $form, $item);
     }
 
     #[Route('/needs/new', name: 'need_new', methods: ['GET', 'POST'])]
@@ -41,10 +92,7 @@ final class FamilyWardrobeMatrixController extends AbstractController
     {
         /** @var User $actor */
         $actor = $this->getUser();
-        $children = $needs->childrenFor($actor);
-        if ($children === []) {
-            throw $this->createAccessDeniedException('Сначала добавьте ребёнка в семью');
-        }
+        $children = $needs->subjectsFor($actor);
         $need = $id === null ? null : $needs->findForActor($actor, $id);
         if ($need !== null) {
             $children = [$need->getSubject()];
@@ -109,6 +157,44 @@ final class FamilyWardrobeMatrixController extends AbstractController
             throw new BadRequestHttpException('Неизвестный сезон');
         }
         return $season;
+    }
+
+    private function classificationForm(WardrobeItem $item, array $categories, string $season): FormInterface
+    {
+        $name = 'wardrobe_classification_'.$item->getId();
+        $category = $item->getCategoryRef();
+        if ($category === null || !$category->isActive()) {
+            $category = $this->categories->resolveActive((string) $item->getCategory(), $categories);
+        }
+        return $this->container->get('form.factory')->createNamed($name, WardrobeClassificationFormType::class, [
+            'category' => $category,
+            'season' => isset(WardrobeNeed::SEASONS[$item->getSeason() ?? '']) ? $item->getSeason() : null,
+        ], [
+            'categories' => $categories,
+            'csrf_token_id' => $name,
+            'action' => $this->generateUrl('account_family_item_classify', ['id' => $item->getId(), 'season' => $season]),
+        ]);
+    }
+
+    private function renderMatrix(User $actor, string $season, FamilyWardrobeMatrix $matrix, ?FormInterface $invalidForm = null, ?WardrobeItem $invalidItem = null): Response
+    {
+        $overview = $matrix->overview($actor, $season);
+        if ($invalidItem !== null && !in_array($invalidItem, $overview['uncategorized'], true)) {
+            $overview['uncategorized'][] = $invalidItem;
+        }
+        $classificationForms = [];
+        foreach ($overview['uncategorized'] as $item) {
+            $form = $invalidItem?->getId() === $item->getId() ? $invalidForm : $this->classificationForm($item, $overview['categories'], $season);
+            $classificationForms[$item->getId()] = $form->createView();
+        }
+        return $this->privateResponse($this->render('account/family_wardrobe/matrix.html.twig', [
+            'matrix' => $overview,
+            'classificationForms' => $classificationForms,
+            'selectedSeason' => $season,
+            'seasons' => WardrobeNeed::SEASONS,
+            'groups' => FamilyWardrobeMatrix::GROUPS,
+            'familyActiveSection' => 'family',
+        ], new Response(status: $invalidForm === null ? 200 : 422)));
     }
 
     private function matrixRedirect(string $season): Response

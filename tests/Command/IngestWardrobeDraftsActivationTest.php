@@ -12,6 +12,9 @@ use App\Repository\WardrobeActivationEventRepository;
 use App\Entity\WardrobeActivationEvent;
 use App\Service\Wardrobe\WardrobeActivationService;
 use App\Service\Wardrobe\WardrobeAiService;
+use App\Service\Wardrobe\WardrobeImageVariants;
+use App\Service\Wardrobe\WardrobeImageSanitizer;
+use Symfony\Component\Filesystem\Filesystem;
 use App\Service\WardrobeAiMeter;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
@@ -57,6 +60,7 @@ final class IngestWardrobeDraftsActivationTest extends TestCase
                 $storage,
                 $meter,
                 $projectDir,
+                new WardrobeImageVariants($projectDir, new WardrobeImageSanitizer()),
                 $activation,
             );
             self::assertSame(Command::SUCCESS, (new CommandTester($command))->execute([]));
@@ -91,19 +95,20 @@ final class IngestWardrobeDraftsActivationTest extends TestCase
         ]);
         $storage = $this->createStub(StorageInterface::class);
         $photo = tempnam(sys_get_temp_dir(), 'wardrobe_worker_');
+        $image = imagecreatetruecolor(8, 4);
+        imagejpeg($image, $photo);
+        imagedestroy($image);
         $storage->method('resolvePath')->willReturn($photo);
         $meter = $this->createStub(WardrobeAiMeter::class);
         $meter->method('allowed')->willReturn(true);
         $projectDir = sys_get_temp_dir().'/wardrobe_attributes_'.bin2hex(random_bytes(4));
         mkdir($projectDir.'/var', 0777, true);
         try {
-            $command = new IngestWardrobeDraftsCommand($drafts, $ai, $storage, $meter, $projectDir);
+            $command = new IngestWardrobeDraftsCommand($drafts, $ai, $storage, $meter, $projectDir, new WardrobeImageVariants($projectDir, new WardrobeImageSanitizer()));
             self::assertSame(Command::SUCCESS, (new CommandTester($command))->execute([]));
         } finally {
             unlink($photo);
-            unlink($projectDir.'/var/wardrobe_ingest_drafts.lock');
-            rmdir($projectDir.'/var');
-            rmdir($projectDir);
+            (new Filesystem())->remove($projectDir);
         }
     }
 

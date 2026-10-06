@@ -18,6 +18,7 @@ use App\Entity\WardrobeShareReaction;
 use App\Service\Circle\CircleReactionService;
 use App\Service\Circle\CircleService;
 use App\Service\FamilyService;
+use App\Service\Wardrobe\WardrobeImageVariants;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -398,7 +399,7 @@ class CircleController extends AbstractController
      * account_wardrobe_media_* невозможно: тот пускает только семью.
      */
     #[Route('/media/photo/{id}', name: 'account_circles_media_photo', requirements: ['id' => '\\d+'], methods: ['GET'])]
-    public function media(int $id, StorageInterface $storage): Response
+    public function media(int $id, StorageInterface $storage, WardrobeImageVariants $variants): Response
     {
         /** @var User $actor */
         $actor = $this->getUser();
@@ -411,7 +412,11 @@ class CircleController extends AbstractController
             throw $this->createNotFoundException();
         }
 
-        $response = new BinaryFileResponse((string) $storage->resolvePath($photo, 'file'));
+        $path = $storage->resolvePath($photo, 'file');
+        if ($path === null || !is_file($path)) {
+            throw $this->createNotFoundException();
+        }
+        $response = new BinaryFileResponse($variants->path($path, 'medium', $photo->getRotation()));
         $response->setPrivate();
         $response->setMaxAge(0);
         $response->headers->addCacheControlDirective('no-store');

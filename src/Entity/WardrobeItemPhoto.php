@@ -60,6 +60,9 @@ class WardrobeItemPhoto
     #[ORM\Column(nullable: true)]
     private ?int $fileSize = null;
 
+    #[ORM\Column(options: ['default' => 0])]
+    private int $rotation = 0;
+
     #[ORM\Column(options: ['default' => false])]
     private bool $isCover = false;
 
@@ -105,6 +108,15 @@ class WardrobeItemPhoto
     public function setMimeType(?string $mimeType): static { $this->mimeType = $mimeType; return $this; }
     public function getFileSize(): ?int { return $this->fileSize; }
     public function setFileSize(?int $fileSize): static { $this->fileSize = $fileSize; return $this; }
+    public function getRotation(): int { return $this->rotation; }
+    public function rotate(int $degrees): void
+    {
+        if (!in_array($degrees, [90, -90], true)) {
+            throw new \InvalidArgumentException('Неверный угол');
+        }
+        $this->rotation = ($this->rotation + $degrees + 360) % 360;
+        $this->updatedAt = new \DateTimeImmutable();
+    }
     public function isCover(): bool { return $this->isCover; }
     public function setIsCover(bool $isCover): static { $this->isCover = $isCover; return $this; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }

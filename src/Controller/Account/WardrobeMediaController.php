@@ -12,8 +12,10 @@ use App\Entity\WardrobeOutfit;
 use App\Entity\WardrobeWearEvent;
 use App\Service\FamilyService;
 use App\Service\Wardrobe\WardrobeOutfitCollageRenderer;
+use App\Service\Wardrobe\WardrobeImageVariants;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Routing\Attribute\Route;
@@ -28,38 +30,40 @@ final class WardrobeMediaController extends AbstractController
     ) {}
 
     #[Route('/item/{id}', name: 'item', requirements: ['id' => '\\d+'], methods: ['GET'])]
-    public function item(WardrobeItem $item, FamilyService $families, StorageInterface $storage): Response
+    public function item(WardrobeItem $item, FamilyService $families, StorageInterface $storage, WardrobeImageVariants $variants, Request $request): Response
     {
         $this->assertCanView($item->getUser(), $families);
 
-        return $this->mediaResponse($storage->resolvePath($item, 'photoFile'), $item->getPhoto(), 'wardrobe');
+        $cover = $item->getCoverPhoto();
+        $rotation = $cover?->getFilePath() === $item->getPhoto() ? $cover?->getRotation() ?? 0 : 0;
+        return $this->mediaResponse($storage->resolvePath($item, 'photoFile'), $item->getPhoto(), 'wardrobe', $variants, $request->query->getString('size', 'preview'), $rotation);
     }
 
     #[Route('/photo/{id}', name: 'photo', requirements: ['id' => '\\d+'], methods: ['GET'])]
-    public function photo(WardrobeItemPhoto $photo, FamilyService $families, StorageInterface $storage): Response
+    public function photo(WardrobeItemPhoto $photo, FamilyService $families, StorageInterface $storage, WardrobeImageVariants $variants, Request $request): Response
     {
         if ($photo->isDeleted()) {
             throw $this->createNotFoundException();
         }
         $this->assertCanView($photo->getItem()?->getUser(), $families);
 
-        return $this->mediaResponse($storage->resolvePath($photo, 'file'), $photo->getFilePath(), 'wardrobe');
+        return $this->mediaResponse($storage->resolvePath($photo, 'file'), $photo->getFilePath(), 'wardrobe', $variants, $request->query->get('size', 'preview'), $photo->getRotation());
     }
 
     #[Route('/draft/{id}', name: 'draft', requirements: ['id' => '\\d+'], methods: ['GET'])]
-    public function draft(WardrobeItemDraft $draft, FamilyService $families, StorageInterface $storage): Response
+    public function draft(WardrobeItemDraft $draft, FamilyService $families, StorageInterface $storage, WardrobeImageVariants $variants, Request $request): Response
     {
         $this->assertCanView($draft->getProfileSubject(), $families);
 
-        return $this->mediaResponse($storage->resolvePath($draft, 'photoFile'), $draft->getPhoto(), 'wardrobe_drafts');
+        return $this->mediaResponse($storage->resolvePath($draft, 'photoFile'), $draft->getPhoto(), 'wardrobe_drafts', $variants, $request->query->get('size', 'preview'));
     }
 
     #[Route('/wear/{id}', name: 'wear', requirements: ['id' => '\\d+'], methods: ['GET'])]
-    public function wear(WardrobeWearEvent $event, FamilyService $families, StorageInterface $storage): Response
+    public function wear(WardrobeWearEvent $event, FamilyService $families, StorageInterface $storage, WardrobeImageVariants $variants, Request $request): Response
     {
         $this->assertCanView($event->getProfileSubject(), $families);
 
-        return $this->mediaResponse($storage->resolvePath($event, 'photoFile'), null, 'wardrobe_wear');
+        return $this->mediaResponse($storage->resolvePath($event, 'photoFile'), null, 'wardrobe_wear', $variants, $request->query->get('size', 'preview'));
     }
 
     /**
@@ -86,7 +90,7 @@ final class WardrobeMediaController extends AbstractController
         }
     }
 
-    private function mediaResponse(?string $path, ?string $legacyName, string $legacyDirectory): BinaryFileResponse
+    private function mediaResponse(?string $path, ?string $legacyName, string $legacyDirectory, ?WardrobeImageVariants $variants = null, string $size = 'preview', int $rotation = 0): BinaryFileResponse
     {
         if (($path === null || !is_file($path)) && $legacyName !== null) {
             $root = realpath($this->projectDir.'/public_html/images/'.$legacyDirectory);
@@ -108,6 +112,13 @@ final class WardrobeMediaController extends AbstractController
             throw $this->createNotFoundException();
         }
 
+        if ($variants !== null) {
+            try {
+                $path = $variants->path($path, in_array($size, ['preview', 'medium'], true) ? $size : 'preview', $rotation);
+            } catch (\InvalidArgumentException $exception) {
+                throw $this->createNotFoundException(previous: $exception);
+            }
+        }
         $response = new BinaryFileResponse($path);
         $response->setPrivate();
         $response->setMaxAge(0);

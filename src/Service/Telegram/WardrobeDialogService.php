@@ -10,6 +10,7 @@ use App\Entity\WardrobeItem;
 use App\Notification\TelegramNotifier;
 use App\Repository\TelegramDialogStateRepository;
 use App\Repository\WardrobeItemRepository;
+use App\Repository\WardrobeCategoryRepository;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeManager;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -47,6 +48,7 @@ class WardrobeDialogService
         private readonly WardrobeAiService $ai,
         private readonly WardrobeManager $wardrobeManager,
         private readonly LoggerInterface $telegramLogger,
+        private readonly WardrobeCategoryRepository $categories,
     ) {}
 
     /**
@@ -337,12 +339,20 @@ class WardrobeDialogService
     {
         $item = new WardrobeItem();
         $item->setCategory((string) $draft['category']);
+        $category = $this->categories->resolveActive((string) $draft['category'], $this->categories->findActiveTree());
+        if ($category !== null) {
+            $item->setCategoryRef($category);
+        }
         $item->setName((string) $draft['name']);
         $item->setSize(isset($draft['size']) ? (string) $draft['size'] : null);
         $item->setPrice(isset($draft['price']) ? (string) $draft['price'] : null);
         $item->setProductUrl(isset($draft['product_url']) ? (string) $draft['product_url'] : null);
         $item->setPurchaseReason(isset($draft['purchase_reason']) ? (string) $draft['purchase_reason'] : null);
         $item->setNotes(isset($draft['notes']) ? (string) $draft['notes'] : null);
+        $item->setColorName(is_string($draft['colorName'] ?? null) ? $draft['colorName'] : null);
+        $item->setMaterialText(is_string($draft['materialText'] ?? null) ? $draft['materialText'] : null);
+        $season = $draft['season'] ?? null;
+        $item->setSeason(in_array($season, ['all', 'spring', 'summer', 'autumn', 'winter'], true) ? $season : null);
         $item->setLoveAtFirstSight(isset($draft['love']) ? (string) $draft['love'] : null);
         $item->setSource(WardrobeItem::SOURCE_TELEGRAM);
         if (isset($draft['purchased_at'])) {
@@ -370,6 +380,9 @@ class WardrobeDialogService
             // Гонка за item_no: один retry со свежим номером (EM после исключения закрыт)
             $this->doctrine->resetManager();
             $em = $this->doctrine->getManager();
+            if ($item->getCategoryRef() !== null) {
+                $item->setCategoryRef($em->getReference(\App\Entity\WardrobeCategory::class, $item->getCategoryRef()->getId()));
+            }
             /** @var User $user */
             $user = $em->find(User::class, $user->getId());
             $this->wardrobeManager->forgetDefault($user);

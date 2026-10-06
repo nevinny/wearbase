@@ -8,6 +8,7 @@ use App\Entity\WardrobeItemDraft;
 use App\Repository\WardrobeItemDraftRepository;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WardrobeActivationService;
+use App\Service\Wardrobe\WardrobeImageVariants;
 use App\Service\WardrobeAiMeter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -43,6 +44,7 @@ class IngestWardrobeDraftsCommand extends Command
         private readonly WardrobeAiMeter $meter,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
+        private readonly WardrobeImageVariants $variants,
         private readonly ?WardrobeActivationService $activation = null,
     ) {
         parent::__construct();
@@ -116,7 +118,7 @@ class IngestWardrobeDraftsCommand extends Command
             }
 
             try {
-                $result = $this->ai->suggestFromPhoto($path, $draft->getProfileSubject());
+                $result = $this->ai->suggestFromPhoto($this->variants->path($path, 'medium'), $draft->getProfileSubject());
             } catch (\Throwable $exception) {
                 if ($draft->getAttempts() >= 3) {
                     if ($this->draftRepo->finishClaim($draftId, $workerId, WardrobeItemDraft::STATUS_FAILED, error: $exception->getMessage())) {
