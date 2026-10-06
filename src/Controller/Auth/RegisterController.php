@@ -13,6 +13,8 @@ use App\Form\Auth\BrandRegistrationFormType;
 use App\Form\Auth\RegistrationFormType;
 use App\Notification\AdminNotifier;
 use App\Notification\EmailNotifier;
+use App\Repository\BrandRepository;
+use App\Service\ClaimFlowDetector;
 use App\Service\Look\LookShareReferralService;
 use App\Service\Referral\ReferralRewardService;
 use App\Service\SubscriptionFactory;
@@ -45,6 +47,8 @@ class RegisterController extends AbstractController
         AdminNotifier $adminNotifier,
         LookShareReferralService $lookShareReferrals,
         ReferralRewardService $referralRewards,
+        BrandRepository $brandRepo,
+        ClaimFlowDetector $claimFlow,
     ): Response {
         if ($this->getUser()) {
             return $this->redirectToRoute(
@@ -52,14 +56,44 @@ class RegisterController extends AbstractController
             );
         }
 
-        $isBrand = (bool) $request->query->get('brand');
+        // Пришёл с /brand-claim/{id}: нужен обычный аккаунт, бренд не создаём (иначе дубль карточки).
+        // Бренд-роли выдаст одобрение заявки (BrandClaimService), возврат на заявку — LoginSuccessHandler.
+        $isBrand = (bool) $request->query->get('brand') && $claimFlow->claimBrandId($request) === null;
+
+        // Чекбокс «Это другой бренд» есть в форме только если он пришёл в POST (гард ниже
+        // его же и показывает); без него форма строится как раньше.
+        $formClass = $isBrand ? BrandRegistrationFormType::class : RegistrationFormType::class;
+        $withConfirm = $isBrand && array_key_exists('notDuplicate', $request->request->all('brand_registration_form'));
+        $formOptions = $withConfirm ? ['confirm_different' => true] : [];
 
         $user = new User();
-        $form = $this->createForm(
-            $isBrand ? BrandRegistrationFormType::class : RegistrationFormType::class,
-            $user
-        );
+        $form = $this->createForm($formClass, $user, $formOptions);
         $form->handleRequest($request);
+
+        // Гард точного совпадения: бренд с таким именем/слагом уже в каталоге.
+        $duplicate = null;
+        if ($isBrand && $form->isSubmitted()) {
+            $enteredTitle = trim((string) $form->get('brandTitle')->getData());
+            $baseSlug = strtolower((string) $slugger->slug($enteredTitle));
+            $duplicate = $enteredTitle === '' ? null : $brandRepo->findLiveExactDuplicate($enteredTitle, $baseSlug);
+            $confirmed = $withConfirm && (bool) $form->get('notDuplicate')->getData();
+
+            if ($duplicate !== null && !$confirmed && $form->isValid()) {
+                // Ничего не создаём: показываем форму заново с блоком и чекбоксом, введённое сохраняем
+                // (пароль браузер не возвращает — вводится заново).
+                $form = $this->createForm($formClass, $user, ['confirm_different' => true]);
+                $form->get('brandTitle')->setData($enteredTitle);
+
+                return $this->render('auth/register_brand.html.twig', [
+                    'form' => $form,
+                    'isBrand' => true,
+                    'duplicate' => $duplicate,
+                    'duplicate_public' => $duplicate->getStatus() === Statuses::Active,
+                    'look_share_ref' => $this->lookShareParam($request),
+                    'look_share_target' => $this->validatedLookShareTarget($request),
+                ]);
+            }
+        }
 
         if ($form->isSubmitted() && $form->isValid()) {
             $user->setPassword(
@@ -75,6 +109,7 @@ class RegisterController extends AbstractController
                 $brand = new Brand();
                 $brand->setTitle($brandTitle);
                 $brand->setSlug($this->generateUniqueSlug($slugger, $em, $brandTitle));
+
                 // Премодерация: карточка НЕ публикуется по факту регистрации. Дефолт трейта Status —
                 // Active, то есть раньше бренд с одним лишь названием мгновенно попадал в каталог и
                 // sitemap, минуя ниша-гейт и origin-гейт (docs/foreign_brands_policy.md). Владелец
@@ -97,12 +132,13 @@ class RegisterController extends AbstractController
                 $moderation->setSource(BrandModeration::SOURCE_SELF_REGISTER);
                 $em->persist($moderation);
 
-                // Карточка ждёт модерации — владелец об этом видит баннер в ЛК, а мы узнаём в TG.
-                $adminNotifier->send(sprintf(
+                // Карточка ждёт модерации — владелец об этом видит баннер в ЛК, а мы узнаём в TG
+                // (отправка — после flush: в строке дубля нужен id нового бренда).
+                $adminMessage = sprintf(
                     "\xF0\x9F\x86\x95 <b>Самостоятельная регистрация бренда</b>\nБренд: %s\nВладелец: %s\nСтатус: на модерации (не опубликован)",
                     htmlspecialchars($brandTitle, ENT_QUOTES, 'UTF-8'),
                     htmlspecialchars((string) $user->getEmail(), ENT_QUOTES, 'UTF-8'),
-                ));
+                );
             } else {
                 // Regular customer registration
                 $user->setRoles(['ROLE_CUSTOMER']);
@@ -116,6 +152,18 @@ class RegisterController extends AbstractController
             $user->setEmailVerificationToken($token);
 
             $em->flush();
+
+            if (isset($adminMessage)) {
+                if ($duplicate !== null) {
+                    $adminMessage .= sprintf(
+                        "\n\xE2\x9A\xA0\xEF\xB8\x8F возможный дубль: https://wearbase.ru/ru/brands/%s — <code>php bin/console app:brand:merge %d %d</code>",
+                        $duplicate->getSlug(),
+                        $brand->getId(),
+                        $duplicate->getId(),
+                    );
+                }
+                $adminNotifier->send($adminMessage);
+            }
 
             $emailNotifier->send(
                 $user,
@@ -158,6 +206,8 @@ class RegisterController extends AbstractController
             [
                 'form' => $form,
                 'isBrand' => $isBrand,
+                'duplicate' => $duplicate,
+                'duplicate_public' => $duplicate?->getStatus() === Statuses::Active,
                 // Скрытые поля CTA лендинга: переживают POST при ошибках валидации формы.
                 'look_share_ref' => $this->lookShareParam($request),
                 'look_share_target' => $this->validatedLookShareTarget($request),
