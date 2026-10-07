@@ -10,6 +10,7 @@ use App\Entity\SocialPost;
 use App\Repository\SocialChannelRepository;
 use App\Repository\SocialPostRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -105,6 +106,58 @@ class SocialEnqueueWardrobeReelsCommandTest extends TestCase
     {
         $this->em->expects(self::never())->method('persist');
         self::assertSame(1, $this->executeImport([$this->entry('digitize-v1'), $this->entry('digitize-v1')], true));
+    }
+
+    public function testReadyTemplateIsQueuedUnderTemplatesCampaign(): void
+    {
+        $saved = [];
+        $this->em->expects(self::once())->method('persist')->willReturnCallback(
+            static function (SocialPost $post) use (&$saved): void { $saved[] = $post; },
+        );
+        self::assertSame(0, $this->executeImport([$this->templateEntry()], true));
+        self::assertSame('wardrobe-templates-v1.t11-kakoy-u-neyo-razmer-v1', $saved[0]->getScriptKey());
+        self::assertSame('hook_1', $saved[0]->getVariant());
+        self::assertSame(5, $saved[0]->getSlideCount());
+        self::assertFalse($saved[0]->isAiGenerated());
+    }
+
+    #[DataProvider('draftTemplateProvider')]
+    public function testDraftTemplateIsNeverQueued(array $override): void
+    {
+        $this->em->expects(self::never())->method('persist');
+        $this->em->expects(self::never())->method('flush');
+        self::assertSame(1, $this->executeImport([$this->templateEntry($override)], true));
+    }
+
+    public static function draftTemplateProvider(): iterable
+    {
+        yield 'draft=true' => [['draft' => true]];
+        yield 'нет флага draft' => [['draft' => null]];
+        yield 'нет ассетов' => [['assets_missing' => ['01', '04']]];
+        yield 'переменные по умолчанию' => [['variables_missing' => ['N']]];
+        yield 'шаблон не ready' => [['template' => ['status' => 'partial']]];
+    }
+
+    public function testTemplateIdWithLegacyCampaignIsRefused(): void
+    {
+        $this->em->expects(self::never())->method('persist');
+        self::assertSame(1, $this->executeImport([$this->templateEntry(['campaign' => 'wardrobe-v1'])], true));
+    }
+
+    public function testDraftInBatchBlocksWholeBatch(): void
+    {
+        $this->em->expects(self::never())->method('persist');
+        $this->em->expects(self::never())->method('flush');
+        self::assertSame(1, $this->executeImport([$this->entry('digitize-v1'), $this->templateEntry(['draft' => true])], true));
+    }
+
+    private function templateEntry(array $override = []): array
+    {
+        return array_merge($this->entry('t11-kakoy-u-neyo-razmer-v1'), [
+            'campaign' => 'wardrobe-templates-v1', 'draft' => false, 'assets_missing' => [], 'variables_missing' => [],
+            'template' => ['id' => 11, 'status' => 'ready'], 'ai_generated' => false,
+            'beats' => [['n' => 1], ['n' => 2], ['n' => 3], ['n' => 4], ['n' => 5]],
+        ], $override);
     }
 
     private function entry(string $id): array
