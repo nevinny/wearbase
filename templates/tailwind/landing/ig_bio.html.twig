@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, follow">
+    <meta name="theme-color" content="#ffffff">
+    <title>WEARBASE — ссылки</title>
+    <link rel="icon" href="/images/logo.svg" type="image/svg+xml">
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    {% include 'tailwind/_yandex_metrika.html.twig' %}
+</head>
+<body class="min-h-screen bg-gray-50 text-gray-900 antialiased">
+{% set utm = 'utm_source=instagram&utm_medium=bio&utm_campaign=' %}
+<main class="mx-auto flex min-h-screen max-w-md flex-col items-center px-5 py-10">
+    <img src="/images/logo.svg" alt="WEARBASE" width="80" height="80" class="h-20 w-20 rounded-2xl shadow-sm">
+    <h1 class="mt-4 text-2xl font-bold tracking-tight">WEARBASE</h1>
+    <p class="mt-2 text-center text-sm text-gray-500">Цифровой гардероб семьи и каталог российских брендов одежды</p>
+
+    <nav class="mt-8 flex w-full flex-col gap-3">
+        <a href="{{ path('landing_wardrobe', {_locale: 'ru'}) }}?{{ utm }}wardrobe" data-goal="ig_bio_wardrobe"
+           class="block rounded-xl bg-gray-900 px-5 py-5 text-center text-lg font-semibold text-white shadow-sm hover:bg-black">
+            Цифровой гардероб семьи
+            <span class="mt-1 block text-xs font-normal text-gray-300">Вещи, образы, передача по наследству</span>
+        </a>
+        <a href="{{ path('home_hub', {_locale: 'ru'}) }}?{{ utm }}catalog" data-goal="ig_bio_catalog"
+           class="block rounded-xl border border-gray-200 bg-white px-5 py-4 text-center text-base font-semibold text-gray-900 shadow-sm hover:bg-gray-100">
+            Каталог российских брендов
+        </a>
+        <a href="https://t.me/wearbaseru" target="_blank" rel="noopener" data-goal="ig_bio_telegram"
+           class="block rounded-xl border border-gray-200 bg-white px-5 py-4 text-center text-base font-semibold text-gray-900 shadow-sm hover:bg-gray-100">
+            Telegram-канал
+        </a>
+    </nav>
+</main>
+<script>
+    document.addEventListener('click', function (e) {
+        var a = e.target.closest('a[data-goal]');
+        if (a && window.ym) { ym(105219484, 'reachGoal', a.dataset.goal); }
+    });
+</script>
+</body>
+</html>
