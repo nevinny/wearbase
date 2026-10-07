@@ -65,13 +65,14 @@ function drawCover(el, w, h, z, fx, fy) {
     const k = Math.max(W / w, H / h) * z, dw = w * k, dh = h * k;
     g.drawImage(el, (W - dw) / 2 + fx, (H - dh) / 2 + fy, dw, dh);
 }
+const BLUR = 'blur(22px) brightness(.72)';
 function drawMedia(shot, p, local) {
     const el = media.get(shot.src);
     const w = el.videoWidth || el.naturalWidth, h = el.videoHeight || el.naturalHeight;
     const z = lerp(shot.zoom.z0, shot.zoom.z1, p), fx = lerp(shot.zoom.x0, shot.zoom.x1, p), fy = lerp(shot.zoom.y0, shot.zoom.y1, p);
     if (shot.mediaKind === 'photo' || Math.abs(w / h - W / H) < .05) { drawCover(el, w, h, z, fx, fy); return; }
     // Скрин не 9:16: размытый фон + вписывание целиком, без обрезки интерфейса.
-    g.filter = 'blur(40px) brightness(.6)'; drawCover(el, w, h, 1.2, 0, 0); g.filter = 'none';
+    g.filter = 'blur(40px) brightness(.6)'; drawCover(el, w, h, 1.2, 0, 0); g.filter = shot.blur ? BLUR : 'none';
     const k = Math.min(W / w, H / h);
     g.drawImage(el, (W - w * k) / 2, (H - h * k) / 2, w * k, h * k);
 }
@@ -104,6 +105,37 @@ function drawBadge() {
     g.fillStyle = '#FFFFFF'; g.font = '800 34px Wardrobe'; g.textBaseline = 'top'; g.fillText('DRAFT', 44, 31);
 }
 
+// Экран-пояснение (CTA): абзацы белым ≥64 px слева, действие — на плашке акцентного цвета; всё в безопасной зоне.
+const EXP_X = 80, EXP_W = W - 160, EXP_TOP = SAFE_TOP + 40, EXP_BOTTOM = SAFE_BOTTOM - 40;
+function layoutExplainer(e) {
+    for (let size = 72; ; size -= 2) {
+        const lh = Math.round(size * 1.24), gap = Math.round(size * .7), aSize = size + 6;
+        const paras = e.paragraphs.map(t => wrap(t, size, 700, EXP_W));
+        const action = wrap(e.action, aSize, 800, EXP_W - 80);
+        const aH = action.length * Math.round(aSize * 1.2) + 56;
+        const height = paras.reduce((s, l) => s + l.length * lh, 0) + gap * paras.length + aH;
+        if (EXP_TOP + height <= EXP_BOTTOM || size <= 56) {
+            const top = Math.max(EXP_TOP, Math.round((SAFE_TOP + SAFE_BOTTOM) / 2 - height / 2));
+            return {size, lh, gap, aSize, paras, action, aH, top, bottom: top + height};
+        }
+    }
+}
+function drawExplainer(e, t) {
+    const m = layoutExplainer(e), a = Math.min(1, Math.max(0, (t - e.from) / .35));
+    g.globalAlpha = a; g.textBaseline = 'top'; g.textAlign = 'left';
+    g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 12; g.shadowOffsetY = 2;
+    let y = m.top;
+    g.fillStyle = '#FFFFFF'; g.font = `700 ${m.size}px Wardrobe`;
+    for (const lines of m.paras) { for (const l of lines) { g.fillText(l, EXP_X, y); y += m.lh; } y += m.gap; }
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    g.font = `800 ${m.aSize}px Wardrobe`;
+    const aw = Math.max(...m.action.map(l => g.measureText(l).width)) + 80;
+    box(EXP_X, y, aw, m.aH, '#5B5BD6', 28);
+    g.fillStyle = '#FFFFFF';
+    m.action.forEach((l, i) => g.fillText(l, EXP_X + 40, y + 28 + i * Math.round(m.aSize * 1.2)));
+    g.globalAlpha = 1;
+}
+
 window.setup = async d => {
     data = d;
     await document.fonts.ready; await document.fonts.load('800 80px Wardrobe'); await document.fonts.load('700 40px Wardrobe');
@@ -119,7 +151,8 @@ window.setup = async d => {
         }
         media.set(shot.src, el);
     }
-    return d.plates.map(p => ({text: p.text, ...layoutPlate(p.text)}));
+    return [...d.plates.map(p => ({text: p.text, ...layoutPlate(p.text)})),
+        ...(d.explainers || []).map(e => ({explainer: true, text: e.paragraphs.join(' '), ...layoutExplainer(e)}))];
 };
 window.render = async time => {
     const shot = data.shots.find(s => time >= s.from && time < s.to) || data.shots.at(-1);
@@ -131,12 +164,17 @@ window.render = async time => {
         g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
         const el = media.get(shot.src);
         if (el.tagName === 'VIDEO') {
-            const target = Math.min(time - shot.from, Math.max(0, el.duration - .05));
+            const target = Math.min(time - shot.from + (shot.offset || 0), Math.max(0, el.duration - .05));
             if (Math.abs(el.currentTime - target) > .012) await new Promise(ok => { el.onseeked = ok; el.currentTime = target; });
         }
+        if (shot.blur) g.filter = BLUR;
         drawMedia(shot, p, time - shot.from);
+        g.filter = 'none';
+        if (shot.blur) { g.fillStyle = 'rgba(20,22,60,.38)'; g.fillRect(0, 0, W, H); }
     }
     const plate = data.plates.find(x => time >= x.from && time < x.to) || (time >= data.total ? data.plates.at(-1) : null);
+    const exp = (data.explainers || []).find(e => time >= e.from && time < e.to);
+    if (exp) drawExplainer(exp, time);
     if (shot.ai) drawAiBadge();
     if (plate && plate.text) drawPlate(plate.text);
     if (data.draft) drawBadge();

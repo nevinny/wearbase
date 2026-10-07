@@ -40,8 +40,21 @@ function motion(photo, index, dur) {
 }
 const reverse = m => ({z0: m.z1, z1: m.z0, x0: m.x1, x1: m.x0, y0: m.y1, y1: m.y0});
 
+// CTA из каталога: экран-пояснение (1–2 абзаца + действие) вставляется перед лупом, луп сдвигается на его длину.
+// Кадр — последний кадр продукта, размытый: читать текст, а не интерфейс.
+function withCta(template) {
+    if (!template.cta) return template;
+    const li = template.beats.findIndex(b => b.frame.type === 'loop');
+    if (li < 1) throw new Error(`#${template.id}: CTA без лупа`);
+    const d = template.cta.duration, loop = template.beats[li];
+    const cta = {n: 'cta', start: loop.start, end: loop.start + d, frame: {type: 'cta', desc: 'экран-пояснение на размытом последнем кадре продукта'},
+        plate: '', plateSource: 'cta', silenceAfter: 0};
+    const beats = [...template.beats.slice(0, li), cta, ...template.beats.slice(li).map(b => ({...b, start: b.start + d, end: b.end + d}))];
+    return {...template, beats};
+}
+
 function buildTimeline(template, ev) {
-    const shots = [], plates = [], silences = [];
+    const shots = [], plates = [], silences = [], explainers = [];
     const byBeat = new Map();
     template.beats.forEach((beat, bi) => {
         const n = beat.shots || 1, step = (beat.end - beat.start) / n;
@@ -50,6 +63,13 @@ function buildTimeline(template, ev) {
             const from = beat.start + step * (k - 1), to = beat.start + step * k;
             let shot;
             if (beat.frame.fill) shot = {kind: 'dark'};
+            else if (beat.frame.type === 'cta') {
+                // Последний кадр продукта (запись экрана), иначе — последний кадр перед CTA; видео продолжается с места остановки.
+                const prev = shots.filter(s => s.mediaKind === 'screen').at(-1) || shots.at(-1);
+                const m = prev.zoom;
+                shot = {...prev, blur: true, offset: (prev.offset || 0) + (prev.to - prev.from), zoom: {z0: m.z1 * 1.12, z1: m.z1 * 1.16, x0: m.x1, x1: m.x1, y0: m.y1, y1: m.y1}}; // запас под размытие: края не темнеют
+                explainers.push({from, to, paragraphs: template.cta.paragraphs.map(p => lib.substitute(p, ev.vars.values)), action: template.cta.action});
+            }
             else if (beat.frame.type === 'loop') {
                 // Луп: тот же кадр, что и первый; движение в обратную сторону — последний кадр = первому кадру (шов без скачка).
                 const first = byBeat.get(beat.frame.loopOf)[0];
@@ -75,7 +95,7 @@ function buildTimeline(template, ev) {
         if (beat.silenceAfter) silences.push([beat.end, beat.end + beat.silenceAfter]);
     });
     const total = template.beats.at(-1).end;
-    return {shots, plates, silences, total};
+    return {shots, plates, silences, explainers, total};
 }
 
 function audioFilter(total, silences) {
@@ -90,7 +110,8 @@ function pickBed(template) {
     return tracks.length ? path.join(dir, tracks[template.id % tracks.length]) : null;
 }
 
-async function renderOne(page, catalog, template, ev, outBase, fps) {
+async function renderOne(page, catalog, baseTemplate, ev, outBase, fps) {
+    const template = withCta(baseTemplate);
     const slugId = `t${template.slug}-v1`;
     const work = path.join(outBase, slugId);
     fs.mkdirSync(work, {recursive: true});
@@ -106,10 +127,15 @@ async function renderOne(page, catalog, template, ev, outBase, fps) {
         if (existing.fingerprint === fingerprint && duration(output) > 0) { console.log(`Cached ${slugId}`); return existing; }
     }
     await page.goto(pathToFileURL(path.join(__dirname, 'scene-template.html')).href);
-    const metrics = await page.evaluate(d => window.setup(d), {shots: timeline.shots, plates: timeline.plates, total: timeline.total, draft: ev.draft});
+    const metrics = await page.evaluate(d => window.setup(d), {shots: timeline.shots, plates: timeline.plates, explainers: timeline.explainers, total: timeline.total, draft: ev.draft});
     const warnings = [];
     metrics.forEach(m => {
         if (!m.text) return;
+        if (m.explainer) {
+            if (m.size < 64) warnings.push(`пояснение «${m.text.slice(0, 40)}…»: кегль ${m.size} < 64`);
+            if (m.top < 300 || m.bottom > 1500) warnings.push(`пояснение вне безопасной зоны (${m.top}–${m.bottom})`);
+            return;
+        }
         if (m.size < 76) warnings.push(`плашка «${m.text.replace(/\n/g, ' / ')}»: кегль ${m.size} < 76`);
         if (m.top < 300 || m.bottom > 1500) warnings.push(`плашка «${m.text.replace(/\n/g, ' / ')}» вне безопасной зоны (${m.top}–${m.bottom})`);
     });
@@ -155,6 +181,7 @@ async function renderOne(page, catalog, template, ev, outBase, fps) {
         duration_ms: Math.round(duration(output) * 1000), caption, gate: template.gate ? lib.substitute(template.gate, ev.vars.values) : null,
         cta_url: catalog.cta_url, cta_label: catalog.cta_label,
         beats: template.beats.map(b => ({n: b.n, start: b.start, end: b.end, type: b.frame.type, plate: lib.substitute(b.plate, ev.vars.values), silenceAfter: b.silenceAfter})),
+        cta: template.cta ? {paragraphs: template.cta.paragraphs.map(p => lib.substitute(p, ev.vars.values)), action: template.cta.action, duration: template.cta.duration} : null,
         draft: ev.draft, draft_reasons: ev.reasons, assets_missing: ev.assets.missing, variables_missing: ev.vars.missing,
         warnings, ai_generated: ev.aiAssets.length > 0, ai_assets: ev.aiAssets, ai_badge: ev.aiBadge, audio: bed ? path.basename(bed) : null,
         publication_status: ev.draft ? 'draft' : 'preview',
