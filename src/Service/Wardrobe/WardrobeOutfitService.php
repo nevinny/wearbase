@@ -15,6 +15,10 @@ use App\Service\WardrobeAiMeter;
 class WardrobeOutfitService
 {
     private const MAX_ITEMS = 80;
+    // Relay к ригу (прод): gemma4:31b на райзерах x1 — ~23 с на 24 вещи (prefill ~77 ток/с), relay ждёт 50 с: урезаем каталог и ответ.
+    private const RELAY_MAX_ITEMS = 24;
+    private const RELAY_MAX_OUTFITS = 2;
+    private const RELAY_MAX_TOKENS = 450;
 
     public function __construct(
         private readonly LlmService $llm,
@@ -52,17 +56,20 @@ class WardrobeOutfitService
 
         if ($this->localFirst) {
             try {
-                [$prompt, $itemMap] = $this->prompt($items, $request, $preferenceContext, $context, false);
+                $relay = $this->llm->usesRelay();
+                $maxOutfits = $relay ? self::RELAY_MAX_OUTFITS : 3;
+                [$prompt, $itemMap] = $this->prompt($relay ? array_slice($items, 0, self::RELAY_MAX_ITEMS) : $items, $request, $preferenceContext, $context, false, $maxOutfits);
                 $response = $this->llm->generate(
                     $prompt,
                     model: $this->localModel,
                     timeout: 60,
+                    maxTokens: $relay ? self::RELAY_MAX_TOKENS : null,
                     local: true,
                     think: false,
                     temperature: 0.4,
                     fastFail: true,
                 );
-                $result = $this->normalize($response, $itemMap);
+                $result = $this->normalize($response, $itemMap, $maxOutfits);
             } catch (\Throwable) {
                 // Remote fallback ниже разрешён только явным consent владельца гардероба.
             }
@@ -92,7 +99,7 @@ class WardrobeOutfitService
      * @param array{items:WardrobeItem[],rotation:array<int,string>,event:?string,weather:?string} $context
      * @return array{string,array<int,WardrobeItem>}
      */
-    private function prompt(array $items, string $request, string $preferenceContext, array $context, bool $minimized): array
+    private function prompt(array $items, string $request, string $preferenceContext, array $context, bool $minimized, int $maxOutfits = 3): array
     {
         $catalog = [];
         $itemMap = [];
@@ -114,7 +121,7 @@ class WardrobeOutfitService
             $catalog[] = $row;
         }
 
-        return [$this->buildPrompt($catalog, $request, $preferenceContext, $context, $minimized), $itemMap];
+        return [$this->buildPrompt($catalog, $request, $preferenceContext, $context, $minimized, $maxOutfits), $itemMap];
     }
 
     /**

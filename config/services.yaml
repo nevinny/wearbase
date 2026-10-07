@@ -56,6 +56,9 @@ parameters:
     # контейнер собирался и app:health:env работал без записей в .env
     env(WORDSTAT_API_KEY): ''
     env(LOCAL_LLM_URL): ''
+    # HTTP-relay к ollama (прод РФ): пусто = нативный LOCAL_LLM_URL (Mac/dev)
+    env(LOCAL_LLM_RELAY_URL): ''
+    env(LOCAL_LLM_RELAY_TOKEN): ''
     env(LOCAL_LLM_JUDGE_URL): ''
     env(QDRANT_URL): ''
     env(QDRANT_API_KEY): ''
@@ -118,6 +121,8 @@ services:
             $localModel: '%env(LOCAL_LLM_MODEL)%'
             $proxyUrl: '%env(OPENROUTER_PROXY_URL)%'
             $proxyAuth: '%env(OPENROUTER_PROXY_AUTH)%'
+            $localRelayUrl: '%env(LOCAL_LLM_RELAY_URL)%'
+            $localRelayToken: '%env(LOCAL_LLM_RELAY_TOKEN)%'
 
     App\Service\EmbeddingService:
         arguments:

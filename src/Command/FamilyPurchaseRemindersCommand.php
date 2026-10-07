@@ -24,6 +24,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class FamilyPurchaseRemindersCommand extends Command
 {
     private const TIMEZONE = 'Europe/Moscow';
+    /** Напоминаем только в эти календарные дни (МСК) с момента события, дальше тишина. */
+    private const REMINDER_DAYS = [1, 3, 7];
 
     public function __construct(
         private readonly PurchaseRequestRepository $requests,
@@ -65,15 +67,33 @@ final class FamilyPurchaseRemindersCommand extends Command
         }
 
         foreach ($pending as $request) {
+            if (!$this->isReminderDay($request->getCreatedAt(), $now)) {
+                continue;
+            }
             $this->remindParents($request, $localDay);
         }
         foreach ($delivered as $item) {
+            if (!$this->isReminderDay($item->getDeliveredAt(), $now)) {
+                continue;
+            }
             $this->remindFitting($item, $localDay);
         }
         $this->em->flush();
 
         $io->success(sprintf('Обработано: pending requests %d, delivered items %d', count($pending), count($delivered)));
         return Command::SUCCESS;
+    }
+
+    private function isReminderDay(?\DateTimeImmutable $event, \DateTimeImmutable $now): bool
+    {
+        if ($event === null) {
+            return false;
+        }
+        $tz = new \DateTimeZone(self::TIMEZONE);
+        $eventDay = $event->setTimezone($tz)->setTime(0, 0);
+        $today = $now->setTimezone($tz)->setTime(0, 0);
+
+        return in_array((int) $eventDay->diff($today)->format('%r%a'), self::REMINDER_DAYS, true);
     }
 
     private function remindParents(PurchaseRequest $request, string $localDay): void

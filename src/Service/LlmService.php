@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
 class LlmService
@@ -69,6 +70,8 @@ class LlmService
         private readonly string $localModel = '',
         private readonly string $proxyUrl = '',
         private readonly string $proxyAuth = '',
+        private readonly string $localRelayUrl = '',
+        private readonly string $localRelayToken = '',
     ) {
     }
 
@@ -88,7 +91,7 @@ class LlmService
         $messages[] = ['role' => 'user', 'content' => $prompt];
 
         return $local
-            ? $this->generateLocal($messages, $model ?? $this->localModel, $timeout, $think, $temperature, $fastFail)
+            ? $this->generateLocal($messages, $model ?? $this->localModel, $timeout, $think, $temperature, $fastFail, $maxTokens)
             : $this->generateRemote($messages, $model ?? $this->model, $timeout, $maxTokens);
     }
 
@@ -100,8 +103,12 @@ class LlmService
      * $fastFail=true снимает LOCAL_TIMEOUT_FLOOR: вызывающий готов получить отказ по
      * таймауту и уйти на remote, вместо того чтобы держать пользователя 10 минут.
      */
-    private function generateLocal(array $messages, string $model, int $timeout, bool $think = true, ?float $temperature = null, bool $fastFail = false): string
+    private function generateLocal(array $messages, string $model, int $timeout, bool $think = true, ?float $temperature = null, bool $fastFail = false, ?int $maxTokens = null): string
     {
+        if ($this->localRelayUrl !== '') {
+            return $this->generateViaRelay($messages, $timeout, $temperature, $fastFail, $maxTokens);
+        }
+
         $payload = [
             'model'    => $model,
             'messages' => $messages,
@@ -123,6 +130,44 @@ class LlmService
         } catch (TransportExceptionInterface $e) {
             throw new \RuntimeException('Local LLM request failed: ' . $e->getMessage(), 0, $e);
         }
+    }
+
+    /** Локальный путь идёт через HTTP-relay (прод): long-poll relay 50 с, вызывающий может урезать запрос. */
+    public function usesRelay(): bool
+    {
+        return $this->localRelayUrl !== '';
+    }
+
+    /**
+     * HTTP-relay к ollama на риге (прод РФ закрыт от AI-провайдеров, см. docs/llm_relay_handoff.md):
+     * OpenAI chat-completions + Bearer, синхронный ответ (long-poll relay ≤50 с, иначе 504).
+     * Модель выбирает воркер, think:false он ставит сам.
+     */
+    private function generateViaRelay(array $messages, int $timeout, ?float $temperature, bool $fastFail, ?int $maxTokens): string
+    {
+        $payload = [
+            'messages'    => $messages,
+            'max_tokens'  => $maxTokens ?? self::DEFAULT_MAX_TOKENS,
+            'temperature' => $temperature ?? self::DEFAULT_LOCAL_TEMPERATURE,
+        ];
+
+        try {
+            $response = $this->httpClient->request('POST', $this->localRelayUrl, [
+                'headers' => ['Authorization' => 'Bearer ' . $this->localRelayToken],
+                'json'    => $payload,
+                'timeout' => $fastFail ? $timeout : max($timeout, self::LOCAL_TIMEOUT_FLOOR),
+            ]);
+
+            $content = $response->toArray()['choices'][0]['message']['content'] ?? '';
+        } catch (TransportExceptionInterface | HttpExceptionInterface $e) {
+            throw new \RuntimeException('LLM relay request failed: ' . $e->getMessage(), 0, $e);
+        }
+        // Воркер при сбое ollama отдаёт 200 с {"error":{...}} без choices — это тоже отказ.
+        if (!is_string($content) || trim($content) === '') {
+            throw new \RuntimeException('LLM relay returned no content');
+        }
+
+        return $content;
     }
 
     private function generateRemote(array $messages, string $model, int $timeout, ?int $maxTokens): string

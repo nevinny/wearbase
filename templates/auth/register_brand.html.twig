@@ -30,6 +30,27 @@
             <div class="form-error mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{{ message }}</div>
         {% endfor %}
 
+        {% if duplicate|default(null) and form.notDuplicate is defined %}
+            <div class="duplicate-guard mb-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-200">
+                <h2 class="text-base font-bold mb-1">Бренд «{{ duplicate.title }}» уже есть {{ duplicate_public ? 'в каталоге' : 'в нашей базе' }}</h2>
+                <p class="text-sm text-gray-500 mb-4">
+                    {% if duplicate_public %}
+                        Посмотрите <a href="{{ path('brand_show', {slug: duplicate.slug, _locale: 'ru'}) }}" target="_blank" class="text-gray-900 underline">карточку бренда</a>.
+                    {% endif %}
+                    {% if not duplicate.foreignOrigin %}
+                        Если это ваш бренд, не создавайте вторую карточку — подтвердите владение первой.
+                    {% else %}
+                        Если это другой бренд, отметьте это ниже.
+                    {% endif %}
+                </p>
+                {% if not duplicate.foreignOrigin %}
+                    <a href="{{ path('brand_claim_new', {id: duplicate.id}) }}" class="block w-full rounded-xl bg-gray-900 py-3.5 text-center text-sm font-semibold text-white hover:bg-black transition">
+                        Это мой бренд — подтвердить владение
+                    </a>
+                {% endif %}
+            </div>
+        {% endif %}
+
         {{ form_start(form, {'attr': {'novalidate': 'novalidate', 'onsubmit': "this.querySelector('button[type=submit]').disabled = true;"}}) }}
 
             {# Название бренда — первым, самое важное #}
@@ -80,6 +101,15 @@
                 </label>
                 <div class="mt-1 text-sm text-red-600">{{ form_errors(form.agreeTerms) }}</div>
             </div>
+
+            {% if duplicate|default(null) and form.notDuplicate is defined %}
+                <div class="mb-4">
+                    <label class="flex items-start gap-2 text-sm text-gray-500" for="{{ form.notDuplicate.vars.id }}">
+                        {{ form_widget(form.notDuplicate, {'attr': {'class': 'mt-0.5 h-[18px] w-[18px] rounded border-gray-300 text-gray-900 focus:ring-gray-900'}}) }}
+                        <span>Это другой бренд, не «{{ duplicate.title }}»</span>
+                    </label>
+                </div>
+            {% endif %}
 
             <div class="mb-5">
                 {{ form_widget(form.turnstile) }}

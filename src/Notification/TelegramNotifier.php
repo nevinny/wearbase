@@ -11,6 +11,12 @@ readonly class TelegramNotifier
 {
     private const API_BASE = 'https://api.telegram.org/bot';
 
+    /**
+     * Потолок на весь запрос (сек). Без него недоступный Telegram держал пользовательский
+     * запрос до таймаута (дефолт Symfony — 60 с простоя): отправка идёт синхронно из postFlush.
+     */
+    private const MAX_DURATION = 3.0;
+
     public function __construct(
         private HttpClientInterface $httpClient,
         private string $botToken,
@@ -29,7 +35,7 @@ readonly class TelegramNotifier
             if ($replyMarkup !== null) {
                 $json['reply_markup'] = $replyMarkup;
             }
-            $response = $this->httpClient->request('POST', self::API_BASE . $this->botToken . '/sendMessage', ['json' => $json]);
+            $response = $this->httpClient->request('POST', self::API_BASE . $this->botToken . '/sendMessage', ['json' => $json, 'timeout' => self::MAX_DURATION, 'max_duration' => self::MAX_DURATION]);
 
             $data = $response->toArray();
             if (!($data['ok'] ?? false)) {
@@ -51,6 +57,8 @@ readonly class TelegramNotifier
         try {
             $data = $this->httpClient->request('POST', self::API_BASE . $this->botToken . '/answerCallbackQuery', [
                 'json' => ['callback_query_id' => $callbackQueryId, 'text' => $text],
+                'timeout' => self::MAX_DURATION,
+                'max_duration' => self::MAX_DURATION,
             ])->toArray(false);
             return $data['ok'] ?? false;
         } catch (\Throwable) {
@@ -67,6 +75,8 @@ readonly class TelegramNotifier
         try {
             $data = $this->httpClient->request('POST', self::API_BASE . $this->botToken . '/editMessageText', [
                 'json' => ['chat_id' => $chatId, 'message_id' => $messageId, 'text' => $text, 'parse_mode' => 'HTML'],
+                'timeout' => self::MAX_DURATION,
+                'max_duration' => self::MAX_DURATION,
             ])->toArray(false);
             return $data['ok'] ?? false;
         } catch (\Throwable) {

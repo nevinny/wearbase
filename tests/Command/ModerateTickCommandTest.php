@@ -528,6 +528,46 @@ class ModerateTickCommandTest extends TestCase
         $this->assertSame(Command::FAILURE, $exit, 'троттлится только TG, exit код остаётся красным «пока не починят»');
     }
 
+    /**
+     * Ложный флаг `duplicate_candidate:title~rishi` на самом бренде rishi: собственная строка
+     * brand попадала в кандидаты и совпадала с собой на 100%.
+     */
+    public function testDuplicateFlagsExcludeOwnSlug(): void
+    {
+        $conn = $this->createMock(Connection::class);
+        $conn->method('fetchAllAssociative')->willReturn([
+            ['slug' => 'rishi', 'title' => 'Rishi'],
+            ['slug' => 'rishi-store', 'title' => 'Rishi Store'],
+        ]);
+        $conn->method('fetchAssociative')->willReturn(false);
+        $em = $this->createMock(EntityManagerInterface::class);
+        $em->method('getConnection')->willReturn($conn);
+        $dup = $this->createMock(NearDuplicateDetector::class);
+        $dup->method('similarity')->willReturn(1.0);
+
+        $command = new ModerateTickCommand(
+            $this->createMock(HttpClientInterface::class),
+            $this->createMock(BrandSourceFinder::class),
+            $this->createMock(WebScraperService::class),
+            new ApplicationMatcher(),
+            $dup,
+            $this->createMock(YandexSearchMeter::class),
+            $this->createMock(YandexSearchClient::class),
+            new SearxClient($this->createMock(HttpClientInterface::class), ''),
+            new BraveSearchClient($this->createMock(HttpClientInterface::class), ''),
+            $this->createMock(AdminNotifier::class),
+            $this->createMock(BrandActionSigner::class),
+            $em,
+            'https://example.test',
+            'token',
+            'secret',
+            sys_get_temp_dir(),
+        );
+
+        $this->assertSame(['duplicate_candidate:title~rishi-store'], $this->invoke($command, 'duplicateFlags', ['Rishi', null, 'rishi']));
+        $this->assertSame(['duplicate_candidate:title~rishi'], $this->invoke($command, 'duplicateFlags', ['Rishi', null, '']), 'без slug поведение прежнее');
+    }
+
     private function realScraper(): WebScraperService
     {
         return new WebScraperService($this->createMock(HttpClientInterface::class), new UrlFilter(''));

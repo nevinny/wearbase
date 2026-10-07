@@ -310,7 +310,7 @@ class ModerateTickCommand extends Command
         );
 
         [$missing, $checklistFlags] = $this->checklist($item);
-        $redFlags = array_merge($siteFlags, $checklistFlags, $this->duplicateFlags($title, $ownSite));
+        $redFlags = array_merge($siteFlags, $checklistFlags, $this->duplicateFlags($title, $ownSite, $slug));
 
         [$nicheStatus, $originStatus, $note] = $this->classifyOnMacIfMirrored($slug);
         $verdict = $this->decideVerdict($match, $redFlags, $nicheStatus, $originStatus);
@@ -694,7 +694,7 @@ class ModerateTickCommand extends Command
     }
 
     /** @return string[] */
-    private function duplicateFlags(string $title, ?DiscoveredUrl $ownSite): array
+    private function duplicateFlags(string $title, ?DiscoveredUrl $ownSite, string $ownSlug = ''): array
     {
         if (trim($title) === '') {
             return [];
@@ -703,6 +703,9 @@ class ModerateTickCommand extends Command
 
         $rows = $this->em->getConnection()->fetchAllAssociative("SELECT slug, title FROM brand WHERE status != 'deleted'");
         foreach ($rows as $row) {
+            if ($ownSlug !== '' && $row['slug'] === $ownSlug) {
+                continue; // сам бренд — не дубль самому себе (ложный флаг rishi~rishi)
+            }
             if ($this->dup->similarity($title, (string) $row['title']) >= NearDuplicateDetector::TITLE_THRESHOLD) {
                 $flags[] = 'duplicate_candidate:title~' . $row['slug'];
                 break;
@@ -711,8 +714,8 @@ class ModerateTickCommand extends Command
 
         if ($ownSite !== null && ($host = $this->hostOf($ownSite->url)) !== null) {
             $existing = $this->em->getConnection()->fetchAssociative(
-                'SELECT b.slug FROM brand_link bl JOIN brand b ON b.id = bl.brand_id WHERE bl.link_url LIKE :h LIMIT 1',
-                ['h' => '%' . $host . '%'],
+                'SELECT b.slug FROM brand_link bl JOIN brand b ON b.id = bl.brand_id WHERE bl.link_url LIKE :h AND b.slug != :own LIMIT 1',
+                ['h' => '%' . $host . '%', 'own' => $ownSlug],
             );
             if ($existing !== false) {
                 $flags[] = 'duplicate_candidate:domain~' . $existing['slug'];
