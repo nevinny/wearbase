@@ -113,6 +113,7 @@
 | [transcripts/branding-boring-products.md](transcripts/branding-boring-products.md) | Транскрипт видео «как из скучных товаров делают культы» |
 | [transcripts/branding-boring-products-theses.md](transcripts/branding-boring-products-theses.md) | Конспект: 8 принципов плейбука + кейсы → база для `marketing_strategy.md` |
 | [klyucharev_decisions_2026.md](klyucharev_decisions_2026.md) | Ключарёв (нейроэкономика) «думать долго vs делать быстро» → 5 управленческих ловушек фаундера + коррекции плана (заморозить фронты, WIP=1, необратимое решение — первая продажа). Дубль в RAG `topic_chunks` (role=case). От 2026-07-19 |
+| [reels_pipeline_vasinki_adoption.md](reels_pipeline_vasinki_adoption.md) | **Контент-пайплайн Васина (vasinki.ru) → наш конвейер рилсов**: gap-таблица 22 приёмов (есть/берём/план/не берём), план по этапам сценарий→кадры→голос→сборка→QA→публикация, QA-гейт `qa-transcript.cjs`; хэштеги, аватар-липсинк и клон чужого голоса — не берём. От 2026-10-08 |
 
 ## Архив (`archive/`)
 
