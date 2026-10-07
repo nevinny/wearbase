@@ -65,6 +65,9 @@ class AdminTelegramSubscriber
     public function buildMessage(object $entity): ?string
     {
         return match (true) {
+            // Managed-профиль ребёнка создаёт родитель — это не регистрация, пинга не нужно.
+            $entity instanceof User && $entity->isManaged() => null,
+
             $entity instanceof User => "🆕 <b>Новая регистрация</b>\n" . $this->e((string) $entity->getEmail()),
 
             $entity instanceof LandingLead => "📨 <b>Лид с лендинга</b>\n"

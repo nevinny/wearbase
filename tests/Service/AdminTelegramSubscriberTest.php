@@ -27,6 +27,14 @@ class AdminTelegramSubscriberTest extends TestCase
         $this->assertStringContainsString('new@user.com', $msg);
     }
 
+    public function testManagedChildProfileIsNotARegistration(): void
+    {
+        $child = (new User())->setEmail('child-1-ab@' . User::MANAGED_EMAIL_DOMAIN);
+        $child->issueFamilyClaim();
+
+        $this->assertNull($this->subscriber()->buildMessage($child));
+    }
+
     public function testBrandClaimDoesNotPingOnInsert(): void
     {
         // Строка заявки создаётся при действии в форме, а не при подаче на модерацию,
