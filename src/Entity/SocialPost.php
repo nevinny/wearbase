@@ -103,7 +103,7 @@ class SocialPost
      * по нему CaptionGenerator строит первую строку подписи, а app:social:evaluate группирует
      * closed-loop.
      */
-    #[ORM\Column(length: 48, nullable: true)]
+    #[ORM\Column(length: 96, nullable: true)]
     private ?string $scriptKey = null;
 
     /** Сериализованный SlideScript (JSON) — переиспользуется между каруселью и Reels ОДНОГО
