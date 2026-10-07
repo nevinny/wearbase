@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Entity\LandingLead;
+use App\Notification\AdminNotifier;
+use App\Notification\TelegramNotifier;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * Лендинг услуги «Размещение под ключ» (/for-brands/placement, sales_offer.md §10) — страница
@@ -73,6 +76,43 @@ class LandingPlacementControllerTest extends DatabaseDependentWebTestCase
         $this->assertSame('Тестовый Бренд', $lead->getBrandName());
         $this->assertSame('for-brands-placement', $lead->getSource());
         $this->assertSame('https://example.com/testbrand', $lead->getWebsite());
+    }
+
+    public function testLeadAdminPingGoesToTelegramOnlyAfterResponseHandled(): void
+    {
+        $this->skipIfNoDatabase();
+        $client = static::createClient();
+        $client->disableReboot(); // иначе подмена сервиса пропадёт при втором запросе
+        $container = static::getContainer();
+        $stack = $container->get(RequestStack::class);
+
+        // Фиксируем, в какой момент вызван TG-клиент: во время обработки запроса (запрос на стеке)
+        // или уже на kernel.terminate (стек пуст).
+        $calls = [];
+        $tg = $this->createMock(TelegramNotifier::class);
+        $tg->method('send')->willReturnCallback(function (string $chat, string $text) use (&$calls, $stack): bool {
+            $calls[] = ['inRequest' => $stack->getMainRequest() !== null, 'text' => $text];
+
+            return true;
+        });
+        $container->set(AdminNotifier::class, new AdminNotifier($tg, $stack, '42'));
+
+        $email = 'placement-tg-' . uniqid() . '@example.com';
+        $this->fixtureEmails[] = $email;
+        $crawler = $client->request('GET', '/ru/for-brands/placement');
+        $form = $crawler->selectButton('Оставить заявку')->form([
+            'brand_name' => 'Отложенный Бренд',
+            'email' => $email,
+            'consent' => true,
+        ]);
+        $client->submit($form);
+
+        $this->assertResponseRedirects('/ru/for-brands/placement/thanks');
+        $this->assertNotEmpty($calls, 'после terminate TG-клиент вызван');
+        foreach ($calls as $call) {
+            $this->assertFalse($call['inRequest'], 'TG не вызывается внутри обработки запроса');
+        }
+        $this->assertStringContainsString('Отложенный Бренд', end($calls)['text']);
     }
 
     public function testHoneypotFieldSilentlyDropsLead(): void
