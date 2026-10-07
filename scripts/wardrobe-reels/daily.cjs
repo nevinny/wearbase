@@ -49,7 +49,7 @@ function templatesDay(day, today) {
     if (!order.length) { console.log('Нет шаблонов status=ready с полным набором ассетов и переменных. Снимите кадры: render-template.cjs --shotlist all. Ничего не рендерим и не ставим в очередь.'); return; }
     if (day < 0 || day >= order.length) { console.log(`День ${day + 1} вне ротации (${order.length} готовых шаблонов). No repeated posts.`); return; }
     const t = order[day];
-    console.log(`Day ${day + 1}/${order.length}: №${t.id} ${t.slug} (${t.segment}), slot ${today} 19:00 Europe/Moscow`);
+    console.log(`Day ${day + 1}/${order.length}: №${t.id} ${t.slug} (${t.segment}), slot ${today} 21:00 Europe/Moscow`);
     if (args.includes('--plan')) return;
     withLock(path.join(root, 'var/wardrobe-reels'), () => {
         const out = path.join(root, 'public_html/images/social/wardrobe-templates');
@@ -71,7 +71,7 @@ function main() {
     const catalog = JSON.parse(fs.readFileSync(path.join(root, 'config/social/wardrobe_reels.json'), 'utf8'));
     const episode = catalog.episodes[day % 6];
     const variant = Math.floor(day / 6);
-    console.log(`Day ${day + 1}: ${episode.id}, hook ${variant + 1}, slot ${today} 19:00 Europe/Moscow`);
+    console.log(`Day ${day + 1}: ${episode.id}, hook ${variant + 1}, slot ${today} 21:00 Europe/Moscow`);
     if (args.includes('--plan')) return;
     const work = path.join(root, 'var/wardrobe-reels');
     fs.mkdirSync(work, {recursive: true});

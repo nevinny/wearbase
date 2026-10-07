@@ -61,8 +61,8 @@ class SocialEnqueueWardrobeReelsCommandTest extends TestCase
         );
         $this->em->expects(self::once())->method('flush');
         self::assertSame(0, $this->executeImport([$this->entry('digitize-v1'), $this->entry('family-v1')], true));
-        self::assertSame('2099-01-01 19:00 +03:00', $saved[0]->getScheduledAt()->format('Y-m-d H:i P'));
-        self::assertSame('2099-01-02 19:00 +03:00', $saved[1]->getScheduledAt()->format('Y-m-d H:i P'));
+        self::assertSame('2099-01-01 21:00 +03:00', $saved[0]->getScheduledAt()->format('Y-m-d H:i P'));
+        self::assertSame('2099-01-02 21:00 +03:00', $saved[1]->getScheduledAt()->format('Y-m-d H:i P'));
         self::assertSame('/images/social/pilot/video.mp4', $saved[0]->getMediaPath());
         self::assertSame('scheduled', $saved[0]->getStatus());
         self::assertSame('wardrobe-v1.family-v1', $saved[1]->getScriptKey());

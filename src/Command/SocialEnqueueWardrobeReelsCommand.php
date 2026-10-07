@@ -35,7 +35,7 @@ class SocialEnqueueWardrobeReelsCommand extends Command
     {
         $this
             ->addArgument('manifest', InputArgument::REQUIRED, 'manifest.json локального рендера')
-            ->addOption('start', null, InputOption::VALUE_REQUIRED, 'Первый слот YYYY-MM-DD, 19:00 МСК')
+            ->addOption('start', null, InputOption::VALUE_REQUIRED, 'Первый слот YYYY-MM-DD, 21:00 МСК')
             ->addOption('schedule', null, InputOption::VALUE_NONE, 'Сохранить scheduled-посты; иначе только проверка');
     }
 
@@ -51,7 +51,7 @@ class SocialEnqueueWardrobeReelsCommand extends Command
         try {
             $start = (string) $input->getOption('start');
             $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $start, new \DateTimeZone('Europe/Moscow'));
-            if (!$date || $date->format('Y-m-d') !== $start || $date->setTime(19, 0) <= new \DateTimeImmutable()) {
+            if (!$date || $date->format('Y-m-d') !== $start || $date->setTime(21, 0) <= new \DateTimeImmutable()) {
                 throw new \InvalidArgumentException('--start должен задавать будущий слот в формате YYYY-MM-DD.');
             }
             $file = (string) $input->getArgument('manifest');
@@ -113,7 +113,7 @@ class SocialEnqueueWardrobeReelsCommand extends Command
                     ->setVariant('hook_' . substr($id, -1))->setDurationMs((int) $entry['duration_ms'])
                     ->setSlideCount(count($entry['beats'] ?? $entry['scenes'] ?? []))->setAiGenerated((bool) ($entry['ai_generated'] ?? true))
                     ->setCtaLabel('Цифровой гардероб')
-                    ->setScheduledAt(\DateTime::createFromImmutable($slot->setTime(19, 0)));
+                    ->setScheduledAt(\DateTime::createFromImmutable($slot->setTime(21, 0)));
             }
             // Валидируем всю пачку до первой записи в БД.
             foreach ($pending as $post) {
