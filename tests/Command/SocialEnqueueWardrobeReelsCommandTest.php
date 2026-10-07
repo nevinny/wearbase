@@ -178,6 +178,37 @@ class SocialEnqueueWardrobeReelsCommandTest extends TestCase
         self::assertSame(1, $this->executeImport([$this->templateEntry(['campaign' => 'wardrobe-v1'])], true));
     }
 
+    public function testCommentKeywordTravelsToScriptJson(): void
+    {
+        $saved = [];
+        $this->em->expects(self::once())->method('persist')->willReturnCallback(
+            static function (SocialPost $post) use (&$saved): void { $saved[] = $post; },
+        );
+        $entry = $this->templateEntry([
+            'caption' => 'Подпись.\n\nНапиши „размер“ в комментариях — пришлю памятку и ссылку в директ.',
+            'comment_keyword' => 'размер', 'comment_reply' => "Памятка.\n{ссылка}",
+        ]);
+        self::assertSame(0, $this->executeImport([$entry], true));
+        self::assertSame(['keyword' => 'размер', 'reply' => "Памятка.\n{ссылка}"], $saved[0]->commentKeywordConfig());
+    }
+
+    #[DataProvider('brokenCommentKeywordProvider')]
+    public function testBrokenCommentKeywordBlocksBatch(array $override): void
+    {
+        $this->em->expects(self::never())->method('persist');
+        $base = ['caption' => 'Напиши „размер“ в комментариях.', 'comment_keyword' => 'размер', 'comment_reply' => 'Ответ {ссылка}'];
+        self::assertSame(1, $this->executeImport([$this->templateEntry($override + $base)], true));
+    }
+
+    public static function brokenCommentKeywordProvider(): iterable
+    {
+        yield 'слова нет в подписи' => [['caption' => 'Без призыва.']];
+        yield 'нет ссылки в ответе' => [['comment_reply' => 'Ответ без ссылки']];
+        yield 'нет ответа' => [['comment_reply' => null]];
+        yield 'слово латиницей' => [['comment_keyword' => 'size', 'caption' => 'Напиши „size“.']];
+        yield 'ответ длиннее 1000 байт' => [['comment_reply' => str_repeat('я', 480) . ' {ссылка}']];
+    }
+
     public function testDraftInBatchBlocksWholeBatch(): void
     {
         $this->em->expects(self::never())->method('persist');
