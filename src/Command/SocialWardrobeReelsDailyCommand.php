@@ -63,7 +63,9 @@ class SocialWardrobeReelsDailyCommand extends Command
         }
 
         if (!$dry) {
-            $render = new Process([$this->nodeBin ?: '/opt/homebrew/bin/node', 'scripts/wardrobe-reels/daily.cjs', '--render-missing'], $this->projectDir, timeout: 3600);
+            $render = new Process([$this->nodeBin ?: '/opt/homebrew/bin/node', 'scripts/wardrobe-reels/daily.cjs', '--render-missing'], $this->projectDir,
+                // В cron PATH пуст: рендер зовёт ffmpeg/ffprobe по имени.
+                ['PATH' => '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'], timeout: 3600);
             $render->run();
             $io->writeln(trim($render->getOutput()));
             if (!$render->isSuccessful()) {
