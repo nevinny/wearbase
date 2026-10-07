@@ -149,6 +149,16 @@ function build(md) {
         const captionLine = field('Подпись');
         const caption = captionLine.match(/^«(.*)»[^»]*$/s)[1];
         const loopLine = field('Луп');
+        // CTA: «абзац» / «абзац» → «действие» · 4.5 с. Рендер вставляет его экраном-пояснением перед лупом.
+        const ctaLine = field('CTA');
+        let cta = null;
+        if (ctaLine) {
+            const cm = ctaLine.match(/^(«.+?»(?:\s*\/\s*«.+?»)?)\s*→\s*«(.+?)»\s*·\s*([\d.,]+)\s*с/);
+            if (!cm) throw new Error(`#${id}: CTA: ${ctaLine}`);
+            cta = {paragraphs: cm[1].replace(/^«/, '').replace(/»$/, '').split(/»\s*\/\s*«/), action: cm[2], duration: num(cm[3])};
+            if (cta.duration < 3 || cta.duration > 6) throw new Error(`#${id}: CTA ${cta.duration} с — читать нужно 4–5 с`);
+        }
+        if (!cta && status === 'ready') throw new Error(`#${id}: у ready-шаблона нет CTA`);
 
         let prevPlate = '';
         const beats = raw.map((r, i) => {
@@ -224,6 +234,7 @@ function build(md) {
             hook,
             beats,
             loopTo: loopLine ? loopLine.replace(/\.$/, '') : null,
+            cta,
             caption,
             gate: gateQuote ? gateQuote[1] : null,
             gateNote: gateQuote ? null : gateLine,
