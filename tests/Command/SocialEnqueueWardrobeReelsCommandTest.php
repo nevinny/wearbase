@@ -70,6 +70,35 @@ class SocialEnqueueWardrobeReelsCommandTest extends TestCase
         self::assertNull($saved[0]->getCtaUrl());
     }
 
+    public function testExplicitSlotsAllowGapsInWindow(): void
+    {
+        $saved = [];
+        $this->em->expects(self::exactly(2))->method('persist')->willReturnCallback(
+            static function (SocialPost $post) use (&$saved): void { $saved[] = $post; },
+        );
+        self::assertSame(0, $this->executeImport([$this->entry('digitize-v1'), $this->entry('family-v1')], true, '2099-01-03,2099-02-10'));
+        self::assertSame('2099-01-03 21:00 +03:00', $saved[0]->getScheduledAt()->format('Y-m-d H:i P'));
+        self::assertSame('2099-02-10 21:00 +03:00', $saved[1]->getScheduledAt()->format('Y-m-d H:i P'));
+    }
+
+    public function testSlotsCountMustMatchEntriesAndBePast(): void
+    {
+        $this->em->expects(self::never())->method('persist');
+        self::assertSame(1, $this->executeImport([$this->entry('digitize-v1'), $this->entry('family-v1')], true, '2099-01-03'));
+        self::assertSame(1, $this->executeImport([$this->entry('digitize-v1')], true, '2001-01-03'));
+        self::assertSame(1, $this->executeImport([$this->entry('digitize-v1'), $this->entry('family-v1')], true, '2099-01-03,2099-01-03'));
+    }
+
+    public function testBatchOfSixtyIsAccepted(): void
+    {
+        $entries = [];
+        for ($i = 1; $i <= 60; $i++) {
+            $entries[] = $this->templateEntry(['id' => sprintf('t%02d-kakoy-v1', $i)]);
+        }
+        $this->em->expects(self::exactly(60))->method('persist');
+        self::assertSame(0, $this->executeImport($entries, true));
+    }
+
     public function testBrokenSecondEntryDoesNotPartiallyQueueBatch(): void
     {
         $broken = $this->entry('family-v1');
@@ -176,11 +205,12 @@ class SocialEnqueueWardrobeReelsCommandTest extends TestCase
         ];
     }
 
-    private function executeImport(array $entries, bool $schedule = false): int
+    private function executeImport(array $entries, bool $schedule = false, ?string $slots = null): int
     {
         $file = $this->root . '/manifest.json';
         file_put_contents($file, json_encode($entries));
         $tester = new CommandTester(new SocialEnqueueWardrobeReelsCommand($this->em, $this->channels, $this->posts, $this->root));
-        return $tester->execute(['manifest' => $file, '--start' => '2099-01-01', '--schedule' => $schedule]);
+        $options = $slots === null ? ['--start' => '2099-01-01'] : ['--slots' => $slots];
+        return $tester->execute(['manifest' => $file, '--schedule' => $schedule] + $options);
     }
 }

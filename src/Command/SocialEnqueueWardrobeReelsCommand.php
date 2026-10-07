@@ -35,7 +35,8 @@ class SocialEnqueueWardrobeReelsCommand extends Command
     {
         $this
             ->addArgument('manifest', InputArgument::REQUIRED, 'manifest.json локального рендера')
-            ->addOption('start', null, InputOption::VALUE_REQUIRED, 'Первый слот YYYY-MM-DD, 21:00 МСК')
+            ->addOption('start', null, InputOption::VALUE_REQUIRED, 'Первый слот YYYY-MM-DD, 21:00 МСК (ролики идут по дню подряд)')
+            ->addOption('slots', null, InputOption::VALUE_REQUIRED, 'Явные дни слотов YYYY-MM-DD через запятую, по одному на ролик (вместо --start; допускает дыры)')
             ->addOption('schedule', null, InputOption::VALUE_NONE, 'Сохранить scheduled-посты; иначе только проверка');
     }
 
@@ -49,10 +50,20 @@ class SocialEnqueueWardrobeReelsCommand extends Command
         }
 
         try {
+            $tz = new \DateTimeZone('Europe/Moscow');
+            $slotsOption = trim((string) $input->getOption('slots'));
             $start = (string) $input->getOption('start');
-            $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $start, new \DateTimeZone('Europe/Moscow'));
-            if (!$date || $date->format('Y-m-d') !== $start || $date->setTime(21, 0) <= new \DateTimeImmutable()) {
-                throw new \InvalidArgumentException('--start должен задавать будущий слот в формате YYYY-MM-DD.');
+            $dates = [];
+            foreach ($slotsOption !== '' ? explode(',', $slotsOption) : [$start] as $day) {
+                $day = trim($day);
+                $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $day, $tz);
+                if (!$date || $date->format('Y-m-d') !== $day || $date->setTime(21, 0) <= new \DateTimeImmutable()) {
+                    throw new \InvalidArgumentException('--start/--slots должны задавать будущие слоты в формате YYYY-MM-DD.');
+                }
+                $dates[] = $date;
+            }
+            if ($slotsOption !== '' && count(array_unique(array_map(static fn ($d) => $d->format('Y-m-d'), $dates))) !== count($dates)) {
+                throw new \InvalidArgumentException('Дни в --slots не должны повторяться.');
             }
             $file = (string) $input->getArgument('manifest');
             if (!is_file($file)) {
@@ -60,8 +71,11 @@ class SocialEnqueueWardrobeReelsCommand extends Command
             }
             $data = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
             $entries = isset($data['id']) ? [$data] : $data;
-            if (!is_array($entries) || $entries === [] || count($entries) > 30) {
-                throw new \InvalidArgumentException('Ожидается от 1 до 30 готовых роликов.');
+            if (!is_array($entries) || $entries === [] || count($entries) > 60) {
+                throw new \InvalidArgumentException('Ожидается от 1 до 60 готовых роликов.');
+            }
+            if ($slotsOption !== '' && count($dates) !== count($entries)) {
+                throw new \InvalidArgumentException('Число дней в --slots должно совпадать с числом роликов.');
             }
             $channel = $this->channels->findOneBy(['platform' => SocialChannel::PLATFORM_IG, 'enabled' => true]);
             if ($channel === null) {
@@ -101,7 +115,7 @@ class SocialEnqueueWardrobeReelsCommand extends Command
                     continue;
                 }
                 // Слот привязан к позиции, поэтому повторный импорт не сдвигает остаток пачки.
-                $slot = $date->modify('+' . $index . ' days');
+                $slot = $slotsOption !== '' ? $dates[$index] : $dates[0]->modify('+' . $index . ' days');
                 if ($this->posts->existsForSlot($channel, 'wardrobe_reels', \DateTime::createFromImmutable($slot))) {
                     throw new \RuntimeException('Слот гардероба занят: ' . $slot->format('Y-m-d'));
                 }

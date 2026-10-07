@@ -53,16 +53,21 @@ function templatesDay(day, today) {
     if (args.includes('--plan')) return;
     renderAndEnqueue(t, today);
 }
-// Скользящее окно (app:social:wardrobe-reels-daily): следующий ready-шаблон, которого нет в --skip (id уже публиковавшихся/стоящих в очереди роликов), на слот --date.
-function templatesNext(today) {
+// Скользящее окно (app:social:wardrobe-reels-daily): дорендерить v1 всех ready-шаблонов с полными ассетами/vars, у которых ещё нет манифеста.
+// Постановка в очередь — не здесь (ротацию и слоты ведёт PHP-команда).
+function renderMissing() {
     const lib = require('./templates-lib.cjs');
-    const skip = new Set((option('--skip', '') || '').split(',').filter(Boolean));
     const order = lib.eligibleRotation(lib.loadCatalog(), path.join(root, 'var/wardrobe-reels/assets'));
-    const t = order.find(x => !skip.has(`t${x.slug}-v1`));
-    if (!t) { console.log(`Нет неопубликованных готовых шаблонов (готовых ${order.length}, использовано ${skip.size}). Ничего не рендерим.`); return; }
-    console.log(`Next: №${t.id} ${t.slug} (${t.segment}), slot ${today} 21:00 Europe/Moscow`);
-    if (args.includes('--plan')) return;
-    renderAndEnqueue(t, today);
+    const out = path.join(root, 'public_html/images/social/wardrobe-templates');
+    const todo = order.filter(t => !fs.existsSync(path.join(out, `t${t.slug}-v1`, 'manifest.json')));
+    if (!todo.length) { console.log(`Дорендерить нечего (готовых шаблонов ${order.length}).`); return; }
+    if (args.includes('--plan')) { console.log('Дорендерить: ' + todo.map(t => t.slug).join(', ')); return; }
+    withLock(path.join(root, 'var/wardrobe-reels'), () => {
+        for (const t of todo) {
+            console.log(`Render №${t.id} ${t.slug} (${t.segment})`);
+            run(process.execPath, [path.join(__dirname, 'render-template.cjs'), '--template', String(t.id), '--out', out]);
+        }
+    });
 }
 function renderAndEnqueue(t, today) {
     withLock(path.join(root, 'var/wardrobe-reels'), () => {
@@ -77,7 +82,7 @@ function renderAndEnqueue(t, today) {
     });
 }
 function main() {
-    if (args.includes('--next')) return templatesNext(option('--date', ''));
+    if (args.includes('--render-missing')) return renderMissing();
     const start = parseDate(option('--start', ''));
     const today = option('--date', new Intl.DateTimeFormat('en-CA', {timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()));
     const day = Math.round((parseDate(today) - start) / 86400000);
