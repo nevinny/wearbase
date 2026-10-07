@@ -103,6 +103,17 @@ class SocialEnqueueWardrobeReelsCommand extends Command
                     || ($entry['template']['status'] ?? null) !== 'ready')) {
                     throw new \InvalidArgumentException('Черновик не публикуется (draft / нет ассетов / шаблон не ready): ' . $id);
                 }
+                // Кодовое слово: слово должно звучать в подписи, а ответ — нести ссылку и влезать в лимит IG (1000 байт).
+                if (($entry['comment_keyword'] ?? null) !== null || ($entry['comment_reply'] ?? null) !== null) {
+                    $word = $entry['comment_keyword'] ?? null;
+                    $reply = $entry['comment_reply'] ?? null;
+                    if (!is_string($word) || preg_match('/^[а-яё]{3,12}$/u', $word) !== 1
+                        || !str_contains(mb_strtolower($entry['caption']), '„' . $word . '“')
+                        || !is_string($reply) || !str_contains($reply, '{ссылка}')
+                        || strlen(str_replace('{ссылка}', str_repeat('x', 140), $reply)) > 1000) {
+                        throw new \InvalidArgumentException('Некорректное кодовое слово/ответ в манифесте: ' . $id);
+                    }
+                }
                 if (isset($seen[$id])) {
                     throw new \InvalidArgumentException('Повтор ролика в манифесте: ' . $id);
                 }

@@ -173,12 +173,15 @@ async function renderOne(page, catalog, baseTemplate, ev, outBase, fps) {
     fs.unlinkSync(silent);
     // Пометка о генерации — в подписи, не только флагом: зритель должен видеть её без захода в метаданные.
     const aiNote = ev.aiAssets.length ? '\n\nЧасть кадров — AI-иллюстрации.' : '';
-    const caption = lib.substitute(template.caption, ev.vars.values) + aiNote + '\n\nГардероб — ссылка в профиле.';
+    // Кодовое слово: призыв — перед строкой про профиль; ответ в директ уходит командой app:social:ig-comment-replies.
+    const callLine = template.commentKeyword ? '\n\n' + template.commentCall : '';
+    const caption = lib.substitute(template.caption, ev.vars.values) + aiNote + callLine + '\n\nГардероб — ссылка в профиле.';
     const manifest = {
         version: 2, campaign: catalog.campaign, id: slugId, series: template.slug,
         template: {id: template.id, slug: template.slug, segment: template.segment, status: template.status, format: template.format, goal: template.goal},
         hook: lib.substitute(template.hook, ev.vars.values), fingerprint, video: output, cover,
-        duration_ms: Math.round(duration(output) * 1000), caption, gate: template.gate ? lib.substitute(template.gate, ev.vars.values) : null,
+        duration_ms: Math.round(duration(output) * 1000), caption,
+        comment_keyword: template.commentKeyword, comment_reply: template.commentReply,
         cta_url: catalog.cta_url, cta_label: catalog.cta_label,
         beats: template.beats.map(b => ({n: b.n, start: b.start, end: b.end, type: b.frame.type, plate: lib.substitute(b.plate, ev.vars.values), silenceAfter: b.silenceAfter})),
         cta: template.cta ? {paragraphs: template.cta.paragraphs.map(p => lib.substitute(p, ev.vars.values)), action: template.cta.action, duration: template.cta.duration} : null,

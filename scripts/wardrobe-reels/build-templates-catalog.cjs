@@ -145,7 +145,18 @@ function build(md) {
         const raw = parseBeats(beatLines, id);
         const slug = `${String(id).padStart(2, '0')}-${SLUGS[id] || translit(title)}`;
         const gateLine = field('Гейт');
-        const gateQuote = gateLine.match(/^«(.+?)»/);
+        // Гейт = кодовое слово: слово + призыв в подписи + текст личного ответа (app:social:ig-comment-replies).
+        const keyword = field('Слово');
+        const callToComment = (field('Призыв') || '').replace(/^«/, '').replace(/»\.?$/, '');
+        const reply = (field('Ответ в директ') || '').replace(/^«/, '').replace(/»$/, '').replaceAll('\\n', '\n');
+        if (keyword) {
+            if (!/^[а-яё]{3,12}$/.test(keyword)) throw new Error(`#${id}: слово «${keyword}» — одно короткое русское`);
+            if (!callToComment.includes(`„${keyword}“`)) throw new Error(`#${id}: призыв не содержит „${keyword}“`);
+            if (!reply.includes('{ссылка}')) throw new Error(`#${id}: в ответе нет {ссылка}`);
+            // Лимит IG на текст сообщения — 1000 байт; запас ~140 байт под гардероб-ссылку с UTM.
+            const bytes = Buffer.byteLength(reply.replace('{ссылка}', 'x'.repeat(140)));
+            if (bytes > 1000) throw new Error(`#${id}: ответ ${bytes} байт > 1000`);
+        } else if (callToComment || reply) throw new Error(`#${id}: призыв/ответ без слова`);
         const captionLine = field('Подпись');
         const caption = captionLine.match(/^«(.*)»[^»]*$/s)[1];
         const loopLine = field('Луп');
@@ -219,7 +230,7 @@ function build(md) {
         if (Math.abs(last.end - Number(fm[2])) > .6) throw new Error(`#${id}: длительность ${last.end} ≠ ${fm[2]}`);
 
         // Переменные: только реально встречающиеся; дефолт — известный или сама подстановка («{трое}» -> «трое»).
-        const textBlob = [title, hook, caption, gateQuote ? gateQuote[1] : '', ...beats.flatMap(b => [b.plate, ...(b.plates || [])])].join('\n');
+        const textBlob = [title, hook, caption, ...beats.flatMap(b => [b.plate, ...(b.plates || [])])].join('\n');
         const variables = {};
         for (const v of variablesIn(textBlob)) variables[v] = DEFAULTS[v] ?? v;
 
@@ -236,8 +247,10 @@ function build(md) {
             loopTo: loopLine ? loopLine.replace(/\.$/, '') : null,
             cta,
             caption,
-            gate: gateQuote ? gateQuote[1] : null,
-            gateNote: gateQuote ? null : gateLine,
+            gateNote: gateLine,
+            commentKeyword: keyword || null,
+            commentCall: keyword ? callToComment : null,
+            commentReply: keyword ? reply : null,
             shoot: field('Кадры'),
             variables,
         });
