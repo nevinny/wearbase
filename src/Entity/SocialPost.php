@@ -317,6 +317,24 @@ class SocialPost
         return $this;
     }
 
+    /**
+     * Кодовое слово «комментарий → ответ в директ» из script_json (ключи comment_keyword / comment_reply
+     * манифеста рендера). Отдельных колонок нет: настройка живёт рядом с остальным сценарием поста.
+     *
+     * @return array{keyword: string, reply: string}|null
+     */
+    public function commentKeywordConfig(): ?array
+    {
+        $data = $this->scriptJson === null ? null : json_decode($this->scriptJson, true);
+        $keyword = is_array($data) ? ($data['comment_keyword'] ?? null) : null;
+        $reply = is_array($data) ? ($data['comment_reply'] ?? null) : null;
+        if (!is_string($keyword) || trim($keyword) === '' || !is_string($reply) || trim($reply) === '') {
+            return null;
+        }
+
+        return ['keyword' => $keyword, 'reply' => $reply];
+    }
+
     public function getSlideCount(): ?int
     {
         return $this->slideCount;

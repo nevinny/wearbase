@@ -256,6 +256,36 @@ class SocialPostRepository extends ServiceEntityRepository
     }
 
     /**
+     * Опубликованные IG-посты с заданным кодовым словом (comment_keyword в script_json) за окно ответа.
+     * JSON не фильтруем в SQL — постов за 7 дней единицы, проверка в PHP переносимее (SQLite в тестах).
+     *
+     * @param list<SocialChannel> $channels
+     * @return SocialPost[]
+     */
+    public function findPublishedWithCommentKeyword(array $channels, \DateTimeInterface $since): array
+    {
+        if ($channels === []) {
+            return [];
+        }
+
+        $posts = $this->createQueryBuilder('p')
+            ->where('p.channel IN (:channels)')
+            ->andWhere('p.status IN (:statuses)')
+            ->andWhere("p.externalId IS NOT NULL AND p.externalId != ''")
+            ->andWhere('p.publishedAt >= :since')
+            ->andWhere('p.scriptJson LIKE :marker')
+            ->setParameter('channels', $channels)
+            ->setParameter('statuses', [SocialPost::STATUS_PUBLISHED, SocialPost::STATUS_DONE])
+            ->setParameter('since', $since)
+            ->setParameter('marker', '%"comment_keyword"%')
+            ->orderBy('p.publishedAt', 'DESC')
+            ->getQuery()
+            ->getResult();
+
+        return array_values(array_filter($posts, static fn (SocialPost $p) => $p->commentKeywordConfig() !== null));
+    }
+
+    /**
      * Последний пост этого бренда с уже собранным сценарием слайдов (script_json) —
      * SocialGenerateCommand переиспользует его текст между каруселью и Reels одного бренда
      * (LLM недетерминирован, повторный вызов дал бы другие факты) и между регенерациями поста.
