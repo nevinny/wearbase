@@ -24,6 +24,9 @@ final class AdvisorRag
     /** Роли-источники идей (tone намеренно исключён; seo — SEO/GEO-приёмы DrMax, подмешиваются семантически). */
     public const IDEA_ROLES = ['idea', 'framing', 'case', 'seo'];
 
+    /** Роли только для явного запроса (--role), в автономную генерацию идей НЕ идут: content — гайды контент-пайплайна рилсов. */
+    public const EXPLICIT_ROLES = ['content'];
+
     public function __construct(
         private readonly EmbeddingService $embedder,
         private readonly VectorStoreService $vectors,

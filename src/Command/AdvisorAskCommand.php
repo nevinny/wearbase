@@ -26,7 +26,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  *   php bin/console app:advisor:ask "Что важнее всего для роста трафика?"
  *   php bin/console app:advisor:ask "..." --role=framing   # сузить ретрив до одной роли
- *   php bin/console app:advisor:ask "..." --plain          # только текст ответа (для TG-бота)
+ *   php bin/console app:advisor:ask "..." --role=content --chunks   # только чанки JSON (ретрив для агентов)
+ *   php bin/console app:advisor:ask "..." --plain         # только текст ответа (для TG-бота)
  */
 #[AsCommand(name: 'app:advisor:ask', description: 'Задать вопрос советнику — ответ по состоянию проекта + базе знаний (read-only)')]
 class AdvisorAskCommand extends Command
@@ -43,7 +44,8 @@ class AdvisorAskCommand extends Command
     {
         $this
             ->addArgument('question', InputArgument::REQUIRED, 'Вопрос владельца советнику')
-            ->addOption('role', null, InputOption::VALUE_REQUIRED, 'Сузить ретрив до одной роли (idea|framing|case)')
+            ->addOption('role', null, InputOption::VALUE_REQUIRED, 'Сузить ретрив до одной роли (idea|framing|case|seo|content)')
+            ->addOption('chunks', null, InputOption::VALUE_NONE, 'Напечатать найденные чанки JSON и выйти (без снимка и LLM)')
             ->addOption('plain', null, InputOption::VALUE_NONE, 'Печатать только текст ответа, без SymfonyStyle-хрома (для TG-бота)');
     }
 
@@ -57,23 +59,36 @@ class AdvisorAskCommand extends Command
             return Command::FAILURE;
         }
 
+        // Ретрив принципов базы знаний. Опция --role сужает роли; иначе IDEA_ROLES (content — только явно).
+        $roles = AdvisorRag::IDEA_ROLES;
+        $role  = $input->getOption('role');
+        if ($role !== null) {
+            $role    = trim((string) $role);
+            $allowed = [...AdvisorRag::IDEA_ROLES, ...AdvisorRag::EXPLICIT_ROLES];
+            if (!in_array($role, $allowed, true)) {
+                $io->error(sprintf('Неизвестная роль «%s». Допустимо: %s.', $role, implode(', ', $allowed)));
+                return Command::FAILURE;
+            }
+            $roles = [$role];
+        }
+
+        // Путь ретрива для агентов: только чанки JSON, без снимка и LLM.
+        if ($input->getOption('chunks')) {
+            try {
+                $found = $this->rag->retrieve($question, $roles, 6);
+            } catch (\Throwable $e) {
+                $io->error('Ретрив недоступен: ' . $e->getMessage());
+                return Command::FAILURE;
+            }
+            $output->writeln(json_encode($found, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+            return Command::SUCCESS;
+        }
+
         // Состояние: последний снимок. Нет — продолжаем с пустыми метриками (предупредив).
         $snap    = $this->snapshots->findLatest();
         $metrics = $snap?->getMetrics() ?? [];
         if ($snap === null && !$plain) {
             $io->warning('Нет ни одного StateSnapshot — отвечаю без метрик состояния (app:advisor:snapshot соберёт их).');
-        }
-
-        // Ретрив принципов базы знаний. Опция --role сужает роли; иначе idea/framing/case.
-        $roles = AdvisorRag::IDEA_ROLES;
-        $role  = $input->getOption('role');
-        if ($role !== null) {
-            $role = trim((string) $role);
-            if (!in_array($role, AdvisorRag::IDEA_ROLES, true)) {
-                $io->error(sprintf('Неизвестная роль «%s». Допустимо: %s.', $role, implode(', ', AdvisorRag::IDEA_ROLES)));
-                return Command::FAILURE;
-            }
-            $roles = [$role];
         }
 
         // Best-effort мозг: любой сбой (gemma недоступна/таймаут/пустой ретрив) — понятная
