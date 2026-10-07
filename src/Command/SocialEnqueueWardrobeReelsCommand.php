@@ -72,13 +72,22 @@ class SocialEnqueueWardrobeReelsCommand extends Command
             $seen = [];
             foreach ($entries as $index => $entry) {
                 $id = $entry['id'] ?? '';
-                if (!is_string($id) || !preg_match('/^(digitize|family|morning|capsule|requests|lifecycle)-v[1-5]$/D', $id)
-                    || ($entry['campaign'] ?? null) !== 'wardrobe-v1'
+                // Две кампании: старые 6 серий (wardrobe-v1) и шаблоны фото+плашка (wardrobe-templates-v1, id tNN-slug-vN).
+                $isTemplate = is_string($id) && preg_match('/^t\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9]$/D', $id) === 1;
+                $campaign = $isTemplate ? 'wardrobe-templates-v1' : 'wardrobe-v1';
+                if (!is_string($id) || (!$isTemplate && !preg_match('/^(digitize|family|morning|capsule|requests|lifecycle)-v[1-5]$/D', $id))
+                    || ($entry['campaign'] ?? null) !== $campaign
                     || !preg_match('/^[a-f0-9]{64}$/D', $entry['fingerprint'] ?? '')
                     || ($entry['duration_ms'] ?? 0) < 3000 || ($entry['duration_ms'] ?? 0) > 60000
                     || !is_string($entry['caption'] ?? null) || mb_strlen($entry['caption']) > 2200
                     || trim($entry['caption']) === '' || ($entry['cta_url'] ?? null) !== 'https://wearbase.ru/ru/wardrobe') {
                     throw new \InvalidArgumentException('Некорректный манифест ролика #' . $index);
+                }
+                // Черновик (нет ассетов/реальных переменных/шаблон не ready) в очередь публикации не попадает никогда.
+                if ($isTemplate && (($entry['draft'] ?? true) !== false
+                    || ($entry['assets_missing'] ?? []) !== [] || ($entry['variables_missing'] ?? []) !== []
+                    || ($entry['template']['status'] ?? null) !== 'ready')) {
+                    throw new \InvalidArgumentException('Черновик не публикуется (draft / нет ассетов / шаблон не ready): ' . $id);
                 }
                 if (isset($seen[$id])) {
                     throw new \InvalidArgumentException('Повтор ролика в манифесте: ' . $id);
@@ -86,7 +95,7 @@ class SocialEnqueueWardrobeReelsCommand extends Command
                 $seen[$id] = true;
                 $video = $this->mediaPath((string) ($entry['video'] ?? ''), 'mp4');
                 $cover = $this->mediaPath((string) ($entry['cover'] ?? ''), 'jpg');
-                $key = 'wardrobe-v1.' . $id;
+                $key = $campaign . '.' . $id;
                 if ($this->posts->findOneBy(['channel' => $channel, 'rubric' => 'wardrobe_reels', 'scriptKey' => $key])) {
                     $io->text($id . ': уже в очереди, пропуск.');
                     continue;
@@ -102,7 +111,7 @@ class SocialEnqueueWardrobeReelsCommand extends Command
                     ->setMediaPath($video)->setCoverPath($cover)->setCaption($entry['caption'])
                     ->setScriptKey($key)->setScriptJson(json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))
                     ->setVariant('hook_' . substr($id, -1))->setDurationMs((int) $entry['duration_ms'])
-                    ->setSlideCount(count($entry['scenes'] ?? []))->setAiGenerated(true)
+                    ->setSlideCount(count($entry['beats'] ?? $entry['scenes'] ?? []))->setAiGenerated((bool) ($entry['ai_generated'] ?? true))
                     ->setCtaLabel('Цифровой гардероб')
                     ->setScheduledAt(\DateTime::createFromImmutable($slot->setTime(19, 0)));
             }
