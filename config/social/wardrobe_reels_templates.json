@@ -160,7 +160,7 @@
             "desc": "запись экрана: поиск «{цвет} {вещь}» → {4} найдено",
             "asset": "var/wardrobe-reels/assets/02-pyataya-chernaya-vodolazka/04"
           },
-          "plate": "Теперь смотрю шкаф из примерочной",
+          "plate": "Мой шкаф — в телефоне",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -203,7 +203,7 @@
       "formatNote": null,
       "goal": "saves + shares",
       "pain": "Дорогую вещь жалко покупать, дешёвую — жалко, что не ношу",
-      "hook": "— Дорого же.\n— Считай за выход.",
+      "hook": "— Дорого же.\n— А сколько раз наденешь?",
       "beats": [
         {
           "n": 1,
@@ -214,7 +214,7 @@
             "desc": "{дорогая вещь} на вешалке у окна",
             "asset": "var/wardrobe-reels/assets/03-cena-odnogo-vyhoda/01"
           },
-          "plate": "— Дорого же.\n— Считай за выход.",
+          "plate": "— Дорого же.\n— А сколько раз наденешь?",
           "plateSource": "hook",
           "silenceAfter": 0
         },
@@ -254,7 +254,7 @@
             "desc": "запись экрана: «за носку» у обеих вещей",
             "asset": "var/wardrobe-reels/assets/03-cena-odnogo-vyhoda/04"
           },
-          "plate": "{X} ₽ против {Y} ₽ за выход",
+          "plate": "За раз: {X} ₽ против {Y} ₽",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -268,7 +268,7 @@
             "asset": null,
             "loopOf": 1
           },
-          "plate": "— Считай за выход.",
+          "plate": "— А сколько раз наденешь?",
           "plateSource": "text",
           "silenceAfter": 0
         }
@@ -335,7 +335,7 @@
             "desc": "запись экрана: утром готов образ на работу из своих вещей (коллаж)",
             "asset": "var/wardrobe-reels/assets/04-nechego-nadet-problems/03"
           },
-          "plate": "Образ на завтра собран, пока я спала",
+          "plate": "Пока спала — наряд на завтра готов",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -439,7 +439,7 @@
             "desc": "запись экрана: неделя образов из своих вещей",
             "asset": "var/wardrobe-reels/assets/05-pyat-utr-bez-vybora/04"
           },
-          "plate": "План на неделю — из моего шкафа",
+          "plate": "Наряды на неделю — из моего шкафа",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -634,7 +634,7 @@
             "desc": "запись экрана: его образ на {повод} из его вещей",
             "asset": "var/wardrobe-reels/assets/07-chto-mne-nadet-sprosil-muzh/04"
           },
-          "plate": "Теперь отвечает его шкаф",
+          "plate": "Теперь ответ — в его телефоне",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -802,7 +802,7 @@
             "desc": "две пары образов flat-lay",
             "asset": "var/wardrobe-reels/assets/09-dress-kod-na-dvoih/03"
           },
-          "plate": "Из того, что уже висит",
+          "plate": "Из того, что уже есть в шкафу",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -917,7 +917,7 @@
             "desc": "запись экрана: образы по дням на двоих",
             "asset": "var/wardrobe-reels/assets/10-odin-chemodan-na-dvoih/04"
           },
-          "plate": "По образу на день. Из своих шкафов",
+          "plate": "Наряд на каждый день. Из своих вещей",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -1190,7 +1190,7 @@
             "desc": "запись экрана: запрос ребёнка с вещью → родитель «купить/нет»",
             "asset": "var/wardrobe-reels/assets/13-mam-kupi-ssylkoy/04"
           },
-          "plate": "Теперь просит в приложении. Я решаю там же",
+          "plate": "Просит в приложении. Решаю там же",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -1284,7 +1284,7 @@
             "desc": "запись экрана: «Маловато: {N} вещей у {имя}»",
             "asset": "var/wardrobe-reels/assets/14-31-avgusta-vse-malo/04"
           },
-          "plate": "Теперь шкаф говорит заранее",
+          "plate": "Теперь узнаю заранее, что мало",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -1391,7 +1391,7 @@
             "desc": "запись экрана: сборы {имя} — что в саду, что дома",
             "asset": "var/wardrobe-reels/assets/15-prinesite-zapasnye-shtany/04"
           },
-          "plate": "Список собирается из её шкафа",
+          "plate": "Список собрался сам — из её вещей",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -1590,7 +1590,7 @@
             "desc": "запись экрана: история вещи — кто носил, когда передали",
             "asset": "var/wardrobe-reels/assets/17-kurtku-nosili-troe/05"
           },
-          "plate": "Теперь у вещи есть история",
+          "plate": "Теперь видно, кто её носил",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -1887,7 +1887,7 @@
             "desc": "запись экрана: к зиме у каждого — есть / нужно",
             "asset": "var/wardrobe-reels/assets/20-excel-na-troih-detey/04"
           },
-          "plate": "Теперь таблица ведёт себя сама",
+          "plate": "Размеры обновляются сами",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -2348,10 +2348,10 @@
           "end": 27,
           "frame": {
             "type": "photo",
-            "desc": "глава «Капсула»: 4 образа из оставшегося",
+            "desc": "глава «Носить вместе»: 4 образа из оставшегося",
             "asset": "var/wardrobe-reels/assets/25-vse-iz-2019-goda/04"
           },
-          "plate": "Капсула",
+          "plate": "Носить вместе",
           "plateSource": "text",
           "silenceAfter": 0,
           "shots": 4
@@ -2365,7 +2365,7 @@
             "desc": "запись экрана: капсула из {N} вещей",
             "asset": "var/wardrobe-reels/assets/25-vse-iz-2019-goda/05"
           },
-          "plate": "Капсула из того, что осталось",
+          "plate": "Наряды из того, что осталось",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -2465,7 +2465,7 @@
             "desc": "запись экрана: поездка, образ на каждый день",
             "asset": "var/wardrobe-reels/assets/26-nedelya-v-chemodane-iz-veschey/04"
           },
-          "plate": "Образы на каждый день — заранее",
+          "plate": "Наряд на каждый день — заранее",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -2639,7 +2639,7 @@
             "desc": "пакет из химчистки на ручке двери",
             "asset": "var/wardrobe-reels/assets/28-veschey-gde-kazhdaya/03"
           },
-          "plate": "Химчистка: вернуть {день}",
+          "plate": "Химчистка: забрать в {день}",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -2652,7 +2652,7 @@
             "desc": "запись экрана: вещь → история (химчистка, подгиб, молния)",
             "asset": "var/wardrobe-reels/assets/28-veschey-gde-kazhdaya/04"
           },
-          "plate": "У каждой вещи — свой журнал",
+          "plate": "Видно, где каждая вещь",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -2835,7 +2835,7 @@
             "desc": "запись экрана: закупки и отчёт за месяц",
             "asset": "var/wardrobe-reels/assets/30-zakupka-iz-treh-stran/04"
           },
-          "plate": "Отчёт собран сам",
+          "plate": "Все заказы — на одном экране",
           "plateSource": "text",
           "silenceAfter": 0
         },
