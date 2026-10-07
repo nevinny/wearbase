@@ -40,3 +40,12 @@ test('expected text comes from manifest voice scenes; silent reels are rejected'
     assert.equal(expectedFromManifest({voice: {scenes: [{text: 'Шкаф полный.'}, {text: 'Начни сегодня.'}]}}), 'Шкаф полный. Начни сегодня.');
     assert.throws(() => expectedFromManifest({audio: 'bed.m4a'}), /без озвучки/);
 });
+
+test('brand name matches however whisper spells it, but a clipped brand still fails', () => {
+    const script = 'Начни с пяти вещей в цифровом гардеробе Веар бейс.';
+    assert.equal(verdict(diffWords(script, 'Начни с пяти вещей в цифровом гардеробе Вербейс.')).ok, true);
+    assert.equal(verdict(diffWords(script, 'Начни с пяти вещей в цифровом гардеробе в Airbase.')).ok, true);
+    const clipped = diffWords(script, 'Начни с пяти вещей в цифровом гардеробе');
+    assert.deepEqual(clipped.tailMissing, ['WEARBASE']);
+    assert.equal(verdict(clipped).ok, false);
+});

@@ -17,17 +17,31 @@ function normalizeWords(text) {
     return String(text).toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter(Boolean);
 }
 
+// Бренд whisper пишет каждый раз по-своему («Вербейс», «в Airbase»): в сценарии он — джокер на одно любое
+// услышанное слово. Обрыв на бренде всё равно ловится: после предыдущего слова не прозвучит ничего.
+const BRAND = 'WEARBASE';
+function expectedWords(text) {
+    const out = [];
+    for (const w of normalizeWords(text)) {
+        if (w === 'wearbase') out.push(BRAND);
+        else if (w === 'бейс' && out.at(-1) === 'веар') out[out.length - 1] = BRAND;
+        else out.push(w);
+    }
+    return out;
+}
+const same = (expected, heard) => expected === heard || expected === BRAND;
+
 // Пословное выравнивание (LCS): что из сценария не прозвучало, что прозвучало лишним, и цел ли хвост.
 function diffWords(expectedText, heardText, tail = 3) {
-    const a = normalizeWords(expectedText), b = normalizeWords(heardText);
+    const a = expectedWords(expectedText), b = normalizeWords(heardText);
     const dp = Array.from({length: a.length + 1}, () => new Array(b.length + 1).fill(0));
     for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) {
-        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+        dp[i][j] = same(a[i], b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
     }
     const missing = [], extra = [];
     let i = 0, j = 0;
     while (i < a.length && j < b.length) {
-        if (a[i] === b[j]) { i++; j++; } else if (dp[i + 1][j] >= dp[i][j + 1]) missing.push({index: i, word: a[i++]}); else extra.push(b[j++]);
+        if (same(a[i], b[j])) { i++; j++; } else if (dp[i + 1][j] >= dp[i][j + 1]) missing.push({index: i, word: a[i++]}); else extra.push(b[j++]);
     }
     while (i < a.length) missing.push({index: i, word: a[i++]});
     while (j < b.length) extra.push(b[j++]);
