@@ -15,7 +15,7 @@ use App\Service\WardrobeAiMeter;
 class WardrobeOutfitService
 {
     private const MAX_ITEMS = 80;
-    // Relay к ригу (прод) отдаёт 504 на 25 с, бюджет ответа ~20 с: в relay-режиме урезаем каталог и ответ.
+    // Relay к ригу (прод): gemma4:31b на райзерах x1 — ~23 с на 24 вещи (prefill ~77 ток/с), relay ждёт 50 с: урезаем каталог и ответ.
     private const RELAY_MAX_ITEMS = 24;
     private const RELAY_MAX_OUTFITS = 2;
     private const RELAY_MAX_TOKENS = 450;

@@ -132,7 +132,7 @@ class LlmService
         }
     }
 
-    /** Локальный путь идёт через HTTP-relay (прод): бюджет ответа ~12 с, вызывающий может урезать запрос. */
+    /** Локальный путь идёт через HTTP-relay (прод): long-poll relay 50 с, вызывающий может урезать запрос. */
     public function usesRelay(): bool
     {
         return $this->localRelayUrl !== '';
@@ -140,7 +140,7 @@ class LlmService
 
     /**
      * HTTP-relay к ollama на риге (прод РФ закрыт от AI-провайдеров, см. docs/llm_relay_handoff.md):
-     * OpenAI chat-completions + Bearer, синхронный ответ (long-poll воркера ≤25 с, иначе 504).
+     * OpenAI chat-completions + Bearer, синхронный ответ (long-poll relay ≤50 с, иначе 504).
      * Модель выбирает воркер, think:false он ставит сам.
      */
     private function generateViaRelay(array $messages, int $timeout, ?float $temperature, bool $fastFail, ?int $maxTokens): string
