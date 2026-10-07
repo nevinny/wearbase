@@ -23,7 +23,7 @@ const DEFAULTS = {
 const TRANSLIT = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'};
 // Короткие slug для первых пяти в производство и просто читаемые; остальные — автотранслит названия.
 const SLUGS = {
-    1: 'visit-s-birkami', 11: 'kakoy-u-neyo-razmer', 12: 'kolgotki-116', 17: 'kurtku-nosili-troe', 28: 'veschey-gde-kazhdaya',
+    1: 'visit-s-birkami', 31: 'ne-pomnyu-komu-otdala', 32: 'chek-vycvel', 33: 'a-potom-on-vyros', 11: 'kakoy-u-neyo-razmer', 12: 'kolgotki-116', 17: 'kurtku-nosili-troe', 28: 'veschey-gde-kazhdaya',
 };
 
 // Ручные правки битов: ключ "номер.номер_бита" (с 1). Здесь — то, что md описывает прозой («×8 по 0.2 с», «главы»).
@@ -259,9 +259,9 @@ function build(md) {
 }
 
 const templates = build(fs.readFileSync(source, 'utf8'));
-if (templates.length !== 30 || templates.some((t, i) => t.id !== i + 1)) throw new Error(`Ожидалось 30 шаблонов по порядку, разобрано ${templates.length}`);
+if (templates.length < 30 || templates.some((t, i) => t.id !== i + 1)) throw new Error(`Ожидалось ≥30 шаблонов по порядку, разобрано ${templates.length}`);
 const slugs = new Set(templates.map(t => t.slug));
-if (slugs.size !== 30) throw new Error('Повтор slug');
+if (slugs.size !== templates.length) throw new Error('Повтор slug');
 const out = {
     version: 1,
     campaign: 'wardrobe-templates-v1',

@@ -3162,6 +3162,287 @@
         "3": "3",
         "14": "14"
       }
+    },
+    {
+      "id": 31,
+      "slug": "31-ne-pomnyu-komu-otdala",
+      "title": "Не помню, кому отдала",
+      "segment": "С4",
+      "status": "ready",
+      "statusNote": "✅ «Передать вне семьи» в карточке вещи: кому/куда + заметка остаются в истории вещи с датой.",
+      "format": "loop",
+      "durationSec": 10,
+      "formatNote": null,
+      "goal": "views + comments",
+      "pain": "Отдала вещь сестре или соседке — через год не помню кому, а она нужна младшему",
+      "hook": "Я не помню,\nкому отдала комбинезон",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "прихожая вечером: на крючках детские куртки, между ними пустая вешалка",
+            "asset": "var/wardrobe-reels/assets/31-ne-pomnyu-komu-otdala/01"
+          },
+          "plate": "Я не помню,\nкому отдала комбинезон",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 4.2,
+          "frame": {
+            "type": "photo",
+            "desc": "руки отдают бумажный пакет, из него торчит синий детский комбинезон",
+            "asset": "var/wardrobe-reels/assets/31-ne-pomnyu-komu-otdala/02"
+          },
+          "plate": "Сестре? Соседке?",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.2,
+          "end": 5.4,
+          "frame": {
+            "type": "photo",
+            "desc": "у двери одни маленькие зимние ботинки",
+            "asset": "var/wardrobe-reels/assets/31-ne-pomnyu-komu-otdala/03"
+          },
+          "plate": "А он нужен младшему",
+          "plateSource": "text",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 5.4,
+          "end": 8,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: история вещи «Передача вне семьи · Тёте Оле» с заметкой",
+            "asset": "var/wardrobe-reels/assets/31-ne-pomnyu-komu-otdala/04"
+          },
+          "plate": "Отдала тёте Оле",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 8,
+          "end": 10,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Я не помню,\nкому отдала комбинезон",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "пустая вешалка, плашка хука дословно",
+      "cta": {
+        "paragraphs": [
+          "Отдаёшь вещь — запиши в WEARBASE, кому.",
+          "Через год не придётся вспоминать."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Отдали комбинезон «на время». Кому — вспоминаем всей роднёй",
+      "gateNote": "нет; комментарии-признания («у нас так с коляской»).",
+      "commentKeyword": null,
+      "commentCall": null,
+      "commentReply": null,
+      "shoot": "дом — прихожая с пустой вешалкой, передача пакета (только руки), маленькие ботинки у двери; PWA — карточка вещи, блок истории с передачей вне семьи.",
+      "variables": {}
+    },
+    {
+      "id": 32,
+      "slug": "32-chek-vycvel",
+      "title": "Чек выцвел",
+      "segment": "С3",
+      "status": "ready",
+      "statusNote": "✅ фото чека в карточке вещи (тип фото «Чек» при загрузке; рядом — «Бирка», «Уход»).",
+      "format": "punch",
+      "durationSec": 9,
+      "formatNote": null,
+      "goal": "views + saves",
+      "pain": "Купила ребёнку куртку, хочу поменять — а чек выцвел или потерялся",
+      "hook": "Тут есть проблема.\nУгадаешь какая?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "новая детская куртка на вешалке, к бирке прицеплен кассовый чек",
+            "asset": "var/wardrobe-reels/assets/32-chek-vycvel/01"
+          },
+          "plate": "Тут есть проблема.\nУгадаешь какая?",
+          "plateSource": "hook",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 4.4,
+          "frame": {
+            "type": "photo",
+            "desc": "рука держит выцветший почти белый чек",
+            "asset": "var/wardrobe-reels/assets/32-chek-vycvel/02"
+          },
+          "plate": "Чек выцвел",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.4,
+          "end": 6.8,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: карточка куртки, рядом фото чека с подписью «Чек»",
+            "asset": "var/wardrobe-reels/assets/32-chek-vycvel/03"
+          },
+          "plate": "Фото чека — у вещи",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 6.8,
+          "end": 9,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Тут есть проблема.\nУгадаешь какая?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "куртка с чеком, плашка хука",
+      "cta": {
+        "paragraphs": [
+          "Добавляешь вещь в WEARBASE — сфоткай чек.",
+          "Он останется в карточке вещи."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Чеки из детских магазинов выцветают быстрее, чем дети вырастают из вещей",
+      "gateNote": "нет.",
+      "commentKeyword": null,
+      "commentCall": null,
+      "commentReply": null,
+      "shoot": "дом — куртка с биркой и чеком, выцветший чек в руке; PWA — карточка вещи с фото чека. Про возврат и закон в плашках ничего не утверждаем.",
+      "variables": {}
+    },
+    {
+      "id": 33,
+      "slug": "33-a-potom-on-vyros",
+      "title": "…а потом он вырос",
+      "segment": "С3",
+      "status": "ready",
+      "statusNote": "✅ у ребёнка в семье — своя ссылка для входа: он сам ставит почту и пароль, вещи остаются в его гардеробе.",
+      "format": "punch",
+      "durationSec": 10,
+      "formatNote": null,
+      "goal": "saves + shares",
+      "pain": "Годами веду ребёнку размеры и вещи — а он вырос и хочет решать сам",
+      "hook": "…а потом\nон вырос",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "у двери крошечные детские кроссовки рядом с большими",
+            "asset": "var/wardrobe-reels/assets/33-a-potom-on-vyros/01"
+          },
+          "plate": "…а потом\nон вырос",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 4.2,
+          "frame": {
+            "type": "photo",
+            "desc": "стопка сложенной малышовой одежды на полке",
+            "asset": "var/wardrobe-reels/assets/33-a-potom-on-vyros/02"
+          },
+          "plate": "Было 122",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.2,
+          "end": 5.4,
+          "frame": {
+            "type": "photo",
+            "desc": "большое худи на вешалке",
+            "asset": "var/wardrobe-reels/assets/33-a-potom-on-vyros/03"
+          },
+          "plate": "Стало 146",
+          "plateSource": "text",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 5.4,
+          "end": 7.6,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: «Твой гардероб уже ждёт» и «Привет, Петя!»",
+            "asset": "var/wardrobe-reels/assets/33-a-potom-on-vyros/04"
+          },
+          "plate": "У него — свой вход",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 7.6,
+          "end": 10,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "…а потом\nон вырос",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "кроссовки, плашка хука",
+      "cta": {
+        "paragraphs": [
+          "Заведи ребёнку гардероб в WEARBASE.",
+          "Подрастёт — дашь ему свой вход, вещи останутся с ним."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Сначала знаешь его размер наизусть. Потом он говорит: «Мам, я сам»",
+      "gateNote": "нет; shares — пересылают мужу/подругам.",
+      "commentKeyword": null,
+      "commentCall": null,
+      "commentReply": null,
+      "shoot": "дом — маленькие и большие кроссовки, стопка малышовой одежды, большое худи (без лиц); PWA — страница входа ребёнка по семейной ссылке. Размеры 122/146 — реальные из демо-гардероба Пети.",
+      "variables": {}
     }
   ]
 }
