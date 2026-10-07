@@ -1,0 +1,3108 @@
+{
+  "version": 1,
+  "campaign": "wardrobe-templates-v1",
+  "source": "docs/wardrobe_reels_templates.md",
+  "note": "Сгенерировано scripts/wardrobe-reels/build-templates-catalog.cjs. Не править руками — править md/скрипт.",
+  "cta_url": "https://wearbase.ru/ru/wardrobe",
+  "cta_label": "Цифровой гардероб",
+  "templates": [
+    {
+      "id": 1,
+      "slug": "01-visit-s-birkami",
+      "title": "Висит с бирками",
+      "segment": "С1",
+      "status": "ready",
+      "statusNote": "✅ вставка ссылки WB → карточка с ценой и брендом; сумма по отобранным вещам в шкафу.",
+      "format": "punch",
+      "durationSec": 9,
+      "formatNote": null,
+      "goal": "views",
+      "pain": "Купила на WB, а носить не стала — и таких вещей полшкафа",
+      "hook": "{N} вещей с бирками.\nРешила посчитать.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.8,
+          "frame": {
+            "type": "photo",
+            "desc": "дверца шкафа, рука раздвигает вешалки, крупно бирка WB",
+            "asset": "var/wardrobe-reels/assets/01-visit-s-birkami/01"
+          },
+          "plate": "{N} вещей с бирками. Решила посчитать.",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.8,
+          "end": 3.8,
+          "frame": {
+            "type": "photo",
+            "desc": "бирка №2 крупно",
+            "asset": "var/wardrobe-reels/assets/01-visit-s-birkami/02"
+          },
+          "plate": "{N} вещей с бирками. Решила посчитать.",
+          "plateSource": "same",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 3.8,
+          "end": 4.8,
+          "frame": {
+            "type": "photo",
+            "desc": "бирка №3, рука держит ярлык",
+            "asset": "var/wardrobe-reels/assets/01-visit-s-birkami/03"
+          },
+          "plate": "{N} вещей с бирками. Решила посчитать.",
+          "plateSource": "same",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 4.8,
+          "end": 6.5,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: ссылки вставлены, внизу итог {сумма}",
+            "asset": "var/wardrobe-reels/assets/01-visit-s-birkami/04"
+          },
+          "plate": "{сумма} ₽ висит в шкафу",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 6.5,
+          "end": 9,
+          "frame": {
+            "type": "loop",
+            "desc": "снова кадр 1 (шкаф, бирка)",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "{N} вещей с бирками.",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "кадр 1 = последний, плашка хука дословно",
+      "cta": {
+        "paragraphs": [
+          "Вставь ссылки на свои покупки с WB.",
+          "WEARBASE посчитает, сколько денег висит в шкафу."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Посчитала, сколько у меня висит с бирками. Лучше бы не считала",
+      "gate": null,
+      "gateNote": "нет (задача — охват).",
+      "shoot": "дом — шкаф, 3 разные бирки крупно, вечерний тёплый свет; PWA — запись: вставка ссылки WB → карточка с ценой → список с суммой; бренды — не нужны.",
+      "variables": {
+        "N": "7",
+        "сумма": "12 400"
+      }
+    },
+    {
+      "id": 2,
+      "slug": "02-pyataya-chernaya-vodolazka",
+      "title": "Пятая чёрная водолазка",
+      "segment": "С1",
+      "status": "ready",
+      "statusNote": "✅ поиск по своему шкафу по цвету/категории (фильтры `q/color/category`) с телефона в магазине. 🔨 автоматическое «у вас уже есть похожая» при вставке ссылки — **не показывать**.",
+      "format": "meme_hook",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "views + shares",
+      "pain": "Покупаю то же самое, потому что не помню, что у меня есть",
+      "hook": "Я, когда покупаю\n{пятую} чёрную {водолазку}",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3.2,
+          "frame": {
+            "type": "photo",
+            "desc": "примерочная, в руке {вещь} на вешалке",
+            "asset": "var/wardrobe-reels/assets/02-pyataya-chernaya-vodolazka/01"
+          },
+          "plate": "Я, когда покупаю\n{пятую} чёрную {водолазку}",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3.2,
+          "end": 4.4,
+          "frame": {
+            "type": "photo",
+            "desc": "дома: стопка таких же {вещей} на полке",
+            "asset": "var/wardrobe-reels/assets/02-pyataya-chernaya-vodolazka/02"
+          },
+          "plate": "Дома: ещё {четыре}",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.4,
+          "end": 7.5,
+          "frame": {
+            "type": "photo",
+            "desc": "4 быстрых кадра по 0.8 с: каждая {вещь} отдельно",
+            "asset": "var/wardrobe-reels/assets/02-pyataya-chernaya-vodolazka/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0,
+          "shots": 4
+        },
+        {
+          "n": 4,
+          "start": 7.5,
+          "end": 9.5,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: поиск «{цвет} {вещь}» → {4} найдено",
+            "asset": "var/wardrobe-reels/assets/02-pyataya-chernaya-vodolazka/04"
+          },
+          "plate": "Мой шкаф — в телефоне",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9.5,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "примерочная, та же вешалка",
+      "cta": {
+        "paragraphs": [
+          "Сфоткай свои вещи в WEARBASE.",
+          "В магазине найдёшь по цвету, есть ли такая дома."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Чёрных водолазок много не бывает. Бывает {пять}",
+      "gate": null,
+      "gateNote": "нет; ожидаем комментарии-признания «у меня белые футболки».",
+      "shoot": "дом — стопка одинаковых вещей, flat-lay каждой; магазин — вешалка в руке, без лица; PWA — поиск по шкафу с фильтром цвета.",
+      "variables": {
+        "пятую": "пятую",
+        "водолазку": "водолазку",
+        "пять": "пять",
+        "четыре": "четыре"
+      }
+    },
+    {
+      "id": 3,
+      "slug": "03-cena-odnogo-vyhoda",
+      "title": "Цена одного выхода",
+      "segment": "С1",
+      "status": "ready",
+      "statusNote": "✅ журнал носки (по фото образа) + цена за носку в карточке вещи.",
+      "format": "punch-диалог",
+      "durationSec": 10,
+      "formatNote": null,
+      "goal": "saves + shares",
+      "pain": "Дорогую вещь жалко покупать, дешёвую — жалко, что не ношу",
+      "hook": "— Дорого же.\n— А сколько раз наденешь?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.8,
+          "frame": {
+            "type": "photo",
+            "desc": "{дорогая вещь} на вешалке у окна",
+            "asset": "var/wardrobe-reels/assets/03-cena-odnogo-vyhoda/01"
+          },
+          "plate": "— Дорого же.\n— А сколько раз наденешь?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.8,
+          "end": 4.3,
+          "frame": {
+            "type": "photo",
+            "desc": "плашка-итог на том же кадре: «{цена} ₽ · надела {N} раз»",
+            "asset": null,
+            "sameAs": 1
+          },
+          "plate": "{цена} ₽ · надела {N} раз",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.3,
+          "end": 5.8,
+          "frame": {
+            "type": "photo",
+            "desc": "{дешёвая вещь}",
+            "asset": "var/wardrobe-reels/assets/03-cena-odnogo-vyhoda/03"
+          },
+          "plate": "{цена} ₽ · надела {N} раз",
+          "plateSource": "text",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 5.8,
+          "end": 8,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: «за носку» у обеих вещей",
+            "asset": "var/wardrobe-reels/assets/03-cena-odnogo-vyhoda/04"
+          },
+          "plate": "За раз: {X} ₽ против {Y} ₽",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 8,
+          "end": 10,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "— А сколько раз наденешь?",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "кадр и реплика хука",
+      "cta": {
+        "paragraphs": [
+          "Отмечай в WEARBASE, что надела.",
+          "Он сам посчитает, сколько стоит один раз."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Пальто за {цена} обошлось мне дешевле футболки за {цена}. Посчитала по выходам",
+      "gate": "Как я считаю цену выхода — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — 2 вещи на одном фоне; PWA — карточка вещи с «₽ за носку», экран статистики носки. Числа — только из реального журнала (наша семья).",
+      "variables": {
+        "цена": "цена",
+        "N": "7",
+        "X": "X",
+        "Y": "Y"
+      }
+    },
+    {
+      "id": 4,
+      "slug": "04-nechego-nadet-problems",
+      "title": "Нечего надеть проблемс",
+      "segment": "С1",
+      "status": "partial",
+      "statusNote": "🟡 образы из своих вещей на повод «работа» (ночная генерация с коллажем). Стилист на проде падает, генерация только с Mac, погода выключена → **рилс после починки стилиста и погоды**.",
+      "format": "one_photo",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "views",
+      "pain": "Полный шкаф — нечего надеть, утром 20 минут перебираю",
+      "hook": "нечего надеть проблемс\nшкаф: полный",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 5,
+          "frame": {
+            "type": "photo",
+            "desc": "одно фото: открытый забитый шкаф, медленный наезд",
+            "asset": "var/wardrobe-reels/assets/04-nechego-nadet-problems/01"
+          },
+          "plate": "нечего надеть проблемс\nшкаф: полный",
+          "plateSource": "hook",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 2,
+          "start": 5,
+          "end": 5.5,
+          "frame": {
+            "type": "photo",
+            "desc": "затемнение-«запятая»",
+            "asset": null,
+            "fill": "dark"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 5.5,
+          "end": 9,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: утром готов образ на работу из своих вещей (коллаж)",
+            "asset": "var/wardrobe-reels/assets/04-nechego-nadet-problems/03"
+          },
+          "plate": "Пока спала — наряд на завтра готов",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 9,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "снова шкаф (то же фото, начало наезда)",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "нечего надеть проблемс",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "то же фото, наезд с начала",
+      "cta": {
+        "paragraphs": [
+          "Сфоткай свои вещи в WEARBASE.",
+          "Весь шкаф будет в телефоне — видно, что есть."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "нечего надеть проблемс — знакомо? У меня шкаф полный",
+      "gate": null,
+      "gateNote": "нет.",
+      "shoot": "дом — 1 вертикальное фото шкафа с вещами; PWA — реальный утренний образ из нашей семьи (жена, 44 вещи). Переменные: {повод} = работа/встреча.",
+      "variables": {}
+    },
+    {
+      "id": 5,
+      "slug": "05-pyat-utr-bez-vybora",
+      "title": "Пять утр без выбора",
+      "segment": "С1",
+      "status": "blocked",
+      "statusNote": "🔨 план образов на неделю → **рилс только после выпуска**.",
+      "format": "chapters",
+      "durationSec": 32,
+      "formatNote": null,
+      "goal": "saves",
+      "pain": "Каждое утро решаю заново, а в пятницу уже не на что смотреть",
+      "hook": "…и не думать утром,\nчто надеть до пятницы",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "пять образов разложены на кровати в ряд",
+            "asset": "var/wardrobe-reels/assets/05-pyat-utr-bez-vybora/01"
+          },
+          "plate": "…и не думать утром,\nчто надеть до пятницы",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 4.5,
+          "frame": {
+            "type": "photo",
+            "desc": "титул «Понедельник» — образ 1 общим планом + 2 детали по 1.2 с",
+            "asset": "var/wardrobe-reels/assets/05-pyat-utr-bez-vybora/02"
+          },
+          "plate": "Понедельник",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 3
+        },
+        {
+          "n": 3,
+          "start": 4.5,
+          "end": 20,
+          "frame": {
+            "type": "photo",
+            "desc": "титулы «Вторник»…«Пятница», каждый образ — 3 слайда (общий / деталь / обувь)",
+            "asset": "var/wardrobe-reels/assets/05-pyat-utr-bez-vybora/03"
+          },
+          "plate": "Вторник",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "plates": [
+            "Вторник",
+            "Вторник",
+            "Вторник",
+            "Среда",
+            "Среда",
+            "Среда",
+            "Четверг",
+            "Четверг",
+            "Четверг",
+            "Пятница",
+            "Пятница",
+            "Пятница"
+          ],
+          "shots": 12
+        },
+        {
+          "n": 4,
+          "start": 20,
+          "end": 27,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: неделя образов из своих вещей",
+            "asset": "var/wardrobe-reels/assets/05-pyat-utr-bez-vybora/04"
+          },
+          "plate": "Наряды на неделю — из моего шкафа",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 27,
+          "end": 32,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "…и не думать утром,",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "ряд образов на кровати",
+      "cta": {
+        "paragraphs": [
+          "Сфоткай свои вещи в WEARBASE.",
+          "Весь шкаф будет в телефоне."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Неделя образов на работу из {N} вещей — сохраняю себе на понедельник",
+      "gate": "Список {N} вещей, из которых всё собрано, — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — 5 образов flat-lay на одном фоне; PWA — экран плана недели (после выпуска).",
+      "variables": {
+        "N": "7"
+      }
+    },
+    {
+      "id": 6,
+      "slug": "06-noshu-iz",
+      "title": "Ношу {N} из {M}",
+      "segment": "С1",
+      "status": "ready",
+      "statusNote": "✅ журнал носки — сколько раз надета каждая вещь.",
+      "format": "ticker",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "comments",
+      "pain": "Ношу одно и то же, а остальное просто висит",
+      "hook": "Ношу {N} вещей.\nИз {M}.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "открытый шкаф",
+            "asset": "var/wardrobe-reels/assets/06-noshu-iz/01"
+          },
+          "plate": "Ношу {N} вещей.\nИз {M}.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 5.6,
+          "frame": {
+            "type": "photo",
+            "desc": "один кадр (полка), тикер не надетых вещей: «{вещь} — 0 раз» ×8 по 0.2–0.3 с (провал −4 dB перед)",
+            "asset": "var/wardrobe-reels/assets/06-noshu-iz/02"
+          },
+          "plate": "{вещь} — 0 раз",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "plates": [
+            "{вещь} — 0 раз"
+          ],
+          "ticker": 8
+        },
+        {
+          "n": 3,
+          "start": 5.6,
+          "end": 7.1,
+          "frame": {
+            "type": "photo",
+            "desc": "любимая {вещь}",
+            "asset": "var/wardrobe-reels/assets/06-noshu-iz/03"
+          },
+          "plate": "{вещь} — {N} раз",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 7.1,
+          "end": 9,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: счётчики носки у вещей",
+            "asset": "var/wardrobe-reels/assets/06-noshu-iz/04"
+          },
+          "plate": "Записывала месяц. Шкаф сам посчитал",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Ношу {N} вещей.",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "шкаф, плашка хука",
+      "cta": {
+        "paragraphs": [
+          "Отмечай в WEARBASE, что надела.",
+          "Через месяц увидишь, что висит зря."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Месяц записывала, что ношу. {N} из {M}. А у вас?",
+      "gate": null,
+      "gateNote": "нет — комментарии от признания («у меня 10 из 100»).",
+      "shoot": "дом — шкаф, полка; PWA — статистика носки. Тикер ре-вотч: зритель ищет «свои» вещи.",
+      "variables": {
+        "N": "7",
+        "M": "40",
+        "вещь": [
+          "водолазка",
+          "юбка",
+          "платье",
+          "брюки",
+          "блузка",
+          "жакет",
+          "шарф",
+          "топ"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "slug": "07-chto-mne-nadet-sprosil-muzh",
+      "title": "«Что мне надеть?» — спросил муж",
+      "segment": "С2",
+      "status": "partial",
+      "statusNote": "🟡 профиль мужа ✅, образ ему из его вещей — стилист по участнику (тот же сбой) → **рилс после починки стилиста**.",
+      "format": "punch-диалог",
+      "durationSec": 9,
+      "formatNote": null,
+      "goal": "views",
+      "pain": "Перед каждым выходом муж спрашивает меня, что ему надеть",
+      "hook": "— Что мне надеть?\nСпросил муж. Опять.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.8,
+          "frame": {
+            "type": "photo",
+            "desc": "мужская рука держит две рубашки у шкафа (без лица)",
+            "asset": "var/wardrobe-reels/assets/07-chto-mne-nadet-sprosil-muzh/01"
+          },
+          "plate": "— Что мне надеть?\nСпросил муж. Опять.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.8,
+          "end": 3.8,
+          "frame": {
+            "type": "photo",
+            "desc": "две рубашки на кровати",
+            "asset": "var/wardrobe-reels/assets/07-chto-mne-nadet-sprosil-muzh/02"
+          },
+          "plate": "— Что мне надеть?\nСпросил муж. Опять.",
+          "plateSource": "same",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 3.8,
+          "end": 4.8,
+          "frame": {
+            "type": "photo",
+            "desc": "часы/телефон: {время} до выхода",
+            "asset": "var/wardrobe-reels/assets/07-chto-mne-nadet-sprosil-muzh/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 4.8,
+          "end": 6.8,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: его образ на {повод} из его вещей",
+            "asset": "var/wardrobe-reels/assets/07-chto-mne-nadet-sprosil-muzh/04"
+          },
+          "plate": "Теперь ответ — в его телефоне",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 6.8,
+          "end": 9,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "— Что мне надеть?",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "рука с рубашками",
+      "cta": {
+        "paragraphs": [
+          "Добавь мужа в семью в WEARBASE.",
+          "Его вещи и размеры будут у тебя в телефоне."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Муж спрашивает, что надеть. Теперь у него есть ответ без меня",
+      "gate": null,
+      "gateNote": "нет; shares — отправят мужу.",
+      "shoot": "дом — мужские вещи, руки; PWA — профиль второго взрослого, образ на {повод}.",
+      "variables": {}
+    },
+    {
+      "id": 8,
+      "slug": "08-zvonok-muzhu-iz-primerochnoy",
+      "title": "Звонок мужу из примерочной",
+      "segment": "С2",
+      "status": "ready",
+      "statusNote": "✅ вещи мужа в общем доступе семьи: у каждой — размер, бренд, фото; поиск по его шкафу.",
+      "format": "meme_hook",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "shares + comments",
+      "pain": "Стою в магазине и не знаю его размер — звоню, он не берёт",
+      "hook": "Ты в примерочной,\nа муж не берёт трубку",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3.2,
+          "frame": {
+            "type": "photo",
+            "desc": "мужская {вещь} на вешалке в магазине",
+            "asset": "var/wardrobe-reels/assets/08-zvonok-muzhu-iz-primerochnoy/01"
+          },
+          "plate": "Ты в примерочной,\nа муж не берёт трубку",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3.2,
+          "end": 4.4,
+          "frame": {
+            "type": "chat",
+            "desc": "экран телефона: исходящий вызов (снят нами, без имени)",
+            "asset": "var/wardrobe-reels/assets/08-zvonok-muzhu-iz-primerochnoy/02"
+          },
+          "plate": "Пятый гудок",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.4,
+          "end": 7,
+          "frame": {
+            "type": "photo",
+            "desc": "3 кадра по 0.9 с: бирки размеров {48}/{50}/{52}",
+            "asset": "var/wardrobe-reels/assets/08-zvonok-muzhu-iz-primerochnoy/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0,
+          "shots": 3
+        },
+        {
+          "n": 4,
+          "start": 7,
+          "end": 9.5,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: его {вещь} в шкафу, размер {50}",
+            "asset": "var/wardrobe-reels/assets/08-zvonok-muzhu-iz-primerochnoy/04"
+          },
+          "plate": "Его размеры — в моём телефоне",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9.5,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Ты в примерочной,\nа муж не берёт трубку",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "та же вешалка",
+      "cta": {
+        "paragraphs": [
+          "Добавь вещи мужа в WEARBASE.",
+          "Его размеры будут в твоём телефоне."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Знаю размер мужа лучше, чем он сам. Потому что он в телефоне",
+      "gate": null,
+      "gateNote": "нет; комментарии-узнавание «мой тоже не знает свой размер».",
+      "shoot": "магазин/дом — вешалка, бирки; PWA — переключение на профиль мужа, вещь с размером.",
+      "variables": {}
+    },
+    {
+      "id": 9,
+      "slug": "09-dress-kod-na-dvoih",
+      "title": "Дресс-код на двоих",
+      "segment": "С2",
+      "status": "blocked",
+      "statusNote": "🔨 парные образы → **рилс только после выпуска**.",
+      "format": "ticker",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "saves",
+      "pain": "На свадьбу друзей хочется, чтобы мы смотрелись вместе, а собираемся порознь",
+      "hook": "дресс-код на двоих\nпроблемс",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "его и её вещи рядом на кровати, не сочетаются",
+            "asset": "var/wardrobe-reels/assets/09-dress-kod-na-dvoih/01"
+          },
+          "plate": "дресс-код на двоих\nпроблемс",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 5.6,
+          "frame": {
+            "type": "photo",
+            "desc": "одна пара вещей, тикер сочетаний: «{цвет} + {цвет}» ×8",
+            "asset": "var/wardrobe-reels/assets/09-dress-kod-na-dvoih/02"
+          },
+          "plate": "{цвет} + {цвет}",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "plates": [
+            "{цвет} + {цвет}"
+          ],
+          "ticker": 8
+        },
+        {
+          "n": 3,
+          "start": 5.6,
+          "end": 8,
+          "frame": {
+            "type": "photo",
+            "desc": "две пары образов flat-lay",
+            "asset": "var/wardrobe-reels/assets/09-dress-kod-na-dvoih/03"
+          },
+          "plate": "Из того, что уже есть в шкафу",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 8,
+          "end": 9.5,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: парный образ на {повод}",
+            "asset": "var/wardrobe-reels/assets/09-dress-kod-na-dvoih/04"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9.5,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "дресс-код на двоих\nпроблемс",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "кровать с вещами",
+      "cta": {
+        "paragraphs": [
+          "Добавьте в WEARBASE вещи обоих.",
+          "Оба шкафа будут в одном телефоне."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Свадьба друзей в {месяц}. Собрали нас двоих из своих шкафов",
+      "gate": "Все сочетания из ролика списком — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — вещи двоих flat-lay; PWA — парный образ (после выпуска).",
+      "variables": {
+        "месяц": "месяц",
+        "цвет": [
+          "чёрная",
+          "бежевая",
+          "синяя",
+          "серая",
+          "белая",
+          "зелёная",
+          "бордовая",
+          "коричневая"
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "slug": "10-odin-chemodan-na-dvoih",
+      "title": "Один чемодан на двоих",
+      "segment": "С2",
+      "status": "blocked",
+      "statusNote": "🔨 сборы в поездку на двоих (чек-лист + образы по дням) → **рилс только после выпуска**.",
+      "format": "chapters",
+      "durationSec": 30,
+      "formatNote": null,
+      "goal": "saves + comments",
+      "pain": "Собираю в отпуск себя и мужа — у него всегда три лишних футболки и ни одних брюк",
+      "hook": "{7} дней. Двое.\nОдин чемодан.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "пустой открытый чемодан",
+            "asset": "var/wardrobe-reels/assets/10-odin-chemodan-na-dvoih/01"
+          },
+          "plate": "{7} дней. Двое.\nОдин чемодан.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 12,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «Её» — 6 вещей по 1.2 с",
+            "asset": "var/wardrobe-reels/assets/10-odin-chemodan-na-dvoih/02"
+          },
+          "plate": "Её",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 6
+        },
+        {
+          "n": 3,
+          "start": 12,
+          "end": 21,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «Его» — 6 вещей по 1.2 с",
+            "asset": "var/wardrobe-reels/assets/10-odin-chemodan-na-dvoih/03"
+          },
+          "plate": "Его",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 6
+        },
+        {
+          "n": 4,
+          "start": 21,
+          "end": 26,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: образы по дням на двоих",
+            "asset": "var/wardrobe-reels/assets/10-odin-chemodan-na-dvoih/04"
+          },
+          "plate": "Наряд на каждый день. Из своих вещей",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 26,
+          "end": 30,
+          "frame": {
+            "type": "loop",
+            "desc": "чемодан закрыт → снова открыт пустой (кадр 1)",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "{7} дней. Двое.\nОдин чемодан.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "пустой чемодан",
+      "cta": {
+        "paragraphs": [
+          "Добавьте в WEARBASE вещи обоих.",
+          "Видно, что у кого есть, ещё до сборов."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "{7} дней у моря на двоих в одном чемодане — вот что взяли",
+      "gate": "Чек-лист на двоих — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — чемодан, вещи flat-lay; PWA — поездка (после выпуска).",
+      "variables": {
+        "7": "7"
+      }
+    },
+    {
+      "id": 11,
+      "slug": "11-kakoy-u-neyo-razmer",
+      "title": "«Какой у неё размер?»",
+      "segment": "С3",
+      "status": "ready",
+      "statusNote": "✅ профиль ребёнка без email: рост, размер одежды и обуви; виден всей семье. 🔨 автосверка «вещь меньше ребёнка» — **не показывать**.",
+      "format": "punch-диалог",
+      "durationSec": 9,
+      "formatNote": null,
+      "goal": "views + shares",
+      "pain": "Бабушка в магазине спрашивает размер, а я сама не помню — 110 или уже 116",
+      "hook": "— Какой у {неё} размер?\n— Ну… {110}? {116}?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.8,
+          "frame": {
+            "type": "chat",
+            "desc": "экран чата: сообщение «Какой у {имя} размер? Я в магазине» (снято на нашем телефоне, контакт «Мама»)",
+            "asset": "var/wardrobe-reels/assets/11-kakoy-u-neyo-razmer/01"
+          },
+          "plate": "— Какой у {неё} размер?\n— Ну… {110}? {116}?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.8,
+          "end": 3.8,
+          "frame": {
+            "type": "photo",
+            "desc": "детская кофта, рукав до середины руки (рука ребёнка, без лица)",
+            "asset": "var/wardrobe-reels/assets/11-kakoy-u-neyo-razmer/02"
+          },
+          "plate": "Кофта уже мала",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 3.8,
+          "end": 4.8,
+          "frame": {
+            "type": "photo",
+            "desc": "ростомер/дверной косяк с отметками",
+            "asset": "var/wardrobe-reels/assets/11-kakoy-u-neyo-razmer/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 4.8,
+          "end": 6.8,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: профиль ребёнка — рост {рост}, одежда {размер}, обувь {размер}",
+            "asset": "var/wardrobe-reels/assets/11-kakoy-u-neyo-razmer/04"
+          },
+          "plate": "Открыла — а там {116}",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 6.8,
+          "end": 9,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "— Какой у {неё} размер?",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "экран чата",
+      "cta": {
+        "paragraphs": [
+          "Запиши размеры ребёнка в WEARBASE.",
+          "Позови бабушку в семью — она увидит их в своём телефоне."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Бабушка в магазине, ребёнок вырос за лето, а я не помню размер. Было?",
+      "gate": "Таблица: рост → размер одежды и обуви — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — кофта с короткими рукавами, косяк с отметками роста; телефон — реальный чат (без настоящих имён); PWA — профиль ребёнка (вымышленное имя).",
+      "variables": {
+        "110": "110",
+        "116": "116",
+        "неё": "неё"
+      }
+    },
+    {
+      "id": 12,
+      "slug": "12-kolgotki-116",
+      "title": "Колготки 116 — есть или нет",
+      "segment": "С3",
+      "status": "ready",
+      "statusNote": "✅ поиск по шкафу ребёнка: категория + размер с телефона.",
+      "format": "meme_hook",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "views",
+      "pain": "В магазине не помню, есть ли у неё такие, — покупаю на всякий случай",
+      "hook": "Ты, когда в магазине:\nколготки {116} — есть?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3.2,
+          "frame": {
+            "type": "photo",
+            "desc": "полка магазина с детскими {вещами}",
+            "asset": "var/wardrobe-reels/assets/12-kolgotki-116/01"
+          },
+          "plate": "Ты, когда в магазине:\nколготки {116} — есть?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3.2,
+          "end": 4.4,
+          "frame": {
+            "type": "photo",
+            "desc": "в руке упаковка {вещи}",
+            "asset": "var/wardrobe-reels/assets/12-kolgotki-116/02"
+          },
+          "plate": "На всякий случай",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.4,
+          "end": 7.2,
+          "frame": {
+            "type": "photo",
+            "desc": "дома: ящик, где лежат {три} пары таких же — 3 кадра по 0.9 с, без текста",
+            "asset": "var/wardrobe-reels/assets/12-kolgotki-116/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0,
+          "shots": 3
+        },
+        {
+          "n": 4,
+          "start": 7.2,
+          "end": 9.6,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: шкаф {имя} → «{вещь} {размер}» → {3}",
+            "asset": "var/wardrobe-reels/assets/12-kolgotki-116/04"
+          },
+          "plate": "Теперь проверяю до кассы",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9.6,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Ты, когда в магазине:\nколготки {116} — есть?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "полка магазина",
+      "cta": {
+        "paragraphs": [
+          "Добавь вещи ребёнка в WEARBASE.",
+          "В магазине проверишь, есть ли такие дома."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "«На всякий случай» — самые дорогие слова в детском магазине",
+      "gate": null,
+      "gateNote": "нет.",
+      "shoot": "магазин/дом — полка, упаковка, ящик; PWA — фильтр по размеру в детском профиле.",
+      "variables": {
+        "116": "116"
+      }
+    },
+    {
+      "id": 13,
+      "slug": "13-mam-kupi-ssylkoy",
+      "title": "«Мам, купи» ссылкой",
+      "segment": "С3",
+      "status": "partial",
+      "statusNote": "🟡 петля запрос ребёнка → решение родителя (бюджет) → вещь в шкафу ✅, но 🐞 напоминания без капа (74 на 2 запроса) → **рилс после фикса капа**.",
+      "format": "punch-диалог",
+      "durationSec": 10,
+      "formatNote": null,
+      "goal": "comments",
+      "pain": "Ребёнок шлёт ссылки с WB по десять в день, всё теряется в чате",
+      "hook": "— Мам, купи.\nСсылка. Ещё ссылка.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.8,
+          "frame": {
+            "type": "chat",
+            "desc": "экран чата: столбик ссылок WB от «{имя}»",
+            "asset": "var/wardrobe-reels/assets/13-mam-kupi-ssylkoy/01"
+          },
+          "plate": "— Мам, купи.\nСсылка. Ещё ссылка.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.8,
+          "end": 4.3,
+          "frame": {
+            "type": "chat",
+            "desc": "прокрутка чата вниз, ссылок больше",
+            "asset": "var/wardrobe-reels/assets/13-mam-kupi-ssylkoy/02"
+          },
+          "plate": "Где та, первая?",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.3,
+          "end": 5.3,
+          "frame": {
+            "type": "photo",
+            "desc": "подросток (спина/руки) с телефоном",
+            "asset": "var/wardrobe-reels/assets/13-mam-kupi-ssylkoy/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 5.3,
+          "end": 7.8,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: запрос ребёнка с вещью → родитель «купить/нет»",
+            "asset": "var/wardrobe-reels/assets/13-mam-kupi-ssylkoy/04"
+          },
+          "plate": "Просит в приложении. Решаю там же",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 7.8,
+          "end": 10,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "— Мам, купи.\nСсылка. Ещё ссылка.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "чат со ссылками",
+      "cta": {
+        "paragraphs": [
+          "Заведи ребёнку профиль в WEARBASE.",
+          "Он попросит вещь там, а ты решишь: купить или нет."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Сколько ссылок с WB вам прислали сегодня? У меня рекорд — {N}",
+      "gate": null,
+      "gateNote": "нет — комментарии от узнавания (число своих ссылок).",
+      "shoot": "телефон — чат (наш, без реальных имён); дом — подросток со спины; PWA — запрос покупки и решение.",
+      "variables": {
+        "N": "7"
+      }
+    },
+    {
+      "id": 14,
+      "slug": "14-31-avgusta-vse-malo",
+      "title": "31 августа: всё мало",
+      "segment": "С3",
+      "status": "blocked",
+      "statusNote": "🔨 сверка размера ребёнка с размером вещей + «пора перебрать шкаф {имя}» → **рилс только после выпуска**. (Ручная метка «мала» ✅ есть, но сама не напоминает.)",
+      "format": "ticker",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "saves",
+      "pain": "Узнаю, что брюки малы, вечером перед школой",
+      "hook": "…и узнать {31 августа},\nчто брюки малы",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "школьные брюки на стуле, вечер, лампа",
+            "asset": "var/wardrobe-reels/assets/14-31-avgusta-vse-malo/01"
+          },
+          "plate": "…и узнать {31 августа},\nчто брюки малы",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 5.6,
+          "frame": {
+            "type": "photo",
+            "desc": "один кадр: стопка вещей, тикер «{вещь} — мало» ×8 (провал звука перед)",
+            "asset": "var/wardrobe-reels/assets/14-31-avgusta-vse-malo/02"
+          },
+          "plate": "{вещь} — мало",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "plates": [
+            "{вещь} — мало"
+          ],
+          "ticker": 8
+        },
+        {
+          "n": 3,
+          "start": 5.6,
+          "end": 7.1,
+          "frame": {
+            "type": "photo",
+            "desc": "ноги ребёнка в брюках выше щиколотки",
+            "asset": "var/wardrobe-reels/assets/14-31-avgusta-vse-malo/03"
+          },
+          "plate": "Вырос за лето на {N} см",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 7.1,
+          "end": 9.5,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: «Маловато: {N} вещей у {имя}»",
+            "asset": "var/wardrobe-reels/assets/14-31-avgusta-vse-malo/04"
+          },
+          "plate": "Теперь узнаю заранее, что мало",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9.5,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "…и узнать {31 августа},\nчто брюки малы",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "брюки на стуле",
+      "cta": {
+        "paragraphs": [
+          "Отмечай в WEARBASE, что стало мало.",
+          "Перед школой откроешь и увидишь, что докупить."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Брюки, рубашка, туфли — всё мало. Узнала {31 августа} в 21:40",
+      "gate": "Что проверить к школе — список в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — стул, вещи, ноги ребёнка; PWA — экран «маловато» (после выпуска). Переменная {дата} = 31 августа / 1 сентября / первый снег.",
+      "variables": {
+        "31 августа": "31 августа",
+        "вещь": [
+          "водолазка",
+          "юбка",
+          "платье",
+          "брюки",
+          "блузка",
+          "жакет",
+          "шарф",
+          "топ"
+        ],
+        "N": "7"
+      }
+    },
+    {
+      "id": 15,
+      "slug": "15-prinesite-zapasnye-shtany",
+      "title": "«Принесите запасные штаны»",
+      "segment": "С3",
+      "status": "blocked",
+      "statusNote": "🔨 чек-лист сборов в сад/школу из вещей ребёнка → **рилс только после выпуска**.",
+      "format": "chapters",
+      "durationSec": 28,
+      "formatNote": null,
+      "goal": "saves + comments",
+      "pain": "Воспитатель пишет вечером: завтра запасной комплект — а что в нём было в прошлый раз?",
+      "hook": "— Принесите запасной\nкомплект. Завтра.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "chat",
+            "desc": "экран чата «Сад, группа {название}» с сообщением",
+            "asset": "var/wardrobe-reels/assets/15-prinesite-zapasnye-shtany/01"
+          },
+          "plate": "— Принесите запасной\nкомплект. Завтра.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 15,
+          "frame": {
+            "type": "photo",
+            "desc": "главы «Низ» / «Верх» / «Носки и бельё», по 3 вещи на кровати по 1.2 с",
+            "asset": "var/wardrobe-reels/assets/15-prinesite-zapasnye-shtany/02"
+          },
+          "plate": "Низ",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "plates": [
+            "Низ",
+            "Верх",
+            "Носки и бельё"
+          ],
+          "shots": 9
+        },
+        {
+          "n": 3,
+          "start": 15,
+          "end": 21,
+          "frame": {
+            "type": "photo",
+            "desc": "шкафчик в саду с пакетом",
+            "asset": "var/wardrobe-reels/assets/15-prinesite-zapasnye-shtany/03"
+          },
+          "plate": "Что из этого уже там?",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 21,
+          "end": 25,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: сборы {имя} — что в саду, что дома",
+            "asset": "var/wardrobe-reels/assets/15-prinesite-zapasnye-shtany/04"
+          },
+          "plate": "Список собрался сам — из её вещей",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 25,
+          "end": 28,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "— Принесите запасной\nкомплект. Завтра.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "чат",
+      "cta": {
+        "paragraphs": [
+          "Добавь вещи ребёнка в WEARBASE.",
+          "Будет видно, что у неё есть, прямо с телефона."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Запасной комплект в сад: что кладу и как не забыть, что уже там",
+      "gate": "Список запасного комплекта для сада — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — вещи по главам; сад — шкафчик (без детей в кадре); PWA — сборы (после выпуска).",
+      "variables": {}
+    },
+    {
+      "id": 16,
+      "slug": "16-odet-pervoklassnika-chek-za-chekom",
+      "title": "Одеть первоклассника: чек за чеком",
+      "segment": "С3",
+      "status": "ready",
+      "statusNote": "✅ вещи по ссылке WB с ценой в шкафу ребёнка + траты по участнику.",
+      "format": "one_photo",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "saves + shares",
+      "pain": "Собирали в первый класс и не поняли, во сколько обошлось",
+      "hook": "Одеть в 1 класс.\nСчитаю по чекам.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "одно фото: школьный комплект flat-lay (форма, обувь, рюкзак), медленный наезд",
+            "asset": "var/wardrobe-reels/assets/16-odet-pervoklassnika-chek-za-chekom/01"
+          },
+          "plate": "Одеть в 1 класс.\nСчитаю по чекам.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 6.5,
+          "frame": {
+            "type": "photo",
+            "desc": "тот же кадр, плашки меняются: «Форма — {сумма}», «Обувь — {сумма}», «Сменка — {сумма}»",
+            "asset": null,
+            "sameAs": 1
+          },
+          "plate": "Форма — {сумма}",
+          "plateSource": "text",
+          "silenceAfter": 0.5,
+          "plates": [
+            "Форма — {сумма}",
+            "Обувь — {сумма}",
+            "Сменка — {сумма}"
+          ]
+        },
+        {
+          "n": 3,
+          "start": 6.5,
+          "end": 7,
+          "frame": {
+            "type": "photo",
+            "desc": "затемнение-запятая",
+            "asset": null,
+            "fill": "dark"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 7,
+          "end": 9.5,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: траты {имя} за {месяц}",
+            "asset": "var/wardrobe-reels/assets/16-odet-pervoklassnika-chek-za-chekom/04"
+          },
+          "plate": "Итого: {сумма} ₽",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9.5,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "наезд с начала",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Одеть в 1 класс.\nСчитаю по чекам.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "фото flat-lay с начала наезда",
+      "cta": {
+        "paragraphs": [
+          "Вставляй ссылки на покупки в WEARBASE.",
+          "Он покажет, сколько ушло на каждого ребёнка."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Сколько стоит одеть первоклассника в {год} — наши реальные чеки",
+      "gate": "Полный список с ценами — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — flat-lay школьного комплекта; PWA — статистика трат по ребёнку. Только реальные суммы; если сборы не наши — шаблон не запускать.",
+      "variables": {
+        "год": "год",
+        "сумма": "12 400"
+      }
+    },
+    {
+      "id": 17,
+      "slug": "17-kurtku-nosili-troe",
+      "title": "Эту куртку носили трое",
+      "segment": "С4",
+      "status": "ready",
+      "statusNote": "✅ передача вещи между детьми с историей.",
+      "format": "loop",
+      "durationSec": 13,
+      "formatNote": null,
+      "goal": "saves + shares",
+      "pain": "Вещь ходит от старшего к младшему, и я уже не помню, кто её носил и в каком году",
+      "hook": "Эту {куртку}\nносили {трое}",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "{куртка} на вешалке у двери",
+            "asset": "var/wardrobe-reels/assets/17-kurtku-nosili-troe/01"
+          },
+          "plate": "Эту {куртку}\nносили {трое}",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 4.5,
+          "frame": {
+            "type": "photo",
+            "desc": "спина ребёнка 1 в куртке",
+            "asset": "var/wardrobe-reels/assets/17-kurtku-nosili-troe/02"
+          },
+          "plate": "{год 1} · {имя 1}",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.5,
+          "end": 6,
+          "frame": {
+            "type": "photo",
+            "desc": "спина ребёнка 2 (меньше)",
+            "asset": "var/wardrobe-reels/assets/17-kurtku-nosili-troe/03"
+          },
+          "plate": "{год 2} · {имя 2}",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 6,
+          "end": 7.5,
+          "frame": {
+            "type": "photo",
+            "desc": "спина ребёнка 3",
+            "asset": "var/wardrobe-reels/assets/17-kurtku-nosili-troe/04"
+          },
+          "plate": "{год 3} · {имя 3}",
+          "plateSource": "text",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 5,
+          "start": 7.5,
+          "end": 10,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: история вещи — кто носил, когда передали",
+            "asset": "var/wardrobe-reels/assets/17-kurtku-nosili-troe/05"
+          },
+          "plate": "Теперь видно, кто её носил",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 6,
+          "start": 10,
+          "end": 13,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Эту {куртку} носили {трое}",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "та же вешалка",
+      "cta": {
+        "paragraphs": [
+          "Передавай вещи между детьми в WEARBASE.",
+          "Видно, кто носил и когда."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Эта куртка видела троих наших детей. Кто ещё передаёт по старшинству?",
+      "gate": "Какие вещи реально доживают до третьего ребёнка — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — одна вещь, 3 ребёнка со спины (или вещь на 3 разных стульях с подписанными годами, если детей снимать нельзя); PWA — история передачи. Генерация детей не используется.",
+      "variables": {
+        "куртку": "куртку",
+        "трое": "трое",
+        "год 1": "2019",
+        "имя 1": "Маша",
+        "год 2": "2021",
+        "имя 2": "Петя",
+        "год 3": "2024",
+        "имя 3": "Саша"
+      }
+    },
+    {
+      "id": 18,
+      "slug": "18-pakety-na-122-na-antresoli",
+      "title": "Пакеты «на 122» на антресоли",
+      "segment": "С4",
+      "status": "ready",
+      "statusNote": "✅ метка «мала — ждёт передачи» у вещи + матрица семьи: у кого что есть на сезон.",
+      "format": "punch",
+      "durationSec": 8,
+      "formatNote": null,
+      "goal": "views",
+      "pain": "Пакеты подписаны маркером по размерам, а что внутри — не помню",
+      "hook": "пакеты «на 122»\nна антресоли проблемс",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.4,
+          "frame": {
+            "type": "photo",
+            "desc": "антресоль: пакеты с надписями маркером «122», «128 зима»",
+            "asset": "var/wardrobe-reels/assets/18-pakety-na-122-na-antresoli/01"
+          },
+          "plate": "пакеты «на 122»\nна антресоли проблемс",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.4,
+          "end": 3.2,
+          "frame": {
+            "type": "photo",
+            "desc": "крупно надпись «116 ?»",
+            "asset": "var/wardrobe-reels/assets/18-pakety-na-122-na-antresoli/02"
+          },
+          "plate": "пакеты «на 122»\nна антресоли проблемс",
+          "plateSource": "same",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 3.2,
+          "end": 4,
+          "frame": {
+            "type": "photo",
+            "desc": "пакет раскрыт, вещи вперемешку",
+            "asset": "var/wardrobe-reels/assets/18-pakety-na-122-na-antresoli/03"
+          },
+          "plate": "пакеты «на 122»\nна антресоли проблемс",
+          "plateSource": "same",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 4,
+          "end": 6,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: что ждёт передачи и кому подходит по размеру",
+            "asset": "var/wardrobe-reels/assets/18-pakety-na-122-na-antresoli/04"
+          },
+          "plate": "Теперь видно без лестницы",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 6,
+          "end": 8,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "пакеты «на 122»\nна антресоли проблемс",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "антресоль",
+      "cta": {
+        "paragraphs": [
+          "Отмечай в WEARBASE, что стало мало.",
+          "Видно, что ждёт младшего, — без лестницы."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "пакеты «на 122» на антресоли проблемс — у кого сколько пакетов?",
+      "gate": null,
+      "gateNote": "нет.",
+      "shoot": "дом — антресоль, пакеты с маркером; PWA — вещи со статусом «ждёт передачи», матрица семьи.",
+      "variables": {}
+    },
+    {
+      "id": 19,
+      "slug": "19-kuda-ushli-dengi-za-osen",
+      "title": "Куда ушли деньги за осень",
+      "segment": "С4",
+      "status": "ready",
+      "statusNote": "✅ статистика трат по каждому участнику семьи.",
+      "format": "chapters",
+      "durationSec": 30,
+      "formatNote": null,
+      "goal": "saves",
+      "pain": "На троих уходит куча денег, а на кого сколько — не понимаю",
+      "hook": "{Трое} детей. Осень.\nНа кого ушли деньги?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "гора новых вещей на диване",
+            "asset": "var/wardrobe-reels/assets/19-kuda-ushli-dengi-za-osen/01"
+          },
+          "plate": "{Трое} детей. Осень.\nНа кого ушли деньги?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 11,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «{Старший}»: 4 вещи по 1.2 с + плашка «{сумма} ₽»",
+            "asset": "var/wardrobe-reels/assets/19-kuda-ushli-dengi-za-osen/02"
+          },
+          "plate": "{Старший}: {сумма} ₽",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 4
+        },
+        {
+          "n": 3,
+          "start": 11,
+          "end": 19,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «{Средний}»: 4 вещи + «{сумма} ₽»",
+            "asset": "var/wardrobe-reels/assets/19-kuda-ushli-dengi-za-osen/03"
+          },
+          "plate": "{Средний}: {сумма} ₽",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 4
+        },
+        {
+          "n": 4,
+          "start": 19,
+          "end": 25,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «{Младший}»: 4 вещи + «{сумма} ₽» (часто — меньше: донашивает)",
+            "asset": "var/wardrobe-reels/assets/19-kuda-ushli-dengi-za-osen/04"
+          },
+          "plate": "{Младший}: {сумма} ₽",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 4
+        },
+        {
+          "n": 5,
+          "start": 25,
+          "end": 28,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: траты по детям",
+            "asset": "var/wardrobe-reels/assets/19-kuda-ushli-dengi-za-osen/05"
+          },
+          "plate": "Сама удивилась",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 6,
+          "start": 28,
+          "end": 30,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "{Трое} детей. Осень.\nНа кого ушли деньги?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "диван с вещами, плашка «На кого ушли деньги?»",
+      "cta": {
+        "paragraphs": [
+          "Добавляй покупки в WEARBASE.",
+          "Он покажет траты на каждого ребёнка."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Осень на {трёх} детей: {сумма} ₽. Разложила по каждому",
+      "gate": "Что покупаем новым, а что только донашиваем — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — вещи по детям; PWA — статистика трат. Только реальные суммы.",
+      "variables": {
+        "Трое": "Трое",
+        "трёх": "трёх",
+        "сумма": "12 400",
+        "Старший": "Старший",
+        "Средний": "Средний",
+        "Младший": "Младший"
+      }
+    },
+    {
+      "id": 20,
+      "slug": "20-excel-na-troih-detey",
+      "title": "Excel на троих детей",
+      "segment": "С4",
+      "status": "ready",
+      "statusNote": "✅ матрица семьи + потребности к сезону (что купить кому).",
+      "format": "meme_hook",
+      "durationSec": 13,
+      "formatNote": null,
+      "goal": "comments",
+      "pain": "Веду таблицу размеров и потребностей к сезону — и сама в ней путаюсь",
+      "hook": "Я, когда открыла\nтаблицу размеров детей",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3.2,
+          "frame": {
+            "type": "photo",
+            "desc": "ноутбук с таблицей (размытые ячейки «128?», «купить!!»)",
+            "asset": "var/wardrobe-reels/assets/20-excel-na-troih-detey/01"
+          },
+          "plate": "Я, когда открыла\nтаблицу размеров детей",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3.2,
+          "end": 4.4,
+          "frame": {
+            "type": "photo",
+            "desc": "тетрадка с размерами, перечёркнутые цифры",
+            "asset": "var/wardrobe-reels/assets/20-excel-na-troih-detey/02"
+          },
+          "plate": "План Б",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 4.4,
+          "end": 8,
+          "frame": {
+            "type": "photo",
+            "desc": "4 кадра по 0.9 с: сапоги, комбинезон, шапка, варежки",
+            "asset": "var/wardrobe-reels/assets/20-excel-na-troih-detey/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0,
+          "shots": 4
+        },
+        {
+          "n": 4,
+          "start": 8,
+          "end": 10.5,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: к зиме у каждого — есть / нужно",
+            "asset": "var/wardrobe-reels/assets/20-excel-na-troih-detey/04"
+          },
+          "plate": "Размеры обновляются сами",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 10.5,
+          "end": 13,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Я, когда открыла\nтаблицу размеров детей",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "ноутбук",
+      "cta": {
+        "paragraphs": [
+          "Запиши в WEARBASE, что есть у детей.",
+          "И что купить к сезону — кому и что."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Таблица, тетрадка или пакеты с маркером — как вы ведёте размеры детей?",
+      "gate": null,
+      "gateNote": "нет; комментарии — сравнение своих систем (узнавание).",
+      "shoot": "дом — ноутбук/тетрадь, зимние вещи; PWA — матрица семьи и потребности сезона.",
+      "variables": {}
+    },
+    {
+      "id": 21,
+      "slug": "21-paket-vyrosshego-za-vecher",
+      "title": "Пакет выросшего за вечер",
+      "segment": "С4",
+      "status": "blocked",
+      "statusNote": "🔨 массовая передача пачкой + «выросшее → черновик объявления на Авито» → **рилс только после выпуска**.",
+      "format": "ticker",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "views",
+      "pain": "Выросшее копится: кому-то отдать, что-то продать — руки не доходят",
+      "hook": "Разобрала выросшее.\nЗа один вечер.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "гора детских вещей на полу",
+            "asset": "var/wardrobe-reels/assets/21-paket-vyrosshego-za-vecher/01"
+          },
+          "plate": "Разобрала выросшее.\nЗа один вечер.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 5.6,
+          "frame": {
+            "type": "photo",
+            "desc": "один кадр, тикер «младшему / Авито / отдать» над вещами ×9",
+            "asset": "var/wardrobe-reels/assets/21-paket-vyrosshego-za-vecher/02"
+          },
+          "plate": "младшему",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "plates": [
+            "младшему",
+            "Авито",
+            "отдать"
+          ],
+          "ticker": 9
+        },
+        {
+          "n": 3,
+          "start": 5.6,
+          "end": 7.6,
+          "frame": {
+            "type": "photo",
+            "desc": "три стопки",
+            "asset": "var/wardrobe-reels/assets/21-paket-vyrosshego-za-vecher/03"
+          },
+          "plate": "{N} младшему · {N} продать · {N} отдать",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 7.6,
+          "end": 9.6,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: пачка передана, объявления готовы",
+            "asset": "var/wardrobe-reels/assets/21-paket-vyrosshego-za-vecher/04"
+          },
+          "plate": "Объявления написались сами",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9.6,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Разобрала выросшее.\nЗа один вечер.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "гора на полу",
+      "cta": {
+        "paragraphs": [
+          "Отмечай в WEARBASE, что мало и что отдать.",
+          "Видно, что кому передать."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Выросшее троих детей — за один вечер. Раньше уходил месяц",
+      "gate": null,
+      "gateNote": "нет.",
+      "shoot": "дом — вещи на полу, три стопки; PWA — массовая передача, черновики Авито (после выпуска).",
+      "variables": {
+        "N": "7"
+      }
+    },
+    {
+      "id": 22,
+      "slug": "22-zima-na-troih-byudzhet",
+      "title": "Зима на троих: бюджет",
+      "segment": "С4",
+      "status": "blocked",
+      "statusNote": "🔨 бюджет сезона по детям → **рилс только после выпуска**. (Бюджет на запросы покупок ✅ есть, но не сезонный по детям.)",
+      "format": "one_photo",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "comments",
+      "pain": "Зимнее на всех сразу — бюджет кончается на втором ребёнке",
+      "hook": "Зима. {Трое} детей.\nБюджет: {сумма}.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "одно фото: три пары зимних ботинок разного размера, наезд",
+            "asset": "var/wardrobe-reels/assets/22-zima-na-troih-byudzhet/01"
+          },
+          "plate": "Зима. {Трое} детей.\nБюджет: {сумма}.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 5,
+          "frame": {
+            "type": "photo",
+            "desc": "плашки на том же кадре: «Сапоги ×3», «Комбинезон ×2»",
+            "asset": null,
+            "sameAs": 1
+          },
+          "plate": "Сапоги ×3",
+          "plateSource": "text",
+          "silenceAfter": 0.5,
+          "plates": [
+            "Сапоги ×3",
+            "Комбинезон ×2"
+          ]
+        },
+        {
+          "n": 3,
+          "start": 5,
+          "end": 5.5,
+          "frame": {
+            "type": "photo",
+            "desc": "затемнение",
+            "asset": null,
+            "fill": "dark"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 5.5,
+          "end": 9,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: бюджет зимы, остаток по каждому",
+            "asset": "var/wardrobe-reels/assets/22-zima-na-troih-byudzhet/04"
+          },
+          "plate": "Осталось {сумма} на {имя}",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "наезд с начала",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Зима. {Трое} детей.\nБюджет: {сумма}.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "ботинки",
+      "cta": {
+        "paragraphs": [
+          "Запиши в WEARBASE, что есть у каждого.",
+          "Видно, что уже есть, — лишнего не купишь."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Сколько у вас уходит на зиму на одного ребёнка? У нас — {сумма}",
+      "gate": "Как делим бюджет: новое / донашиваем / б/у — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — ботинки разного размера; PWA — бюджет сезона (после выпуска).",
+      "variables": {
+        "Трое": "Трое",
+        "сумма": "12 400",
+        "имя": "Маша"
+      }
+    },
+    {
+      "id": 23,
+      "slug": "23-idem-v-teatr",
+      "title": "«Идём в театр?»",
+      "segment": "С5",
+      "status": "partial",
+      "statusNote": "🟡 образ по поводу «театр» из своих вещей есть в ночной генерации, надёжность низкая → **рилс после починки стилиста**.",
+      "format": "punch-диалог",
+      "durationSec": 9,
+      "formatNote": null,
+      "goal": "views",
+      "pain": "Наконец-то выход, а мне не в чем — всё домашнее",
+      "hook": "— Идём в {театр}?\n— …а в чём?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.8,
+          "frame": {
+            "type": "photo",
+            "desc": "два билета на кровати рядом с домашней кофтой",
+            "asset": "var/wardrobe-reels/assets/23-idem-v-teatr/01"
+          },
+          "plate": "— Идём в {театр}?\n— …а в чём?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.8,
+          "end": 3.8,
+          "frame": {
+            "type": "photo",
+            "desc": "шкаф: трикотаж, худи",
+            "asset": "var/wardrobe-reels/assets/23-idem-v-teatr/02"
+          },
+          "plate": "— Идём в {театр}?\n— …а в чём?",
+          "plateSource": "same",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 3.8,
+          "end": 4.8,
+          "frame": {
+            "type": "photo",
+            "desc": "туфли на дне шкафа, пыльная коробка",
+            "asset": "var/wardrobe-reels/assets/23-idem-v-teatr/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 4.8,
+          "end": 6.8,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: образ на {театр} из своих вещей",
+            "asset": "var/wardrobe-reels/assets/23-idem-v-teatr/04"
+          },
+          "plate": "Нашлось в моём же шкафу",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 6.8,
+          "end": 9,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "— Идём в {театр}?\n— …а в чём?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "билеты и кофта",
+      "cta": {
+        "paragraphs": [
+          "Сфоткай свои вещи в WEARBASE.",
+          "Видно, что есть на выход, прямо в телефоне."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Позвали в {театр} в пятницу. Первая мысль — «а в чём?»",
+      "gate": null,
+      "gateNote": "нет.",
+      "shoot": "дом — билеты, шкаф, туфли; PWA — образ с поводом «театр». {повод} = театр/ресторан/кино.",
+      "variables": {
+        "театр": "театр"
+      }
+    },
+    {
+      "id": 24,
+      "slug": "24-pervyy-vyhod-bez-kolyaski",
+      "title": "Первый выход без коляски",
+      "segment": "С5",
+      "status": "partial",
+      "statusNote": "🟡 поделиться образом с кругом подруг и получить реакции ✅; сами образы — из генерации стилиста (🟡) → **рилс после починки стилиста**.",
+      "format": "loop",
+      "durationSec": 14,
+      "formatNote": "нумерованные образы",
+      "goal": "comments",
+      "pain": "Не понимаю, что мне теперь идёт, — хочу спросить подруг, но не фото же слать по одному",
+      "hook": "Первый выход без\nколяски. 1 или 2?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "туфли и сумка у двери",
+            "asset": "var/wardrobe-reels/assets/24-pervyy-vyhod-bez-kolyaski/01"
+          },
+          "plate": "Первый выход без\nколяски. 1 или 2?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 5,
+          "frame": {
+            "type": "photo",
+            "desc": "образ 1 flat-lay, крупная цифра «1»",
+            "asset": "var/wardrobe-reels/assets/24-pervyy-vyhod-bez-kolyaski/02"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 5,
+          "end": 7,
+          "frame": {
+            "type": "photo",
+            "desc": "образ 2 flat-lay, крупная цифра «2»",
+            "asset": "var/wardrobe-reels/assets/24-pervyy-vyhod-bez-kolyaski/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 7,
+          "end": 11,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: оба образа отправлены подругам, реакции",
+            "asset": "var/wardrobe-reels/assets/24-pervyy-vyhod-bez-kolyaski/04"
+          },
+          "plate": "Подруги голосуют в приложении",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 11,
+          "end": 14,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "1 или 2?",
+          "plateSource": "text",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "дверь, туфли",
+      "cta": {
+        "paragraphs": [
+          "Собери два наряда в WEARBASE.",
+          "Отправь подругам — они проголосуют."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Первый выход без коляски за {2 года}. 1 или 2 — пишите цифру",
+      "gate": null,
+      "gateNote": "нумерация (просим цифру — минимальное усилие, плейбук §5.3).",
+      "shoot": "дом — 2 образа на одном фоне, туфли у двери; PWA — шаринг образа кругу, реакции.",
+      "variables": {
+        "2 года": "2 года"
+      }
+    },
+    {
+      "id": 25,
+      "slug": "25-vse-iz-2019-goda",
+      "title": "Всё из 2019 года",
+      "segment": "С5",
+      "status": "blocked",
+      "statusNote": "🔨 капсула из своих вещей (+ отметки «подарена/продана» ✅ для того, что уходит) → **рилс только после выпуска**.",
+      "format": "chapters",
+      "durationSec": 33,
+      "formatNote": null,
+      "goal": "saves",
+      "pain": "Открыла шкаф после декрета — всё из прошлой жизни, и не знаю, что мне теперь идёт",
+      "hook": "После декрета открыла\nшкаф. Всё из {2019}.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "шкаф, вещи на вешалках",
+            "asset": "var/wardrobe-reels/assets/25-vse-iz-2019-goda/01"
+          },
+          "plate": "После декрета открыла\nшкаф. Всё из {2019}.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 12,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «Ухожу»: 5 вещей по 1.2 с",
+            "asset": "var/wardrobe-reels/assets/25-vse-iz-2019-goda/02"
+          },
+          "plate": "Ухожу",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 5
+        },
+        {
+          "n": 3,
+          "start": 12,
+          "end": 21,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «Остаётся»: 5 вещей по 1.5 с",
+            "asset": "var/wardrobe-reels/assets/25-vse-iz-2019-goda/03"
+          },
+          "plate": "Остаётся",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 5
+        },
+        {
+          "n": 4,
+          "start": 21,
+          "end": 27,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «Носить вместе»: 4 образа из оставшегося",
+            "asset": "var/wardrobe-reels/assets/25-vse-iz-2019-goda/04"
+          },
+          "plate": "Носить вместе",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 4
+        },
+        {
+          "n": 5,
+          "start": 27,
+          "end": 30,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: капсула из {N} вещей",
+            "asset": "var/wardrobe-reels/assets/25-vse-iz-2019-goda/05"
+          },
+          "plate": "Наряды из того, что осталось",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 6,
+          "start": 30,
+          "end": 33,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "После декрета открыла\nшкаф. Всё из {2019}.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "шкаф",
+      "cta": {
+        "paragraphs": [
+          "Сфоткай шкаф в WEARBASE.",
+          "Отметь, что уходит, — останется то, что носишь."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Разобрала шкаф после декрета: что ушло, что осталось, что из этого собралось",
+      "gate": "Список капсулы из {N} вещей — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — вещи flat-lay по главам, без лица; PWA — капсула (после выпуска).",
+      "variables": {
+        "2019": "2019",
+        "N": "7"
+      }
+    },
+    {
+      "id": 26,
+      "slug": "26-nedelya-v-chemodane-iz-veschey",
+      "title": "Неделя в чемодане из {N} вещей",
+      "segment": "С5",
+      "status": "blocked",
+      "statusNote": "🔨 сборы в поездку: что взять + образы по дням + погода → **рилс только после выпуска**.",
+      "format": "ticker",
+      "durationSec": 13,
+      "formatNote": null,
+      "goal": "views + saves",
+      "pain": "В поездке надеваю треть, остальное вожу туда-обратно",
+      "hook": "Неделя у моря.\n{12} вещей. Всё.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "{12} вещей разложены сеткой на полу",
+            "asset": "var/wardrobe-reels/assets/26-nedelya-v-chemodane-iz-veschey/01"
+          },
+          "plate": "Неделя у моря.\n{12} вещей. Всё.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 5.8,
+          "frame": {
+            "type": "photo",
+            "desc": "один кадр (сетка), тикер дней «Пн · Вт · …· Вс» с образом-номером",
+            "asset": "var/wardrobe-reels/assets/26-nedelya-v-chemodane-iz-veschey/02"
+          },
+          "plate": "Пн",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "plates": [
+            "Пн",
+            "Вт",
+            "Ср",
+            "Чт",
+            "Пт",
+            "Сб",
+            "Вс"
+          ]
+        },
+        {
+          "n": 3,
+          "start": 5.8,
+          "end": 8,
+          "frame": {
+            "type": "photo",
+            "desc": "чемодан закрывается легко",
+            "asset": "var/wardrobe-reels/assets/26-nedelya-v-chemodane-iz-veschey/03"
+          },
+          "plate": "Влезло с запасом",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 8,
+          "end": 10,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: поездка, образ на каждый день",
+            "asset": "var/wardrobe-reels/assets/26-nedelya-v-chemodane-iz-veschey/04"
+          },
+          "plate": "Наряд на каждый день — заранее",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 10,
+          "end": 13,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Неделя у моря.\n{12} вещей. Всё.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "сетка вещей",
+      "cta": {
+        "paragraphs": [
+          "Добавь свои вещи в WEARBASE.",
+          "Перед поездкой весь шкаф будет в телефоне."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "{12} вещей на неделю в {город} — каждая надета минимум дважды",
+      "gate": "Список {12} вещей и образы по дням — в первом комментарии",
+      "gateNote": null,
+      "shoot": "дом — flat-lay сеткой, чемодан; PWA — поездка (после выпуска).",
+      "variables": {
+        "12": "12",
+        "N": "7",
+        "город": "Москва"
+      }
+    },
+    {
+      "id": 27,
+      "slug": "27-ty-v-etom-zhe-byla",
+      "title": "«Ты в этом же была?»",
+      "segment": "С5",
+      "status": "ready",
+      "statusNote": "✅ журнал носки по фото образа: дата и вещи каждого выхода.",
+      "format": "punch-диалог",
+      "durationSec": 8,
+      "formatNote": null,
+      "goal": "views + comments",
+      "pain": "Боюсь прийти к тем же людям в том же платье — не помню, в чём была в прошлый раз",
+      "hook": "— Ты в этом же\nбыла в прошлый раз?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.6,
+          "frame": {
+            "type": "photo",
+            "desc": "платье на вешалке, рядом открытка-приглашение «День рождения»",
+            "asset": "var/wardrobe-reels/assets/27-ty-v-etom-zhe-byla/01"
+          },
+          "plate": "— Ты в этом же\nбыла в прошлый раз?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.6,
+          "end": 3.4,
+          "frame": {
+            "type": "photo",
+            "desc": "то же платье на старом снимке (плечо, рука с бокалом, без лица)",
+            "asset": "var/wardrobe-reels/assets/27-ty-v-etom-zhe-byla/02"
+          },
+          "plate": "— Ты в этом же\nбыла в прошлый раз?",
+          "plateSource": "same",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 3.4,
+          "end": 4.2,
+          "frame": {
+            "type": "photo",
+            "desc": "второе платье",
+            "asset": "var/wardrobe-reels/assets/27-ty-v-etom-zhe-byla/03"
+          },
+          "plate": "— Ты в этом же\nбыла в прошлый раз?",
+          "plateSource": "same",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 4.2,
+          "end": 6,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: журнал носки — «{повод}, {месяц}: синее платье»",
+            "asset": "var/wardrobe-reels/assets/27-ty-v-etom-zhe-byla/04"
+          },
+          "plate": "Теперь помню, в чём была",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 6,
+          "end": 8,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "— Ты в этом же\nбыла в прошлый раз?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "платье и приглашение",
+      "cta": {
+        "paragraphs": [
+          "Фоткай наряды в WEARBASE.",
+          "Он запомнит, в чём ты была и когда."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Иду к тем же друзьям второй раз. Самый важный вопрос — не в этом ли я была",
+      "gate": null,
+      "gateNote": "нет; комментарии-признания.",
+      "shoot": "дом — платья, приглашение; старое фото — наше, кадрированное без лица; PWA — журнал носки с фото и датой.",
+      "variables": {}
+    },
+    {
+      "id": 28,
+      "slug": "28-veschey-gde-kazhdaya",
+      "title": "{N} вещей — где каждая",
+      "segment": "С6",
+      "status": "ready",
+      "statusNote": "✅ статусы «чистая / в стирке / грязная», «в ремонте», журнал химчистки и ремонта с отметкой «готово».",
+      "format": "ticker",
+      "durationSec": 12,
+      "formatNote": null,
+      "goal": "views (имидж)",
+      "pain": "Сотни вещей на каждого члена семьи — и в любой момент спросят, где конкретная",
+      "hook": "Гардероб семьи:\n{400} вещей. Где какая?",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "длинный ряд вешалок в гардеробной (без людей)",
+            "asset": "var/wardrobe-reels/assets/28-veschey-gde-kazhdaya/01"
+          },
+          "plate": "Гардероб семьи:\n{400} вещей. Где какая?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 5.6,
+          "frame": {
+            "type": "photo",
+            "desc": "один кадр, тикер статусов: «химчистка · ремонт подошвы · в стирке · на месте…» ×10",
+            "asset": "var/wardrobe-reels/assets/28-veschey-gde-kazhdaya/02"
+          },
+          "plate": "химчистка",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "plates": [
+            "химчистка",
+            "ремонт подошвы",
+            "в стирке",
+            "на месте"
+          ],
+          "ticker": 10
+        },
+        {
+          "n": 3,
+          "start": 5.6,
+          "end": 7.1,
+          "frame": {
+            "type": "photo",
+            "desc": "пакет из химчистки на ручке двери",
+            "asset": "var/wardrobe-reels/assets/28-veschey-gde-kazhdaya/03"
+          },
+          "plate": "Химчистка: забрать в {день}",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 7.1,
+          "end": 9.5,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: вещь → история (химчистка, подгиб, молния)",
+            "asset": "var/wardrobe-reels/assets/28-veschey-gde-kazhdaya/04"
+          },
+          "plate": "Видно, где каждая вещь",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 9.5,
+          "end": 12,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Гардероб семьи:\n{400} вещей. Где какая?",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "ряд вешалок",
+      "cta": {
+        "paragraphs": [
+          "Отмечай в WEARBASE стирку, ремонт и химчистку.",
+          "Про любую вещь видно, где она."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Гардероб семьи на {400} вещей: где каждая — видно с телефона",
+      "gate": null,
+      "gateNote": "нет.",
+      "shoot": "реальная большая гардеробная (договориться о съёмке) или генерация «создано с ИИ» без людей; PWA — статусы и журнал ухода. {N} — только реальное число с реальной съёмки; на генерации — без цифры: «Сотни вещей.»",
+      "variables": {
+        "400": "400",
+        "N": "7",
+        "день": "пятницу"
+      }
+    },
+    {
+      "id": 29,
+      "slug": "29-gde-moe-palto",
+      "title": "«Где моё пальто?»",
+      "segment": "С6",
+      "status": "ready",
+      "statusNote": "✅ журнал жизненного цикла: химчистка/ремонт с датами, статус вещи.",
+      "format": "punch-диалог",
+      "durationSec": 9,
+      "formatNote": null,
+      "goal": "views",
+      "pain": "Работодатель спрашивает про вещь, а я звоню в химчистку и ищу квитанцию",
+      "hook": "— Где моё {пальто}?\n— Секунду.",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 2.8,
+          "frame": {
+            "type": "photo",
+            "desc": "пустая вешалка с биркой-номерком",
+            "asset": "var/wardrobe-reels/assets/29-gde-moe-palto/01"
+          },
+          "plate": "— Где моё {пальто}?\n— Секунду.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 2.8,
+          "end": 3.8,
+          "frame": {
+            "type": "photo",
+            "desc": "стопка квитанций химчистки",
+            "asset": "var/wardrobe-reels/assets/29-gde-moe-palto/02"
+          },
+          "plate": "— Где моё {пальто}?\n— Секунду.",
+          "plateSource": "same",
+          "silenceAfter": 0
+        },
+        {
+          "n": 3,
+          "start": 3.8,
+          "end": 4.8,
+          "frame": {
+            "type": "photo",
+            "desc": "телефон в руке",
+            "asset": "var/wardrobe-reels/assets/29-gde-moe-palto/03"
+          },
+          "plate": "",
+          "plateSource": "none",
+          "silenceAfter": 0.5
+        },
+        {
+          "n": 4,
+          "start": 4.8,
+          "end": 6.8,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: {пальто} — «химчистка, сдано {дата}, вернуть {дата}»",
+            "asset": "var/wardrobe-reels/assets/29-gde-moe-palto/04"
+          },
+          "plate": "Ответ за секунду, без квитанций",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 6.8,
+          "end": 9,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "— Где моё {пальто}?\n— Секунду.",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "пустая вешалка",
+      "cta": {
+        "paragraphs": [
+          "Записывай химчистку и ремонт в WEARBASE.",
+          "Дата сдачи и возврата — в телефоне."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Самый частый вопрос в гардеробной — «где моё…». Ответ теперь за секунду",
+      "gate": null,
+      "gateNote": "нет.",
+      "shoot": "дом/гардеробная — вешалка, квитанции (свои, без реквизитов); PWA — журнал химчистки у вещи.",
+      "variables": {
+        "пальто": "пальто"
+      }
+    },
+    {
+      "id": 30,
+      "slug": "30-zakupka-iz-treh-stran",
+      "title": "Закупка из трёх стран",
+      "segment": "С6",
+      "status": "blocked",
+      "statusNote": "🔨 отслеживание закупок + отчёт работодателю + роль ассистента с доступом → **рилс только после выпуска**.",
+      "format": "chapters",
+      "durationSec": 24,
+      "formatNote": null,
+      "goal": "comments",
+      "pain": "Заказы идут из нескольких стран, я веду их в заметках и отчитываюсь таблицей",
+      "hook": "Ассистент семьи:\n{14} заказов, {3} страны",
+      "beats": [
+        {
+          "n": 1,
+          "start": 0,
+          "end": 3,
+          "frame": {
+            "type": "photo",
+            "desc": "коробки посылок без логотипов брендов",
+            "asset": "var/wardrobe-reels/assets/30-zakupka-iz-treh-stran/01"
+          },
+          "plate": "Ассистент семьи:\n{14} заказов, {3} страны",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        },
+        {
+          "n": 2,
+          "start": 3,
+          "end": 10,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «Заказано»: 4 позиции по 1.5 с (вещи без брендов)",
+            "asset": "var/wardrobe-reels/assets/30-zakupka-iz-treh-stran/02"
+          },
+          "plate": "Заказано",
+          "plateSource": "text",
+          "silenceAfter": 0,
+          "shots": 4
+        },
+        {
+          "n": 3,
+          "start": 10,
+          "end": 16,
+          "frame": {
+            "type": "photo",
+            "desc": "глава «В пути»: трек-статусы на экране",
+            "asset": "var/wardrobe-reels/assets/30-zakupka-iz-treh-stran/03"
+          },
+          "plate": "В пути",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 4,
+          "start": 16,
+          "end": 21,
+          "frame": {
+            "type": "screen",
+            "desc": "запись экрана: закупки и отчёт за месяц",
+            "asset": "var/wardrobe-reels/assets/30-zakupka-iz-treh-stran/04"
+          },
+          "plate": "Все заказы — на одном экране",
+          "plateSource": "text",
+          "silenceAfter": 0
+        },
+        {
+          "n": 5,
+          "start": 21,
+          "end": 24,
+          "frame": {
+            "type": "loop",
+            "desc": "кадр 1",
+            "asset": null,
+            "loopOf": 1
+          },
+          "plate": "Ассистент семьи:\n{14} заказов, {3} страны",
+          "plateSource": "hook",
+          "silenceAfter": 0
+        }
+      ],
+      "loopTo": "коробки",
+      "cta": {
+        "paragraphs": [
+          "Заведи в WEARBASE шкаф всей семьи.",
+          "Все вещи и покупки — в одном месте."
+        ],
+        "action": "Ссылка в профиле",
+        "duration": 4.5
+      },
+      "caption": "Как ассистент семьи ведёт закупки из трёх стран и не тонет в заметках",
+      "gate": "Как вести журнал закупок уже сейчас — шаблон в первом комментарии",
+      "gateNote": null,
+      "shoot": "коробки без логотипов (иностранные бренды в кадр не попадают); PWA — закупки и отчёт (после выпуска).",
+      "variables": {
+        "3": "3",
+        "14": "14"
+      }
+    }
+  ]
+}

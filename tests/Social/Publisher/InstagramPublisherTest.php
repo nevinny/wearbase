@@ -183,6 +183,24 @@ class InstagramPublisherTest extends TestCase
         self::assertSame('https://media.example/video-0.mp4', $this->requests[0]['body']['video_url']);
     }
 
+    public function testWardrobeReelsKeepsManifestCaptionAndPassesCover(): void
+    {
+        $publisher = $this->publisher(['create-1' => 'reel1']);
+        $post = (new SocialPost())
+            ->setRubric('wardrobe_reels')->setMediaType(SocialPost::MEDIA_REELS)
+            ->setCaption("Какой у неё размер?\n\nГардероб — ссылка в профиле.")
+            ->setCoverPath('/images/social/wardrobe-templates/t11-kakoy-u-neyo-razmer-v1/cover.jpg');
+
+        self::assertSame('published-1', $publisher->publish($this->channel(), $post, [$this->tmpFile()]));
+
+        $container = $this->requests[0]['body'];
+        self::assertSame('REELS', $container['media_type']);
+        self::assertSame("Какой у неё размер?\n\nГардероб — ссылка в профиле.", $container['caption']);
+        self::assertSame('https://media.example/slide-0.jpg', $container['cover_url']);
+        // Ссылки нет → первого комментария нет: create, poll, publish.
+        self::assertCount(3, $this->requests);
+    }
+
     public function testMoreThanTenSlidesRefusedWithoutAnyRequest(): void
     {
         $publisher = $this->publisher([]);

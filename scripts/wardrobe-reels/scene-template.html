@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>Wearbase — шаблон рилса: фото на весь кадр + плашка</title>
+<style>
+@font-face { font-family: Wardrobe; src: url('../../config/social/fonts/NotoSans.ttf'); font-weight: 100 900; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #000; overflow: hidden; }
+canvas { display: block; width: 1080px; height: 1920px; }
+</style>
+<canvas width="1080" height="1920"></canvas>
+<script>
+const W = 1080, H = 1920;
+// Безопасная зона IG для кадра 1920: сверху ~300 px и снизу ~420 px перекрыты интерфейсом.
+const SAFE_TOP = 300, SAFE_BOTTOM = H - 420;
+const PLATE_CENTER = Math.round(H * .56), PLATE_MAX_W = 920, PLATE_MAX = 96, PLATE_MIN = 76, PAD_X = 40, PAD_Y = 28;
+const c = document.querySelector('canvas'), g = c.getContext('2d');
+let data, media = new Map();
+
+function wrap(text, size, weight, maxWidth) {
+    g.font = `${weight} ${size}px Wardrobe`;
+    const lines = [];
+    for (const paragraph of text.split('\n')) {
+        let line = '';
+        for (const word of paragraph.split(' ')) {
+            const next = line ? `${line} ${word}` : word;
+            if (g.measureText(next).width > maxWidth && line) { lines.push(line); line = word; } else line = next;
+        }
+        lines.push(line);
+    }
+    return lines;
+}
+// Подбор кегля плашки: самый крупный из [MIN..MAX], при котором влезает в 920 px и 4 строки; ниже MIN — только с предупреждением.
+function layoutPlate(text) {
+    let size = PLATE_MAX, lines, floor = false;
+    for (;; size -= 2) {
+        lines = wrap(text, size, 800, PLATE_MAX_W);
+        const widest = Math.max(...lines.map(l => g.measureText(l).width));
+        if (lines.length <= 4 && widest <= PLATE_MAX_W) break;
+        if (size <= PLATE_MIN) { floor = true; break; }
+    }
+    while (floor && size > 40 && Math.max(...wrap(text, size, 800, PLATE_MAX_W).map(l => g.measureText(l).width)) > PLATE_MAX_W) size -= 2;
+    if (floor) lines = wrap(text, size, 800, PLATE_MAX_W);
+    const lh = Math.round(size * 1.14);
+    const height = lines.length * lh + PAD_Y * 2;
+    let top = Math.round(PLATE_CENTER - height / 2);
+    top = Math.min(Math.max(top, SAFE_TOP + 10), SAFE_BOTTOM - 10 - height);
+    const width = Math.max(...lines.map(l => g.measureText(l).width)) + PAD_X * 2;
+    return {size, lines, lh, height, top, bottom: top + height, width};
+}
+window.plateMetrics = text => layoutPlate(text);
+
+function box(x, y, w, h, fill, r = 28) { g.fillStyle = fill; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); }
+function drawPlate(text) {
+    const m = layoutPlate(text);
+    box((W - m.width) / 2, m.top, m.width, m.height, 'rgba(8,10,9,.52)', 30);
+    g.font = `800 ${m.size}px Wardrobe`; g.textAlign = 'center'; g.textBaseline = 'top';
+    g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 14; g.shadowOffsetY = 3;
+    g.fillStyle = '#FFFFFF';
+    m.lines.forEach((l, i) => g.fillText(l, W / 2, m.top + PAD_Y + i * m.lh + (m.lh - m.size) / 2));
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0; g.textAlign = 'left';
+}
+function lerp(a, b, p) { return a + (b - a) * p; }
+function drawCover(el, w, h, z, fx, fy) {
+    const k = Math.max(W / w, H / h) * z, dw = w * k, dh = h * k;
+    g.drawImage(el, (W - dw) / 2 + fx, (H - dh) / 2 + fy, dw, dh);
+}
+const BLUR = 'blur(22px) brightness(.72)';
+function drawMedia(shot, p, local) {
+    const el = media.get(shot.src);
+    const w = el.videoWidth || el.naturalWidth, h = el.videoHeight || el.naturalHeight;
+    const z = lerp(shot.zoom.z0, shot.zoom.z1, p), fx = lerp(shot.zoom.x0, shot.zoom.x1, p), fy = lerp(shot.zoom.y0, shot.zoom.y1, p);
+    if (shot.mediaKind === 'photo' || Math.abs(w / h - W / H) < .05) { drawCover(el, w, h, z, fx, fy); return; }
+    // Скрин не 9:16: размытый фон + вписывание целиком, без обрезки интерфейса.
+    g.filter = 'blur(40px) brightness(.6)'; drawCover(el, w, h, 1.2, 0, 0); g.filter = shot.blur ? BLUR : 'none';
+    const k = Math.min(W / w, H / h);
+    g.drawImage(el, (W - w * k) / 2, (H - h * k) / 2, w * k, h * k);
+}
+function drawPlaceholder(shot) {
+    g.fillStyle = '#6E7378'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(255,255,255,.07)'; g.lineWidth = 26;
+    for (let x = -H; x < W; x += 90) { g.beginPath(); g.moveTo(x, H); g.lineTo(x + H, 0); g.stroke(); }
+    g.textBaseline = 'top'; g.fillStyle = '#FFE08A'; g.font = '700 38px Wardrobe';
+    g.fillText(shot.label, 60, SAFE_TOP + 16);
+    // Описание подгоняется в окно SAFE_TOP+70 .. 800, чтобы не залезать под плашку.
+    const text = 'КАДР НУЖЕН: ' + shot.desc, maxH = 800 - (SAFE_TOP + 70);
+    let size = 50, lines;
+    for (; size >= 28; size -= 2) { lines = wrap(text, size, 700, W - 120); if (lines.length * size * 1.2 <= maxH) break; }
+    const cap = Math.floor(maxH / (size * 1.2));
+    if (lines.length > cap) { lines = lines.slice(0, cap); lines[cap - 1] = lines[cap - 1].replace(/\s*\S*$/, '') + '…'; }
+    g.fillStyle = '#FFFFFF'; g.font = `700 ${size}px Wardrobe`;
+    lines.forEach((l, i) => g.fillText(l, 60, SAFE_TOP + 70 + i * size * 1.2));
+    box(60, 1330, 420, 150, '#D32F2F', 20);
+    g.fillStyle = '#FFFFFF'; g.font = '800 104px Wardrobe'; g.fillText('DRAFT', 82, 1352);
+}
+// Пометка сгенерированного кадра: мелко, но в безопасной зоне (сразу под верхним интерфейсом IG), чтобы её не съел UI.
+function drawAiBadge() {
+    g.font = '700 32px Wardrobe'; g.textBaseline = 'top';
+    const text = 'AI-иллюстрация', w = g.measureText(text).width + 36;
+    box(40, SAFE_TOP + 16, w, 52, 'rgba(8,10,9,.55)', 14);
+    g.fillStyle = '#FFFFFF'; g.fillText(text, 58, SAFE_TOP + 26);
+}
+function drawBadge() {
+    box(24, 24, 170, 54, '#D32F2F', 12);
+    g.fillStyle = '#FFFFFF'; g.font = '800 34px Wardrobe'; g.textBaseline = 'top'; g.fillText('DRAFT', 44, 31);
+}
+
+// Экран-пояснение (CTA): абзацы белым ≥64 px слева, действие — на плашке акцентного цвета; всё в безопасной зоне.
+const EXP_X = 80, EXP_W = W - 160, EXP_TOP = SAFE_TOP + 40, EXP_BOTTOM = SAFE_BOTTOM - 40;
+function layoutExplainer(e) {
+    for (let size = 72; ; size -= 2) {
+        const lh = Math.round(size * 1.24), gap = Math.round(size * .7), aSize = size + 6;
+        const paras = e.paragraphs.map(t => wrap(t, size, 700, EXP_W));
+        const action = wrap(e.action, aSize, 800, EXP_W - 80);
+        const aH = action.length * Math.round(aSize * 1.2) + 56;
+        const height = paras.reduce((s, l) => s + l.length * lh, 0) + gap * paras.length + aH;
+        if (EXP_TOP + height <= EXP_BOTTOM || size <= 56) {
+            const top = Math.max(EXP_TOP, Math.round((SAFE_TOP + SAFE_BOTTOM) / 2 - height / 2));
+            return {size, lh, gap, aSize, paras, action, aH, top, bottom: top + height};
+        }
+    }
+}
+function drawExplainer(e, t) {
+    const m = layoutExplainer(e), a = Math.min(1, Math.max(0, (t - e.from) / .35));
+    g.globalAlpha = a; g.textBaseline = 'top'; g.textAlign = 'left';
+    g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 12; g.shadowOffsetY = 2;
+    let y = m.top;
+    g.fillStyle = '#FFFFFF'; g.font = `700 ${m.size}px Wardrobe`;
+    for (const lines of m.paras) { for (const l of lines) { g.fillText(l, EXP_X, y); y += m.lh; } y += m.gap; }
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    g.font = `800 ${m.aSize}px Wardrobe`;
+    const aw = Math.max(...m.action.map(l => g.measureText(l).width)) + 80;
+    box(EXP_X, y, aw, m.aH, '#5B5BD6', 28);
+    g.fillStyle = '#FFFFFF';
+    m.action.forEach((l, i) => g.fillText(l, EXP_X + 40, y + 28 + i * Math.round(m.aSize * 1.2)));
+    g.globalAlpha = 1;
+}
+
+window.setup = async d => {
+    data = d;
+    await document.fonts.ready; await document.fonts.load('800 80px Wardrobe'); await document.fonts.load('700 40px Wardrobe');
+    for (const shot of d.shots) {
+        if (!shot.src || media.has(shot.src)) continue;
+        let el;
+        if (/\.(mp4|mov)$/i.test(shot.src)) {
+            el = document.createElement('video'); el.muted = true; el.playsInline = true; el.src = shot.src;
+            await new Promise((ok, no) => { el.onloadeddata = ok; el.onerror = () => no(new Error('Не загрузилось видео ' + shot.src)); });
+        } else {
+            el = new Image(); el.src = shot.src;
+            await new Promise((ok, no) => { el.onload = ok; el.onerror = () => no(new Error('Не загрузилось фото ' + shot.src)); });
+        }
+        media.set(shot.src, el);
+    }
+    return [...d.plates.map(p => ({text: p.text, ...layoutPlate(p.text)})),
+        ...(d.explainers || []).map(e => ({explainer: true, text: e.paragraphs.join(' '), ...layoutExplainer(e)}))];
+};
+window.render = async time => {
+    const shot = data.shots.find(s => time >= s.from && time < s.to) || data.shots.at(-1);
+    const p = Math.min(1, Math.max(0, (time - shot.from) / (shot.to - shot.from)));
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (shot.kind === 'dark') { g.fillStyle = '#050606'; g.fillRect(0, 0, W, H); }
+    else if (shot.kind === 'placeholder') drawPlaceholder(shot);
+    else {
+        g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+        const el = media.get(shot.src);
+        if (el.tagName === 'VIDEO') {
+            const target = Math.min(time - shot.from + (shot.offset || 0), Math.max(0, el.duration - .05));
+            if (Math.abs(el.currentTime - target) > .012) await new Promise(ok => { el.onseeked = ok; el.currentTime = target; });
+        }
+        if (shot.blur) g.filter = BLUR;
+        drawMedia(shot, p, time - shot.from);
+        g.filter = 'none';
+        if (shot.blur) { g.fillStyle = 'rgba(20,22,60,.38)'; g.fillRect(0, 0, W, H); }
+    }
+    const plate = data.plates.find(x => time >= x.from && time < x.to) || (time >= data.total ? data.plates.at(-1) : null);
+    const exp = (data.explainers || []).find(e => time >= e.from && time < e.to);
+    if (exp) drawExplainer(exp, time);
+    if (shot.ai) drawAiBadge();
+    if (plate && plate.text) drawPlate(plate.text);
+    if (data.draft) drawBadge();
+};
+</script>
+</html>
