@@ -406,6 +406,8 @@ Draft = статус не `ready` ИЛИ нет ассетов ИЛИ перем
 разбирается (главы, тикеры), — в `OVERRIDES` скрипта. Запустить скрипт, проверить вывод (30 → 31 в проверке количества
 поправить), закоммитить md и json вместе.
 
+**Автоматика (Mac).** `app:social:wardrobe-reels-daily` (cron-диспетчер, 10:30 МСК, строка `scheduled_command` env=dev из миграции `Version20261007_wardrobe_reels_daily_cron`) держит окно до 7 дней вперёд, слот 21:00 МСК. Постоянное место ассетов — `var/wardrobe-reels/assets/<slug>/` в основном checkout Mac (gitignored), рендер — `public_html/images/social/wardrobe-templates/`. Новый ролик попадает в ротацию, как только в папке слага есть все кадры и `vars.json` с реальными переменными. На проде ничего не запускается.
+
 **Команды.**
 
 ```bash

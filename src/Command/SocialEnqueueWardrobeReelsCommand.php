@@ -112,7 +112,8 @@ class SocialEnqueueWardrobeReelsCommand extends Command
                     ->setScriptKey($key)->setScriptJson(json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))
                     ->setVariant('hook_' . substr($id, -1))->setDurationMs((int) $entry['duration_ms'])
                     ->setSlideCount(count($entry['beats'] ?? $entry['scenes'] ?? []))->setAiGenerated((bool) ($entry['ai_generated'] ?? true))
-                    ->setCtaLabel('Цифровой гардероб')
+                    // В подписи шаблонов уже есть строка «Гардероб — ссылка в профиле.»; второй CTA от паблишера дублировал бы её.
+                    ->setCtaLabel($isTemplate ? null : 'Цифровой гардероб')
                     ->setScheduledAt(\DateTime::createFromImmutable($slot->setTime(21, 0)));
             }
             // Валидируем всю пачку до первой записи в БД.

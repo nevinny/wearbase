@@ -119,6 +119,11 @@ class SocialEnqueueWardrobeReelsCommandTest extends TestCase
         self::assertSame('hook_1', $saved[0]->getVariant());
         self::assertSame(5, $saved[0]->getSlideCount());
         self::assertFalse($saved[0]->isAiGenerated());
+        // Подпись и обложка берутся из манифеста как есть; CTA паблишера не дублирует строку из подписи.
+        self::assertSame('Гардероб — ссылка в профиле.', $saved[0]->getCaption());
+        self::assertSame('/images/social/pilot/cover.jpg', $saved[0]->getCoverPath());
+        self::assertSame('wardrobe_reels', $saved[0]->getRubric());
+        self::assertNull($saved[0]->getCtaLabel());
     }
 
     #[DataProvider('draftTemplateProvider')]
