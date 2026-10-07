@@ -62,8 +62,46 @@ final class FamilyPurchaseRemindersCommandTest extends KernelTestCase
         self::assertSame(0, $this->reminderCount($foreign, Notification::TYPE_PURCHASE_DECISION_REMINDER));
 
         $this->execute(['--now' => '2026-08-26T00:01:00+03:00']);
-        self::assertSame(3, $this->reminderCount($firstParent, Notification::TYPE_PURCHASE_DECISION_REMINDER));
-        self::assertSame(3, $this->reminderCount($secondParent, Notification::TYPE_PURCHASE_DECISION_REMINDER));
+        // день 2 не в расписании (1, 3, 7) — новых напоминаний нет
+        self::assertSame(1, $this->reminderCount($firstParent, Notification::TYPE_PURCHASE_DECISION_REMINDER));
+        self::assertSame(1, $this->reminderCount($secondParent, Notification::TYPE_PURCHASE_DECISION_REMINDER));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('scheduleProvider')]
+    public function testPendingReminderFollowsSchedule(int $age, bool $expected): void
+    {
+        $parent = $this->user('sched-pending');
+        $child = $this->families->createChild($parent, 'Нина');
+        $request = $this->purchases->create($child, $child, 'https://shop.example.test/reminder/sched', null);
+        $this->setRequestCreatedAt($request, '2026-08-01 09:00:00');
+
+        $now = (new \DateTimeImmutable('2026-08-01T12:00:00+03:00'))->modify(sprintf('+%d days', $age));
+        $this->execute(['--now' => $now->format(\DateTimeInterface::ATOM)]);
+        self::assertSame($expected ? 1 : 0, $this->reminderCount($parent, Notification::TYPE_PURCHASE_DECISION_REMINDER));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('scheduleProvider')]
+    public function testFittingReminderFollowsSchedule(int $age, bool $expected): void
+    {
+        $parent = $this->user('sched-fitting');
+        $child = $this->families->createChild($parent, 'Вера');
+        $request = $this->deliveredRequest($parent, $child);
+        /** @var PurchaseRequestItem $item */
+        $item = $request->getItems()->first();
+        $this->em->getConnection()->update('purchase_request_item', ['delivered_at' => '2026-08-01 09:00:00'], ['id' => $item->getId()]);
+        $this->em->refresh($item);
+
+        $now = (new \DateTimeImmutable('2026-08-01T12:00:00+03:00'))->modify(sprintf('+%d days', $age));
+        $this->execute(['--now' => $now->format(\DateTimeInterface::ATOM)]);
+        self::assertSame($expected ? 1 : 0, $this->reminderCount($parent, Notification::TYPE_PURCHASE_FITTING_REMINDER));
+    }
+
+    public static function scheduleProvider(): array
+    {
+        return [
+            'day 1' => [1, true], 'day 2' => [2, false], 'day 3' => [3, true],
+            'day 7' => [7, true], 'day 8' => [8, false], 'day 30' => [30, false],
+        ];
     }
 
     public function testDeliveredReminderTargetsParentsAndActivatedSubjectThenStopsAfterFitting(): void
