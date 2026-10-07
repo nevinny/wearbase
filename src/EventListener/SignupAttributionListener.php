@@ -30,6 +30,8 @@ class SignupAttributionListener
 
     private const COOKIE_TTL = 180 * 24 * 3600; // 180 дней
 
+    private const IG_BIO_PATH = '/ig';
+
     private const REQUEST_ATTRIBUTE = '_signup_attribution_payload';
 
     // Служебные/трекинговые маршруты — не первое касание пользователя на сайте.
@@ -118,6 +120,14 @@ class SignupAttributionListener
             'lp'           => mb_substr($request->getPathInfo(), 0, 255),
             'ts'           => (new \DateTimeImmutable())->format(DATE_ATOM),
         ];
+
+        // /ig — link-in-bio из шапки Instagram: ссылка в профиле без UTM, а реферер IG-браузер
+        // отдаёт нестабильно. Первое касание = эта страница, поэтому метим источник сами.
+        if ($request->getPathInfo() === self::IG_BIO_PATH && $payload['utm_source'] === null) {
+            $payload['utm_source'] = 'instagram';
+            $payload['utm_medium'] = 'bio';
+            $payload['utm_campaign'] ??= 'ig_bio';
+        }
 
         // ysclid переживает в query лендинга даже когда браузер обрезает Referer при переходе
         // с Яндекса — единственный момент, когда он виден: классификатор в RegisterController

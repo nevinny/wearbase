@@ -22,6 +22,13 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 class LandingController extends AbstractController
 {
+    /** Link-in-bio для шапки Instagram @wearbaseru. Атрибуция — в SignupAttributionListener. */
+    #[Route('/ig', name: 'landing_ig_bio', defaults: ['_locale' => 'ru'], methods: ['GET'])]
+    public function igBio(): Response
+    {
+        return $this->render('tailwind/landing/ig_bio.html.twig');
+    }
+
     #[Route('/{_locale}/wardrobe', name: 'landing_wardrobe', requirements: ['_locale' => 'en|ru'], defaults: ['_locale' => 'ru'], methods: ['GET'])]
     public function wardrobe(): Response
     {
