@@ -61,7 +61,7 @@ function buildTimeline(template, ev) {
             } else {
                 const key = lib.shotKey(beat, k), file = ev.assets.found[key];
                 const photo = beat.frame.type === 'photo';
-                if (file) shot = {kind: 'media', mediaKind: photo ? 'photo' : 'screen', src: pathToFileURL(file).href, zoom: motion(photo, bi, to - from)};
+                if (file) shot = {kind: 'media', mediaKind: photo ? 'photo' : 'screen', src: pathToFileURL(file).href, zoom: motion(photo, bi, to - from), ai: ev.aiAssets.includes(key)};
                 else shot = {kind: 'placeholder', label: `КАДР ${key} · ${TYPE_SHORT[beat.frame.type]}`, desc: beat.frame.desc, zoom: motion(false, 0, 0)};
             }
             list.push({...shot, from, to, beat: beat.n});
@@ -97,7 +97,7 @@ async function renderOne(page, catalog, template, ev, outBase, fps) {
     const output = path.join(work, `${slugId}.mp4`), manifestPath = path.join(work, 'manifest.json');
     const timeline = buildTimeline(template, ev);
     const bed = pickBed(template);
-    const fingerprint = sha(JSON.stringify({template, values: ev.vars.values, draft: ev.draft, fps})
+    const fingerprint = sha(JSON.stringify({template, values: ev.vars.values, draft: ev.draft, fps, ai: ev.aiAssets})
         + fs.readFileSync(__filename) + fs.readFileSync(path.join(__dirname, 'scene-template.html'))
         + Object.entries(ev.assets.found).map(([k, f]) => k + sha(fs.readFileSync(f))).join())
         ;
@@ -145,7 +145,9 @@ async function renderOne(page, catalog, template, ev, outBase, fps) {
         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-shortest', '-movflags', '+faststart', '-use_editlist', '0', output);
     run('ffmpeg', mux);
     fs.unlinkSync(silent);
-    const caption = lib.substitute(template.caption, ev.vars.values) + '\n\nГардероб — ссылка в профиле.';
+    // Пометка о генерации — в подписи, не только флагом: зритель должен видеть её без захода в метаданные.
+    const aiNote = ev.aiAssets.length ? '\n\nЧасть кадров — AI-иллюстрации.' : '';
+    const caption = lib.substitute(template.caption, ev.vars.values) + aiNote + '\n\nГардероб — ссылка в профиле.';
     const manifest = {
         version: 2, campaign: catalog.campaign, id: slugId, series: template.slug,
         template: {id: template.id, slug: template.slug, segment: template.segment, status: template.status, format: template.format, goal: template.goal},
@@ -154,7 +156,7 @@ async function renderOne(page, catalog, template, ev, outBase, fps) {
         cta_url: catalog.cta_url, cta_label: catalog.cta_label,
         beats: template.beats.map(b => ({n: b.n, start: b.start, end: b.end, type: b.frame.type, plate: lib.substitute(b.plate, ev.vars.values), silenceAfter: b.silenceAfter})),
         draft: ev.draft, draft_reasons: ev.reasons, assets_missing: ev.assets.missing, variables_missing: ev.vars.missing,
-        warnings, ai_generated: false, audio: bed ? path.basename(bed) : null,
+        warnings, ai_generated: ev.aiAssets.length > 0, ai_assets: ev.aiAssets, audio: bed ? path.basename(bed) : null,
         publication_status: ev.draft ? 'draft' : 'preview',
     };
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');

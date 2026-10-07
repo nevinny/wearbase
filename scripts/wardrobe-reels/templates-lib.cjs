@@ -76,15 +76,28 @@ function substitute(text, values, tick = 0) {
     });
 }
 
+// Сгенерированные кадры: vars.json → "ai_assets": ["02", "03"]. Такие кадры несут плашку «AI-иллюстрация»,
+// а ролик — пометку в подписи и ai_generated в манифесте. Ключ не из шот-листа — ошибка, а не тихий пропуск.
+function resolveAiAssets(template, dir) {
+    const file = path.join(dir, 'vars.json');
+    const list = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')).ai_assets ?? [] : [];
+    if (!Array.isArray(list)) throw new Error(`${file}: ai_assets должен быть списком ключей кадров`);
+    const known = new Set(requiredShots(template).map(s => s.key));
+    const unknown = list.filter(k => !known.has(String(k)));
+    if (unknown.length) throw new Error(`${file}: ai_assets — нет таких кадров: ${unknown.join(', ')}`);
+    return list.map(String);
+}
+
 function evaluate(template, assetsBase, cliVars = {}) {
     const dir = assetsDirFor(template, assetsBase);
     const assets = resolveAssets(template, dir);
     const vars = resolveVariables(template, dir, cliVars);
+    const aiAssets = resolveAiAssets(template, dir);
     const reasons = [];
     if (template.status !== 'ready') reasons.push(`статус ${template.status}`);
     if (assets.missing.length) reasons.push(`нет ассетов: ${assets.missing.join(', ')}`);
     if (vars.missing.length) reasons.push(`переменные по умолчанию: ${vars.missing.join(', ')}`);
-    return {dir, assets, vars, draft: reasons.length > 0, reasons};
+    return {dir, assets, vars, aiAssets, draft: reasons.length > 0, reasons};
 }
 
 // Кандидаты дня: только status=ready, все ассеты и переменные на месте. Порядок — по кругу сегментов С1..С6
@@ -136,4 +149,4 @@ function shotlistMarkdown(catalog, templates, assetsBase) {
     return out.join('\n');
 }
 
-module.exports = {root, loadCatalog, findTemplate, selectTemplates, assetsDirFor, requiredShots, shotKey, findAsset, resolveAssets, resolveVariables, substitute, evaluate, eligibleRotation, shotlistMarkdown, SEGMENT_ORDER};
+module.exports = {root, loadCatalog, findTemplate, selectTemplates, assetsDirFor, requiredShots, shotKey, findAsset, resolveAssets, resolveVariables, resolveAiAssets, substitute, evaluate, eligibleRotation, shotlistMarkdown, SEGMENT_ORDER};

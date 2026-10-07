@@ -92,6 +92,13 @@ function drawPlaceholder(shot) {
     box(60, 1330, 420, 150, '#D32F2F', 20);
     g.fillStyle = '#FFFFFF'; g.font = '800 104px Wardrobe'; g.fillText('DRAFT', 82, 1352);
 }
+// Пометка сгенерированного кадра: мелко, но в безопасной зоне (сразу под верхним интерфейсом IG), чтобы её не съел UI.
+function drawAiBadge() {
+    g.font = '700 32px Wardrobe'; g.textBaseline = 'top';
+    const text = 'AI-иллюстрация', w = g.measureText(text).width + 36;
+    box(40, SAFE_TOP + 16, w, 52, 'rgba(8,10,9,.55)', 14);
+    g.fillStyle = '#FFFFFF'; g.fillText(text, 58, SAFE_TOP + 26);
+}
 function drawBadge() {
     box(24, 24, 170, 54, '#D32F2F', 12);
     g.fillStyle = '#FFFFFF'; g.font = '800 34px Wardrobe'; g.textBaseline = 'top'; g.fillText('DRAFT', 44, 31);
@@ -130,6 +137,7 @@ window.render = async time => {
         drawMedia(shot, p, time - shot.from);
     }
     const plate = data.plates.find(x => time >= x.from && time < x.to) || (time >= data.total ? data.plates.at(-1) : null);
+    if (shot.ai) drawAiBadge();
     if (plate && plate.text) drawPlate(plate.text);
     if (data.draft) drawBadge();
 };
