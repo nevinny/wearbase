@@ -981,7 +981,7 @@
             "desc": "детская кофта, рукав до середины руки (рука ребёнка, без лица)",
             "asset": "var/wardrobe-reels/assets/11-kakoy-u-neyo-razmer/02"
           },
-          "plate": "Рукава уже тут",
+          "plate": "Кофта уже мала",
           "plateSource": "text",
           "silenceAfter": 0
         },
@@ -1007,7 +1007,7 @@
             "desc": "запись экрана: профиль ребёнка — рост {рост}, одежда {размер}, обувь {размер}",
             "asset": "var/wardrobe-reels/assets/11-kakoy-u-neyo-razmer/04"
           },
-          "plate": "Ответ — за секунду",
+          "plate": "Открыла — а там {116}",
           "plateSource": "text",
           "silenceAfter": 0
         },
