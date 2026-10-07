@@ -42,14 +42,14 @@ class InstagramPublisherTest extends TestCase
 
         self::assertSame('published-1', $externalId);
 
-        // create → poll → publish → первый комментарий с ссылкой, без запросов на слайды карусели
-        self::assertCount(4, $this->requests);
+        // create → poll → publish, без запросов на слайды карусели и без комментария
+        self::assertCount(3, $this->requests);
         self::assertSame('POST', $this->requests[0]['method']);
         self::assertStringEndsWith('/17841400000000000/media', $this->requests[0]['url']);
         self::assertArrayNotHasKey('is_carousel_item', $this->requests[0]['body']);
         self::assertArrayNotHasKey('children', $this->requests[0]['body']);
         self::assertSame('https://media.example/slide-0.jpg', $this->requests[0]['body']['image_url']);
-        self::assertStringContainsString('Каталог — в первом комментарии', $this->requests[0]['body']['caption']);
+        self::assertStringContainsString('Каталог — ссылка в профиле', $this->requests[0]['body']['caption']);
 
         self::assertSame('POST', $this->requests[2]['method']);
         self::assertStringEndsWith('/media_publish', $this->requests[2]['url']);
@@ -57,7 +57,7 @@ class InstagramPublisherTest extends TestCase
     }
 
     /**
-     * Строка CTA («в первом комментарии») — в мёртвой зоне подписи, если стоит ПОСЛЕ хэштегов
+     * Строка CTA («ссылка в профиле») — в мёртвой зоне подписи, если стоит ПОСЛЕ хэштегов
      * (IG сворачивает длинную подпись, последний абзац почти никогда не разворачивают).
      * Проверяем, что строка стоит РАНЬШЕ блока хэштегов.
      */
@@ -68,7 +68,7 @@ class InstagramPublisherTest extends TestCase
         $publisher->publish($this->channel(), $this->post(), [$this->tmpFile()]);
 
         $caption = $this->requests[0]['body']['caption'];
-        $ctaPos = mb_strpos($caption, 'Каталог — в первом комментарии');
+        $ctaPos = mb_strpos($caption, 'Каталог — ссылка в профиле');
         $hashPos = mb_strpos($caption, '#');
 
         self::assertNotFalse($ctaPos, 'Строка ссылки не найдена в подписи');
@@ -76,40 +76,16 @@ class InstagramPublisherTest extends TestCase
         self::assertLessThan($hashPos, $ctaPos, 'Ссылка на профиль должна стоять до блока хэштегов');
     }
 
-    /** После media_publish бот сразу оставляет первый комментарий с кликабельной ссылкой. */
-    public function testFirstCommentPostedWithLinkAfterPublish(): void
+    /** Ссылки в комментариях IG не кликабельны — комментарий со ссылкой больше не постится. */
+    public function testNoCommentPostedAfterPublish(): void
     {
         $publisher = $this->publisher(['create-1' => 'cid1']);
 
         $publisher->publish($this->channel(), $this->post(), [$this->tmpFile()]);
 
-        $comment = $this->requests[3];
-        self::assertSame('POST', $comment['method']);
-        self::assertStringEndsWith('/published-1/comments', $comment['url']);
-        self::assertSame($this->post()->getCtaUrl(), $comment['body']['message']);
-    }
-
-    /** Упавший комментарий НЕ роняет публикацию: пост уже живой, externalId возвращается. */
-    public function testCommentFailureDoesNotFailPublication(): void
-    {
-        $publisher = $this->publisher(['create-1' => 'cid1'], commentFails: true);
-
-        $externalId = $publisher->publish($this->channel(), $this->post(), [$this->tmpFile()]);
-
-        self::assertSame('published-1', $externalId);
-        self::assertCount(4, $this->requests);
-    }
-
-    /** Нет cta_url → комментарий не постится, в подписи старая строка «ссылка в профиле». */
-    public function testNoCtaUrlKeepsProfileLineAndSkipsComment(): void
-    {
-        $publisher = $this->publisher(['create-1' => 'cid1']);
-        $post = $this->post()->setCtaUrl(null);
-
-        $publisher->publish($this->channel(), $post, [$this->tmpFile()]);
-
-        self::assertCount(3, $this->requests);
-        self::assertStringContainsString('Каталог — ссылка в профиле', $this->requests[0]['body']['caption']);
+        foreach ($this->requests as $request) {
+            self::assertStringEndsNotWith('/comments', $request['url']);
+        }
     }
 
     public function testCarouselCreatesChildContainersThenParent(): void
@@ -124,8 +100,8 @@ class InstagramPublisherTest extends TestCase
 
         self::assertSame('published-1', $externalId);
 
-        // 3×(create child + poll) + create parent + poll parent + publish + комментарий = 10
-        self::assertCount(10, $this->requests);
+        // 3×(create child + poll) + create parent + poll parent + publish = 9
+        self::assertCount(9, $this->requests);
 
         foreach ([0, 2, 4] as $slide => $i) {
             self::assertSame('true', $this->requests[$i]['body']['is_carousel_item'], "слайд {$slide}");
@@ -153,7 +129,7 @@ class InstagramPublisherTest extends TestCase
         $externalId = $publisher->publish($this->channel(), $post, [$this->tmpFile()]);
 
         self::assertSame('published-1', $externalId);
-        self::assertCount(4, $this->requests);
+        self::assertCount(3, $this->requests);
 
         $container = $this->requests[0]['body'];
         self::assertSame('REELS', $container['media_type']);
@@ -240,18 +216,12 @@ class InstagramPublisherTest extends TestCase
     }
 
     /** @param array<string, string> $containerIds create-N → возвращаемый id контейнера */
-    private function publisher(array $containerIds, bool $commentFails = false): InstagramPublisher
+    private function publisher(array $containerIds): InstagramPublisher
     {
         $created = 0;
-        $client = new MockHttpClient(function (string $method, string $url, array $options) use (&$created, $containerIds, $commentFails): MockResponse {
+        $client = new MockHttpClient(function (string $method, string $url, array $options) use (&$created, $containerIds): MockResponse {
             $body = $this->decodeBody($options['body'] ?? null);
             $this->requests[] = ['method' => $method, 'url' => $url, 'body' => $body];
-
-            if (str_ends_with($url, '/comments')) {
-                return $commentFails
-                    ? new MockResponse(json_encode(['error' => ['message' => 'comment blocked', 'code' => 9007]]))
-                    : new MockResponse(json_encode(['id' => 'comment-1']));
-            }
 
             if (str_ends_with($url, '/media_publish')) {
                 return new MockResponse(json_encode(['id' => 'published-1']));
