@@ -104,3 +104,13 @@ when@test:
                 cost: 4
                 time_cost: 3
                 memory_cost: 10
+        firewalls:
+            main:
+                # Встроенный лимитер form_login (5 попыток/мин на username+IP и ×5 на IP)
+                # хранит счётчик в cache.rate_limiter, а тот переживает прогон phpunit.
+                # При двух прогонах подряд логин-тесты (PasswordResetFlow, WardrobeApp)
+                # получали редирект обратно на /login — сьют краснел через раз.
+                # Кастомные лимитеры в rate_limiter.yaml уже выключены (no_limit) ровно
+                # по этой причине — этот в ту зачистку не попал.
+                login_throttling:
+                    max_attempts: 10000
