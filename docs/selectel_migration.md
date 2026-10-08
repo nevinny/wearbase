@@ -59,3 +59,4 @@
 - `/home/drugs/deploy.sh` (вне репо): flock, git reset origin/main, composer --no-dev, pg_dump в `/home/drugs/backups` если есть pending-миграции (хранится 3), migrate, cache:clear, pnpm build (NODE_OPTIONS 2048M), подмена рантайма, sudo restart drugs-frontend (sudoers `/etc/sudoers.d/drugs-deploy`), смоук `:3000/` и `:8081/api/v1/substances?search=aspirin&limit=1`. Лог `/home/drugs/deploy.log`.
 - Память: сборка Next — пик ~1.7 ГБ used из 3.8, без свопа.
 - Риски: нет тестов в CI; branch protection недоступна (приватный репо на free-плане); только HTTP по IP до делегирования pillbase.ru.
+- ⚠️ Next standalone за nginx: middleware-редиректы (локаль `/` → `/ru`) уходили на `http://localhost:3000/ru` — Next строит абсолютный URL от своего адреса, `Host`/`X-Forwarded-Host` не помогают. Фикс в vhost: `proxy_redirect http://localhost:3000/ /;`. Тела страниц/sitemap чистые (там `NEXT_PUBLIC_SITE_URL`).
