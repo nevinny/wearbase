@@ -33,6 +33,7 @@
 | [hadi_orphan_links.md](hadi_orphan_links.md) | HADI-эксперимент `orphans-2026-09`: входящие ссылки сиротам графа vs контроль; правила решения, замеры W2–W8; шаблон HADI-карточки |
 | [seo_rules.md](seo_rules.md) | **Канон SEO-правил (v3.0.0)** — единый: WEARBASE-константы + нормативные MUST/SHOULD/NICE + by-design принципы. Свёл в себя бывшие `seo_rules_2.3.0` и `seo_rules_SEO_GUIDE` |
 | [seo_tools.md](seo_tools.md) | Справочник SEO-инструментов (коммерческие + open-source, бюджеты) |
+| [open_seo_review.md](open_seo_review.md) | Разбор OpenSEO (open-source Semrush-альтернатива на DataForSEO): что взять, почему не ставить |
 | [ahrefs.md](ahrefs.md) | Ahrefs: доступ к проекту, как читать аудит (Error vs Notice), инвентарь проблем + приоритеты, другие инструменты. От 2026-06-22 |
 | [directory_playbook_freychu.md](directory_playbook_freychu.md) | Разбор интервью Frey Chu (directory-сайты как бизнес) → переносимые на WEARBASE тактики: enrichment-as-moat, swap-backlink аутрич, reddit/near-me разведка ниш, устойчивость к AIO. Транскрипт залит в RAG `topic_chunks` (канал `freychu`, role=seo, 42 чанка). От 2026-07-21 |
 | [getwifi_directory_case.md](getwifi_directory_case.md) | **getwifi.com как эталон директории**: цифры GSC (1903 клика/64k показов, 30% индексации, 6837 «discovered not indexed»), два потолка тонкой директории (индексация + CTR), сверка с RAG (freychu+DrMax), матрица «датум vs конвейер», что делать. + правка балансировки `AdvisorRag::retrieve` по каналам. От 2026-07-21 |
