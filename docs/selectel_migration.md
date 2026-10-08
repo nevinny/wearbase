@@ -43,7 +43,8 @@
 - Postgres 18.6 (PGDG), `conf.d/vds.conf`: shared_buffers 256MB, TZ Москва; слушает только localhost.
 - PHP: `conf.d/99-vds.ini` (TZ, upload 32M, opcache 192M); CLI memory_limit 512M.
 - nginx: default_server → 444 (неизвестные хосты); server_tokens off; body 34M.
-- Схема проекта: юзер `<name>` (ssh тем же ключом), код `/var/www/<name>/app`, свой fpm-пул `/run/php/<name>.sock` (ondemand, 6 детей, 256M, open_basedir, timeout 120s), vhost `/etc/nginx/sites-available/<domain>` (Symfony, fastcgi_read_timeout 120s), своя БД+юзер.
+- Схема проекта: юзер `<name>` (ssh тем же ключом), код прямо в `/var/www/<name>` (как `~/work/<name>` на Mac; home юзера — `/home/<name>`), свой fpm-пул `/run/php/<name>.sock` (ondemand, 6 детей, 256M, open_basedir, timeout 120s), vhost `/etc/nginx/sites-available/<domain>` (Symfony, fastcgi_read_timeout 120s), своя БД+юзер.
   - `vds-new-project <name> <domain> [mysql|pgsql|none] [webroot]` — креды в `/root/projects/<name>.creds`; HTTPS после DNS: `certbot --nginx -d <domain>`.
   - `vds-remove-project <name> <domain>` — снести (дропает БД!).
 - Бэкап: `/usr/local/sbin/vds-backup` крон 03:30 → `/var/backups/vds/<дата>` (дампы всех MySQL/PG + /etc), хранение 7 дней. ⚠️ Бэкап на том же диске — off-site пока нет.
+- drugs: `frontend/` — Next.js 15 (`next start`, pnpm) → на VDS нужен Node + systemd-юнит/pm2 и nginx-прокси на него (≈150–300 МБ RAM).
