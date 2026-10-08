@@ -48,3 +48,14 @@
   - `vds-remove-project <name> <domain>` — снести (дропает БД!).
 - Бэкап: `/usr/local/sbin/vds-backup` крон 03:30 → `/var/backups/vds/<дата>` (дампы всех MySQL/PG + /etc), хранение 7 дней. ⚠️ Бэкап на том же диске — off-site пока нет.
 - drugs: `frontend/` — Next.js 15 (`next start`, pnpm) → на VDS нужен Node + systemd-юнит/pm2 и nginx-прокси на него (≈150–300 МБ RAM).
+
+## drugs на VDS (2026-10-08)
+
+- Схема: публичный nginx :80 (default_server, server_name pillbase.ru www.pillbase.ru 161.104.35.238) → Next.js standalone `127.0.0.1:3000` (systemd `drugs-frontend`, User=drugs, MemoryMax 512M, рантайм `/home/drugs/frontend-run`, атомарная подмена). Symfony API только внутри: `listen 127.0.0.1:8081` → fpm `drugs.sock`. Шаблон `vds-new-project` под Next+API не подходит — vhost переписан руками (скрипт не расширяли).
+- Заглушка 444 в `/etc/nginx/sites-available/default` временно снята с default_server (server_name default.invalid) — вернуть, когда у drugs будет домен.
+- БД: pg_dump с Mac → pg_restore (`--no-owner --role=drugs`), счётчики совпали (substances 976363, drug_products 2630, atc_codes 6996). В БД 1 выполненная миграция, которой нет в main (с ветки feat/atc-completion, PR #10) — ок, после мержа #10 будет no-op.
+- Env на сервере пишется руками, деплой не трогает: `/var/www/drugs/.env.local`, `/var/www/drugs/frontend/.env.production.local` (`API_BASE_URL=http://127.0.0.1:8081`, `NEXT_PUBLIC_SITE_URL=http://161.104.35.238` — запекается при сборке; после домена поменять и пересобрать).
+- Автодеплой: GitHub Actions `.github/workflows/deploy.yml` в nevinny/drugs (PR #11) на push в main → ssh drugs@VDS, ключ ограничен `command="/home/drugs/deploy.sh"`. Секреты DEPLOY_SSH_KEY / DEPLOY_KNOWN_HOSTS / DEPLOY_HOST. Server-side pull: read-only deploy key у юзера drugs.
+- `/home/drugs/deploy.sh` (вне репо): flock, git reset origin/main, composer --no-dev, pg_dump в `/home/drugs/backups` если есть pending-миграции (хранится 3), migrate, cache:clear, pnpm build (NODE_OPTIONS 2048M), подмена рантайма, sudo restart drugs-frontend (sudoers `/etc/sudoers.d/drugs-deploy`), смоук `:3000/` и `:8081/api/v1/substances?search=aspirin&limit=1`. Лог `/home/drugs/deploy.log`.
+- Память: сборка Next — пик ~1.7 ГБ used из 3.8, без свопа.
+- Риски: нет тестов в CI; branch protection недоступна (приватный репо на free-плане); только HTTP по IP до делегирования pillbase.ru.
