@@ -1901,7 +1901,7 @@ GenerateListicleCommand/SeoGuideCommand (SEO Boost, не входит в явн�
   Поверх этого на проде `BRAND_CLAIM_AUTOGRANT_EMAIL=1` → мгновенное владение без ревью, т.е. дешёвый
   перехват 3.6k бесхозных карточек. Решение: не выключать авто-грант, а различать по провенансу
   адреса (`owner` → ручная ветка) + гард по истории исходящих кликов.
-- [ ] **Перевыпустить ключ Yandex Search API** (нужен владелец, Yandex Cloud): текущий отдаёт
+- [ ] **Перевыпустить ключ Yandex Search API** (нужен владелец, Yandex Cloud; 2026-10-08 перепроверено — всё ещё 401; ключ Wordstat на `/v2/web/search` даёт 403 Permission denied → вариант: выдать его сервис-аккаунту роль `search-api.webSearch.user` вместо отдельного ключа; блокирует живые позиции в `app:seo:serp` / скилле `seo-audit`): текущий отдаёт
   `401 Unknown api key`, `BRAVE_SEARCH_API_KEY` пуст → из трёх бэкендов `BrandSourceFinder` живой
   только SearXNG, и он бесполезен для точных запросов (по телефону возвращает gemini.com). Discover
   деградировал давно и не только у модерации.
