@@ -80,3 +80,5 @@
   Партнёрка Reg.ru 199/199 дала бы ~5 тыс., но требует депозит 40 тыс. — для 5 доменов не окупается.
 - wearbase.ru сейчас у Reg.ru → 270 ₽ через domains.webmoney.ru (Webnames) возможны только после переноса.
   В .ru перенос **не продлевает** срок; переносить до 29.10 с запасом, иначе — продлить в Reg.ru и переносить потом.
+- .su — все пять свободны. .com — все пять заняты (wearbase/roombase — GoDaddy; pillbase/rankbase/innbase —
+  NameBright/TurnCommerce, типично выкуплены перекупщиком HugeDomains и продаются).
