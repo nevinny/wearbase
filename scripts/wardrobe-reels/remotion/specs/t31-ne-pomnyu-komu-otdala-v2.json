@@ -1,0 +1,70 @@
+{
+  "id": "t31-ne-pomnyu-komu-otdala-v2",
+  "series": "31-ne-pomnyu-komu-otdala",
+  "assets": "var/wardrobe-reels/assets/31-ne-pomnyu-komu-otdala",
+  "out": "public_html/images/social/wardrobe-templates/t31-ne-pomnyu-komu-otdala-v2",
+  "bed": "config/social/audio/mixkit-615.m4a",
+  "bedUnderVoiceDb": 15,
+  "voiceOffset": 0.15,
+  "band": 1360,
+  "ctaHold": 1.1,
+  "loop": {
+    "image": "01.jpg",
+    "seconds": 1.5,
+    "text": "Я не помню, кому отдала комбинезон."
+  },
+  "scenes": [
+    {
+      "voice": "Я не помню, кому отдала комбинезон.",
+      "image": "01.jpg"
+    },
+    {
+      "voice": "Сестре? Соседке? Или маминой подруге?",
+      "image": "02.jpg"
+    },
+    {
+      "voice": "А он нужен младшему. Прямо сейчас.",
+      "image": "03.jpg"
+    },
+    {
+      "voice": "Открыла WEARBASE, а там записано: отдала тёте Оле. Вернёт к зиме.",
+      "image": "04.mp4@1.5",
+      "zoom": [
+        1,
+        1.12
+      ],
+      "splitAtWord": [
+        5
+      ],
+      "push": {
+        "atWord": 5,
+        "scale": 1.23,
+        "cx": 378,
+        "cy": 790
+      },
+      "mark": {
+        "atWord": 6,
+        "x": 125,
+        "y": 730,
+        "w": 740,
+        "h": 135
+      }
+    },
+    {
+      "voice": "Отдаёшь вещь — сразу запиши, кому. Ссылка в профиле.",
+      "image": "04.mp4@1.5",
+      "kind": "cta",
+      "band": 820,
+      "buttonFromWord": 5
+    }
+  ],
+  "caption": "Отдала комбинезон «на время». Кому — вспоминаем всей роднёй\n\nОтдаёшь вещь — запиши в гардероб, кому и до когда. Гардероб — ссылка в профиле.\n\nГолос в ролике синтезирован (озвучка ИИ). Часть кадров — AI-иллюстрации.",
+  "cta_url": "https://wearbase.ru/ru/wardrobe",
+  "cta_label": "Цифровой гардероб",
+  "syncProbe": [
+    4,
+    9,
+    23,
+    31
+  ]
+}

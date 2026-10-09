@@ -1,0 +1,11 @@
+{
+  "name": "wardrobe-reels-remotion",
+  "private": true,
+  "description": "Озвученные рилсы гардероба: кадры + плашки-караоке под слова TTS. node_modules не в репо — render-voiced.cjs линкует ~/tools/reels-motion/remotion/node_modules (или REMOTION_NODE_MODULES).",
+  "dependencies": {
+    "@remotion/cli": "4.0.534",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "remotion": "4.0.534"
+  }
+}
