@@ -15,6 +15,7 @@
 - ugp.wearbase.ru уже сломан на regru: MySQL 2061 caching_sha2_password requires secure connection.
 
 ## Чек-лист переноса wearbase (от wearbase-1d + docs/production.md)
+- ⚠️ **БЛОКЕР: с VDS Selectel Telegram недоступен** (api.telegram.org/telegram.org — таймаут, и по IP 149.154.167.220; проверено 2026-10-09; с regru — 302). Webhook-бот `/telegram/webhook` (синхронные ответы) и все TG-уведомления прода (ADMIN_TELEGRAM_CHAT_ID, health, лиды) отвалятся молча. До cutover решить: relay `tg.php` на forgetborders / прокси через риг (SOCKS) / Mac. Входящий webhook от Telegram на IP VDS тоже проверить. Остальной egress (ya.ru, google, github, rusender, forgetborders) — ок.
 - `.env.local` целиком (ADMIN_TELEGRAM_CHAT_ID, PAYMENT_SECRET_KEY — без него реквизиты не расшифруются, ext-sodium).
 - `public_html/images` rsync с regru.
 - Кроны прода (crontab regru + docs/commands.md): deliver-outbox ежеминутно, publish-tick/модерация (flock), `~/bin/forward-hello.php` */10 — ВНЕ репо, переносить руками.
@@ -70,3 +71,4 @@
 ## Прочее на VDS
 - `428.wearbase.ru` (сессия work-60, 2026-10-09): статика `/var/www/428/gallery.html`, vhost `sites-available/428.wearbase.ru`, noindex. LE-сертификат через `certbot --nginx --redirect` (80→443). DNS: явная A `428 → 161.104.35.238` в зоне reg.ru (перекрывает wildcard `*.wearbase.ru`) — ⚠️ перенести при переезде зоны.
 - certbot: учётка LE создана БЕЗ email (`--register-unsafely-without-email`) — писем об истечении нет; продление `certbot.timer`. Привязать: `certbot update_account -m <email>`.
+- vote428 (work-60): `vote428.service` на 127.0.0.1:8428, код `/opt/vote428`, данные `/var/lib/vote428/votes.db` (в ночном бэкапе — `vote428.tgz`), токен бота `/etc/vote428/bot_token` (в бэкапе через `/etc`). Вход — Telegram Login Widget (подпись локально, исходящих в TG нет). certbot dry-run renew — ок.
