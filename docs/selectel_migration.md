@@ -66,3 +66,7 @@
 - Архив access-логов (с 2026-10-08 16:51, для bot_hits): `/var/log/nginx/drugs/{pillbase.ru,ip}.access.log`, формат `main_ext` (combined + `$host $request_time`, `/etc/nginx/conf.d/10-log-formats.conf`), logrotate `/etc/logrotate.d/nginx-drugs` daily/compress/dateext, rotate 3650 (не удаляются), 640 www-data:drugs.
 - Кроны drugs — crontab юзера drugs на VDS (не в репо): `30 5 * * *` `app:links:build` (flock, лог `var/log/links-build.log`). Следующий — `app:seo:ingest-bot-log` (после мержа 9.3).
 - Frontend env на сервере: `NEXT_PUBLIC_YM_ID=113561532` (Метрика), верификацию GSC/Вебмастера — через DNS TXT в зоне Selectel.
+
+## Прочее на VDS
+- `428.wearbase.ru` (сессия work-60, 2026-10-09): статика `/var/www/428/gallery.html`, vhost `sites-available/428.wearbase.ru`, noindex. LE-сертификат через `certbot --nginx --redirect` (80→443). DNS: явная A `428 → 161.104.35.238` в зоне reg.ru (перекрывает wildcard `*.wearbase.ru`) — ⚠️ перенести при переезде зоны.
+- certbot: учётка LE создана БЕЗ email (`--register-unsafely-without-email`) — писем об истечении нет; продление `certbot.timer`. Привязать: `certbot update_account -m <email>`.
