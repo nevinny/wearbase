@@ -65,7 +65,7 @@
 - История 2026-10-08: PR #11 автодеплой (зелёный) → серия #12, #10, #9, #8 → #12 (относительный Location) уронил пути без локали в 500 → хотфикс #13 (671355c), зелёный.
 - Индексация: IP-блок (161.104.35.238/default) отдаёт `X-Robots-Tag: noindex, nofollow` + robots `Disallow: /`; блок `pillbase.ru www.pillbase.ru` — без запрета. Прокси общий: `/etc/nginx/snippets/drugs-proxy.conf`. При переходе на домен IP-блок удалить, 444-заглушке вернуть default_server.
 - Архив access-логов (с 2026-10-08 16:51, для bot_hits): `/var/log/nginx/drugs/{pillbase.ru,ip}.access.log`, формат `main_ext` (combined + `$host $request_time`, `/etc/nginx/conf.d/10-log-formats.conf`), logrotate `/etc/logrotate.d/nginx-drugs` daily/compress/dateext, rotate 3650 (не удаляются), 640 www-data:drugs.
-- Кроны drugs — crontab юзера drugs на VDS (не в репо): `30 5 * * *` `app:links:build` (flock, лог `var/log/links-build.log`). Следующий — `app:seo:ingest-bot-log` (после мержа 9.3).
+- Кроны drugs — crontab юзера drugs на VDS (не в репо): `30 5 * * *` `app:links:build` (flock, лог `var/log/links-build.log`). `15 * * * *` `app:seo:ingest-bot-log` (логи `pillbase.ru.access.log*` + старые `ip.access.log*`, `--verify-dns`). `45 5 * * *` `app:seo:indexnow` (только новые/изменённые URL; первая отправка 3743 URL 2026-10-09 → 202; ключ в env `INDEXNOW_KEY` обоих .env, отдаётся роутом `/indexnow.txt`).
 - Frontend env на сервере: `NEXT_PUBLIC_YM_ID=113561532` (Метрика), верификацию GSC/Вебмастера — через DNS TXT в зоне Selectel.
 
 ## Прочее на VDS
