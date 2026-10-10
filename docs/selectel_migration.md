@@ -68,6 +68,15 @@
 - Кроны drugs — crontab юзера drugs на VDS (не в репо): `30 5 * * *` `app:links:build` (flock, лог `var/log/links-build.log`). `15 * * * *` `app:seo:ingest-bot-log` (логи `pillbase.ru.access.log*` + старые `ip.access.log*`, `--verify-dns`). `45 5 * * *` `app:seo:indexnow` (только новые/изменённые URL; первая отправка 3743 URL 2026-10-09 → 202; ключ в env `INDEXNOW_KEY` обоих .env, отдаётся роутом `/indexnow.txt`).
 - Frontend env на сервере: `NEXT_PUBLIC_YM_ID=113561532` (Метрика), верификацию GSC/Вебмастера — через DNS TXT в зоне Selectel.
 
+## roombase на VDS (2026-10-10, сессия fork-wearbase-to-roombase)
+- Форк движка wearbase под мебель, репо `nevinny/roombase` (private), локально `~/work/roombase`.
+- `vds-new-project roombase roombase.ru mysql public_html`, затем переведён на **PostgreSQL 18 + PostGIS 3.6.4** (нужны гео-функции): `apt install --no-upgrade postgresql-18-postgis-3` (49 пакетов, PG не рестартовал), БД/роль `roombase` (без SUPERUSER/CREATEDB), `CREATE EXTENSION postgis` под postgres; миграции — `IF NOT EXISTS`. MySQL-БД/юзер удалены точечно. Креды — одна строка PG в `/root/projects/roombase.creds`.
+- ⚠️ Бэкап `pg_dump -Fc` с PostGIS восстанавливается только там, где установлен PostGIS.
+- Деплой по образцу drugs: `/home/roombase/deploy.sh` (вне репо; pg_dump перед миграциями → `/home/roombase/backups`, хранится 3; смоук `/ru/`, `/ru/brands`, `/sitemap.xml` с `Host: roombase.ru`), лог `/home/roombase/deploy.log`. GH Actions: тесты на `postgis/postgis:18-3.6` → ssh с forced command. Первый деплой 2026-10-10 17:15 — OK.
+- `.env.local` руками, ключей wearbase нет (LLM/поиск/TG/RuSender пусты, MAILER_DSN=null). Кронов/воркеров нет.
+- Vhost шаблонный, не default_server; по IP не открывается — проверять `curl -H 'Host: roombase.ru' http://161.104.35.238/ru/` (200).
+- TODO: делегирование у Regtime на a–d.ns.selectel.ru (зона в Selectel готова) → `certbot --nginx -d roombase.ru -d www.roombase.ru --redirect`, канон без www (образец — vhost pillbase.ru).
+
 ## Прочее на VDS
 - `428.wearbase.ru` (сессия work-60, 2026-10-09): статика `/var/www/428/gallery.html`, vhost `sites-available/428.wearbase.ru`, noindex. LE-сертификат через `certbot --nginx --redirect` (80→443). DNS: явная A `428 → 161.104.35.238` в зоне reg.ru (перекрывает wildcard `*.wearbase.ru`) — ⚠️ перенести при переезде зоны.
 - certbot: учётка LE создана БЕЗ email (`--register-unsafely-without-email`) — писем об истечении нет; продление `certbot.timer`. Привязать: `certbot update_account -m <email>`.
