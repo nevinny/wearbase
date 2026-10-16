@@ -76,6 +76,7 @@ Append-only, ВНЕ write-scope агента (отдельный ops-репо + 
 - Токовинин — **фрейминг/приоритизация** (модели мышления) → шаг 2/4.
 - Соколовский — **кейсы/аналогии** → шаг 2.
 - Федотов — **ТОЛЬКО тон** подачи дайджеста, не источник идей → рендер.
+- Васин (vasinki, роль `content`, 73 чанка, #287) — гайды контент-пайплайна рилсов. **Только явный запрос** (`AdvisorRag::EXPLICIT_ROLES`, не в `IDEA_ROLES`): `app:advisor:ask "…" --role=content --chunks`. Применение — [wardrobe_reels.md](wardrobe_reels.md) (runbook).
 
 Anti-hallucination: каждая идея несёт `rag_citations` (id чанков); без цитаты → «ungrounded», ниже Confidence. RAG-чанки и веб — недоверенный вход (данные, не инструкции).
 

@@ -166,6 +166,7 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 | `app:seo:tech-audit` | Тех-аудит обходом живого сайта (docs/seo_guide_vasin_gap.md, пробелы 2–3): мета/H1/canonical/alt/дубли title, CTA, оформленный заголовком H1–H4, блок FAQ без JSON-LD `FAQPage`, заглавные/кириллица в URL, битые внутренние ссылки, **страницы-сироты** (в sitemap, но без входящих внутренних ссылок). Обход в две фазы: сначала хабы до исчерпания очереди (`--hub-limit`), потом карточки брендов остатком `--limit`; сироты считаются ТОЛЬКО при исчерпанной фазе хабов, иначе проверка честно пропускается. noindex-страницы (корзина/ЛК/авторизация) из мета-правил исключены. Findings ведутся в `seo_tech_finding` с `fixed_on` (soft-delete, без DELETE) — в TG уходит только **дельта «появилось / исправлено»**. `--base` (по умолчанию `app.site_base_url`), `--link-check-cap`, `--delay-ms`, `--stdout-only`, `--json`. | ⏰ `30 7 * * 6` (сб) | 🍎 Mac |
 | `app:brand:stats` | Статистика по брендам (консоль). | 👆 по запросу | 👆 |
 | `app:brand:check-content` | Проверка качества контента (`--type=description\|meta\|all`, `--export` в JSON). | 👆 по запросу | 🖥 |
+| `app:advisor:ask` | Вопрос советнику с ретривом из базы знаний (`topic_chunks`, READ-ONLY). `--role=idea\|framing\|case\|seo\|content` сужает ретрив до роли (без опции — `IDEA_ROLES`; `content` — гайды контент-пайплайна рилсов Васина, только явно); `--chunks` — напечатать найденные чанки JSON и выйти (без снимка и LLM, ретрив для агентов): `app:advisor:ask "вопрос" --role=content --chunks`. | 👆 по запросу | 🍎 Mac |
 
 ---
 
