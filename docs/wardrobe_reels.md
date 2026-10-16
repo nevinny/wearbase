@@ -377,7 +377,7 @@ Ken Burns (до +7%, у экрана/чата без движения), плаш
 Последний бит повторяет кадр 1 с обратным движением камеры, поэтому картинка в шве совпадает с первым кадром.
 Если плашка последнего бита в md короче хука (напр. №1, №3, №11), текст на стыке меняется — так задумано в шаблоне.
 
-**Статусы.** `ready` (✅, 15), `partial` (🟡, 5, после починки стилиста/капа), `blocked` (🔨, 10, после выпуска функции).
+**Статусы.** `ready` (✅, 18), `partial` (🟡, 5, после починки стилиста/капа), `blocked` (🔨, 10, после выпуска функции) — на 16.10.2026 в каталоге 33 шаблона (№31–33 дописаны после первых 30).
 
 **Ассеты.** `var/wardrobe-reels/assets/<slug>/NN.(jpg|png|mp4)`, NN — номер бита (`NN-k` у битов-монтажей `shots`;
 loop, «тот же кадр» и «затемнение» файла не требуют). Реальные значения переменных (`{N}`, `{сумма}`, `{имя}` …) —
@@ -403,8 +403,8 @@ Draft = статус не `ready` ИЛИ нет ассетов ИЛИ перем
 
 **Как добавить шаблон.** Дописать блок `### N. Название` в md (поля Сегмент/Статус/Формат/Хук/Биты/Подпись/Гейт/Кадры, бит —
 `- 0–2.8 — кадр — «плашка»`, хвост `хук` / `та же плашка` / `без текста`; последний бит — `кадр 1`). То, что прозой не
-разбирается (главы, тикеры), — в `OVERRIDES` скрипта. Запустить скрипт, проверить вывод (30 → 31 в проверке количества
-поправить), закоммитить md и json вместе.
+разбирается (главы, тикеры), — в `OVERRIDES` скрипта. Запустить скрипт, проверить вывод (проверка теперь «≥30 по порядку»,
+править её не нужно), закоммитить md и json вместе. ⚠️ Мерж каталога в main = выпуск шаблона в ротацию — см. «Эксплуатация» ниже.
 
 **Автоматика (Mac).** `app:social:wardrobe-reels-daily` (cron-диспетчер, 10:30 МСК, строка `scheduled_command` env=dev из миграции `Version20261007_wardrobe_reels_daily_cron`) держит окно до 60 дней вперёд, слот 21:00 МСК (ротация: шаблон не чаще раза в 14 дней, сегменты чередуются; варианты v2–v4 подхватываются из манифестов в `wardrobe-templates/`). Постоянное место ассетов — `var/wardrobe-reels/assets/<slug>/` в основном checkout Mac (gitignored), рендер — `public_html/images/social/wardrobe-templates/`. Новый ролик попадает в ротацию, как только в папке слага есть все кадры и `vars.json` с реальными переменными. На проде ничего не запускается.
 
@@ -426,6 +426,91 @@ node scripts/wardrobe-reels/daily.cjs --start 2026-10-08 --plan
 все переменные заданы, рендер не draft. Тогда `daily.cjs --schedule` ставит ролик в очередь (слот 19:00 МСК,
 `wardrobe-templates-v1.<id>`), дальше как обычно `app:social:publish-tick`. Автопостинг этим не включается.
 Экранные кадры — только реальная запись PWA; детей без лиц; сгенерированные кадры — с пометкой «создано с ИИ».
+
+## Эксплуатация: runbook (на 2026-10-16)
+
+Устройство каталога, ассетов, CTA и draft описано выше — здесь только операционные правила и грабли.
+
+**Цепочка.** `docs/wardrobe_reels_templates.md` → `build-templates-catalog.cjs` → `config/social/wardrobe_reels_templates.json`
+(33 шаблона: ready 18 · partial 5 · blocked 10) → `render-template.cjs` (фото с плашкой → экран-пояснение CTA 4.5 с → луп;
+AI-плашка на кадре по умолчанию выключена, раскрытие AI — строкой в подписи) → `public_html/images/social/wardrobe-templates/t<NN>-<slug>-v<N>/`
+→ `app:social:wardrobe-reels-daily` (Mac, 10:30 МСК) → пост рубрики `wardrobe_reels` → `app:social:publish-tick`.
+Варианты одного шаблона — папки `-v1…-v4`; v1 рендерит автоматика, v2+ кладутся руками (другой хук/кадры/рендерер).
+
+**Ротация** (`WardrobeReelsRotation`, детали — [commands.md](commands.md), строка `app:social:wardrobe-reels-daily`): окно 60 дней вперёд,
+слот 21:00 МСК, шаблон `tNN` не чаще раза в 14 дней, соседние дни — разные сегменты. Если готовых роликов мало, в окне остаются дыры
+(сейчас: 18–22.10 и 27.10–06.11 пусты) — они заполняются при следующем запуске, когда появятся новые манифесты.
+
+**Гейт ревью (ручная конвенция, не код).** Автоматика берёт только файлы `*/manifest.json`
+(`SocialWardrobeReelsDailyCommand::readyManifests`). Новый или переделанный рендер, который владелец ещё не посмотрел,
+хранится с манифестом **`manifest.review.json`** — его никто не подхватит. Одобрение = переименовать в `manifest.json`;
+на ближайшем запуске 10:30 ролик встанет в свободный слот.
+
+- ⚠️ **Грабля 1 — перезапись ручной правки.** `daily.cjs --render-missing` (первый шаг daily-команды) дорендеривает v1 любого
+  ready-шаблона с полными ассетами, у которого **нет** `t<slug>-v1/manifest.json`. Если папку v1 держать на ревью
+  (`manifest.review.json`), а шаблон уже в каталоге main — в 10:30 рендер перерисуется из каталога поверх ручной правки
+  и сразу уйдёт в очередь. Правило: ручные правки v1 — сначала одобрить (переименовать), потом мержить каталог; либо класть правку в v2+.
+- ⚠️ **Грабля 2 — мерж каталога = выпуск.** Daily-команда работает в основном checkout Mac. Как только запись шаблона
+  (`status: ready`) попала в main и checkout обновлён, а ассеты + `vars.json` лежат в `var/wardrobe-reels/assets/<slug>/`,
+  10:30 отрендерит и поставит его в очередь без ревью. Новые шаблоны не мержить, пока ролик не одобрен.
+
+**Расписание в БД на 16.10.2026** (`social_post`, `rubric='wardrobe_reels'`; опубликовано 8, в очереди 9):
+
+| id | Слот | Ролик | Статус |
+|---|---|---|---|
+| 979 | 07.10 | t02-pyataya-chernaya-vodolazka-v1 | published 23:00 (после 2 неудач — 3-я, последняя попытка) |
+| 978 | 08.10 | t11-kakoy-u-neyo-razmer-v1 | published 23:00 (после 2 неудач — 3-я, последняя попытка) |
+| 980–984 | 09–13.10 | t17-v1, t27-v1, t28-v1, t12-v1, t18-v1 | published 21:00 |
+| — | 14.10 | (995 сорвался, см. ниже) | пусто |
+| 996 | 15.10 | t31-ne-pomnyu-komu-otdala-v1 | published 22:01 (1 ретрай) |
+| 997 | 16.10 | t33-a-potom-on-vyros-v1 | scheduled |
+| 995 | 17.10 | t32-chek-vycvel-v1 | scheduled (перенесён с 14.10) |
+| 985–988 | 23–26.10 | t17-v2, t27-v2, t28-v2, t12-v2 | scheduled |
+| 989–991 | 07–09.11 | t27-v3, t28-v3, t12-v3 | scheduled |
+
+Снять заново (SQL строго одной строкой):
+`php bin/console dbal:run-sql "SELECT id, status, scheduled_at, published_at, publish_attempts, script_key FROM social_post WHERE rubric='wardrobe_reels' ORDER BY scheduled_at" --no-debug`
+
+### Сбои публикации и перепостановка
+
+IG-медиа перед публикацией заливается rsync'ом по SSH на не-РФ медиа-хост (`PublicMediaHost`, env `IG_MEDIA_SSH_DEST` =
+`root@media.wearbase.ru:/srv/igmedia/`, отдача — `IG_MEDIA_PUBLIC_BASE`): Meta не качает медиа с РФ-прода
+([marketing_instagram.md](marketing_instagram.md)). Ошибка → `publishAttempts+1`, пост остаётся `scheduled` и повторяется
+следующим тиком; после 3-й (`SocialPublishTickCommand::MAX_PUBLISH_ATTEMPTS = 3`) — `publish_failed`.
+
+**Инцидент 14.10.2026.** Пост 995 (t32) исчерпал 3 попытки: `rsync … Permission denied (publickey,password)` к
+`root@media.wearbase.ru`. 16.10 SSH снова работает; первопричина не установлена. Хост мигает и раньше: 979 и 978 ушли
+в 23:00 только с 3-й, последней попытки (07–08.10), 996 — в 22:01 (15.10). Опоздание на 1–2 часа — норма для этого хоста; `publish_failed` — нет.
+
+**Перепостановка (CLI нет).** Только через сущность (Doctrine, не сырой UPDATE): `SocialPost` →
+`setStatus(SocialPost::STATUS_SCHEDULED)`, `setPublishAttempts(0)`, `setLastError(null)`, `setClaimedAt(null)`,
+`setScheduledAt(<свободный день> 21:00 МСК)`, `flush()`. Свободный день — не занятый другим постом рубрики и не ломающий
+правило 14 дней/сегментов. Перед этим проверить `ssh root@media.wearbase.ru true`. 995 так перенесён на 17.10 21:00.
+
+TODO (не реализовано): алерт в TG на `publish_failed` и на ошибку rsync уже с первой попытки + периодический SSH-пинг медиа-хоста.
+
+### Измерение, ссылки, база знаний, инструменты
+
+- **Старый формат против нового** — протокол, baseline, метрики и правило решения: [ig_stats_2026-10-07.md](ig_stats_2026-10-07.md) §4;
+  промежуточная проверка **24.10**, решение **31.10**.
+- **Ссылки из IG** — [ig_links_options_2026-10.md](ig_links_options_2026-10.md): первый комментарий со ссылкой убран (#283),
+  link-in-bio `/ig` (#284), кодовое слово в комментарии → директ (#285, `app:social:ig-comment-replies`). Ждут владельца:
+  поставить `wearbase.ru/ig` в шапку профиля; завести цели Метрики `ig_bio_wardrobe` / `ig_bio_catalog` / `ig_bio_telegram`;
+  живой тест слова «размер» под роликом №11.
+- **База знаний по контент-пайплайну** (гайды Васина, #287): Qdrant `topic_chunks`, channel `vasinki`, роль `content`, 73 чанка.
+  Роль только явная (`AdvisorRag::EXPLICIT_ROLES`, не в `IDEA_ROLES` — в автогенерацию идей советника не идёт). Ретрив:
+  `bin/console app:advisor:ask "вопрос" --role=content --chunks`. Исходники: `~/seo-archives/vasinki-content-pipeline/`,
+  txt — `~/yt-kb/txt/vasinki/` (дубли — `_dups/`). Что из пайплайна берём — [reels_pipeline_vasinki_adoption.md](reels_pipeline_vasinki_adoption.md).
+- **Озвученные рилсы на Remotion (пилот).** Оценка инструментов — [reels_motion_tools_2026-10-09.md](reels_motion_tools_2026-10-09.md)
+  (Remotion 4.0.534 и HyperFrames 0.8.143 в `~/tools/reels-motion/`). Код пилота — PR #298 (`scripts/wardrobe-reels/remotion/`,
+  **не смержен**). Ролик `t31-ne-pomnyu-komu-otdala-v2` лежит с `manifest.review.json` и ждёт прослушивания владельцем.
+  Открытые вопросы: правильно ли звучит «тёте Оле» (whisper слышит «тетя»); уровень подложки −12 dB против цели −15 dB.
+  Seed Qwen зашит в коде, поэтому дубли = варианты текста, а не пересэмпл голоса. QA транскрипта — `scripts/wardrobe-reels/qa-transcript.cjs`.
+- **Референсы** — whatships.com (15 рефов, архив `~/seo-archives/whatships-refs/`) и вердикт по 21st.dev:
+  [reels_references/whatships_2026-10-09.md](reels_references/whatships_2026-10-09.md); метод launch-видео —
+  [reels_reference_neurofam-launch-video_2026-10-09.md](reels_reference_neurofam-launch-video_2026-10-09.md); ниша — [reels_viral_playbook.md](reels_viral_playbook.md).
+- **Продуктовые дыры, найденные при съёмке** (блокируют или портят шаблоны) — [wardrobe_roadmap.md](wardrobe_roadmap.md#дыры-продукта-найденные-при-съёмке-рилсов-2026-10).
+- **Дата** в доках, слотах и `--date` — всегда из `TZ=Europe/Moscow date`, не из системного `date`.
 
 ## Trendsee
 
