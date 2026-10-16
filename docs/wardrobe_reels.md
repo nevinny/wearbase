@@ -458,8 +458,8 @@ AI-плашка на кадре по умолчанию выключена, ра
 
 | id | Слот | Ролик | Статус |
 |---|---|---|---|
-| 979 | 07.10 | t02-pyataya-chernaya-vodolazka-v1 | published 23:00 (2-я попытка) |
-| 978 | 08.10 | t11-kakoy-u-neyo-razmer-v1 | published 23:00 (2-я попытка) |
+| 979 | 07.10 | t02-pyataya-chernaya-vodolazka-v1 | published 23:00 (после 2 неудач — 3-я, последняя попытка) |
+| 978 | 08.10 | t11-kakoy-u-neyo-razmer-v1 | published 23:00 (после 2 неудач — 3-я, последняя попытка) |
 | 980–984 | 09–13.10 | t17-v1, t27-v1, t28-v1, t12-v1, t18-v1 | published 21:00 |
 | — | 14.10 | (995 сорвался, см. ниже) | пусто |
 | 996 | 15.10 | t31-ne-pomnyu-komu-otdala-v1 | published 22:01 (1 ретрай) |
@@ -480,7 +480,7 @@ IG-медиа перед публикацией заливается rsync'ом 
 
 **Инцидент 14.10.2026.** Пост 995 (t32) исчерпал 3 попытки: `rsync … Permission denied (publickey,password)` к
 `root@media.wearbase.ru`. 16.10 SSH снова работает; первопричина не установлена. Хост мигает и раньше: 979 и 978 ушли
-в 23:00 со 2-й попытки (07–08.10), 996 — в 22:01 (15.10). Опоздание на 1–2 часа — норма для этого хоста; `publish_failed` — нет.
+в 23:00 только с 3-й, последней попытки (07–08.10), 996 — в 22:01 (15.10). Опоздание на 1–2 часа — норма для этого хоста; `publish_failed` — нет.
 
 **Перепостановка (CLI нет).** Только через сущность (Doctrine, не сырой UPDATE): `SocialPost` →
 `setStatus(SocialPost::STATUS_SCHEDULED)`, `setPublishAttempts(0)`, `setLastError(null)`, `setClaimedAt(null)`,
