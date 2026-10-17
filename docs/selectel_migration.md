@@ -75,7 +75,14 @@
 - Деплой по образцу drugs: `/home/roombase/deploy.sh` (вне репо; pg_dump перед миграциями → `/home/roombase/backups`, хранится 3; смоук `/ru/`, `/ru/brands`, `/sitemap.xml` с `Host: roombase.ru`), лог `/home/roombase/deploy.log`. GH Actions: тесты на `postgis/postgis:18-3.6` → ssh с forced command. Первый деплой 2026-10-10 17:15 — OK.
 - `.env.local` руками, ключей wearbase нет (LLM/поиск/TG/RuSender пусты, MAILER_DSN=null). Кронов/воркеров нет.
 - Vhost шаблонный, не default_server; по IP не открывается — проверять `curl -H 'Host: roombase.ru' http://161.104.35.238/ru/` (200).
-- TODO: делегирование у Regtime на a–d.ns.selectel.ru (зона в Selectel готова) → `certbot --nginx -d roombase.ru -d www.roombase.ru --redirect`, канон без www (образец — vhost pillbase.ru).
+- 2026-10-17 TLS: Let's Encrypt до 2027-01-15; канон `https://roombase.ru`, http/www → 301 на апекс. `renewal/roombase.ru.conf` переведён на `authenticator = webroot` (/var/www/html): на nginx-аутентификаторе у него был 404 на dry-run. У pillbase.ru и 428 nginx-аутентификатор dry-run проходит (проверено 17.10).
+
+## ⚠️ :443 — SNI-маршрутизация через stream (с 2026-10-16)
+- В `nginx.conf` блок `stream { ... }`: IPv4 :443 читает SNI (`ssl_preread`). `428.wearbase.ru` уходит на `127.0.0.1:4443` (xray, VPN Reality self-steal), всё остальное — на `127.0.0.1:8443` с `proxy_protocol`. `conf.d/05-realip.conf` берёт реальный IP из proxy_protocol.
+- Поэтому HTTPS-блоки vhost'ов слушают **`listen 127.0.0.1:8443 ssl proxy_protocol;` + `listen [::]:443 ssl;`**. `certbot --nginx` по умолчанию пишет `listen 443 ssl`: тогда reload падает на bind 0.0.0.0:443, работает старый конфиг. После certbot правь listen руками.
+- xray (`xray.service`, `/usr/local/etc/xray/config.json`) поставлен 2026-10-16 12:48 какой-то сессией напрямую под root. Кто и зачем — уточнить у пользователя.
+- 17.10 в `sites-enabled` у 428/pillbase/default вместо симлинков лежали копии, отличные от `sites-available`. Вернул симлинки на актуальные версии, бэкап в `/root/nginx-bak-20261017-191512`. Правило: правим только `sites-available`, в `sites-enabled` только симлинки.
+- Появился vhost `pcpricebase.ru` (16.10 18:22), его происхождение тоже уточнить.
 
 ## Прочее на VDS
 - `428.wearbase.ru` (сессия work-60, 2026-10-09): статика `/var/www/428/gallery.html`, vhost `sites-available/428.wearbase.ru`, noindex. LE-сертификат через `certbot --nginx --redirect` (80→443). DNS: явная A `428 → 161.104.35.238` в зоне reg.ru (перекрывает wildcard `*.wearbase.ru`) — ⚠️ перенести при переезде зоны.
