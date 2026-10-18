@@ -69,6 +69,7 @@
 - Frontend env на сервере: `NEXT_PUBLIC_YM_ID=113561532` (Метрика), верификацию GSC/Вебмастера — через DNS TXT в зоне Selectel.
 
 - ⚠️ 2026-10-18 ISR-кэш Next забивал диск: `frontend-run/.next/server/app` 22 ГБ / 1,04 млн файлов (почти всё `*/products`, рост 1–7 ГБ/сутки), диск 79%. Фикс в PR автопилота: `experimental.isrFlushToDisk: false` + `cacheMaxMemorySize: 64MB` (on-demand ISR только в памяти). До деплоя фикса — временный сторож `/etc/cron.d/drugs-isr-guard` (*/10, при >88% удаляет products-ISR старше 24 ч; Next пересоздаёт по запросу — проверено). Убрать сторож после деплоя и суток наблюдения.
+- 2026-10-18 drugs-frontend: 2× V8 heap OOM (14.10, 17.10) при дефолтном heap в cgroup 512M → drop-in `drugs-frontend.service.d/memory.conf`: `NODE_OPTIONS=--max-old-space-size=384`, `MemoryMax=768M`. Сборка не затронута (deploy.sh ставит свой NODE_OPTIONS=2048).
 - Кроны data:refresh (после мержа автопилота T24–T27): по одному, только после успешного ручного прогона источника; memory_limit по замеру `/usr/bin/time -v` (~1500M, не 3G); aemps/aifa — сначала полный ручной импорт. `bin/backup-db.sh` не ставим: `vds-backup` перенесён на **02:45** (до grls 03:10).
 - Платный API (T26/T27) выкатывается скрытым: `API_ACCESS_ENABLED=0` (решение пользователя 2026-10-18) — цены-заглушки, ЮKassa без чеков самозанятого. `INTERNAL_API_TOKEN` (общий) уже в обоих .env drugs.
 
