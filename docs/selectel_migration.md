@@ -80,9 +80,9 @@
 ## ⚠️ :443 — SNI-маршрутизация через stream (с 2026-10-16)
 - В `nginx.conf` блок `stream { ... }`: IPv4 :443 читает SNI (`ssl_preread`). `428.wearbase.ru` уходит на `127.0.0.1:4443` (xray, VPN Reality self-steal), всё остальное — на `127.0.0.1:8443` с `proxy_protocol`. `conf.d/05-realip.conf` берёт реальный IP из proxy_protocol.
 - Поэтому HTTPS-блоки vhost'ов слушают **`listen 127.0.0.1:8443 ssl proxy_protocol;` + `listen [::]:443 ssl;`**. `certbot --nginx` по умолчанию пишет `listen 443 ssl`: тогда reload падает на bind 0.0.0.0:443, работает старый конфиг. После certbot правь listen руками.
-- xray (`xray.service`, `/usr/local/etc/xray/config.json`) поставлен 2026-10-16 12:48 какой-то сессией напрямую под root. Кто и зачем — уточнить у пользователя.
+- xray (`xray.service`, `/usr/local/etc/xray/config.json`) поставлен 2026-10-16 12:48 другой сессией, пользователь в курсе. Его конфиг не трогать.
 - 17.10 в `sites-enabled` у 428/pillbase/default вместо симлинков лежали копии, отличные от `sites-available`. Вернул симлинки на актуальные версии, бэкап в `/root/nginx-bak-20261017-191512`. Правило: правим только `sites-available`, в `sites-enabled` только симлинки.
-- Появился vhost `pcpricebase.ru` (16.10 18:22), его происхождение тоже уточнить.
+- Появился vhost `pcpricebase.ru` (16.10 18:22): его ведёт другая сессия, пользователь в курсе.
 
 ## Прочее на VDS
 - `428.wearbase.ru` (сессия work-60, 2026-10-09): статика `/var/www/428/gallery.html`, vhost `sites-available/428.wearbase.ru`, noindex. LE-сертификат через `certbot --nginx --redirect` (80→443). DNS: явная A `428 → 161.104.35.238` в зоне reg.ru (перекрывает wildcard `*.wearbase.ru`) — ⚠️ перенести при переезде зоны.
