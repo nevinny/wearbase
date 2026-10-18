@@ -122,7 +122,7 @@ class WardrobeIngestController extends AbstractController
 
             $seenHashes[$hash] = true;
             try {
-                $sanitized = $imageSanitizer->sanitize($file);
+                $sanitized = $imageSanitizer->preserveOriginal($file);
             } catch (\InvalidArgumentException $exception) {
                 $rejected[] = ['name' => $name, 'reason' => $exception->getMessage()];
                 continue;

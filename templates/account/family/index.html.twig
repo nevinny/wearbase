@@ -12,6 +12,11 @@
     {% endif %}
 </div>
 
+<a href="{{ path('account_family_matrix') }}" class="mb-5 flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-950 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
+    <span><span class="block text-base font-semibold">Матрица вещей</span><span class="mt-1 block text-sm text-indigo-800">{{ family and app.user.familyRole == 'parent' ? 'Свой гардероб, вещи детей и план покупок' : 'Свой гардероб и план покупок' }}</span></span>
+    <span aria-hidden="true">→</span>
+</a>
+
 {% if family is null %}
 
     {# ── Пустое состояние ── #}
@@ -38,13 +43,6 @@
     </div>
 
 {% else %}
-
-    {% if app.user.familyRole == 'parent' %}
-        <a href="{{ path('account_family_matrix') }}" class="mb-5 flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-950 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2">
-            <span><span class="block text-base font-semibold">Матрица вещей</span><span class="mt-1 block text-sm text-indigo-800">Сравнить гардеробы детей и запланировать покупки</span></span>
-            <span aria-hidden="true">→</span>
-        </a>
-    {% endif %}
 
     {# ── Члены семьи ── #}
     <div class="mb-6 grid gap-4 sm:grid-cols-2">

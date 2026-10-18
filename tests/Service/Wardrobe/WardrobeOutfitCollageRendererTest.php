@@ -8,6 +8,8 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeOutfit;
 use App\Service\Wardrobe\WardrobeOutfitCollageRenderer;
 use App\Service\Wardrobe\PreparedWardrobePhoto;
+use App\Service\Wardrobe\WardrobeImageVariants;
+use App\Service\Wardrobe\WardrobeImageSanitizer;
 use PHPUnit\Framework\TestCase;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
@@ -209,6 +211,7 @@ final class WardrobeOutfitCollageRendererTest extends TestCase
             $this->projectDir,
             __DIR__ . '/../../../config/social/fonts/NotoSans.ttf',
             $storage,
+            new WardrobeImageVariants($this->projectDir, new WardrobeImageSanitizer()),
         );
     }
 

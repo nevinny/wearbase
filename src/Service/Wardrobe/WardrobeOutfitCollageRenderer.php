@@ -79,6 +79,7 @@ final class WardrobeOutfitCollageRenderer
         private readonly string $projectDir,
         private readonly string $fontPath,
         private readonly StorageInterface $storage,
+        private readonly WardrobeImageVariants $variants,
     ) {
     }
 
@@ -395,14 +396,21 @@ final class WardrobeOutfitCollageRenderer
         }
 
         $cover = $item->getCoverPhoto();
-        if ($cover !== null) {
-            $path = $this->resolveMediaPath($this->storage->resolvePath($cover, 'file'), $cover->getFilePath());
-            if ($path !== null) {
-                return $path;
-            }
+        $path = $cover === null ? null : $this->resolveMediaPath($this->storage->resolvePath($cover, 'file'), $cover->getFilePath());
+        $rotation = $cover?->getRotation() ?? 0;
+        if ($path === null) {
+            $path = $this->resolveMediaPath($this->storage->resolvePath($item, 'photoFile'), $item->getPhoto());
+            $rotation = 0;
         }
-
-        return $this->resolveMediaPath($this->storage->resolvePath($item, 'photoFile'), $item->getPhoto());
+        $size = $path === null ? false : @getimagesize($path);
+        if ($size === false || $size[0] * $size[1] > self::MAX_SOURCE_PIXELS) {
+            return null;
+        }
+        try {
+            return $this->variants->path($path, 'medium', $rotation);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
     }
 
     private function resolveMediaPath(?string $vichPath, ?string $legacyName): ?string

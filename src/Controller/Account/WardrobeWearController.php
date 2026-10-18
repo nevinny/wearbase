@@ -89,15 +89,20 @@ final class WardrobeWearController extends AbstractController
                     return $this->redirectToRoute('account_wardrobe_wear_index', $this->memberParams($actor, $subject));
                 }
                 try {
+                    $photo = $sanitizer->preserveOriginal($photo);
                     $sanitized = $sanitizer->sanitize($photo);
+                    $candidates = $recognition->candidates($sanitized->getPathname(), $subject);
                 } catch (\InvalidArgumentException $exception) {
                     $this->addFlash('error', $exception->getMessage());
                     return $this->redirectToRoute('account_wardrobe_wear_index', $this->memberParams($actor, $subject));
+                } finally {
+                    if ($sanitized !== null && is_file($sanitized->getPathname())) {
+                        unlink($sanitized->getPathname());
+                    }
                 }
-                $candidates = $recognition->candidates($sanitized->getPathname(), $subject);
             }
 
-            $event = $wear->createReview($actor, $subject, $candidates, $day, $sanitized);
+            $event = $wear->createReview($actor, $subject, $candidates, $day, $photo instanceof UploadedFile ? $photo : null);
             return $this->redirectToRoute('account_wardrobe_wear_review', ['id' => $event->getId()] + $this->memberParams($actor, $subject));
         }
 

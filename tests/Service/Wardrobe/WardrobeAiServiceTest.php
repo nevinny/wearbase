@@ -7,6 +7,8 @@ namespace App\Tests\Service\Wardrobe;
 use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Repository\WardrobeConsentRepository;
+use App\Entity\WardrobeCategory;
+use App\Repository\WardrobeCategoryRepository;
 use App\Service\Wardrobe\WardrobeAiService;
 use App\Service\Wardrobe\WildberriesAdapter;
 use App\Service\WardrobeAiMeter;
@@ -70,6 +72,57 @@ final class WardrobeAiServiceTest extends TestCase
         }
     }
 
+    #[DataProvider('photoCategories')]
+    public function testPhotoUsesActiveCategoryCodesAndCanonicalNames(array $categoryFields, ?string $expected): void
+    {
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::once())->method('generateVision')->willReturnCallback(static function (string $prompt) use ($categoryFields): string {
+            self::assertStringContainsString('categoryCode', $prompt);
+            self::assertStringContainsString('hat', $prompt);
+            self::assertStringContainsString('scarf', $prompt);
+            return json_encode($categoryFields + ['name' => 'Распознанная вещь', 'season' => 'winter'], JSON_THROW_ON_ERROR);
+        });
+        $photo = tempnam(sys_get_temp_dir(), 'wardrobe_category_');
+        try {
+            $result = $this->service($llm, new ArrayAdapter())->suggestFromPhoto($photo);
+            self::assertTrue($result['ok']);
+            self::assertSame($expected, $result['fields']['category']);
+            self::assertArrayNotHasKey('categoryCode', $result['fields']);
+            self::assertSame('winter', $result['fields']['season']);
+        } finally {
+            unlink($photo);
+        }
+    }
+
+    public static function photoCategories(): array
+    {
+        return [
+            'stable hat beats free label' => [['categoryCode' => 'hat', 'category' => 'Рубашки'], 'Шапка'],
+            'stable scarf' => [['categoryCode' => 'scarf', 'category' => 'Шарфик'], 'Шарф'],
+            'legacy plural' => [['category' => 'Рубашки'], 'Рубашка'],
+            'invalid code' => [['categoryCode' => 'invented-code', 'category' => 'Рубашки'], null],
+            'invalid type' => [['categoryCode' => ['hat'], 'category' => 'Шапки'], null],
+            'explicit unknown' => [['categoryCode' => null, 'category' => 'Шапки'], null],
+            'unrecognized text' => [['category' => 'Модель неизвестного назначения'], null],
+        ];
+    }
+
+    public function testPhotoCacheChangesWhenActiveCatalogNameChanges(): void
+    {
+        $cache = new ArrayAdapter();
+        $catalog = $this->catalog();
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::exactly(2))->method('generateVision')->willReturn('{"categoryCode":"hat","category":"Шапки"}');
+        $photo = tempnam(sys_get_temp_dir(), 'wardrobe_catalog_cache_');
+        try {
+            self::assertSame('Шапка', $this->service($llm, $cache, catalog: $catalog)->suggestFromPhoto($photo)['fields']['category']);
+            $catalog[1]->setName('Головной убор');
+            self::assertSame('Головной убор', $this->service($llm, $cache, catalog: $catalog)->suggestFromPhoto($photo)['fields']['category']);
+        } finally {
+            unlink($photo);
+        }
+    }
+
     public function testAttributesFromNamesReturnsFieldsKeyedByIdAndDropsInvalidSeasonAndUnknownIds(): void
     {
         $llm = $this->createMock(LlmService::class);
@@ -113,13 +166,43 @@ final class WardrobeAiServiceTest extends TestCase
         self::assertSame([], $result);
     }
 
-    private function service(LlmService $llm, ArrayAdapter $cache, string $model = 'vision-test'): WardrobeAiService
+    public function testProductUrlUsesTheSameCategoryDictionaryAsPhotos(): void
     {
+        $llm = $this->createMock(LlmService::class);
+        $llm->expects(self::once())->method('generate')->willReturnCallback(static function (string $prompt): string {
+            self::assertStringContainsString('categoryCode', $prompt);
+            self::assertStringContainsString('"code":"shirt"', $prompt);
+            return '{"categoryCode":"shirt","category":"Рубашки","name":"Льняная рубашка","price":2500}';
+        });
+        $scraper = $this->createStub(WebScraperService::class);
+        $scraper->method('fetchCleanText')->willReturn('Льняная рубашка, 2500 рублей');
+        $result = $this->service($llm, new ArrayAdapter(), scraper: $scraper)->suggestFromUrl('https://shop.example.test/shirt');
+        self::assertTrue($result['ok']);
+        self::assertSame('Рубашка', $result['fields']['category']);
+        self::assertSame(2500, $result['fields']['price']);
+    }
+
+    private function service(LlmService $llm, ArrayAdapter $cache, string $model = 'vision-test', ?array $catalog = null, ?WebScraperService $scraper = null): WardrobeAiService
+    {
+        $categories = $this->getMockBuilder(WardrobeCategoryRepository::class)
+            ->disableOriginalConstructor()->onlyMethods(['findActiveTree'])->getMock();
+        $categories->method('findActiveTree')->willReturn($catalog ?? $this->catalog());
+        $meter = $this->createStub(WardrobeAiMeter::class);
+        $meter->method('allowed')->willReturn(true);
         return new WardrobeAiService(
-            $llm, $this->createStub(WebScraperService::class), $this->createStub(WildberriesAdapter::class),
-            $this->createStub(WardrobeAiMeter::class), $this->createStub(AiUsageTracker::class),
+            $llm, $scraper ?? $this->createStub(WebScraperService::class), $this->createStub(WildberriesAdapter::class),
+            $meter, $this->createStub(AiUsageTracker::class),
             $cache, 'remote-test', true, $model, new NullLogger(),
             $this->createStub(WardrobeConsentRepository::class),
+            $categories,
         );
+    }
+
+    /** @return WardrobeCategory[] */
+    private function catalog(): array
+    {
+        return array_map(static fn (array $entry): WardrobeCategory => (new WardrobeCategory())->setCode($entry[0])->setName($entry[1]), [
+            ['shirt', 'Рубашка'], ['hat', 'Шапка'], ['scarf', 'Шарф'], ['boots', 'Ботинки'],
+        ]);
     }
 }

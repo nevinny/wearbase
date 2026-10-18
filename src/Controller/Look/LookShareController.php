@@ -20,6 +20,7 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use App\Service\Look\LookShareOgCardRenderer;
+use App\Service\Wardrobe\WardrobeImageVariants;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
 /**
@@ -96,7 +97,7 @@ final class LookShareController extends AbstractController
      * из ЭТОГО share (чек-лист утечек §4.3 — никакого перебора голых photoId).
      */
     #[Route('/media/{token}/{photoId}', name: 'media', requirements: ['token' => '[0-9a-f]{64}', 'photoId' => '\\d+'], methods: ['GET'])]
-    public function media(string $token, int $photoId, StorageInterface $storage): Response
+    public function media(string $token, int $photoId, StorageInterface $storage, WardrobeImageVariants $variants): Response
     {
         $share = $this->shares->findByToken($token);
         if ($share === null || !$share->isViewable()) {
@@ -108,7 +109,7 @@ final class LookShareController extends AbstractController
             throw $this->createNotFoundException();
         }
 
-        return $this->mediaResponse($storage->resolvePath($photo, 'file'), $photo->getFilePath());
+        return $this->mediaResponse($storage->resolvePath($photo, 'file'), $photo->getFilePath(), $variants, $photo->getRotation());
     }
 
     /**
@@ -222,7 +223,7 @@ final class LookShareController extends AbstractController
         return ($request->getClientIp() ?? 'unknown').'|'.(string) $request->attributes->get('token', '');
     }
 
-    private function mediaResponse(?string $path, ?string $legacyName): BinaryFileResponse
+    private function mediaResponse(?string $path, ?string $legacyName, WardrobeImageVariants $variants, int $rotation): BinaryFileResponse
     {
         if (($path === null || !is_file($path)) && $legacyName !== null) {
             $root = realpath($this->projectDir.'/public_html/images/wardrobe');
@@ -244,7 +245,7 @@ final class LookShareController extends AbstractController
             throw $this->createNotFoundException();
         }
 
-        $response = new BinaryFileResponse($path);
+        $response = new BinaryFileResponse($variants->path($path, 'medium', $rotation));
         $response->setPrivate();
         $response->setMaxAge(0);
         $response->headers->addCacheControlDirective('no-store');

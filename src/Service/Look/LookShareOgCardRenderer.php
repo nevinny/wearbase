@@ -7,6 +7,7 @@ namespace App\Service\Look;
 use App\Entity\User;
 use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeOutfitShare;
+use App\Service\Wardrobe\WardrobeImageVariants;
 use Doctrine\ORM\EntityManagerInterface;
 use Vich\UploaderBundle\Storage\StorageInterface;
 
@@ -36,6 +37,7 @@ final class LookShareOgCardRenderer
         private readonly string $fontPath,
         private readonly EntityManagerInterface $em,
         private readonly StorageInterface $storage,
+        private readonly WardrobeImageVariants $variants,
     ) {}
 
     /** @return string|null абсолютный путь к PNG или null (нет шрифта/GD-сбой). */
@@ -89,7 +91,7 @@ final class LookShareOgCardRenderer
             foreach ($photos as $photo) {
                 imagefilledrectangle($im, $x - 2, (int) $thumbY - 2, $x + self::THUMB + 2, (int) $thumbY + self::THUMB + 2, $cardBg);
                 $srcPath = $this->storage->resolvePath($photo, 'file');
-                $src = is_string($srcPath) ? $this->loadImage($srcPath) : null;
+                $src = is_string($srcPath) ? $this->loadImage($srcPath, $photo->getRotation()) : null;
                 if ($src !== null) {
                     $this->copyCropped($im, $src, $x, (int) $thumbY, self::THUMB, self::THUMB);
                     imagedestroy($src);
@@ -148,13 +150,13 @@ final class LookShareOgCardRenderer
         return $qb->getQuery()->getResult();
     }
 
-    private function loadImage(string $path): ?\GdImage
+    private function loadImage(string $path, int $rotation): ?\GdImage
     {
         if (!is_file($path)) {
             return null;
         }
         try {
-            $image = @imagecreatefromstring((string) file_get_contents($path));
+            $image = @imagecreatefromwebp($this->variants->path($path, 'preview', $rotation));
 
             return $image instanceof \GdImage ? $image : null;
         } catch (\Throwable) {

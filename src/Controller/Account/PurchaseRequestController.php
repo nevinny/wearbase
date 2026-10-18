@@ -68,6 +68,9 @@ class PurchaseRequestController extends AbstractController
         $needId = $request->query->getInt('need');
         $need = $needId > 0 ? $needs->findForActor($user, $needId) : null;
         if ($need !== null) {
+            if ($need->getFamily() === null) {
+                throw $this->createAccessDeniedException('Запрос покупки доступен только для семейной потребности ребёнка');
+            }
             if (!$need->isOpen()) {
                 $this->addFlash('error', 'Потребность уже закрыта');
                 return $this->privateResponse($this->redirectToRoute('account_family_matrix'));

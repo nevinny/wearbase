@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Entity\ReferralEvent;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
+use App\Entity\WardrobeItemPhoto;
 use App\Entity\WardrobeOutfit;
 use App\Entity\WardrobeOutfitShare;
 use App\Repository\ReferralEventRepository;
@@ -15,6 +16,9 @@ use App\Service\Look\LookShareReferralService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Vich\UploaderBundle\Storage\StorageInterface;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 
 /**
@@ -23,6 +27,37 @@ use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
  */
 class LookShareControllerTest extends DatabaseDependentWebTestCase
 {
+    public function testSharedPhotoServesRotatedWebCopyEvenWhenOriginalIsRequested(): void
+    {
+        $client = static::createClient();
+        $this->skipIfNoDatabase();
+        [$owner, $outfit] = $this->createOutfitWithOwner('look-media-variant@test.local', 'Фото вещи');
+        $share = $this->createActiveShare($owner, $outfit);
+        $item = $this->em()->find(WardrobeItem::class, $outfit->getItems()[0]['id']);
+        $source = tempnam(sys_get_temp_dir(), 'look-original-');
+        $image = imagecreatetruecolor(80, 40);
+        imagejpeg($image, $source);
+        imagedestroy($image);
+        $hash = hash_file('sha256', $source);
+        $photo = (new WardrobeItemPhoto())->setItem($item)->setFile(new UploadedFile($source, 'original.jpg', 'image/jpeg', null, true));
+        $photo->rotate(90);
+        $this->em()->persist($photo);
+        $this->em()->flush();
+        $original = static::getContainer()->get(StorageInterface::class)->resolvePath($photo, 'file');
+        try {
+            $client->request('GET', '/l/media/'.$share->getToken().'/'.$photo->getId().'?size=original');
+            self::assertResponseIsSuccessful();
+            self::assertResponseHeaderSame('Content-Type', 'image/webp');
+            $response = $client->getResponse();
+            self::assertInstanceOf(BinaryFileResponse::class, $response);
+            self::assertSame([40, 80], array_slice(getimagesize($response->getFile()->getPathname()), 0, 2));
+            self::assertSame($hash, hash_file('sha256', $original));
+        } finally {
+            @unlink($source);
+            @unlink($original);
+        }
+    }
+
     public function testGuestViewHappyPath(): void
     {
         $client = static::createClient();

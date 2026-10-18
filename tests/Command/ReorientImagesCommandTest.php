@@ -7,6 +7,7 @@ namespace App\Tests\Command;
 use App\Command\ReorientImagesCommand;
 use App\Entity\WardrobeItemPhoto;
 use App\Repository\WardrobeItemPhotoRepository;
+use App\Service\Wardrobe\WardrobeImageSanitizer;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
@@ -48,7 +49,7 @@ final class ReorientImagesCommandTest extends TestCase
         $repository = $this->createMock(WardrobeItemPhotoRepository::class);
         $repository->expects(self::once())->method('findReorientCandidates')->with([51, 52, 53, 54, 55], null, null)->willReturn($photos);
 
-        $tester = new CommandTester(new ReorientImagesCommand($repository, $this->createMock(EntityManagerInterface::class), $this->uploadDir));
+        $tester = new CommandTester(new ReorientImagesCommand($repository, $this->createMock(EntityManagerInterface::class), $this->uploadDir, new WardrobeImageSanitizer()));
 
         self::assertSame(Command::SUCCESS, $tester->execute(['--ids' => ['51,52,53,54,55'], '--dry-run' => true]));
         foreach ([51, 52, 53, 54, 55] as $id) {
@@ -63,7 +64,7 @@ final class ReorientImagesCommandTest extends TestCase
         $repository = $this->createMock(WardrobeItemPhotoRepository::class);
         $repository->expects(self::never())->method('findReorientCandidates');
 
-        $tester = new CommandTester(new ReorientImagesCommand($repository, $this->createMock(EntityManagerInterface::class), $this->uploadDir));
+        $tester = new CommandTester(new ReorientImagesCommand($repository, $this->createMock(EntityManagerInterface::class), $this->uploadDir, new WardrobeImageSanitizer()));
 
         self::assertSame(Command::INVALID, $tester->execute([]));
     }
@@ -74,18 +75,20 @@ final class ReorientImagesCommandTest extends TestCase
             $this->createStub(WardrobeItemPhotoRepository::class),
             $this->createMock(EntityManagerInterface::class),
             $this->uploadDir,
+            new WardrobeImageSanitizer(),
         ));
 
         self::assertSame(Command::INVALID, $tester->execute(['--ids' => ['abc']]));
         self::assertSame(Command::INVALID, $tester->execute(['--since' => 'not-a-date']));
     }
 
-    public function testRealRunRotatesExistingFileAndReportsMissingOnes(): void
+    public function testRealRunStoresRotationWithoutModifyingOriginalAndReportsMissingOnes(): void
     {
         $filePath = 'a1rotated-fifty-one.jpg';
         $path = $this->uploadDir.'/a1/ro/'.$filePath;
         mkdir(dirname($path), 0755, true);
         file_put_contents($path, $this->horizontalRedBlueJpeg());
+        $original = file_get_contents($path);
 
         $fiftyOne = $this->photo(51, $filePath);
         $fiftyTwo = $this->photo(52, 'z9missing-fifty-two.jpg');
@@ -95,20 +98,15 @@ final class ReorientImagesCommandTest extends TestCase
         $entityManager = $this->createMock(EntityManagerInterface::class);
         $entityManager->expects(self::once())->method('flush');
 
-        $tester = new CommandTester(new ReorientImagesCommand($repository, $entityManager, $this->uploadDir));
+        $tester = new CommandTester(new ReorientImagesCommand($repository, $entityManager, $this->uploadDir, new WardrobeImageSanitizer()));
 
         // 90° по часовой: 2x1 (слева красный, справа синий) -> 1x2 (сверху красный, снизу синий).
         self::assertSame(Command::FAILURE, $tester->execute(['--ids' => ['51,52'], '--angle' => '90']));
         self::assertStringContainsString('z9missing-fifty-two.jpg', $tester->getDisplay());
 
-        $gd = imagecreatefromstring((string) file_get_contents($path));
-        self::assertNotFalse($gd);
-        self::assertSame([1, 2], [imagesx($gd), imagesy($gd)]);
-        $top = imagecolorat($gd, 0, 0);
-        $bottom = imagecolorat($gd, 0, 1);
-        self::assertTrue((($top >> 16) & 0xFF) > ($top & 0xFF), 'Верхний пиксель должен быть красным');
-        self::assertTrue(($bottom & 0xFF) > (($bottom >> 16) & 0xFF), 'Нижний пиксель должен быть синим');
-        self::assertSame(filesize($path), $fiftyOne->getFileSize());
+        self::assertSame($original, file_get_contents($path));
+        self::assertSame(90, $fiftyOne->getRotation());
+        self::assertSame(0, $fiftyTwo->getRotation());
         self::assertNotNull($fiftyOne->getUpdatedAt());
     }
 

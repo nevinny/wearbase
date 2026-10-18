@@ -83,11 +83,11 @@
     <div class="md:col-span-5">
         <div class="overflow-hidden rounded-2xl bg-white shadow-sm">
             {% if item.coverPhoto %}
-                <img data-rotate-cover="1"
-                     src="{{ path('account_wardrobe_media_photo', {id: item.coverPhoto.id}) }}"
+                <img data-rotate-cover="{{ item.coverPhoto.id }}"
+                     src="{{ path('account_wardrobe_media_photo', {id: item.coverPhoto.id, size: 'medium'}) }}"
                      class="aspect-square w-full object-cover" alt="{{ item.name }}">
             {% elseif item.photo %}
-                <img src="{{ path('account_wardrobe_media_item', {id: item.id}) }}"
+                <img src="{{ path('account_wardrobe_media_item', {id: item.id, size: 'medium'}) }}"
                      class="aspect-square w-full object-cover" alt="{{ item.name }}">
             {% else %}
                 <div class="flex aspect-square w-full items-center justify-center bg-gray-100 text-6xl opacity-20">👕</div>
@@ -370,9 +370,9 @@
                     document.querySelectorAll('[data-rotate-target="' + id + '"]').forEach(function (img) {
                         img.src = data.uri;
                     });
-                    if (document.querySelector('[data-rotate-cover="1"]')) {
-                        document.querySelector('[data-rotate-cover="1"]').src = data.uri;
-                    }
+                    document.querySelectorAll('[data-rotate-cover="' + id + '"]').forEach(function (img) {
+                        img.src = data.mediumUri;
+                    });
                 } else {
                     alert(data.error || 'Ошибка поворота');
                 }

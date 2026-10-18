@@ -57,7 +57,7 @@ final class FamilyWardrobeMatrixControllerTest extends AuthenticatedWebTestCase
         }
     }
 
-    public function testChildAndUserWithoutFamilyCannotManageMatrix(): void
+    public function testChildAndUserWithoutFamilyCanUseOnlyTheirOwnMatrix(): void
     {
         $client = static::createClient();
         [$parent, $child] = $this->family('access');
@@ -65,13 +65,53 @@ final class FamilyWardrobeMatrixControllerTest extends AuthenticatedWebTestCase
         foreach ([$child, $unrelated] as $actor) {
             $client->loginUser($actor);
             $client->request('GET', '/account/family/matrix');
-            self::assertResponseStatusCodeSame(403);
+            self::assertResponseIsSuccessful();
+            self::assertSame([$actor->getId()], array_map(static fn (User $subject): int => $subject->getId(), $this->matrix()->overview($actor)['children']));
             $client->request('GET', '/account/family/matrix/needs/new');
-            self::assertResponseStatusCodeSame(403);
+            self::assertResponseIsSuccessful();
         }
         $client->loginUser($parent);
         $client->request('GET', '/account/family/matrix?season=invalid');
         self::assertResponseStatusCodeSame(400);
+    }
+
+    public function testPersonalNeedsAreOwnedBySubjectAndCannotCreateFamilyPurchase(): void
+    {
+        $client = static::createClient();
+        $user = UserFactory::withEmail(static::getContainer(), 'matrix-personal-user@test.local');
+        $category = $this->category('footwear', 'Обувь');
+        $client->loginUser($user);
+        $crawler = $client->request('GET', '/account/family/matrix/needs/new');
+        $client->submit($crawler->filter('form[name="wardrobe_need"]')->form([
+            'wardrobe_need[subject]' => '0', 'wardrobe_need[category]' => (string) $category->getId(),
+            'wardrobe_need[season]' => 'winter', 'wardrobe_need[title]' => 'Личные ботинки',
+            'wardrobe_need[quantity]' => '1',
+        ]));
+        self::assertResponseRedirects();
+        $need = $this->em()->getRepository(WardrobeNeed::class)->findOneBy(['subject' => $user]);
+        self::assertNotNull($need);
+        self::assertNull($need->getFamily());
+        $client->request('GET', '/account/family/matrix');
+        self::assertSelectorTextContains('body', 'Личные ботинки');
+        $client->request('GET', '/account/family/matrix/needs/'.$need->getId().'/edit');
+        self::assertResponseIsSuccessful();
+        $client->request('GET', '/account/purchases/new?need='.$need->getId());
+        self::assertResponseStatusCodeSame(403);
+        self::assertFalse($this->em()->getConnection()->isTransactionActive());
+        self::assertNull($this->em()->find(WardrobeNeed::class, $need->getId())->getPurchaseRequest());
+
+        [$parent, $child] = $this->family('personal-family');
+        $parentNeed = $this->need($parent, $parent);
+        $childNeed = $this->need($child, $child);
+        self::assertNull($parentNeed->getFamily());
+        self::assertNull($childNeed->getFamily());
+        self::assertSame([$parentNeed->getId()], $this->ids($this->matrix()->overview($parent)['openNeeds']));
+        self::assertSame([$childNeed->getId()], $this->ids($this->matrix()->overview($child)['openNeeds']));
+        foreach ([[$parent, $childNeed], [$child, $parentNeed], [$parent, $need]] as [$actor, $otherNeed]) {
+            $client->loginUser($actor);
+            $client->request('GET', '/account/family/matrix/needs/'.$otherNeed->getId().'/edit');
+            self::assertResponseStatusCodeSame(403);
+        }
     }
 
     public function testOverviewGroupsLegacyItemsAndRepeatsAllSeasonWithoutDuplicatingTotals(): void
@@ -96,7 +136,9 @@ final class FamilyWardrobeMatrixControllerTest extends AuthenticatedWebTestCase
         $matrix = $this->matrix()->overview($parent);
         self::assertSame(5, $matrix['totals'][$child->getId()]);
         self::assertSame(1, $matrix['totals'][$sibling->getId()]);
-        self::assertCount(2, $matrix['children']);
+        self::assertCount(3, $matrix['children']);
+        self::assertSame($parent->getId(), $matrix['children'][0]->getId());
+        self::assertSame(1, $matrix['totals'][$parent->getId()]);
         foreach (['winter', 'spring', 'summer', 'autumn'] as $season) {
             self::assertSame([$shirt->getId()], $this->ids($matrix['sections'][$season]['groups']['tops'][$shirtCategory->getId()]['cells'][$child->getId()]['items']));
         }
@@ -153,7 +195,7 @@ final class FamilyWardrobeMatrixControllerTest extends AuthenticatedWebTestCase
         $crawler = $client->request('GET', '/account/family/matrix/needs/new?season=winter');
         self::assertResponseIsSuccessful();
         $client->submit($crawler->filter('form[name="wardrobe_need"]')->form([
-            'wardrobe_need[subject]' => '0',
+            'wardrobe_need[subject]' => '1',
             'wardrobe_need[category]' => (string) $category->getId(),
             'wardrobe_need[season]' => 'winter',
             'wardrobe_need[title]' => 'Зимние ботинки',
@@ -198,7 +240,7 @@ final class FamilyWardrobeMatrixControllerTest extends AuthenticatedWebTestCase
         [$parent, $child] = $this->family('invalid-form');
         $category = $this->category('footwear', 'Обувь');
         $client->loginUser($parent);
-        $data = ['subject' => '0', 'category' => (string) $category->getId(), 'season' => 'winter',
+        $data = ['subject' => '1', 'category' => (string) $category->getId(), 'season' => 'winter',
             'title' => 'Ботинки', 'quantity' => '1', 'size' => '', 'notes' => ''];
         $client->request('POST', '/account/family/matrix/needs/new', ['wardrobe_need' => $data + ['_token' => 'invalid']]);
         self::assertResponseStatusCodeSame(422);
@@ -239,6 +281,8 @@ final class FamilyWardrobeMatrixControllerTest extends AuthenticatedWebTestCase
         $summerNeed = $this->need($parent, $child, 'summer');
         $closedNeed = $this->need($parent, $child);
         static::getContainer()->get(WardrobeNeedService::class)->setOpen($parent, $closedNeed, false);
+        $closedSummerNeed = $this->need($parent, $child, 'summer');
+        static::getContainer()->get(WardrobeNeedService::class)->setOpen($parent, $closedSummerNeed, false);
 
         $matrix = $this->matrix()->overview($parent, 'winter');
         self::assertEqualsCanonicalizing([$winterNeed->getId(), $allNeed->getId()], $this->ids($matrix['openNeeds']));
@@ -311,7 +355,7 @@ final class FamilyWardrobeMatrixControllerTest extends AuthenticatedWebTestCase
         self::assertResponseIsSuccessful();
         self::assertCount(0, $crawler->filter('select[name="wardrobe_need[category]"] option[value="'.$retired->getId().'"]'));
         $client->request('POST', '/account/family/matrix/needs/new', ['wardrobe_need' => [
-            'subject' => '0', 'category' => (string) $retired->getId(), 'season' => 'winter',
+            'subject' => '1', 'category' => (string) $retired->getId(), 'season' => 'winter',
             'title' => 'Ботинки', 'quantity' => '1',
             '_token' => $crawler->filter('input[name="wardrobe_need[_token]"]')->attr('value'),
         ]]);

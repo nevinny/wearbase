@@ -11,11 +11,14 @@ use App\Entity\WardrobeItem;
 use App\Entity\WardrobeItemDraft;
 use App\Entity\WardrobeOnboarding;
 use App\Entity\WardrobeConsent;
+use App\Entity\WardrobeCategory;
 use App\Service\FamilyService;
+use App\Service\Family\FamilyWardrobeMatrix;
 use App\Service\Wardrobe\WardrobeImageSanitizer;
 use Doctrine\ORM\Event\PrePersistEventArgs;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Events;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Vich\UploaderBundle\Storage\StorageInterface;
@@ -32,6 +35,9 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
     /** @var string[] absolute paths of files created by tests, cleaned up in tearDown */
     private array $tmpFiles = [];
 
+    /** @var int[] */
+    private array $classificationItemIds = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -46,6 +52,9 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
             }
         }
         $this->tmpFiles = [];
+        foreach ($this->classificationItemIds as $id) {
+            static::getContainer()->get(EntityManagerInterface::class)->getConnection()->executeStatement('DELETE FROM wardrobe_item WHERE id = ?', [$id]);
+        }
         parent::tearDown();
     }
 
@@ -344,6 +353,63 @@ class WardrobeIngestControllerTest extends AuthenticatedWebTestCase
         self::assertResponseIsSuccessful();
         $em->clear();
         self::assertSame('голубой', $em->find(WardrobeItem::class, $data['itemId'])->getColorName());
+    }
+
+    #[DataProvider('matrixClassifications')]
+    public function testPromotionKeepsCategoryAndSeasonForMatrix(string $recognized, array $overrides, ?string $expectedCode, string $expectedSeason): void
+    {
+        $client = static::createClient();
+        $parent = UserFactory::withEmail(static::getContainer(), 'ingest-matrix-'.bin2hex(random_bytes(4)).'@test.local');
+        $child = static::getContainer()->get(FamilyService::class)->createChild($parent, 'Для матрицы');
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        foreach (['hat' => 'Шапка', 'scarf' => 'Шарф'] as $code => $name) {
+            if ($em->getRepository(WardrobeCategory::class)->findOneBy(['code' => $code]) === null) {
+                $em->persist((new WardrobeCategory())->setCode($code)->setName($name));
+            }
+        }
+        $em->flush();
+        $draft = $this->makeDraft($em, $child, 'matrix-'.uniqid(), WardrobeItemDraft::STATUS_RECOGNIZED, ['category' => $recognized, 'name' => 'Вещь после vision']);
+        $draft->setAttributes(['season' => 'winter']);
+        $em->flush();
+        $client->loginUser($parent);
+        $client->request('GET', '/account/wardrobe?member='.$child->getId());
+        $token = $this->forceCsrfToken($client->getRequest(), self::CSRF_ID);
+        $path = '/account/wardrobe/ingest/draft/'.$draft->getId().'/accept?member='.$child->getId();
+        $client->request('POST', $path, [], [], ['HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json'], json_encode($overrides ?: new \stdClass()));
+        self::assertResponseIsSuccessful();
+        $response = json_decode($client->getResponse()->getContent(), true);
+        $this->classificationItemIds[] = $response['itemId'];
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $item = $em->find(WardrobeItem::class, $response['itemId']);
+        self::assertSame($expectedCode, $item->getCategoryRef()?->getCode());
+        self::assertSame($expectedSeason, $item->getSeason());
+        self::assertSame($child->getId(), $item->getUser()->getId());
+        $matrix = static::getContainer()->get(FamilyWardrobeMatrix::class)->overview($em->find(User::class, $parent->getId()), $expectedSeason);
+        if ($expectedCode === null) {
+            self::assertSame($recognized, $item->getCategory());
+            self::assertSame([$item->getId()], array_map(static fn (WardrobeItem $entry): int => $entry->getId(), $matrix['uncategorized']));
+        } else {
+            self::assertEmpty($matrix['uncategorized']);
+            $cell = $matrix['sections'][$expectedSeason]['groups']['headwear'][$item->getCategoryRef()->getId()]['cells'][$child->getId()];
+            self::assertSame($item->getId(), $cell['items'][0]->getId());
+        }
+        $client->request('POST', $path, [], [], ['HTTP_X_CSRF_TOKEN' => $token, 'CONTENT_TYPE' => 'application/json'], '{"category":"Обувь","season":"summer"}');
+        self::assertResponseIsSuccessful();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $em->clear();
+        $item = $em->find(WardrobeItem::class, $response['itemId']);
+        self::assertSame($expectedCode, $item->getCategoryRef()?->getCode());
+        self::assertSame($expectedSeason, $item->getSeason());
+    }
+
+    public static function matrixClassifications(): array
+    {
+        return [
+            'canonical vision' => ['Шапка', [], 'hat', 'winter'],
+            'legacy plural' => ['Шапки', [], 'hat', 'winter'],
+            'manual override wins' => ['Шапка', ['category' => 'Шарфы', 'season' => 'autumn'], 'scarf', 'autumn'],
+            'unknown text retained' => ['Неизвестный тип вещи', [], null, 'winter'],
+        ];
     }
 
     public function testInvalidSeasonDoesNotAcceptDraftAndCanBeCorrected(): void

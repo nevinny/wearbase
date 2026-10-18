@@ -6,6 +6,7 @@ use App\Entity\AiUsageLog;
 use App\Entity\User;
 use App\Entity\WardrobeItem;
 use App\Repository\WardrobeConsentRepository;
+use App\Repository\WardrobeCategoryRepository;
 use App\Service\AiUsageTracker;
 use App\Service\LlmService;
 use App\Service\WardrobeAiMeter;
@@ -28,7 +29,7 @@ use Symfony\Contracts\Cache\ItemInterface;
  */
 class WardrobeAiService
 {
-    public const PHOTO_SCHEMA_VERSION = '2';
+    public const PHOTO_SCHEMA_VERSION = '3';
 
     private const CACHE_TTL = 86400;
     private const MAX_SCRAPE_CHARS = 6000;
@@ -49,6 +50,7 @@ class WardrobeAiService
         private readonly string $localModel,
         private readonly LoggerInterface $wardrobeAiLogger,
         private readonly WardrobeConsentRepository $consents,
+        private readonly WardrobeCategoryRepository $categories,
     ) {
     }
 
@@ -90,15 +92,16 @@ class WardrobeAiService
 
         $model = $this->visionLocal ? $this->localModel : $this->visionModel;
         $provider = $this->visionLocal ? 'local' : 'remote';
-        $cacheKey = 'wardrobe_ai_photo_'.self::PHOTO_SCHEMA_VERSION.'_'.sha1($provider.':'.$model).'_'.$hash;
-
         try {
+            $categories = $this->categories->findActiveTree();
+            $catalog = $this->categoryCatalog($categories);
+            $cacheKey = 'wardrobe_ai_photo_'.self::PHOTO_SCHEMA_VERSION.'_'.sha1($provider.':'.$model.':'.$catalog).'_'.$hash;
             return $this->cache->get(
                 $cacheKey,
-                function (ItemInterface $item) use ($path, $user): array {
+                function (ItemInterface $item) use ($path, $user, $categories, $catalog): array {
                     $item->expiresAfter(self::CACHE_TTL);
 
-                    return $this->analyzePhoto($path, $user);
+                    return $this->analyzePhoto($path, $user, $categories, $catalog);
                 },
             );
         } catch (\Throwable $e) {
@@ -260,15 +263,16 @@ PROMPT;
             return ['ok' => false, 'error' => $error];
         }
 
-        $cacheKey = 'wardrobe_ai_url_' . sha1($this->normalizeUrl($url));
-
         try {
+            $categories = $this->categories->findActiveTree();
+            $catalog = $this->categoryCatalog($categories);
+            $cacheKey = 'wardrobe_ai_url_'.self::PHOTO_SCHEMA_VERSION.'_'.sha1($this->normalizeUrl($url).':'.$catalog);
             return $this->cache->get(
                 $cacheKey,
-                function (ItemInterface $item) use ($url, $user): array {
+                function (ItemInterface $item) use ($url, $user, $categories, $catalog): array {
                     $item->expiresAfter(self::CACHE_TTL);
 
-                    return $this->analyzeUrl($url, $user);
+                    return $this->analyzeUrl($url, $user, $categories, $catalog);
                 },
             );
         } catch (\Throwable $e) {
@@ -285,28 +289,37 @@ PROMPT;
         $this->wardrobeAiLogger->error($error, $context + ['feature' => $feature, 'user_id' => $user?->getId()]);
     }
 
-    private function analyzePhoto(string $path, ?User $user): array
+    private function analyzePhoto(string $path, ?User $user, array $categories, string $catalog): array
     {
         if (!$this->visionLocal && !$this->meter->allowed()) {
             throw new WardrobeAiException(self::DAILY_CAP_ERROR);
         }
 
-        $categories = implode(', ', WardrobeItem::SUGGESTED_CATEGORIES);
         $prompt = <<<EOT
 Ты определяешь параметры одежды/обуви по фото для личного гардероба. Отвечай ТОЛЬКО
 валидным JSON без markdown. Не выдумывай не видимое на фото — такие поля null.
 
+ЕДИНЫЙ СПРАВОЧНИК КАТЕГОРИЙ (JSON): {$catalog}
+Выбирай наиболее конкретный подходящий code из справочника, например tshirt для
+футболки, а не общий tops. Не придумывай новые коды. Если тип не распознаётся — null.
+
 Верни JSON:
 {
-  "category": "категория (предпочтительно одна из: {$categories}, либо своя короткая на русском) или null",
+  "categoryCode": "code из справочника или null",
   "name": "короткое русское название-описание, например «Белая oversize футболка»",
   "color": "цвет или null",
   "material": "состав ТОЛЬКО с читаемой бирки, не угадывай по виду ткани, иначе null",
-  "season": "all|spring|summer|autumn|winter или null; если сезон неоднозначен, null",
+  "season": "all|spring|summer|autumn|winter или null",
   "type": "фасон/крой или null",
   "size": "размер ТОЛЬКО если видна читаемая бирка, иначе null",
   "confidence": "high|med|low"
 }
+Сезон описывает назначение вещи, а не время съёмки. all — всесезонная вещь
+(например базовая футболка или рубашка), а не неизвестный сезон. winter/summer и
+другие сезоны выбирай только при достаточных признаках. Не угадывай утепление,
+если его не видно. Если известно лишь «весна и осень» или признаков недостаточно,
+верни null: один сезон требует уточнения владельцем. Не определяй по фото,
+подходит ли размер ребёнку, сколько вещей ему нужно и надо ли что-то покупать.
 EOT;
 
         if (!$this->visionLocal) {
@@ -322,7 +335,7 @@ EOT;
 
         return [
             'ok'         => true,
-            'fields'     => $this->normalizePhotoFields($data),
+            'fields'     => $this->normalizePhotoFields($data, $categories),
             'model'      => $model,
             'schemaVersion' => self::PHOTO_SCHEMA_VERSION,
             'confidence' => $this->normalizeConfidence($data['confidence'] ?? null),
@@ -338,7 +351,7 @@ EOT;
         return $value === '' ? null : mb_substr($value, 0, $length);
     }
 
-    private function analyzeUrl(string $url, ?User $user): array
+    private function analyzeUrl(string $url, ?User $user, array $categories, string $catalog): array
     {
         if (str_contains(strtolower($url), 'wildberries.ru')) {
             $wb = $this->wbAdapter->fetch($url);
@@ -370,7 +383,6 @@ EOT;
         }
         $text = mb_substr($text, 0, self::MAX_SCRAPE_CHARS);
 
-        $categories = implode(', ', WardrobeItem::SUGGESTED_CATEGORIES);
         $prompt = <<<EOT
 Извлеки параметры товара со страницы карточки товара. Не выдумывай данные, которых
 нет на странице — такие поля null.
@@ -378,9 +390,12 @@ EOT;
 ТЕКСТ СТРАНИЦЫ:
 {$text}
 
+ЕДИНЫЙ СПРАВОЧНИК КАТЕГОРИЙ (JSON): {$catalog}
+Выбери наиболее конкретный code из справочника. Не придумывай новые коды.
+
 Верни ТОЛЬКО валидный JSON без markdown:
 {
-  "category": "категория (предпочтительно одна из: {$categories}, либо своя короткая на русском) или null",
+  "categoryCode": "code из справочника или null",
   "name": "короткое русское название товара",
   "size": "размер(ы) как на странице (строка) или null",
   "price": число в рублях (целое) или null,
@@ -401,7 +416,7 @@ EOT;
         return [
             'ok' => true,
             'fields' => [
-                'category'   => $this->nullableString($data['category'] ?? null),
+                'category'   => $this->normalizePhotoFields($data, $categories)['category'],
                 'name'       => $this->nullableString($data['name'] ?? null),
                 'size'       => $this->nullableString($data['size'] ?? null),
                 'price'      => is_numeric($data['price'] ?? null) ? (int) $data['price'] : null,
@@ -413,8 +428,18 @@ EOT;
     }
 
     /** Structured fields use the same names and season values as WardrobeItemFormType. */
-    private function normalizePhotoFields(array $d): array
+    private function normalizePhotoFields(array $d, array $categories): array
     {
+        $category = null;
+        if (array_key_exists('categoryCode', $d)) {
+            $code = $this->nullableString($d['categoryCode']);
+            if ($code !== null) {
+                $candidate = $this->categories->resolveActive($code, $categories);
+                $category = $candidate?->getCode() === $code ? $candidate : null;
+            }
+        } else {
+            $category = $this->categories->resolveActive($this->nullableString($d['category'] ?? null) ?? '', $categories);
+        }
         $season = $this->nullableString($d['season'] ?? null);
         $season = match (mb_strtolower($season ?? '')) {
             'all', 'всесезон' => 'all',
@@ -427,7 +452,7 @@ EOT;
         $cut = $this->nullableString($d['type'] ?? null);
 
         return [
-            'category' => $this->limitedString($d['category'] ?? null, 100),
+            'category' => $category?->getName(),
             'name' => $this->limitedString($d['name'] ?? null, 255),
             'size' => $this->limitedString($d['size'] ?? null, 50),
             'colorName' => $this->limitedString($d['color'] ?? null, 100),
@@ -435,6 +460,15 @@ EOT;
             'season' => $season,
             'notes' => $cut === null ? null : 'Фасон: '.mb_substr($cut, 0, 500),
         ];
+    }
+
+    private function categoryCatalog(array $categories): string
+    {
+        return json_encode(array_map(static fn ($category): array => [
+            'code' => $category->getCode(),
+            'name' => $category->getName(),
+            'parentCode' => $category->getParent()?->getCode(),
+        ], $categories), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     private function limitedString(mixed $value, int $length): ?string
