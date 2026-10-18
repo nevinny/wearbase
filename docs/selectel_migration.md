@@ -86,5 +86,5 @@
 
 ## Прочее на VDS
 - `428.wearbase.ru` (сессия work-60, 2026-10-09): статика `/var/www/428/gallery.html`, vhost `sites-available/428.wearbase.ru`, noindex. LE-сертификат через `certbot --nginx --redirect` (80→443). DNS: явная A `428 → 161.104.35.238` в зоне reg.ru (перекрывает wildcard `*.wearbase.ru`) — ⚠️ перенести при переезде зоны.
-- certbot: учётка LE создана БЕЗ email (`--register-unsafely-without-email`) — писем об истечении нет; продление `certbot.timer`. Привязать: `certbot update_account -m <email>`.
+- certbot: учётка LE без email. `certbot update_account -m nevinny@gmail.com` (2026-10-18) отвечает успехом, но `show_account` показывает `none`: с 2025 LE не хранит контакт и не шлёт писем об истечении. Продление — `certbot.timer`; контроль только через свой мониторинг (`certbot renew --dry-run`).
 - vote428 (work-60): `vote428.service` на 127.0.0.1:8428, код `/opt/vote428`, данные `/var/lib/vote428/votes.db` (в ночном бэкапе — `vote428.tgz`), токен бота `/etc/vote428/bot_token` (в бэкапе через `/etc`). Вход — Telegram Login Widget (подпись локально, исходящих в TG нет). certbot dry-run renew — ок.
