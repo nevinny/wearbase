@@ -48,7 +48,7 @@ class BrandClaimGrantIntegrationTest extends KernelTestCase
             $this->em->persist($tariff);
         }
 
-        $user = (new User())->setEmail('owner@test.local')->setPassword('x')->setRoles(['ROLE_USER']);
+        $user = (new User())->setEmail('owner@test.local')->setPassword('x')->setRoles(['ROLE_USER'])->setEmailVerifiedAt(new \DateTimeImmutable());
         $this->em->persist($user);
 
         $brand = (new Brand())->setTitle('Grant Test Brand')->setSlug('grant-test-brand');
@@ -91,8 +91,8 @@ class BrandClaimGrantIntegrationTest extends KernelTestCase
     {
         $this->seedFreeTariff();
 
-        $first  = (new User())->setEmail('first-owner@test.local')->setPassword('x')->setRoles(['ROLE_USER']);
-        $second = (new User())->setEmail('second-owner@test.local')->setPassword('x')->setRoles(['ROLE_USER']);
+        $first  = (new User())->setEmail('first-owner@test.local')->setPassword('x')->setRoles(['ROLE_USER'])->setEmailVerifiedAt(new \DateTimeImmutable());
+        $second = (new User())->setEmail('second-owner@test.local')->setPassword('x')->setRoles(['ROLE_USER'])->setEmailVerifiedAt(new \DateTimeImmutable());
         $brand  = (new Brand())->setTitle('Contested Brand')->setSlug('contested-brand');
         $this->em->persist($first);
         $this->em->persist($second);
@@ -123,6 +123,51 @@ class BrandClaimGrantIntegrationTest extends KernelTestCase
     }
 
     /**
+     * Заявитель с неподтверждённой почтой не получает кабинет владельца: ни BrandUser,
+     * ни ролей, ни подписки, заявка остаётся pending. Раньше одобрение молча проходило
+     * (живой кейс — заявка #18). После подтверждения почты тот же вызов отрабатывает.
+     */
+    public function testGrantOwnershipRefusesWhenApplicantEmailNotVerified(): void
+    {
+        $this->seedFreeTariff();
+
+        $user  = (new User())->setEmail('unverified-owner@test.local')->setPassword('x')->setRoles(['ROLE_USER']);
+        $brand = (new Brand())->setTitle('Unverified Brand')->setSlug('unverified-brand');
+        $this->em->persist($user);
+        $this->em->persist($brand);
+
+        $claim = (new BrandClaim())->setBrand($brand)->setUser($user)->setMethod(BrandClaim::METHOD_MANUAL);
+        $this->em->persist($claim);
+        $this->em->flush();
+
+        $service = self::getContainer()->get(BrandClaimService::class);
+
+        try {
+            $service->grantOwnership($claim, null, 'admin');
+            $this->fail('grantOwnership должен отказать при неподтверждённой почте');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('Почта заявителя не подтверждена', $e->getMessage());
+        }
+
+        $this->assertSame(BrandClaim::STATUS_PENDING, $claim->getStatus(), 'заявка осталась pending');
+        $this->assertNull($claim->getReviewedAt());
+        $this->assertNull(
+            self::getContainer()->get(BrandUserRepository::class)->findOneBy(['brand' => $brand, 'user' => $user]),
+            'BrandUser не создан',
+        );
+        $this->assertNotContains('ROLE_BRAND_OWNER', $user->getRoles());
+        $this->assertNotContains('ROLE_BRAND_MANAGER', $user->getRoles());
+        $this->assertNull(self::getContainer()->get(SubscriptionRepository::class)->findActiveByBrand($brand), 'подписка не создана');
+
+        // После подтверждения почты — одобрение проходит как раньше
+        $user->setEmailVerifiedAt(new \DateTimeImmutable());
+        $service->grantOwnership($claim, null, 'admin');
+
+        $this->assertSame(BrandClaim::STATUS_APPROVED, $claim->getStatus());
+        $this->assertContains('ROLE_BRAND_OWNER', $user->getRoles());
+    }
+
+    /**
      * Находка 3: reject() нигде не сверял текущий статус — одобренную заявку можно было
      * «отклонить», и она уезжала в rejected, тогда как BrandUser(owner), роли и подписка
      * оставались. Права и журнал расходились.
@@ -131,7 +176,7 @@ class BrandClaimGrantIntegrationTest extends KernelTestCase
     {
         $this->seedFreeTariff();
 
-        $user  = (new User())->setEmail('approved-owner@test.local')->setPassword('x')->setRoles(['ROLE_USER']);
+        $user  = (new User())->setEmail('approved-owner@test.local')->setPassword('x')->setRoles(['ROLE_USER'])->setEmailVerifiedAt(new \DateTimeImmutable());
         $brand = (new Brand())->setTitle('Approved Brand')->setSlug('approved-brand');
         $this->em->persist($user);
         $this->em->persist($brand);

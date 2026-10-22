@@ -382,7 +382,12 @@ class BrandClaimController extends AbstractController
             return $this->render('brand_claim/submitted.html.twig', ['brand' => $brand, 'claim' => $claim, 'emailMatch' => false]);
         }
 
-        if ($this->claimService->isAutoGrant($method)) {
+        // Авто-выдача требует подтверждённой почты заявителя (иначе grantOwnership бросит
+        // DomainException → 500): доказательство владения бренда сохраняем, заявка уходит
+        // админу, а выдать доступ он сможет после подтверждения email.
+        $emailUnverified = !$user->isEmailVerified();
+
+        if ($this->claimService->isAutoGrant($method) && !$emailUnverified) {
             $this->claimService->grantOwnership($claim, null, $via);
             $this->adminNotifier->send(sprintf(
                 "✅ <b>Бренд забрали</b> «%s»\nВладелец: %s (%s, авто-выдача)",
@@ -402,6 +407,9 @@ class BrandClaimController extends AbstractController
         $this->notifyAdmin($claim);
 
         $this->addFlash('success', 'Владение подтверждено. Заявка отправлена администратору на финальное одобрение.');
+        if ($emailUnverified) {
+            $this->addFlash('info', 'Подтвердите email вашего аккаунта — без этого доступ к кабинету бренда выдать нельзя.');
+        }
         return $this->render('brand_claim/submitted.html.twig', ['brand' => $brand, 'claim' => $claim, 'emailMatch' => false]);
     }
 
