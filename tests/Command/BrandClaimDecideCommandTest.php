@@ -84,6 +84,43 @@ class BrandClaimDecideCommandTest extends KernelTestCase
         $this->assertStringContainsString('отклонена', (string) $notification->getTitle());
     }
 
+    /** Заявитель с неподтверждённой почтой: approve — ошибка, владение и роли не выдаются, заявка pending. */
+    public function testApproveWithUnverifiedEmailFailsAndKeepsClaimPending(): void
+    {
+        $claim = $this->pendingClaim(emailVerified: false);
+
+        $tester = $this->tester();
+        $exit   = $tester->execute(['claimId' => $claim->getId(), 'decision' => 'approve']);
+
+        $this->assertSame(Command::FAILURE, $exit);
+        $this->assertStringContainsString(
+            'Почта заявителя не подтверждена — попросите подтвердить email и повторите',
+            preg_replace('/\s+/u', ' ', $tester->getDisplay()),
+        );
+
+        $this->em->refresh($claim);
+        $this->assertSame(BrandClaim::STATUS_PENDING, $claim->getStatus());
+        $this->assertNull($claim->getReviewedAt());
+        $this->assertNull(
+            self::getContainer()->get(BrandUserRepository::class)->findOneBy(['brand' => $claim->getBrand(), 'user' => $claim->getUser()]),
+            'BrandUser не должен появиться',
+        );
+        $this->assertNotContains('ROLE_BRAND_OWNER', $claim->getUser()->getRoles());
+        $this->assertNotContains('ROLE_BRAND_MANAGER', $claim->getUser()->getRoles());
+    }
+
+    /** reject требования к почте не имеет. */
+    public function testRejectWorksWithUnverifiedEmail(): void
+    {
+        $claim = $this->pendingClaim(emailVerified: false);
+
+        $exit = $this->tester()->execute(['claimId' => $claim->getId(), 'decision' => 'reject']);
+
+        $this->assertSame(Command::SUCCESS, $exit);
+        $this->em->refresh($claim);
+        $this->assertSame(BrandClaim::STATUS_REJECTED, $claim->getStatus());
+    }
+
     public function testRepeatedApproveOnProcessedClaimFailsWithoutChanges(): void
     {
         $claim = $this->pendingClaim();
@@ -121,12 +158,15 @@ class BrandClaimDecideCommandTest extends KernelTestCase
         return new CommandTester((new Application(self::$kernel))->find('app:brand:claim-decide'));
     }
 
-    private function pendingClaim(): BrandClaim
+    private function pendingClaim(bool $emailVerified = true): BrandClaim
     {
         $user = new User();
         $user->setEmail('claimant-' . uniqid('', true) . '@example.com');
         $user->setPassword('hashed');
         $user->setRoles(['ROLE_USER']);
+        if ($emailVerified) {
+            $user->setEmailVerifiedAt(new \DateTimeImmutable());
+        }
         $this->em->persist($user);
 
         $brand = new Brand();

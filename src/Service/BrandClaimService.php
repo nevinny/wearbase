@@ -99,17 +99,24 @@ class BrandClaimService
     // ── Выдача доступа (используется и админ-апрувом, и self-serve) ──────────
 
     /**
-     * @throws \DomainException если бренд уже принадлежит ДРУГОМУ пользователю
+     * @throws \DomainException если у заявителя не подтверждена почта
+     *                          или бренд уже принадлежит ДРУГОМУ пользователю
      *
-     * Гард стоит здесь, а не в вызывающем коде: self-serve ветка проверяла
+     * Гарды стоят здесь, а не в вызывающем коде: self-serve ветка проверяла
      * brandHasOtherOwner() сама, а три админских пути (контроллер, админ-контроллер,
      * claim-decide) звали grantOwnership() напрямую и молча заводили второго owner'а
-     * с полными правами (docs/brand_claim_review.md, находка 2).
+     * с полными правами (docs/brand_claim_review.md, находка 2). Так же и с почтой:
+     * владелец с неподтверждённым email недостижим (уведомления, сброс пароля) —
+     * кабинет ему не выдаём, пока не подтвердит.
      */
     public function grantOwnership(BrandClaim $claim, ?User $admin = null, ?string $via = null): void
     {
         $brand = $claim->getBrand();
         $user  = $claim->getUser();
+
+        if (!$user->isEmailVerified()) {
+            throw new \DomainException('Почта заявителя не подтверждена — попросите подтвердить email и повторите');
+        }
 
         if ($this->brandHasOtherOwner($brand, $user)) {
             throw new \DomainException(sprintf(
