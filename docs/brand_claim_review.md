@@ -120,3 +120,16 @@ email_verified)`), `reject` — нет. Отклонение уже одобре
   проверено, что без гардов они падают (без гарда создавалось ДВА owner'а).
 - **1 открыта:** нужен зарегистрированный VK-приложение и `VK_APP_ID`/`VK_APP_SECRET`
   в прод-`.env.local`. Кода писать не надо — `VkVerifier` рабочий.
+
+## Подтверждённая почта заявителя (2026-10-22)
+
+Находка 8: `grantOwnership()` выдавал кабинет владельца пользователю с неподтверждённой
+почтой (живой кейс — заявка #18): такой владелец недостижим для уведомлений и сброса пароля.
+Теперь гард `isEmailVerified()` — первая проверка внутри `BrandClaimService::grantOwnership()`
+(`\DomainException` «Почта заявителя не подтверждена — …», до любых изменений: заявка остаётся
+`pending`). Админка и `app:brand:claim-decide approve` показывают текст ошибки (флеш / код 1),
+`reject` без требований к почте. Self-serve (`finishVerification()`): при неподтверждённой почте
+авто-выдача не срабатывает, заявка уходит админу в `email_verified`, заявитель получает подсказку
+подтвердить email. Это не то же, что `app:brand:grant-access`: он, наоборот, сам проставляет
+`email_verified_at` (адрес вводит оператор). Тесты: `BrandClaimGrantIntegrationTest`,
+`BrandClaimDecideCommandTest`, `BrandClaimEmailVerifiedGateControllerTest`.

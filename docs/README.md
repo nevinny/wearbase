@@ -15,6 +15,15 @@
 | [marketing_email.md](marketing_email.md) | Email/воронка: двухстадийный ФЗ-38-гейт cold/warm, активационная серия free→paid, newsletter→движение |
 | [legal_email_outreach.md](legal_email_outreach.md) | **Комплаенс email-аутрича (РФ, 2026)**: актуальные штрафы с источниками — ФЗ-38 ст.18, КоАП 14.3 ч.4.1 (ФАС, юрлицу 300тыс–1млн₽), 13.11 после реформы 05.2025 (РКН, 300–700тыс, повтор 1,5млн), оборотные за утечки; правило «цена/офер только в warm». От 2026-07-21 |
 | [marketing_instagram.md](marketing_instagram.md) | Instagram-контент-план в авто-режиме (drip): рубрики, недельная сетка, конвейер автопубликации, ⚠️ Meta/РФ-рамка |
+| [wardrobe_reels.md](wardrobe_reels.md) | **Рилсы цифрового гардероба — основной док + runbook**: шаблонный конвейер (каталог → рендер → daily 10:30 → слот 21:00), гейт ревью `manifest.review.json`, грабли автодорендера, сбои медиа-хоста и перепостановка, текущее расписание. От 2026-10-05, runbook 2026-10-16 |
+| [wardrobe_reels_templates.md](wardrobe_reels_templates.md) | Каталог шаблонов рилсов (33, сегменты С1–С6): хук, биты, CTA, кадры, статус ✅/🟡/🔨 — источник `config/social/wardrobe_reels_templates.json` |
+| [wardrobe_reels_audiences.md](wardrobe_reels_audiences.md) | Аудитории, боли и рилсы гардероба (сегменты С1–С6). От 2026-10-06 |
+| [wardrobe_reels_scenarios.md](wardrobe_reels_scenarios.md) | Сценарии v2 (фото + посыл) — промежуточная версия, заменена шаблонами. От 2026-10-06 |
+| [ig_stats_2026-10-07.md](ig_stats_2026-10-07.md) | Статистика @wearbaseru на 07.10 + **протокол сравнения старого и нового формата** (проверка 24.10, решение 31.10) |
+| [ig_links_options_2026-10.md](ig_links_options_2026-10.md) | Как вести трафик из IG: био, `/ig`, кодовое слово → директ, Stories. Реализовано (#283–#285) |
+| [reels_viral_playbook.md](reels_viral_playbook.md) | Плейбук вирусных Reels ниши: 16 разборов, правила с доказательствами, A/B E1–E12. От 2026-07-31 |
+| [reels_motion_tools_2026-10-09.md](reels_motion_tools_2026-10-09.md) | Оценка HyperFrames и Remotion (смоук, лицензии): Remotion — пилот озвученных рилсов (PR #298). От 2026-10-09 |
+| [reels_reference_neurofam-launch-video_2026-10-09.md](reels_reference_neurofam-launch-video_2026-10-09.md) | Реф neurofam «6 шагов launch-видео» — метод против нашего конвейера. От 2026-10-09 |
 | [video_gen_comfyui_reference.md](video_gen_comfyui_reference.md) | Разбор рабочего ComfyUI-сетапа видео-генерации (MiniMax H3 / LTX-2.3 / CosyVoice3 / SeedVR2): промпт-схема `[VISUAL]/[SPEECH]/[SOUNDS]`, чекпойнты, разрешения, замеренная VRAM, экономика Clore. От 2026-08-13 |
 | [competitors.md](competitors.md) | Разбор vitrine.market, лид-ген, moat «0% комиссии» |
 | [global_analogs.md](global_analogs.md) | На какую зарубежную модель похож WEARBASE (NJAL/Lyst/W&B) + региональные аналоги (Европа/Латам/Азия) + **разбор кейса Musinsa под перенос**; какие фичи перенять по слоям; ключевая дыра — click-трекинг. От 2026-06-23 |
