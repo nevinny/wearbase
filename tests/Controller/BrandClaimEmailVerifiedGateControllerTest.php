@@ -74,6 +74,52 @@ class BrandClaimEmailVerifiedGateControllerTest extends AuthenticatedWebTestCase
         $this->assertNotNull($em->getRepository(BrandUser::class)->findOneBy(['brand' => $brand->getId(), 'role' => BrandUser::ROLE_OWNER]));
     }
 
+    /**
+     * Код бренда введён раньше, чем заявитель подтвердил свою почту: заявка легла в
+     * email_verified. Переход по ссылке подтверждения почты довыдаёт владение сам,
+     * а ручную заявку того же пользователя (method=manual) не трогает.
+     */
+    public function testVerifyingAccountEmailGrantsDeferredCodeClaim(): void
+    {
+        $this->skipIfNoDatabase();
+
+        $client = static::createClient();
+        $user   = UserFactory::withEmail(static::getContainer(), 'harness-deferred-claimant@test.local', ['ROLE_USER']);
+        $user->setEmailVerificationToken('deferred-claim-token');
+        $this->em()->flush();
+        $this->seedFreeTariff();
+        $client->loginUser($user);
+
+        $brand = $this->brandWithCodeClaim($user, 'deferred-gate');
+        $client->request('POST', '/brand-claim/'.$brand->getId().'/email/verify', [
+            '_token' => $this->csrfToken($client, $brand, 'brand_claim_email'),
+            'code'   => '123456',
+        ]);
+        $this->assertResponseIsSuccessful();
+
+        $em = $this->em();
+        $manualBrand = (new Brand())->setTitle('Gate manual')->setSlug('deferred-manual')->setEmail('x@manual.test');
+        $em->persist($manualBrand);
+        $em->persist((new BrandClaim())
+            ->setBrand($manualBrand)
+            ->setUser($em->getRepository(User::class)->find($user->getId()))
+            ->setMethod(BrandClaim::METHOD_MANUAL)
+            ->setStatus(BrandClaim::STATUS_EMAIL_VERIFIED));
+        $em->flush();
+
+        $client->request('GET', '/verify-email/deferred-claim-token');
+        $this->assertResponseRedirects('/brand/dashboard');
+
+        $em->clear();
+        $claim = $em->getRepository(BrandClaim::class)->findOneBy(['brand' => $brand->getId()]);
+        $this->assertSame(BrandClaim::STATUS_APPROVED, $claim->getStatus());
+        $this->assertNotNull($em->getRepository(BrandUser::class)->findOneBy(['brand' => $brand->getId(), 'role' => BrandUser::ROLE_OWNER]));
+
+        $manual = $em->getRepository(BrandClaim::class)->findOneBy(['brand' => $manualBrand->getId()]);
+        $this->assertSame(BrandClaim::STATUS_EMAIL_VERIFIED, $manual->getStatus(), 'ручная заявка ждёт админа');
+        $this->assertNull($em->getRepository(BrandUser::class)->findOneBy(['brand' => $manualBrand->getId()]));
+    }
+
     /** Бренд с email + заявка пользователя с уже выданным (валидным) кодом. */
     private function brandWithCodeClaim(User $user, string $slug): Brand
     {

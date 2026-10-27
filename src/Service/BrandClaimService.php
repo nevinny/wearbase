@@ -208,6 +208,37 @@ class BrandClaimService
         return true;
     }
 
+    /**
+     * Довыдать владение, отложенное до подтверждения почты заявителя: finishVerification()
+     * при неподтверждённой почте оставляет доказанную заявку в email_verified, и после
+     * подтверждения её никто не подбирал — висела у админа (#18 BOOOMERANGS, 3 дня).
+     * Ручные заявки (method=manual) не трогаем; бренд с другим владельцем остаётся админу.
+     *
+     * @return BrandClaim[] заявки, по которым владение выдано
+     */
+    public function grantDeferredClaims(User $user): array
+    {
+        $claims = $this->em->getRepository(BrandClaim::class)->findBy([
+            'user'   => $user,
+            'status' => BrandClaim::STATUS_EMAIL_VERIFIED,
+        ]);
+
+        $granted = [];
+        foreach ($claims as $claim) {
+            if ($claim->getVerifiedVia() === null || !$this->isAutoGrant((string) $claim->getMethod())) {
+                continue;
+            }
+            try {
+                $this->grantOwnership($claim, null, $claim->getVerifiedVia());
+            } catch (\DomainException) {
+                continue;
+            }
+            $granted[] = $claim;
+        }
+
+        return $granted;
+    }
+
     /** Заявку ещё можно одобрить или отклонить. */
     public function isDecidable(BrandClaim $claim): bool
     {
