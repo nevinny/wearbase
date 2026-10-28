@@ -107,6 +107,10 @@ record_restart(){
 
 [ -f "$M/.watchdog-off" ] && exit 0
 
+# Имя процесса майнера — по активному профилю coins.json (wildrig | srbminer). 2026-10-01.
+MINER=$(python3 -c "import json;c=json.load(open(\"$M/coins.json\"));print(c[\"coins\"][c[\"active\"]].get(\"miner\",\"wildrig\"))" 2>/dev/null || echo wildrig)
+case "$MINER" in srbminer) PROC=SRBMiner-MULTI ;; *) PROC=wildrig-multi ;; esac
+
 # --- 1. тихий режим: драйвер выгружен намеренно, не мешаем ---------------------
 # Читаем /proc/modules напрямую, а не lsmod — меньше зависимость от PATH.
 if ! grep -q '^nvidia ' /proc/modules; then
@@ -123,7 +127,7 @@ if [ "${OOPS:-0}" -gt 0 ]; then
 fi
 
 # --- 3. зависшие GPU-процессы (Zl/D не реапятся) --------------------------------
-STUCK=$(ps -eo stat=,comm= | awk '$1 ~ /^[DZ]/ && ($2=="wildrig-multi" || $2=="llama-server" || $2=="ollama" || $2=="python")' | wc -l)
+STUCK=$(ps -eo stat=,comm= | awk '$1 ~ /^[DZ]/ && ($2=="wildrig-multi" || $2=="SRBMiner-MULTI" || $2=="llama-server" || $2=="ollama" || $2=="python")' | wc -l)
 if [ "${STUCK:-0}" -gt 0 ]; then
   notify_throttled stuck 21600 "залипшие GPU-процессы: $STUCK шт. в D/Z — перезапуск только усугубит, нужен ребут."
   log "STUCK procs=$STUCK — ничего не перезапускаю"
@@ -146,14 +150,14 @@ fi
 # --- 5. майнинг armed? -----------------------------------------------------------
 [ -f "$M/.mining-enabled" ] || { log "майнинг не armed (.mining-enabled нет) — только слежу"; exit 0; }
 
-# --- 6. жив ли реально wildrig (а не только tmux-сессия) -------------------------
+# --- 6. жив ли реально майнер $PROC (а не только tmux-сессия) -------------------
 ALIVE=0
-PID=$(pgrep -x wildrig-multi | head -1 || true)
+PID=$(pgrep -x "$PROC" | head -1 || true)
 if [ -n "${PID:-}" ]; then
   ST=$(ps -o stat= -p "$PID" 2>/dev/null | tr -d ' ')
   case "$ST" in
-    [DZ]*) log "wildrig pid=$PID в состоянии $ST — считаю мёртвым и НЕ трогаю"
-           notify_throttled zombie 21600 "wildrig завис (stat=$ST), процесс не убивается — нужен ребут."
+    [DZ]*) log "$PROC pid=$PID в состоянии $ST — считаю мёртвым и НЕ трогаю"
+           notify_throttled zombie 21600 "$PROC завис (stat=$ST), процесс не убивается — нужен ребут."
            exit 0 ;;
     *)     ALIVE=1 ;;
   esac
@@ -165,7 +169,7 @@ if [ "$ALIVE" = "0" ]; then
     log "лимит рестартов исчерпан — не поднимаю"
     exit 0
   fi
-  log "wildrig не найден — старт через дашборд"
+  log "$PROC не найден — старт через дашборд"
   curl -s -m 20 -X POST "$DASH/start" >> "$LOG" 2>&1
   echo >> "$LOG"
   record_restart
@@ -174,10 +178,10 @@ fi
 
 # --- 7. майнер жив, но хешрейт стоит --------------------------------------------
 UP=$(ps -o etimes= -p "$PID" 2>/dev/null | tr -d ' ')
-if [ "${UP:-0}" -lt 300 ]; then log "wildrig pid=$PID uptime ${UP}s — даю разогнаться"; exit 0; fi
+if [ "${UP:-0}" -lt 300 ]; then log "$PROC pid=$PID uptime ${UP}s — даю разогнаться"; exit 0; fi
 
 # однократно: убрать A4000 из майнинга, чтобы не убить ночной батч ComfyUI
-if EXCL=$(ensure_a4000_excluded); then
+if [ "$MINER" = wildrig ] && EXCL=$(ensure_a4000_excluded); then
   log "правлю coins.json: $EXCL — перезапуск майнера"
   curl -s -m 20 -X POST "$DASH/stop" >/dev/null 2>&1
   sleep 5
@@ -189,10 +193,10 @@ fi
 ZERO=$(tail -n "$STALL_SAMPLES" "$M/hashrate-history.csv" 2>/dev/null | awk -F, '$2+0==0' | wc -l)
 if [ "${ZERO:-0}" -ge "$STALL_SAMPLES" ]; then
   if [ "$(restarts_last_hour)" -ge "$MAX_RESTARTS_PER_HOUR" ]; then
-    notify_throttled ratelimit 3600 "хешрейт 0 при живом wildrig, лимит рестартов исчерпан."
+    notify_throttled ratelimit 3600 "хешрейт 0 при живом $PROC, лимит рестартов исчерпан."
     exit 0
   fi
-  log "хешрейт 0 последние $STALL_SAMPLES замеров при живом wildrig — перезапуск"
+  log "хешрейт 0 последние $STALL_SAMPLES замеров при живом $PROC — перезапуск"
   curl -s -m 20 -X POST "$DASH/stop" >/dev/null 2>&1
   sleep 5
   curl -s -m 20 -X POST "$DASH/start" >> "$LOG" 2>&1
@@ -203,5 +207,5 @@ if [ "${ZERO:-0}" -ge "$STALL_SAMPLES" ]; then
 fi
 
 HR=$(tail -n 1 "$M/hashrate-history.csv" 2>/dev/null | cut -d, -f2)
-log "ok: wildrig pid=$PID up=${UP}s hr=${HR:-?}"
+log "ok: $PROC pid=$PID up=${UP}s hr=${HR:-?}"
 exit 0
