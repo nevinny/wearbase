@@ -127,10 +127,23 @@ if [ "${OOPS:-0}" -gt 0 ]; then
 fi
 
 # --- 3. зависшие GPU-процессы (Zl/D не реапятся) --------------------------------
-STUCK=$(ps -eo stat=,comm= | awk '$1 ~ /^[DZ]/ && ($2=="wildrig-multi" || $2=="SRBMiner-MULTI" || $2=="llama-server" || $2=="ollama" || $2=="python")' | wc -l)
-if [ "${STUCK:-0}" -gt 0 ]; then
-  notify_throttled stuck 21600 "залипшие GPU-процессы: $STUCK шт. в D/Z — перезапуск только усугубит, нужен ребут."
-  log "STUCK procs=$STUCK — ничего не перезапускаю"
+# Один снимок ps врёт: python (whisper/demucs) законно бывает в D, пока читает модель с диска или ждёт
+# драйвер, а свежий зомби живёт до wait() родителя. 09–10.2026: 55 из 79 «залипаний» прошли сами к
+# следующей проверке, hung_task в ядре — ни одного; ребут по такому алерту 28.10 убил живой прогон
+# перевода видео. Поэтому тревога — только если ТОТ ЖЕ pid в D/Z два прогона подряд (≥5 мин).
+HITS=$(ps -eo pid=,ppid=,stat=,nlwp=,wchan:32=,comm=,args= |
+  awk '$3 ~ /^[DZ]/ && ($6=="wildrig-multi" || $6=="SRBMiner-MULTI" || $6=="llama-server" || $6=="ollama" || $6=="python")')
+[ -n "$HITS" ] && printf '%s\n' "$HITS" | while read -r l; do log "D/Z: $l"; done  # кто именно — раньше в лог шло только число
+PREV=" $(cat "$M/.stuck-pids" 2>/dev/null | tr '\n' ' ') "
+printf '%s\n' "$HITS" | awk 'NF{print $1}' > "$M/.stuck-pids"
+# Z с одним потоком — неубранный потомок: GPU не держит, ребут не лечит (хватает лога выше).
+STUCK=$(printf '%s\n' "$HITS" | awk -v prev="$PREV" 'NF && index(prev, " " $1 " ") && !($3 ~ /^Z/ && $4 == 1)')
+if [ -n "$STUCK" ]; then
+  HUNG=$(journalctl -k -b --no-pager 2>/dev/null | grep 'blocked for more than')
+  WHO=$(printf '%s\n' "$STUCK" | while read -r pid _ st _ wchan comm _; do
+          printf '%s ' "$comm($pid $st $wchan$(grep -q ":$pid blocked" <<< "$HUNG" && echo ', ядро: hung_task'))"; done)
+  notify_throttled stuck 21600 "залипшие GPU-процессы ≥5 мин: $WHO— сначала kill -9 <pid>; не умер за минуту → нужен ребут (перезапуск майнера/ollama только усугубит)."
+  log "STUCK $WHO— ничего не перезапускаю"
   exit 0
 fi
 
