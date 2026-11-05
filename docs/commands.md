@@ -128,6 +128,10 @@ cp ops/com.wearbase.cron.plist ~/Library/LaunchAgents/ \
 
 ---
 
+Публикация IG через castbase (по умолчанию выключена, `social_channel.publish_via=local`; кроны не добавлены) —
+[marketing_instagram.md §10](marketing_instagram.md): `app:social:handoff` (Mac, раз в 5 мин), `app:social:castbase-sync`
+(Mac, раз в минуту), `app:castbase:connect-ig` (разово).
+
 ## 3. Контакты брендов
 
 | Команда | Зачем | Как часто | Где |

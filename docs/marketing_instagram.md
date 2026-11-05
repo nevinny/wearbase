@@ -451,3 +451,54 @@ instagram.com/p/Da8VEqHDZnq/) через Instagram API with Instagram Login — 
 - VK photo-attach (сейчас текстовый wall.post) — **на паузе**: community-токен не даёт грузить
   фото на стену, нужен user-токен.
 - Метрик-коллектор по площадкам → наполнение `social_post_metric` (включает closed-loop §7).
+
+## 10. Публикация IG через API castbase (переключатель канала)
+
+IG-канал можно отдать внешнему сервису castbase (castbase.ru, API `/v1`): wearbase остаётся владельцем контента
+(план, генерация, подпись с CTA, рендер медиа), а выход поста в Instagram, ретраи, квота и сверка исхода — на castbase.
+Включается **на канале** (`social_channel.publish_via`), по умолчанию `local` — прежний `publish-tick`, ничего не меняется.
+
+**Поток:** `scheduled` → `app:social:handoff` (условный UPDATE `scheduled → handed_off`, загрузка медиа и обложки Reels
+в castbase `POST /v1/media`, `POST /v1/posts` с `external_ref=social_post:{id}`, `Idempotency-Key=wb-sp-{id}`) →
+castbase публикует → `app:social:castbase-sync` читает `/v1/events?after=<курсор>` и ставит итог.
+
+| Команда | Что делает |
+|---|---|
+| `app:castbase:connect-ig [--channel=ID]` | токен IG-канала из `social_channel` (расшифровка SecretCipher) → `POST /v1/channels`; id канала castbase пишется в `social_channel.castbase_channel_id`; токен в вывод/логи не попадает. `publish_via` НЕ переключает |
+| `app:social:handoff [--post=ID] [--batch=10] [--shadow]` | передать в castbase посты каналов `publish_via=castbase` со временем ≤ now+24ч; повторно подхватывает `handed_off` без `castbase_post_id` (после сетевой ошибки, те же ключи, дубля нет). `--shadow --post=ID`: теневой прогон (любой канал с `castbase_channel_id`) (`options.dry_run`, `external_ref=social_post:{id}:shadow:{ts}`), статус поста не меняется |
+| `app:social:castbase-sync` | события castbase → `published` (+`externalId`, `publishedAt`) / `publish_failed` (+алерт в TG). Курсор — таблица `castbase_sync_cursor` |
+
+Маппинг: `media_type` определяет состав медиа (image: 1 файл; carousel: 2–10, порядок = порядок `media_path`;
+reels: 1 mp4 + обложка с `role=cover`, `options.audio_name`/`share_to_feed`); тип поста castbase выводит по медиа.
+Подпись собирает wearbase (`App\Social\IgCaption::withCtaLine`, CTA перед хэштегами). Лимит карусели wearbase = 10.
+
+**`post.outcome_unknown`** (castbase не знает, вышел ли пост): пост → `publish_failed`, `last_error` начинается с
+`outcome_unknown:`, админу уходит алерт «проверь профиль руками». Автоповтора нет. НЕ возвращать в `scheduled`
+и не откатывать на `local`, пока не проверен профиль в IG (иначе дубль).
+
+**Повторная передача.** Если оператор вернул в `scheduled` пост, чей castbase-пост подтверждённо завершён неудачей (sync записал `social_post.castbase_outcome` = `failed`/`outcome_unknown`),
+handoff передаёт его заново с новым поколением (`social_post.castbase_generation`+1): ключ `wb-sp-{id}-g{n}`,
+ref `social_post:{id}:g{n}`; события прежнего поколения sync игнорирует. Поколение растёт только на этом
+явном действии, сетевые повторы идут с тем же ключом. Если castbase-пост опубликован (`published`) или ещё в работе (итога нет), handoff ничего не шлёт: `publish_failed` + алерт «сверь ленту castbase и профиль» (иначе дубль на живом IG).
+
+### Как включить для канала
+
+Env (`.env.local` на Mac, там же живут медиа и кроны): `CASTBASE_API_URL` (`https://castbase.ru`), `CASTBASE_API_KEY` (ключ проекта).
+1. `doctrine:migrations:migrate` (колонки `publish_via`, `castbase_channel_id`, `castbase_post_id`, `castbase_generation`, `castbase_outcome`, таблица `castbase_sync_cursor`).
+2. `app:castbase:connect-ig` — подключить аккаунт; дождаться `channel.connected` (проверить `GET /v1/channels`).
+3. Теневой прогон: `app:social:handoff --post=<id поста> --shadow` (на проде castbase `dry_run` включён флагом
+   `IG_DRY_RUN_ENABLED`, иначе 422 `unsupported_option`); итог — событие `post.dry_run_ok`. Работает для любого канала
+   с `castbase_channel_id` (после connect-ig), в т.ч. живого `publish_via=local`: статус поста и канал не меняются,
+   `enabled` не трогать.
+4. Расписание (строки `scheduled_command`, Mac, **в миграцию не добавлены, включать вручную СНАЧАЛА**):
+   `app:social:handoff --no-debug` каждые 5 минут и `app:social:castbase-sync --no-debug` каждую минуту. При
+   `publish_via=local` handoff ничего не делает, поэтому кроны безопасны до переключения.
+5. Только после п. 4 — в админке «Соцсети: каналы» выставить «Публикует: castbase». Если сделать наоборот и забыть
+   кроны, посты канала `castbase` никто не передаст (локальный `publish-tick` такой канал пропускает) и они тихо не выйдут.
+   `publish-tick` пропускает канал сам (и в `claimDue`, и при `--post`).
+
+### Откат
+
+В админке вернуть «Публикует: Локально». Посты `scheduled` уйдут локальным тиком; посты в `handed_off` вернуть вручную:
+сперва убедиться по `GET /v1/posts?...`/ленте, что castbase их не опубликует (отмена `DELETE /v1/posts/{id}` пока цель
+`scheduled`), затем через сущность `status=scheduled` (поле `castbase_post_id` не трогать: по нему handoff определит, что пост передаётся заново). Выключить кроны handoff/sync.

@@ -37,6 +37,7 @@ class SocialPostRepository extends ServiceEntityRepository
                    JOIN social_channel c ON c.id = p.channel_id
                   WHERE p.status = :scheduled
                     AND c.enabled = 1
+                    AND c.publish_via <> :castbase
                     AND c.egress_host = :host
                     AND p.scheduled_at IS NOT NULL
                     AND p.scheduled_at <= NOW()
@@ -46,11 +47,13 @@ class SocialPostRepository extends ServiceEntityRepository
                 [
                     'scheduled' => SocialPost::STATUS_SCHEDULED,
                     'host'      => $host,
+                    'castbase'  => SocialChannel::VIA_CASTBASE,
                     'batch'     => $batch,
                 ],
                 [
                     'scheduled' => \PDO::PARAM_STR,
                     'host'      => \PDO::PARAM_STR,
+                    'castbase'  => \PDO::PARAM_STR,
                     'batch'     => \PDO::PARAM_INT,
                 ],
             );
@@ -116,6 +119,54 @@ class SocialPostRepository extends ServiceEntityRepository
         $em->refresh($post);
 
         return [$post];
+    }
+
+    /**
+     * Посты каналов publish_via=castbase, которые пора передавать: scheduled со временем ≤ $horizon,
+     * либо уже handed_off, но POST /v1/posts ещё не удался (castbase_post_id IS NULL) — повтор.
+     * Портативный DQL (без NOW()): $horizon считает вызывающий.
+     *
+     * @return list<SocialPost>
+     */
+    public function findForHandoff(\DateTimeInterface $horizon): array
+    {
+        return $this->createQueryBuilder('p')
+            ->join('p.channel', 'c')
+            ->where('c.publishVia = :via')
+            ->andWhere('c.enabled = true')
+            ->andWhere('(p.status = :scheduled AND p.scheduledAt IS NOT NULL AND p.scheduledAt <= :horizon)'
+                . ' OR (p.status = :handedOff AND p.castbasePostId IS NULL)')
+            ->setParameter('via', SocialChannel::VIA_CASTBASE)
+            ->setParameter('scheduled', SocialPost::STATUS_SCHEDULED)
+            ->setParameter('handedOff', SocialPost::STATUS_HANDED_OFF)
+            ->setParameter('horizon', $horizon)
+            ->orderBy('p.priority', 'DESC')
+            ->addOrderBy('p.scheduledAt', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * Условный UPDATE scheduled → handed_off: ровно один из конкурирующих запусков получает true
+     * и вправе передать пост в castbase.
+     */
+    public function claimForHandoff(int $id, \DateTimeInterface $now): bool
+    {
+        $affected = $this->getEntityManager()->getConnection()->executeStatement(
+            'UPDATE social_post SET status = :handedOff, claimed_at = :now WHERE id = :id AND status = :scheduled',
+            [
+                'handedOff' => SocialPost::STATUS_HANDED_OFF,
+                'scheduled' => SocialPost::STATUS_SCHEDULED,
+                'now'       => $now->format('Y-m-d H:i:s'),
+                'id'        => $id,
+            ],
+        );
+        if ($affected > 0) {
+            $post = $this->find($id);
+            $post !== null && $this->getEntityManager()->refresh($post);
+        }
+
+        return $affected > 0;
     }
 
     /**
