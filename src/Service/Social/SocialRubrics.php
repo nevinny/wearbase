@@ -80,8 +80,9 @@ final class SocialRubrics
         // Те же нормализованные слайды, собранные в Reels-слайдшоу: Reels — единственная
         // поверхность IG с существенной раздачей НЕ подписчикам, поэтому контент идёт в оба
         // формата. Ставится той же командой enqueue-brand-gallery.
+        // hours — слоты дня для --per-day: разнесены, а не подряд (13 и 18; гардеробные рилсы — в 21).
         'brand_reels' => [
-            'day' => 0, 'hour' => 19, 'source' => self::SOURCE_FOUNDER_STORY, 'needsBrand' => true,
+            'day' => 0, 'hour' => 13, 'hours' => [13, 18], 'source' => self::SOURCE_FOUNDER_STORY, 'needsBrand' => true,
             'media' => SocialPost::MEDIA_REELS, 'auto' => true,
             'hashtags' => ['#ПрямойБренд', '#российскиебренды', '#сделановроссии'],
         ],
