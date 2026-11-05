@@ -8,6 +8,7 @@ use App\Notification\AdminNotifier;
 use App\Repository\SocialChannelRepository;
 use App\Repository\SocialPostRepository;
 use App\Social\Publisher\SocialPublisherRegistry;
+use App\Social\SocialAlerts;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -123,6 +124,14 @@ class SocialPublishTickCommand extends Command
             $ch = $post->getChannel();
             $chId = $ch->getId();
 
+            if ($ch->isViaCastbase()) {
+                // Канал публикует castbase (app:social:handoff): локально не трогаем, вернуть в очередь (--post обходит фильтр claimDue).
+                $post->setStatus(SocialPost::STATUS_SCHEDULED)->setClaimedAt(null);
+                $this->em->flush();
+                $io->warning(sprintf('Пост #%d: канал публикуется через castbase — пропущен.', $post->getId()));
+                continue;
+            }
+
             if (($budget[$chId] ?? 0) <= 0) {
                 // Бюджет канала исчерпан — вернуть в очередь на следующий тик (с flush, иначе застрянет в publishing).
                 $post->setStatus(SocialPost::STATUS_SCHEDULED)->setClaimedAt(null);
@@ -180,24 +189,7 @@ class SocialPublishTickCommand extends Command
     /** Алерт админу — ровно на переходе в publish_failed (дальше пост из очереди выпадает молча). */
     private function alertPublishFailed(SocialPost $post): void
     {
-        if (!$this->notifier->isEnabled()) {
-            return;
-        }
-        $ch = $post->getChannel();
-        try {
-            $this->notifier->send(sprintf(
-                "⚠️ <b>Соцсети: публикация не удалась</b> (попыток: %d)\n%s [%s]\nПост #%d, рубрика: %s\nПлан: %s\n<code>%s</code>",
-                $post->getPublishAttempts(),
-                htmlspecialchars((string) $ch->getName(), ENT_QUOTES),
-                htmlspecialchars((string) $ch->getPlatform(), ENT_QUOTES),
-                $post->getId(),
-                htmlspecialchars($post->getRubric(), ENT_QUOTES),
-                $post->getScheduledAt()?->format('d.m.Y H:i') ?? '—',
-                htmlspecialchars(mb_substr((string) $post->getLastError(), 0, 300), ENT_QUOTES),
-            ));
-        } catch (\Throwable) {
-            // уведомление не должно ломать тик
-        }
+        (new SocialAlerts($this->notifier))->publishFailed($post);
     }
 
     /** Ramp-up дневной потолок канала (формула — в RampSchedule, ради тестируемости). */
