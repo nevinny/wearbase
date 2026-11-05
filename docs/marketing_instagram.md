@@ -476,15 +476,15 @@ reels: 1 mp4 + обложка с `role=cover`, `options.audio_name`/`share_to_fe
 `outcome_unknown:`, админу уходит алерт «проверь профиль руками». Автоповтора нет. НЕ возвращать в `scheduled`
 и не откатывать на `local`, пока не проверен профиль в IG (иначе дубль).
 
-**Повторная передача.** Если оператор вернул в `scheduled` пост, чей castbase-пост уже завершён (`failed`/`outcome_unknown`),
+**Повторная передача.** Если оператор вернул в `scheduled` пост, чей castbase-пост подтверждённо завершён неудачей (sync записал `social_post.castbase_outcome` = `failed`/`outcome_unknown`),
 handoff передаёт его заново с новым поколением (`social_post.castbase_generation`+1): ключ `wb-sp-{id}-g{n}`,
 ref `social_post:{id}:g{n}`; события прежнего поколения sync игнорирует. Поколение растёт только на этом
-явном действии, сетевые повторы идут с тем же ключом.
+явном действии, сетевые повторы идут с тем же ключом. Если castbase-пост опубликован (`published`) или ещё в работе (итога нет), handoff ничего не шлёт: `publish_failed` + алерт «сверь ленту castbase и профиль» (иначе дубль на живом IG).
 
 ### Как включить для канала
 
 Env (`.env.local` на Mac, там же живут медиа и кроны): `CASTBASE_API_URL` (`https://castbase.ru`), `CASTBASE_API_KEY` (ключ проекта).
-1. `doctrine:migrations:migrate` (колонки `publish_via`, `castbase_channel_id`, `castbase_post_id`, `castbase_generation`, таблица `castbase_sync_cursor`).
+1. `doctrine:migrations:migrate` (колонки `publish_via`, `castbase_channel_id`, `castbase_post_id`, `castbase_generation`, `castbase_outcome`, таблица `castbase_sync_cursor`).
 2. `app:castbase:connect-ig` — подключить аккаунт; дождаться `channel.connected` (проверить `GET /v1/channels`).
 3. Теневой прогон: `app:social:handoff --post=<id поста> --shadow` (на проде castbase `dry_run` включён флагом
    `IG_DRY_RUN_ENABLED`, иначе 422 `unsupported_option`); итог — событие `post.dry_run_ok`.

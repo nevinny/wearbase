@@ -170,6 +170,10 @@ class SocialPost
     #[ORM\Column(options: ['default' => 0])]
     private int $castbaseGeneration = 0;
 
+    /** Подтверждённый sync'ом итог castbase-поста текущего поколения: published|failed|outcome_unknown; NULL — ещё в работе. Новое поколение передачи допустимо только после failed/outcome_unknown. */
+    #[ORM\Column(length: 20, nullable: true)]
+    private ?string $castbaseOutcome = null;
+
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $lastError = null;
 
@@ -516,6 +520,17 @@ class SocialPost
     public function setCastbaseGeneration(int $castbaseGeneration): self
     {
         $this->castbaseGeneration = $castbaseGeneration;
+        return $this;
+    }
+
+    public function getCastbaseOutcome(): ?string
+    {
+        return $this->castbaseOutcome;
+    }
+
+    public function setCastbaseOutcome(?string $castbaseOutcome): self
+    {
+        $this->castbaseOutcome = $castbaseOutcome;
         return $this;
     }
 }

@@ -95,6 +95,7 @@ class SocialCastbaseSyncCommand extends Command
         if ((int) ($m[2] ?? 0) !== $post->getCastbaseGeneration()) {
             return false; // событие прежнего поколения передачи: пост уже передан заново
         }
+        $post->setCastbaseOutcome(['post.published' => 'published', 'post.failed' => 'failed', 'post.outcome_unknown' => 'outcome_unknown'][$type]);
         $status = $post->getStatus();
         if ($type === 'post.published') {
             // Реальный выход поста — истина, даже если мы уже пометили его publish_failed (ответ POST потерялся).

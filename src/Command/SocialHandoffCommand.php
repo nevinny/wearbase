@@ -113,9 +113,22 @@ class SocialHandoffCommand extends Command
                 }
                 $this->em->refresh($post);
                 if ($post->getCastbasePostId() !== null) {
-                    // Оператор вернул в scheduled пост, чей castbase-пост уже завершён: старые ключ и ref вернули бы
-                    // его же — новое поколение. Сохраняем до отправки, чтобы сетевой повтор шёл с тем же новым ключом.
-                    $post->setCastbaseGeneration($post->getCastbaseGeneration() + 1)->setCastbasePostId(null)->setPublishAttempts(0);
+                    // Пост уже передавался. Новое поколение — только если sync подтвердил failed/outcome_unknown прежнего
+                    // castbase-поста; иначе тот ещё в работе или уже вышел, и повторная отправка даст дубль на живом IG.
+                    if (!in_array($post->getCastbaseOutcome(), ['failed', 'outcome_unknown'], true)) {
+                        $post->setStatus(SocialPost::STATUS_PUBLISH_FAILED)->setClaimedAt(null)
+                            ->setLastError('Пост уже опубликован или в работе в castbase (' . ($post->getCastbaseOutcome() ?? 'нет итога') . ') — повторно не передаём');
+                        $this->em->flush();
+                        $this->alerts->text(sprintf(
+                            "🛑 <b>Соцсети: повторная передача заблокирована</b>\nПост #%d уже опубликован или в работе в castbase, повторная отправка даст дубль. Сверь ленту castbase и профиль IG.",
+                            $id,
+                        ));
+                        $io->warning("Пост #{$id}: castbase-пост не завершён неудачей — передача заблокирована, сверь вручную.");
+                        continue;
+                    }
+                    // Старые ключ и ref вернули бы тот же завершённый пост — новое поколение. Сохраняем до отправки,
+                    // чтобы сетевой повтор шёл с тем же новым ключом.
+                    $post->setCastbaseGeneration($post->getCastbaseGeneration() + 1)->setCastbasePostId(null)->setCastbaseOutcome(null)->setPublishAttempts(0);
                     $this->em->flush();
                 }
             }

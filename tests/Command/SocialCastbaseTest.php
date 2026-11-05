@@ -244,7 +244,7 @@ class SocialCastbaseTest extends KernelTestCase
     public function testRehandoffAfterFinishedCastbasePostUsesNewGenerationKeyAndRef(): void
     {
         // оператор вернул в scheduled пост, чей castbase-пост уже завершился failed/outcome_unknown
-        $post = $this->post(['castbasePostId' => 'cb-old']);
+        $post = $this->post(['castbasePostId' => 'cb-old', 'outcome' => 'failed']);
         $this->responders[] = fn (string $m, string $u) => str_ends_with($u, '/v1/posts') ? $this->json(['id' => 'cb-new'], 201) : null;
 
         $this->runHandoff();
@@ -271,6 +271,47 @@ class SocialCastbaseTest extends KernelTestCase
         $this->runSync($this->notifier());
         self::assertSame(SocialPost::STATUS_PUBLISHED, $post->getStatus());
         self::assertSame('555', $post->getExternalId());
+    }
+
+    /** @return array<string, array{?string}> */
+    public static function liveCastbasePostOutcomes(): array
+    {
+        return ['уже опубликован' => ['published'], 'ещё в работе у castbase' => [null]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('liveCastbasePostOutcomes')]
+    public function testReturnToScheduledWhileCastbasePostIsLiveDoesNotDuplicate(?string $outcome): void
+    {
+        $post = $this->post(['castbasePostId' => 'cb-live', 'outcome' => $outcome]);
+        $notifier = $this->notifier();
+        $notifier->expects(self::once())->method('send')->with(self::stringContains('сверь'));
+
+        $this->runHandoff([], $notifier);
+
+        self::assertSame([], $this->requests, 'ни медиа, ни поста в castbase');
+        self::assertSame(SocialPost::STATUS_PUBLISH_FAILED, $post->getStatus());
+        self::assertSame('cb-live', $post->getCastbasePostId());
+        self::assertSame(0, $post->getCastbaseGeneration());
+    }
+
+    public function testSyncRecordsOutcomeOfCurrentGeneration(): void
+    {
+        $ok = $this->post(['status' => SocialPost::STATUS_HANDED_OFF]);
+        $bad = $this->post(['status' => SocialPost::STATUS_HANDED_OFF]);
+        $this->responders[] = function (string $m, string $u) use ($ok, $bad) {
+            if (str_contains($u, 'after=2')) {
+                return $this->json(['data' => [], 'next_after' => 2]);
+            }
+
+            return $this->json(['data' => [
+                ['seq' => 1, 'type' => 'post.published', 'created_at' => '2026-11-05T09:00:00+00:00', 'data' => ['external_ref' => 'social_post:' . $ok->getId(), 'external_id' => '1']],
+                ['seq' => 2, 'type' => 'post.failed', 'created_at' => '2026-11-05T09:00:00+00:00', 'data' => ['external_ref' => 'social_post:' . $bad->getId(), 'error_code' => 'x']],
+            ], 'next_after' => 2]);
+        };
+        $this->runSync($this->notifier());
+
+        self::assertSame('published', $ok->getCastbaseOutcome());
+        self::assertSame('failed', $bad->getCastbaseOutcome());
     }
 
     // ---------- tick ----------
@@ -339,7 +380,7 @@ class SocialCastbaseTest extends KernelTestCase
             ->setMediaType($type === 'reels' ? SocialPost::MEDIA_REELS : ($type === 'carousel' ? SocialPost::MEDIA_CAROUSEL : SocialPost::MEDIA_IMAGE))
             ->setMediaPaths($paths)->setCaption($o['caption'] ?? 'Подпись')->setCtaLabel($o['cta'] ?? null)
             ->setStatus($o['status'] ?? SocialPost::STATUS_SCHEDULED)->setScheduledAt(new \DateTime('+1 hour'))
-            ->setCastbasePostId($o['castbasePostId'] ?? null);
+            ->setCastbasePostId($o['castbasePostId'] ?? null)->setCastbaseOutcome($o['outcome'] ?? null);
         if (!empty($o['cover'])) {
             file_put_contents($this->mediaDir . '/cover.jpg', 'cover');
             $post->setCoverPath('/../var/castbase-test-media/cover.jpg');

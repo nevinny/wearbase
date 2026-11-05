@@ -30,6 +30,9 @@ final class Version20261105_castbase_ig_publishing extends AbstractMigration
         if (!$this->columnExists('social_post', 'castbase_post_id')) {
             $this->addSql('ALTER TABLE social_post ADD COLUMN castbase_post_id VARCHAR(36) DEFAULT NULL');
         }
+        if (!$this->columnExists('social_post', 'castbase_outcome')) {
+            $this->addSql('ALTER TABLE social_post ADD COLUMN castbase_outcome VARCHAR(20) DEFAULT NULL');
+        }
         if (!$this->columnExists('social_post', 'castbase_generation')) {
             $this->addSql('ALTER TABLE social_post ADD COLUMN castbase_generation INT NOT NULL DEFAULT 0');
         }
@@ -39,6 +42,9 @@ final class Version20261105_castbase_ig_publishing extends AbstractMigration
     public function down(Schema $schema): void
     {
         $this->addSql('DROP TABLE IF EXISTS castbase_sync_cursor');
+        if ($this->columnExists('social_post', 'castbase_outcome')) {
+            $this->addSql('ALTER TABLE social_post DROP COLUMN castbase_outcome');
+        }
         if ($this->columnExists('social_post', 'castbase_generation')) {
             $this->addSql('ALTER TABLE social_post DROP COLUMN castbase_generation');
         }
