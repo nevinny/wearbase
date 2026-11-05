@@ -29,6 +29,8 @@ class SocialPost
     public const STATUS_QA_OK           = 'qa_ok';
     public const STATUS_SCHEDULED       = 'scheduled';
     public const STATUS_PUBLISHING      = 'publishing';
+    /** Передан в castbase (publish_via=castbase): публикует он, итог приходит app:social:castbase-sync. */
+    public const STATUS_HANDED_OFF      = 'handed_off';
     public const STATUS_PUBLISHED       = 'published';
     public const STATUS_DONE            = 'done';
     /** Требует ручного просмотра: Reels/UGC-рубрики, провал QA, нет медиа. НЕ публикуем автоматически. */
@@ -159,6 +161,10 @@ class SocialPost
 
     #[ORM\Column(options: ['default' => 0])]
     private int $publishAttempts = 0;
+
+    /** id поста в castbase; NULL у handed_off = POST /v1/posts ещё не удался, handoff повторит с тем же Idempotency-Key. */
+    #[ORM\Column(length: 36, nullable: true)]
+    private ?string $castbasePostId = null;
 
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $lastError = null;
@@ -484,6 +490,17 @@ class SocialPost
     public function setLastError(?string $error): self
     {
         $this->lastError = $error;
+        return $this;
+    }
+
+    public function getCastbasePostId(): ?string
+    {
+        return $this->castbasePostId;
+    }
+
+    public function setCastbasePostId(?string $castbasePostId): self
+    {
+        $this->castbasePostId = $castbasePostId;
         return $this;
     }
 }
