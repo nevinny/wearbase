@@ -21,14 +21,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Курсор (castbase_sync_cursor) сдвигается после flush каждой страницы; повторное чтение безопасно:
  * переход применяется один раз (published не перезаписывается, failed/unknown — только из handed_off).
  *
- * post.outcome_unknown НЕ превращается в publish_failed и не повторяется: пост мог выйти, повтор даст дубль.
- * Пост остаётся handed_off с пометкой 'outcome_unknown: …' в last_error и уходит алерт на ручную сверку профиля.
+ * post.outcome_unknown → publish_failed с пометкой 'outcome_unknown: …' и алертом на ручную сверку профиля; автоповтора нет
+ * (пост мог выйти, повтор даст дубль).
  */
 #[AsCommand(name: 'app:social:castbase-sync', description: 'Подтянуть итоги публикации из ленты событий castbase')]
 class SocialCastbaseSyncCommand extends Command
 {
     private const PAGE = 100;
-    private const REF = '/^social_post:(\d+)$/'; // теневые ссылки (…:shadow:N) сюда не попадают
+    private const REF = '/^social_post:(\d+)(?::g(\d+))?$/'; // теневые ссылки (…:shadow:N) сюда не попадают
 
     public function __construct(
         private readonly EntityManagerInterface $em,
@@ -92,6 +92,9 @@ class SocialCastbaseSyncCommand extends Command
             return false;
         }
 
+        if ((int) ($m[2] ?? 0) !== $post->getCastbaseGeneration()) {
+            return false; // событие прежнего поколения передачи: пост уже передан заново
+        }
         $status = $post->getStatus();
         if ($type === 'post.published') {
             // Реальный выход поста — истина, даже если мы уже пометили его publish_failed (ответ POST потерялся).
@@ -110,7 +113,9 @@ class SocialCastbaseSyncCommand extends Command
         }
         $message = mb_substr(sprintf('%s: %s', (string) ($data['error_code'] ?? ''), (string) ($data['error_message'] ?? '')), 0, 500);
         if ($type === 'post.outcome_unknown') {
-            $post->setLastError('outcome_unknown: ' . $message);
+            // Не handed_off: завершённый castbase-пост без будущих событий висел бы молча. Автоповтора нет —
+            // повторная передача только явным возвратом в scheduled оператором после сверки профиля.
+            $post->setStatus(SocialPost::STATUS_PUBLISH_FAILED)->setLastError('outcome_unknown: ' . $message);
             $this->alerts->outcomeUnknown($post);
             return true;
         }

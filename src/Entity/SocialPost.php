@@ -166,6 +166,10 @@ class SocialPost
     #[ORM\Column(length: 36, nullable: true)]
     private ?string $castbasePostId = null;
 
+    /** Поколение передачи в castbase: растёт только при осознанной повторной передаче после завершения прежнего castbase-поста (ключ wb-sp-{id}-g{n}, ref social_post:{id}:g{n}). Не publishAttempts: тот растёт на сетевых повторах. */
+    #[ORM\Column(options: ['default' => 0])]
+    private int $castbaseGeneration = 0;
+
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $lastError = null;
 
@@ -501,6 +505,17 @@ class SocialPost
     public function setCastbasePostId(?string $castbasePostId): self
     {
         $this->castbasePostId = $castbasePostId;
+        return $this;
+    }
+
+    public function getCastbaseGeneration(): int
+    {
+        return $this->castbaseGeneration;
+    }
+
+    public function setCastbaseGeneration(int $castbaseGeneration): self
+    {
+        $this->castbaseGeneration = $castbaseGeneration;
         return $this;
     }
 }

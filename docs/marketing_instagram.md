@@ -472,14 +472,19 @@ castbase публикует → `app:social:castbase-sync` читает `/v1/eve
 reels: 1 mp4 + обложка с `role=cover`, `options.audio_name`/`share_to_feed`); тип поста castbase выводит по медиа.
 Подпись собирает wearbase (`App\Social\IgCaption::withCtaLine`, CTA перед хэштегами). Лимит карусели wearbase = 10.
 
-**`post.outcome_unknown`** (castbase не знает, вышел ли пост): пост остаётся `handed_off`, `last_error` начинается с
-`outcome_unknown:`, админу уходит алерт. НЕ ставить заново и не откатывать на `local`, пока не проверен профиль в IG
-(иначе дубль). Нет поста → вернуть в `scheduled` через сущность, как при ручном повторе.
+**`post.outcome_unknown`** (castbase не знает, вышел ли пост): пост → `publish_failed`, `last_error` начинается с
+`outcome_unknown:`, админу уходит алерт «проверь профиль руками». Автоповтора нет. НЕ возвращать в `scheduled`
+и не откатывать на `local`, пока не проверен профиль в IG (иначе дубль).
+
+**Повторная передача.** Если оператор вернул в `scheduled` пост, чей castbase-пост уже завершён (`failed`/`outcome_unknown`),
+handoff передаёт его заново с новым поколением (`social_post.castbase_generation`+1): ключ `wb-sp-{id}-g{n}`,
+ref `social_post:{id}:g{n}`; события прежнего поколения sync игнорирует. Поколение растёт только на этом
+явном действии, сетевые повторы идут с тем же ключом.
 
 ### Как включить для канала
 
 Env (`.env.local` на Mac, там же живут медиа и кроны): `CASTBASE_API_URL` (`https://castbase.ru`), `CASTBASE_API_KEY` (ключ проекта).
-1. `doctrine:migrations:migrate` (колонки `publish_via`, `castbase_channel_id`, `castbase_post_id`, таблица `castbase_sync_cursor`).
+1. `doctrine:migrations:migrate` (колонки `publish_via`, `castbase_channel_id`, `castbase_post_id`, `castbase_generation`, таблица `castbase_sync_cursor`).
 2. `app:castbase:connect-ig` — подключить аккаунт; дождаться `channel.connected` (проверить `GET /v1/channels`).
 3. Теневой прогон: `app:social:handoff --post=<id поста> --shadow` (на проде castbase `dry_run` включён флагом
    `IG_DRY_RUN_ENABLED`, иначе 422 `unsupported_option`); итог — событие `post.dry_run_ok`.
@@ -493,4 +498,4 @@ Env (`.env.local` на Mac, там же живут медиа и кроны): `C
 
 В админке вернуть «Публикует: Локально». Посты `scheduled` уйдут локальным тиком; посты в `handed_off` вернуть вручную:
 сперва убедиться по `GET /v1/posts?...`/ленте, что castbase их не опубликует (отмена `DELETE /v1/posts/{id}` пока цель
-`scheduled`), затем через сущность `status=scheduled`, `castbase_post_id=NULL`. Выключить кроны handoff/sync.
+`scheduled`), затем через сущность `status=scheduled` (поле `castbase_post_id` не трогать: по нему handoff определит, что пост передаётся заново). Выключить кроны handoff/sync.

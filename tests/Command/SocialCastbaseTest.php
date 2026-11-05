@@ -218,7 +218,7 @@ class SocialCastbaseTest extends KernelTestCase
         self::assertSame(SocialPost::STATUS_PUBLISHED, $ok->getStatus());
     }
 
-    public function testOutcomeUnknownIsNotFailedAndNotRetriedButAlerted(): void
+    public function testOutcomeUnknownBecomesPublishFailedWithManualCheckAlertAndIsNotRetried(): void
     {
         $post = $this->post(['status' => SocialPost::STATUS_HANDED_OFF, 'castbasePostId' => 'cb-9']);
         $this->responders[] = function (string $m, string $u) use ($post) {
@@ -233,12 +233,44 @@ class SocialCastbaseTest extends KernelTestCase
 
         $this->runSync($notifier);
 
-        self::assertSame(SocialPost::STATUS_HANDED_OFF, $post->getStatus());
+        self::assertSame(SocialPost::STATUS_PUBLISH_FAILED, $post->getStatus());
         self::assertStringStartsWith('outcome_unknown:', (string) $post->getLastError());
-        // handoff такой пост не берёт (castbase_post_id задан) — повторной публикации нет
+        // handoff такой пост не берёт — автоповтора нет
         $this->requests = [];
         $this->runHandoff();
         self::assertSame([], $this->requests);
+    }
+
+    public function testRehandoffAfterFinishedCastbasePostUsesNewGenerationKeyAndRef(): void
+    {
+        // оператор вернул в scheduled пост, чей castbase-пост уже завершился failed/outcome_unknown
+        $post = $this->post(['castbasePostId' => 'cb-old']);
+        $this->responders[] = fn (string $m, string $u) => str_ends_with($u, '/v1/posts') ? $this->json(['id' => 'cb-new'], 201) : null;
+
+        $this->runHandoff();
+
+        $req = $this->postsRequests()[0];
+        $id = $post->getId();
+        self::assertSame("wb-sp-{$id}-g1", $req['headers']['idempotency-key']);
+        self::assertSame("social_post:{$id}:g1", $req['body']['external_ref']);
+        self::assertSame('cb-new', $post->getCastbasePostId());
+        self::assertSame(1, $post->getCastbaseGeneration());
+
+        // события старого поколения не трогают пост, нового — применяются
+        $this->requests = [];
+        $this->responders = [function (string $m, string $u) use ($id) {
+            if (str_contains($u, 'after=2')) {
+                return $this->json(['data' => [], 'next_after' => 2]);
+            }
+
+            return $this->json(['data' => [
+                ['seq' => 1, 'type' => 'post.failed', 'created_at' => '2026-11-05T09:00:00+00:00', 'data' => ['external_ref' => "social_post:{$id}", 'error_code' => 'x', 'error_message' => 'старый']],
+                ['seq' => 2, 'type' => 'post.published', 'created_at' => '2026-11-05T09:10:00+00:00', 'data' => ['external_ref' => "social_post:{$id}:g1", 'external_id' => '555']],
+            ], 'next_after' => 2]);
+        }];
+        $this->runSync($this->notifier());
+        self::assertSame(SocialPost::STATUS_PUBLISHED, $post->getStatus());
+        self::assertSame('555', $post->getExternalId());
     }
 
     // ---------- tick ----------

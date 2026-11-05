@@ -112,10 +112,17 @@ class SocialHandoffCommand extends Command
                     continue;
                 }
                 $this->em->refresh($post);
+                if ($post->getCastbasePostId() !== null) {
+                    // Оператор вернул в scheduled пост, чей castbase-пост уже завершён: старые ключ и ref вернули бы
+                    // его же — новое поколение. Сохраняем до отправки, чтобы сетевой повтор шёл с тем же новым ключом.
+                    $post->setCastbaseGeneration($post->getCastbaseGeneration() + 1)->setCastbasePostId(null)->setPublishAttempts(0);
+                    $this->em->flush();
+                }
             }
 
+            $g = $post->getCastbaseGeneration();
             try {
-                $castbaseId = $this->send($post, 'social_post:' . $id, 'wb-sp-' . $id, false);
+                $castbaseId = $this->send($post, 'social_post:' . $id . ($g > 0 ? ':g' . $g : ''), 'wb-sp-' . $id . ($g > 0 ? '-g' . $g : ''), false);
                 $post->setCastbasePostId($castbaseId)->setLastError(null)->setClaimedAt(null);
                 $done++;
                 $io->text("Пост #{$id} → castbase {$castbaseId}");
