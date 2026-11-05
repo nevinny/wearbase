@@ -143,7 +143,7 @@ class SocialEnqueueBrandGalleryCommand extends Command
                     ->setRubric(self::RUBRIC_REELS)
                     ->setMediaType(SocialPost::MEDIA_REELS)
                     ->setVariant($variant)
-                    ->setScheduledAt(\DateTime::createFromInterface($day->setTime(($reelsDef['hour'] ?? 19) + ($slot % $perDay), 0)))
+                    ->setScheduledAt(\DateTime::createFromInterface($day->setTime(self::reelsHour($reelsDef ?? [], $slot % $perDay), 0)))
                     ->setStatus(SocialPost::STATUS_PLANNED);
 
                 if (!$dryRun) {
@@ -268,5 +268,17 @@ class SocialEnqueueBrandGalleryCommand extends Command
             implode(', ', array_map(static fn (string $k, int $n) => "{$k} — {$n}", array_keys($variants), $variants)),
             $skippedNoFiles > 0 ? sprintf(' Пропущено без файлов на диске: %d.', $skippedNoFiles) : '',
         ));
+    }
+
+    /**
+     * Час Reels для i-го слота дня — из `hours` рубрики, разнесённых по дню: подряд (19 и 20)
+     * второй ролик дня собирал заметно меньше охвата (05.11.2026). Слотов больше, чем часов, —
+     * как раньше, +1 ч за последним.
+     */
+    public static function reelsHour(array $def, int $slotOfDay): int
+    {
+        $hours = $def['hours'] ?? [$def['hour'] ?? 19];
+
+        return $hours[$slotOfDay] ?? end($hours) + $slotOfDay - count($hours) + 1;
     }
 }
