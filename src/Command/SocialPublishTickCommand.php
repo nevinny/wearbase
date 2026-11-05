@@ -158,6 +158,10 @@ class SocialPublishTickCommand extends Command
                 $failed++;
             }
             $this->em->flush();
+
+            if ($post->getStatus() === SocialPost::STATUS_PUBLISH_FAILED) {
+                $this->alertPublishFailed($post);
+            }
         }
 
         if ($done > 0 && $this->notifier->isEnabled()) {
@@ -171,6 +175,29 @@ class SocialPublishTickCommand extends Command
         $io->success(sprintf('Опубликовано %d, ошибок %d (host=%s)', $done, $failed, $host));
 
         return Command::SUCCESS;
+    }
+
+    /** Алерт админу — ровно на переходе в publish_failed (дальше пост из очереди выпадает молча). */
+    private function alertPublishFailed(SocialPost $post): void
+    {
+        if (!$this->notifier->isEnabled()) {
+            return;
+        }
+        $ch = $post->getChannel();
+        try {
+            $this->notifier->send(sprintf(
+                "⚠️ <b>Соцсети: публикация не удалась</b> (попыток: %d)\n%s [%s]\nПост #%d, рубрика: %s\nПлан: %s\n<code>%s</code>",
+                $post->getPublishAttempts(),
+                htmlspecialchars((string) $ch->getName(), ENT_QUOTES),
+                htmlspecialchars((string) $ch->getPlatform(), ENT_QUOTES),
+                $post->getId(),
+                htmlspecialchars($post->getRubric(), ENT_QUOTES),
+                $post->getScheduledAt()?->format('d.m.Y H:i') ?? '—',
+                htmlspecialchars(mb_substr((string) $post->getLastError(), 0, 300), ENT_QUOTES),
+            ));
+        } catch (\Throwable) {
+            // уведомление не должно ломать тик
+        }
     }
 
     /** Ramp-up дневной потолок канала (формула — в RampSchedule, ради тестируемости). */
