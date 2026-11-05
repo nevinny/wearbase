@@ -99,7 +99,7 @@ class SocialCastbaseSyncCommand extends Command
                 return false;
             }
             $post->setStatus(SocialPost::STATUS_PUBLISHED)
-                ->setExternalId((string) ($data['external_id'] ?? ''))
+                ->setExternalId(($data['external_id'] ?? '') !== '' ? (string) $data['external_id'] : null)
                 ->setPublishedAt(isset($event['created_at']) ? (new \DateTime((string) $event['created_at']))->setTimezone(new \DateTimeZone(date_default_timezone_get())) : new \DateTime())
                 ->setClaimedAt(null)
                 ->setLastError(null);
