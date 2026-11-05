@@ -74,8 +74,8 @@ class SocialHandoffCommand extends Command
                 return Command::FAILURE;
             }
             $post = $this->posts->find($onlyId);
-            if ($post === null || !$post->getChannel()->isViaCastbase()) {
-                $io->error("Пост #{$onlyId} не найден или канал не publish_via=castbase.");
+            if ($post === null || ($post->getChannel()->getCastbaseChannelId() ?? '') === '') {
+                $io->error("Пост #{$onlyId} не найден или у его канала нет castbase_channel_id (app:castbase:connect-ig).");
                 return Command::FAILURE;
             }
             try {

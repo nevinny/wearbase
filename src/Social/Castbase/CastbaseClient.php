@@ -21,6 +21,7 @@ class CastbaseClient
         #[Autowire('%env(CASTBASE_API_URL)%')]
         private readonly string $baseUrl,
         #[Autowire('%env(CASTBASE_API_KEY)%')]
+        #[\SensitiveParameter]
         private readonly string $apiKey,
     ) {
     }
@@ -54,7 +55,7 @@ class CastbaseClient
      *
      * @return array<string, mixed>
      */
-    public function connectInstagram(string $accessToken, string $label, string $idempotencyKey): array
+    public function connectInstagram(#[\SensitiveParameter] string $accessToken, string $label, string $idempotencyKey): array
     {
         return $this->request('POST', '/v1/channels', ['json' => [
             'platform' => 'instagram',

@@ -156,6 +156,28 @@ class SocialCastbaseTest extends KernelTestCase
         self::assertSame(0, $tester->getStatusCode());
     }
 
+    public function testShadowWorksForLocalEnabledChannelWithCastbaseChannelId(): void
+    {
+        $post = $this->post(['via' => SocialChannel::VIA_LOCAL]);
+        $this->responders[] = fn (string $m, string $u) => str_ends_with($u, '/v1/posts') ? $this->json(['id' => 'cb-shadow'], 201) : null;
+
+        $tester = $this->runHandoff(['--post' => (string) $post->getId(), '--shadow' => true]);
+
+        self::assertSame(0, $tester->getStatusCode());
+        self::assertTrue($this->postsRequests()[0]['body']['options']['dry_run']);
+        self::assertSame(SocialPost::STATUS_SCHEDULED, $post->getStatus());
+        self::assertSame(SocialChannel::VIA_LOCAL, $post->getChannel()->getPublishVia());
+    }
+
+    public function testCastbaseClientSecretsAreSensitiveParameters(): void
+    {
+        $ctor = new \ReflectionMethod(CastbaseClient::class, '__construct');
+        $connect = new \ReflectionMethod(CastbaseClient::class, 'connectInstagram');
+        foreach ([$ctor->getParameters()[2], $connect->getParameters()[0]] as $param) {
+            self::assertNotEmpty($param->getAttributes(\SensitiveParameter::class), $param->getName());
+        }
+    }
+
     public function testLocalChannelPostsAreNotHandedOff(): void
     {
         $this->post(['via' => SocialChannel::VIA_LOCAL]);

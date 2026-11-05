@@ -465,7 +465,7 @@ castbase публикует → `app:social:castbase-sync` читает `/v1/eve
 | Команда | Что делает |
 |---|---|
 | `app:castbase:connect-ig [--channel=ID]` | токен IG-канала из `social_channel` (расшифровка SecretCipher) → `POST /v1/channels`; id канала castbase пишется в `social_channel.castbase_channel_id`; токен в вывод/логи не попадает. `publish_via` НЕ переключает |
-| `app:social:handoff [--post=ID] [--batch=10] [--shadow]` | передать в castbase посты каналов `publish_via=castbase` со временем ≤ now+24ч; повторно подхватывает `handed_off` без `castbase_post_id` (после сетевой ошибки, те же ключи, дубля нет). `--shadow --post=ID`: теневой прогон (`options.dry_run`, `external_ref=social_post:{id}:shadow:{ts}`), статус поста не меняется |
+| `app:social:handoff [--post=ID] [--batch=10] [--shadow]` | передать в castbase посты каналов `publish_via=castbase` со временем ≤ now+24ч; повторно подхватывает `handed_off` без `castbase_post_id` (после сетевой ошибки, те же ключи, дубля нет). `--shadow --post=ID`: теневой прогон (любой канал с `castbase_channel_id`) (`options.dry_run`, `external_ref=social_post:{id}:shadow:{ts}`), статус поста не меняется |
 | `app:social:castbase-sync` | события castbase → `published` (+`externalId`, `publishedAt`) / `publish_failed` (+алерт в TG). Курсор — таблица `castbase_sync_cursor` |
 
 Маппинг: `media_type` определяет состав медиа (image: 1 файл; carousel: 2–10, порядок = порядок `media_path`;
@@ -487,12 +487,15 @@ Env (`.env.local` на Mac, там же живут медиа и кроны): `C
 1. `doctrine:migrations:migrate` (колонки `publish_via`, `castbase_channel_id`, `castbase_post_id`, `castbase_generation`, `castbase_outcome`, таблица `castbase_sync_cursor`).
 2. `app:castbase:connect-ig` — подключить аккаунт; дождаться `channel.connected` (проверить `GET /v1/channels`).
 3. Теневой прогон: `app:social:handoff --post=<id поста> --shadow` (на проде castbase `dry_run` включён флагом
-   `IG_DRY_RUN_ENABLED`, иначе 422 `unsupported_option`); итог — событие `post.dry_run_ok`.
-   Канал поста должен быть `publish_via=castbase`: выставить его при `enabled=0` — handoff/sync/тик ничего не передадут, а `--shadow --post` сработает.
-4. В админке «Соцсети: каналы» выставить «Публикует: castbase».
-5. Расписание (строки `scheduled_command`, Mac, **в миграцию не добавлены, включать вручную**): `app:social:handoff --no-debug`
-   каждые 5 минут и `app:social:castbase-sync --no-debug` каждую минуту. `publish-tick` такой канал пропускает сам
-   (и в `claimDue`, и при `--post`).
+   `IG_DRY_RUN_ENABLED`, иначе 422 `unsupported_option`); итог — событие `post.dry_run_ok`. Работает для любого канала
+   с `castbase_channel_id` (после connect-ig), в т.ч. живого `publish_via=local`: статус поста и канал не меняются,
+   `enabled` не трогать.
+4. Расписание (строки `scheduled_command`, Mac, **в миграцию не добавлены, включать вручную СНАЧАЛА**):
+   `app:social:handoff --no-debug` каждые 5 минут и `app:social:castbase-sync --no-debug` каждую минуту. При
+   `publish_via=local` handoff ничего не делает, поэтому кроны безопасны до переключения.
+5. Только после п. 4 — в админке «Соцсети: каналы» выставить «Публикует: castbase». Если сделать наоборот и забыть
+   кроны, посты канала `castbase` никто не передаст (локальный `publish-tick` такой канал пропускает) и они тихо не выйдут.
+   `publish-tick` пропускает канал сам (и в `claimDue`, и при `--post`).
 
 ### Откат
 
