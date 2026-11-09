@@ -42,9 +42,6 @@ class TagBrandStylesCommand extends Command
         // отдельными хабами: реальный, различимый спрос в brand_attribute(style), не покрытый
         // общими категориями («тихая роскошь» ≠ «классика», «воркwear» ≠ «горпкор»).
         'quiet-luxury' => 'Тихая роскошь', 'workwear' => 'Воркwear',
-        // 2026-11-09 (docs/trend_zoomer_styles_2026-11.md): спрос ~10К/мес; словарь даёт ~1 бренд,
-        // основной набор — LLM-вердикт app:brand:classify-style.
-        'indie-sleaze' => 'Индислиз',
     ];
 
     /** Свободный текст (lowercased) => canonical slug. */
@@ -103,8 +100,6 @@ class TagBrandStylesCommand extends Command
         'оверсайз' => 'oversize', 'оверсайс' => 'oversize', 'oversize' => 'oversize', 'oversized' => 'oversize',
         'премиум' => 'luxury', 'luxury' => 'luxury', 'премиальный' => 'luxury', 'люкс' => 'luxury', 'премиум-сегмент' => 'luxury',
         'пляжный' => 'beach', 'beach' => 'beach', 'resort' => 'beach', 'курортный' => 'beach', 'swimwear' => 'beach', 'купальники' => 'beach', 'пляжная одежда' => 'beach',
-        'индислиз' => 'indie-sleaze', 'indie sleaze' => 'indie-sleaze', 'инди слиз' => 'indie-sleaze',
-        'инди-слиз' => 'indie-sleaze', 'rock-chic' => 'indie-sleaze', 'рок-шик' => 'indie-sleaze',
         'школьный' => 'school', 'школьная форма' => 'school', 'school' => 'school', 'школьная одежда' => 'school',
     ];
 
