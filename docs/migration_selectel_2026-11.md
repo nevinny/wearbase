@@ -4,6 +4,10 @@
 заблокировались все базы MySQL на аккаунте. Владелец продлил хостинг 09.11 и решил переезжать на
 Selectel. Порядок: 1) wearbase, 2) minerdash, 3) остальные. Выбор Selectel обоснован в [hosting-choice.md](hosting-choice.md).
 
+**Предыстория.** Первая попытка переезда — октябрь 2026, ветка `docs/selectel-migration`
+(`docs/selectel_migration.md`, в main не попала). Там описаны подготовка VDS, помощники
+`vds-new-project` / `vds-remove-project` / `vds-backup`, перенос drugs и ответ minerdash про риг.
+
 **Целевой сервер:** Selectel VDS `wearbase-vds`, 161.104.35.238, Ubuntu 24.04, PHP 8.4, MySQL 8.4,
 nginx (SNI-stream на :443 → 127.0.0.1:8443 с proxy_protocol). Сервер общий: на нём уже живут castbase,
 drugs, roombase, pcpricebase, datacenter1. Правила: `nginx -t` перед каждым reload, общие сервисы не
@@ -28,7 +32,8 @@ drugs, roombase, pcpricebase, datacenter1. Правила: `nginx -t` перед
 
 ### Что сделано и где лежит
 
-- **Пулы PHP-FPM:** `/etc/php/8.4/fpm/pool.d/<name>.conf`. Лимиты как в `php-bin/<домен>/php.ini` reg.ru
+- **Пулы PHP-FPM** (+ `session.gc_probability=1/100`: в Ubuntu GC сессий отключён, а sessionclean
+  чистит только `/var/lib/php/sessions`): `/etc/php/8.4/fpm/pool.d/<name>.conf`. Лимиты как в `php-bin/<домен>/php.ini` reg.ru
   (memory 1024M, upload/post 256M, max_execution 300, max_input_vars 100000, TZ Europe/Moscow). Также
   `open_basedir` на каталог проекта и `session.save_path` внутрь `var/sessions`.
 - **vhost-ы:** `/etc/nginx/sites-available/<домен>`, пока **только HTTP** (этап 1).
@@ -76,6 +81,8 @@ drugs, roombase, pcpricebase, datacenter1. Правила: `nginx -t` перед
 
 ## Переключение — два захода (с владельцем)
 
+⚠️ **Дедлайн:** заход 2 должен пройти до следующего истечения хостинга reg.ru (срок продления от 09.11 — уточнить у владельца).
+
 Почему в два захода: у A-записей на reg.ru TTL 86400, а делегирование .ru кешируется ещё дольше.
 Если сменить всё за один раз, сутки часть посетителей пишет в старую базу (split-brain). Снизив TTL
 заранее, это окно сжимаем до минут, и склеивать базы не придётся.
@@ -88,8 +95,14 @@ drugs, roombase, pcpricebase, datacenter1. Правила: `nginx -t` перед
    По ним certbot на Selectel выпускает сертификаты **до** переключения DNS. Нужен DNS-01: reg.ru
    перехватывает `/.well-known/acme-challenge/` своим nginx (проверено, отдаёт 404), так что HTTP-01
    через старый хостинг невозможен.
-3. Я выпускаю сертификаты. Хук certbot ждёт появления TXT на ns1/ns2.reg.ru. Затем ставлю
-   443-блоки vhost-ов: пара `listen 127.0.0.1:8443 ssl proxy_protocol;` и `listen [::]:443 ssl;`, как у castbase.
+3. Я выпускаю сертификаты:
+   `ssh selectel-root /root/regru-migration/issue-cert-dns.sh <домен>` печатает TXT для панели и в фоне
+   (до 4 ч) ждёт их на **всех** авторитетных NS зоны: `ns*.reg.ru`, `ns*.hosting.reg.ru` или GoDaddy, NS
+   хук берёт из текущего делегирования. Затем `ssh selectel-root /root/regru-migration/enable-https.sh <домен>`
+   дописывает к HTTP-vhost HTTPS-копию: `listen 127.0.0.1:8443 ssl proxy_protocol` + `[::]:443` и
+   сертификат. HTTP остаётся как был, потому что на reg.ru все сайты отдают и http, и https без
+   редиректа (проверено). Скрипт выполняет `nginx -t` и при ошибке откатывает правку; прогнан в песочнице
+   с самоподписанным сертификатом.
 
 Альтернатива заходам: дать API-доступ reg.ru (логин, API-пароль, разрешённый IP). Тогда TTL, TXT и NS
 я меняю сам.
@@ -118,8 +131,16 @@ drugs, roombase, pcpricebase, datacenter1. Правила: `nginx -t` перед
   `SOCIAL_CLICK_LOG_GLOB=/var/log/nginx/wearbase.access.log*`. Пользователь `deploy` уже в группе `adm`
   и читает логи nginx. Формат логов на Selectel — стандартный combined, такой же, как у reg.ru.
 - `ScheduledCommand` подписывает env `prod` как «Прод (regru)» — косметика.
+- **Сертификаты на автопродление.** Выпущенные через DNS-01 сертификаты сами не продлятся
+  (`authenticator = manual` в `/etc/letsencrypt/renewal/<домен>.conf`, хук ждёт TXT на старых NS). Как
+  только `selectel dns check <домен>` везде покажет .238, нужно выполнить
+  `ssh selectel-root /root/regru-migration/renew-webroot.sh <домен> /var/www/<name>/public_html`.
+  Это перевыпуск через webroot, дальше работает штатный certbot.timer. Без этого шага сертификаты
+  истекут примерно в феврале 2027.
 - Ротация `var/log/*.log` проектов: на reg.ru её делал хостинг, здесь надо добавить logrotate.
-- Бэкапы БД на Selectel. Сейчас их нет; в hosting-choice план — mysqldump + restic в Selectel S3.
+- Бэкапы БД: `/usr/local/sbin/vds-backup` (cron 02:45) дампит **все** базы MySQL и PG в
+  `/var/backups/vds/<дата>` и хранит 7 дней, новые базы попадают туда автоматически. Копии вне сервера
+  пока нет; план из hosting-choice — restic в Selectel S3.
 
 ### Что остаётся на reg.ru и решается отдельно
 
