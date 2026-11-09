@@ -57,7 +57,9 @@ jobs:
 
   pwa:
     name: PWA acceptance
-    runs-on: ubuntu-latest
+    # 24.04 закреплён: ubuntu-latest уехал на 26.04 (ноябрь 2026), Playwright 1.60 под неё
+    # не ставит Chromium («does not support chromium on ubuntu26.04-x64») → pwa красный → deploy (needs: pwa) не идёт.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
