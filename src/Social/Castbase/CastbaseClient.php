@@ -51,7 +51,8 @@ class CastbaseClient
     }
 
     /**
-     * POST /v1/channels: подключить IG-аккаунт токеном. Токен уходит только в тело запроса.
+     * POST /v1/channels: подключить IG-аккаунт токеном (BYO). Токен уходит только в тело запроса.
+     * Ответ 202 — канал в статусе pending; итог — getChannel().
      *
      * @return array<string, mixed>
      */
@@ -62,6 +63,17 @@ class CastbaseClient
             'access_token' => $accessToken,
             'label' => $label,
         ]], $idempotencyKey);
+    }
+
+    /**
+     * GET /v1/channels/{id}: канал и его статус (pending → active | failed | reauth_required; disabled).
+     * POST /v1/channels отвечает 202 pending — итог проверки токена приходит позже, его читают здесь.
+     *
+     * @return array<string, mixed>
+     */
+    public function getChannel(string $channelId): array
+    {
+        return $this->request('GET', '/v1/channels/' . rawurlencode($channelId));
     }
 
     /**
@@ -103,11 +115,20 @@ class CastbaseClient
 
         if ($status >= 400) {
             $detail = (string) ($data['detail'] ?? '');
+            $fieldErrors = [];
+            foreach ((array) ($data['errors'] ?? []) as $error) {
+                if (is_array($error)) {
+                    $fieldErrors[] = ['field' => (string) ($error['field'] ?? ''), 'code' => (string) ($error['code'] ?? ''), 'message' => (string) ($error['message'] ?? '')];
+                }
+            }
+            // Коды полей — в сообщение: по нему (last_error, алерт) оператор видит причину, а не только validation_failed.
+            $fields = implode(', ', array_map(static fn (array $e) => $e['field'] . ':' . $e['code'], $fieldErrors));
             throw new CastbaseException(
-                sprintf('castbase %s %s -> %d %s: %s', $method, explode('?', $path)[0], $status, (string) ($data['code'] ?? ''), $detail),
+                sprintf('castbase %s %s -> %d %s: %s%s', $method, explode('?', $path)[0], $status, (string) ($data['code'] ?? ''), $detail, $fields !== '' ? ' [' . $fields . ']' : ''),
                 $status,
                 isset($data['code']) ? (string) $data['code'] : null,
                 $status >= 500 || $status === 429,
+                $fieldErrors,
             );
         }
 

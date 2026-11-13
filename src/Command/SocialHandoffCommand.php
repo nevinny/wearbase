@@ -83,7 +83,8 @@ class SocialHandoffCommand extends Command
                 $ref = 'social_post:' . $post->getId() . ':shadow:' . $n;
                 $created = $this->send($post, $ref, 'wb-sp-' . $post->getId() . '-shadow-' . $n, true);
             } catch (CastbaseException|\RuntimeException $e) {
-                $io->error($e->getMessage() . ($e instanceof CastbaseException && $e->errorCode === 'unsupported_option'
+                // unsupported_option приходит в errors[].code (верхний code — validation_failed).
+                $io->error($e->getMessage() . ($e instanceof CastbaseException && $e->hasFieldError('unsupported_option')
                     ? ' (dry_run на этом castbase выключен: IG_DRY_RUN_ENABLED)' : ''));
                 return Command::FAILURE;
             }
@@ -222,9 +223,13 @@ class SocialHandoffCommand extends Command
             return (string) $this->castbase->createPost($body, $key)['id'];
         } catch (CastbaseException $e) {
             // external_ref уже занят — пост создан раньше (ключ идемпотентности мог устареть, 72 ч): берём его id из detail.
-            if ($e->errorCode === 'external_ref_taken' && !$dryRun
-                && preg_match('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/', $e->getMessage(), $m)) {
-                return $m[0];
+            if ($e->errorCode === 'external_ref_taken' && !$dryRun) {
+                if (preg_match('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/', $e->getMessage(), $m)) {
+                    return $m[0];
+                }
+                // Гонка двух вставок (castbase SchedulePost: detail без id) — пост в castbase есть; следующий
+                // запуск получит 409 уже с id. Не publish_failed: иначе пост выйдет, а wearbase сочтёт его упавшим.
+                throw new CastbaseException($e->getMessage(), $e->status, $e->errorCode, true, $e->fieldErrors);
             }
             throw $e;
         }

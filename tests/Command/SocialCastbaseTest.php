@@ -169,6 +169,36 @@ class SocialCastbaseTest extends KernelTestCase
         self::assertSame(SocialChannel::VIA_LOCAL, $post->getChannel()->getPublishVia());
     }
 
+    public function testShadowExplainsDisabledDryRunFromFieldErrorCode(): void
+    {
+        $post = $this->post();
+        // Как отвечает castbase (PostValidator::options): верхний code — validation_failed, причина — в errors[].code.
+        $this->responders[] = fn (string $m, string $u) => str_ends_with($u, '/v1/posts') ? $this->json([
+            'code' => 'validation_failed', 'detail' => 'Опция не поддерживается. Доступны: share_to_feed, audio_name.',
+            'errors' => [['field' => 'options.dry_run', 'code' => 'unsupported_option', 'message' => 'Опция не поддерживается.']],
+        ], 422) : null;
+
+        $tester = $this->runHandoff(['--post' => (string) $post->getId(), '--shadow' => true]);
+
+        self::assertSame(1, $tester->getStatusCode());
+        self::assertStringContainsString('IG_DRY_RUN_ENABLED', $tester->getDisplay());
+        self::assertStringContainsString('options.dry_run:unsupported_option', $tester->getDisplay());
+    }
+
+    public function testExternalRefTakenWithoutIdIsRetriedNotFailed(): void
+    {
+        $post = $this->post();
+        // Гонка вставок в castbase (SchedulePost): 409 external_ref_taken, а id в detail нет.
+        $this->responders[] = fn (string $m, string $u) => str_ends_with($u, '/v1/posts')
+            ? $this->json(['code' => 'external_ref_taken', 'detail' => 'Пост с external_ref «social_post:1» уже есть.'], 409) : null;
+
+        $this->runHandoff();
+
+        self::assertSame(SocialPost::STATUS_HANDED_OFF, $post->getStatus());
+        self::assertNull($post->getCastbasePostId());
+        self::assertSame(1, $post->getPublishAttempts());
+    }
+
     public function testCastbaseClientSecretsAreSensitiveParameters(): void
     {
         $ctor = new \ReflectionMethod(CastbaseClient::class, '__construct');
@@ -191,7 +221,7 @@ class SocialCastbaseTest extends KernelTestCase
     {
         $post = $this->post();
         $this->responders[] = fn (string $m, string $u) => str_ends_with($u, '/v1/posts')
-            ? $this->json(['code' => 'validation_failed', 'detail' => 'Подпись длиннее 2200'], 422) : null;
+            ? $this->json(['code' => 'validation_failed', 'detail' => 'Подпись длиннее 2200', 'errors' => [['field' => 'caption', 'code' => 'too_long', 'message' => 'Подпись длиннее 2200']]], 422) : null;
         $notifier = $this->notifier();
         $notifier->expects(self::once())->method('send')->with(self::stringContains('#' . $post->getId()));
 
@@ -199,6 +229,7 @@ class SocialCastbaseTest extends KernelTestCase
 
         self::assertSame(SocialPost::STATUS_PUBLISH_FAILED, $post->getStatus());
         self::assertStringContainsString('validation_failed', (string) $post->getLastError());
+        self::assertStringContainsString('caption:too_long', (string) $post->getLastError());
     }
 
     // ---------- sync ----------
@@ -362,24 +393,83 @@ class SocialCastbaseTest extends KernelTestCase
 
     // ---------- connect-ig ----------
 
-    public function testConnectIgSendsDecryptedTokenAndNeverPrintsIt(): void
+    public function testConnectIgSendsDecryptedTokenWaitsForActiveAndNeverPrintsIt(): void
+    {
+        $channel = $this->igChannel();
+        // castbase: POST /v1/channels → 202 pending; итог проверки — GET /v1/channels/{id}.
+        $this->responders[] = fn (string $m, string $u) => $m === 'POST' && str_ends_with($u, '/v1/channels') ? $this->json(['id' => 'cb-chan-7', 'status' => 'pending'], 202) : null;
+        $this->responders[] = fn (string $m, string $u) => $m === 'GET' && str_ends_with($u, '/v1/channels/cb-chan-7') ? $this->json(['id' => 'cb-chan-7', 'status' => 'active', 'username' => 'wearbase', 'kind' => 'byo']) : null;
+
+        $tester = $this->runConnect($channel);
+
+        $req = $this->requests[0];
+        self::assertSame('IGAA-secret-token', $req['body']['access_token']);
+        self::assertSame('instagram', $req['body']['platform']);
+        self::assertMatchesRegularExpression('/^wb-ch-' . $channel->getId() . '-[0-9a-f]{16}-new-a1$/', $req['headers']['idempotency-key']);
+        self::assertStringNotContainsString('IGAA-secret-token', $tester->getDisplay());
+        self::assertSame(0, $tester->getStatusCode());
+        self::assertSame('cb-chan-7', $channel->getCastbaseChannelId());
+        self::assertSame(SocialChannel::VIA_LOCAL, $channel->getPublishVia()); // переключатель не трогаем
+    }
+
+    public function testConnectIgFailedTokenCheckKeepsChannelIdAndExplainsReason(): void
+    {
+        $channel = $this->igChannel();
+        $this->responders[] = fn (string $m, string $u) => $m === 'POST' ? $this->json(['id' => 'cb-chan-8', 'status' => 'pending'], 202) : null;
+        $this->responders[] = fn (string $m, string $u) => $m === 'GET' ? $this->json(['id' => 'cb-chan-8', 'status' => 'failed', 'status_reason' => 'not_professional', 'status_message' => 'Аккаунт не Professional']) : null;
+
+        $tester = $this->runConnect($channel);
+
+        self::assertSame(1, $tester->getStatusCode());
+        self::assertNull($channel->getCastbaseChannelId());
+        self::assertStringContainsString('not_professional', $tester->getDisplay());
+    }
+
+    public function testConnectIgDoesNothingWhenCastbaseChannelIsActive(): void
+    {
+        $channel = $this->igChannel()->setCastbaseChannelId('cb-chan-1');
+        $this->em->flush();
+        $this->responders[] = fn (string $m, string $u) => $m === 'GET' ? $this->json(['id' => 'cb-chan-1', 'status' => 'active', 'username' => 'wearbase']) : null;
+
+        $tester = $this->runConnect($channel);
+
+        self::assertSame(0, $tester->getStatusCode());
+        self::assertSame([], array_filter($this->requests, fn ($r) => $r['method'] === 'POST'));
+    }
+
+    public function testConnectIgAfterReauthRequiredUsesNewKeyAndStoresNewChannel(): void
+    {
+        $channel = $this->igChannel()->setCastbaseChannelId('cb-chan-old');
+        $this->em->flush();
+        $this->responders[] = fn (string $m, string $u) => $m === 'GET' && str_ends_with($u, '/cb-chan-old') ? $this->json(['id' => 'cb-chan-old', 'status' => 'reauth_required']) : null;
+        $this->responders[] = fn (string $m, string $u) => $m === 'POST' ? $this->json(['id' => 'cb-chan-new', 'status' => 'pending'], 202) : null;
+        $this->responders[] = fn (string $m, string $u) => $m === 'GET' && str_ends_with($u, '/cb-chan-new') ? $this->json(['id' => 'cb-chan-new', 'status' => 'active']) : null;
+
+        $tester = $this->runConnect($channel);
+
+        $post = array_values(array_filter($this->requests, fn ($r) => $r['method'] === 'POST'))[0];
+        self::assertDoesNotMatchRegularExpression('/-new-a1$/', $post['headers']['idempotency-key']);
+        self::assertSame(0, $tester->getStatusCode());
+        self::assertSame('cb-chan-new', $channel->getCastbaseChannelId());
+    }
+
+    private function igChannel(): SocialChannel
     {
         $cipher = self::getContainer()->get(SecretCipher::class);
         $channel = (new SocialChannel())->setPlatform(SocialChannel::PLATFORM_IG)->setName('wb')->setTarget('1')
             ->setTokenEnc($cipher->encrypt('IGAA-secret-token'))->setEnabled(true);
         $this->em->persist($channel);
         $this->em->flush();
-        $this->responders[] = fn (string $m, string $u) => str_ends_with($u, '/v1/channels') ? $this->json(['id' => 'cb-chan-7', 'status' => 'pending'], 201) : null;
 
-        $tester = new CommandTester(new CastbaseConnectIgCommand($this->em, $this->client(), $cipher));
-        $tester->execute(['--channel' => (string) $channel->getId()]);
+        return $channel;
+    }
 
-        $req = $this->requests[0];
-        self::assertSame('IGAA-secret-token', $req['body']['access_token']);
-        self::assertSame('instagram', $req['body']['platform']);
-        self::assertStringNotContainsString('IGAA-secret-token', $tester->getDisplay());
-        self::assertSame('cb-chan-7', $channel->getCastbaseChannelId());
-        self::assertSame(SocialChannel::VIA_LOCAL, $channel->getPublishVia()); // переключатель не трогаем
+    private function runConnect(SocialChannel $channel): CommandTester
+    {
+        $tester = new CommandTester(new CastbaseConnectIgCommand($this->em, $this->client(), self::getContainer()->get(SecretCipher::class)));
+        $tester->execute(['--channel' => (string) $channel->getId(), '--wait' => '0']);
+
+        return $tester;
     }
 
     // ---------- helpers ----------
