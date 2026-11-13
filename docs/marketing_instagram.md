@@ -464,7 +464,7 @@ castbase публикует → `app:social:castbase-sync` читает `/v1/eve
 
 | Команда | Что делает |
 |---|---|
-| `app:castbase:connect-ig [--channel=ID]` | токен IG-канала из `social_channel` (расшифровка SecretCipher) → `POST /v1/channels`; id канала castbase пишется в `social_channel.castbase_channel_id`; токен в вывод/логи не попадает. `publish_via` НЕ переключает |
+| `app:castbase:connect-ig [--channel=ID] [--wait=90] [--attempt=N]` | токен IG-канала из `social_channel` (расшифровка SecretCipher) → `POST /v1/channels` (BYO, ответ 202 `pending`) → ждёт `GET /v1/channels/{id}` до `active`/`failed`; id пишется в `social_channel.castbase_channel_id` только при `active`; уже `active` канал не трогает; токен в вывод/логи не попадает. `publish_via` НЕ переключает |
 | `app:social:handoff [--post=ID] [--batch=10] [--shadow]` | передать в castbase посты каналов `publish_via=castbase` со временем ≤ now+24ч; повторно подхватывает `handed_off` без `castbase_post_id` (после сетевой ошибки, те же ключи, дубля нет). `--shadow --post=ID`: теневой прогон (любой канал с `castbase_channel_id`) (`options.dry_run`, `external_ref=social_post:{id}:shadow:{ts}`), статус поста не меняется |
 | `app:social:castbase-sync` | события castbase → `published` (+`externalId`, `publishedAt`) / `publish_failed` (+алерт в TG). Курсор — таблица `castbase_sync_cursor` |
 
@@ -481,24 +481,83 @@ handoff передаёт его заново с новым поколением 
 ref `social_post:{id}:g{n}`; события прежнего поколения sync игнорирует. Поколение растёт только на этом
 явном действии, сетевые повторы идут с тем же ключом. Если castbase-пост опубликован (`published`) или ещё в работе (итога нет), handoff ничего не шлёт: `publish_failed` + алерт «сверь ленту castbase и профиль» (иначе дубль на живом IG).
 
-### Как включить для канала
+### Ранбук: от пустого прода castbase до Reels через castbase
 
-Env (`.env.local` на Mac, там же живут медиа и кроны): `CASTBASE_API_URL` (`https://castbase.ru`), `CASTBASE_API_KEY` (ключ проекта).
-1. `doctrine:migrations:migrate` (колонки `publish_via`, `castbase_channel_id`, `castbase_post_id`, `castbase_generation`, `castbase_outcome`, таблица `castbase_sync_cursor`).
-2. `app:castbase:connect-ig` — подключить аккаунт; дождаться `channel.connected` (проверить `GET /v1/channels`).
-3. Теневой прогон: `app:social:handoff --post=<id поста> --shadow` (на проде castbase `dry_run` включён флагом
-   `IG_DRY_RUN_ENABLED`, иначе 422 `unsupported_option`); итог — событие `post.dry_run_ok`. Работает для любого канала
-   с `castbase_channel_id` (после connect-ig), в т.ч. живого `publish_via=local`: статус поста и канал не меняются,
-   `enabled` не трогать.
-4. Расписание (строки `scheduled_command`, Mac, **в миграцию не добавлены, включать вручную СНАЧАЛА**):
-   `app:social:handoff --no-debug` каждые 5 минут и `app:social:castbase-sync --no-debug` каждую минуту. При
-   `publish_via=local` handoff ничего не делает, поэтому кроны безопасны до переключения.
-5. Только после п. 4 — в админке «Соцсети: каналы» выставить «Публикует: castbase». Если сделать наоборот и забыть
-   кроны, посты канала `castbase` никто не передаст (локальный `publish-tick` такой канал пропускает) и они тихо не выйдут.
-   `publish-tick` пропускает канал сам (и в `claimDue`, и при `--post`).
+Сверено с castbase `main` 63ec14a (2026-11-13); пути прода совпадают с `main` (`https://castbase.ru/docs/api.json`).
+👤 — делает человек, 🤖 — Claude (команды на Mac, `~/work/wearbase`, PHP — `/opt/homebrew/bin/php`).
+Соцпостинг живёт на Mac (своя БД, медиа, кроны) — всё wearbase-ное ниже выполняется там, не на проде wearbase.
+
+**Способ подключения — BYO (свой токен), не managed.** Managed («Войти через Instagram») идёт через Meta app castbase и
+закрыт на тарифе free (`managed_connect: false` в castbase `config/plans.yaml`). У wearbase свой Meta app и свой
+долгоживущий токен Instagram Login (`social_channel.token_enc`) — его и отдаёт `app:castbase:connect-ig` в
+`POST /v1/channels`. Отдельный OAuth-клик в Meta нужен, только если токен wearbase протух (тогда — как обычно для wearbase).
+
+**0. Предусловия на стороне castbase** (🤖 проверка, правка прод-env castbase — только с разрешения 👤):
+- `IG_VAULT_PUBLIC_KEY` задан в env ядра (иначе `POST /v1/channels` → 503 `service_unavailable`), у vertical-ig — парный ключ.
+- `IG_DRY_RUN_ENABLED=1` в env ядра — только после рестарта vertical-ig с поддержкой dry_run (иначе теневой прогон → 422
+  с `errors[].code=unsupported_option`, handoff подскажет). Без него шаг 5 невозможен — живое включение без тени не делаем.
+- vertical-ig ходит в `graph.instagram.com` через egress вне РФ, медиа отдаются Meta с не-РФ хоста (см. castbase CLAUDE.md).
+
+**1. 👤 Аккаунт и ключ castbase.** Зарегистрироваться на castbase.ru, подтвердить email, создать проект `wearbase`
+(часовой пояс Europe/Moscow), в «Ключи API» выпустить ключ `cb_live_…` и вписать его сам в `.env.local` на Mac
+(`CASTBASE_API_KEY=…`, `CASTBASE_API_URL=https://castbase.ru`). Ключ в чат не вставлять. Тестовый проект `f3-check` не трогать.
+
+**2. 🤖 Код и схема.** PR #309 смержен (👤 одобряет мерж = автодеплой; миграция идемпотентна и на проде безвредна).
+На Mac: `git pull` в `~/work/wearbase`, `php bin/console doctrine:migrations:migrate -n`, `rm -rf var/cache/dev && php -d memory_limit=512M bin/console cache:clear`.
+Проверка: `php bin/console list app | grep -E "castbase|handoff"` — три команды на месте.
+
+**3. 🤖 Ключ живой:** `curl -s -H "Authorization: Bearer $CASTBASE_API_KEY" https://castbase.ru/v1/project` → 200 с проектом `wearbase`.
+
+**4. 🤖 Подключить канал:** `php bin/console app:castbase:connect-ig` (единственный IG-канал с токеном; иначе `--channel=<id>`).
+Ждёт итога проверки токена (до `--wait=90` с). `active` → id пишется в `social_channel.castbase_channel_id`; `failed` →
+причина (`status_reason`) на экране, id не пишется. Повтор: новый токен — просто запустить снова; тот же токен после
+временного сбоя (`service_unavailable`, `platform_unavailable`) — `--attempt=2`; всё ещё `pending` — запустить снова,
+команда дождётся того же канала. Уже `active` канал повторный запуск не трогает. `publish_via` остаётся `local`.
+
+**5. 🤖 Теневой прогон** (на живом канале `publish_via=local`, статус поста не меняется):
+`php bin/console app:social:handoff --post=<id ближайшего Reels> --shadow` → затем `php bin/console app:social:castbase-sync`
+не нужен (теневые ref он игнорирует) — итог смотреть в ленте: `curl -s -H "Authorization: Bearer $CASTBASE_API_KEY" "https://castbase.ru/v1/events?after=0" | jq '.data[]|{type,ref:.data.external_ref,err:.data.error_code}'`
+→ ждём `post.dry_run_ok` для `social_post:<id>:shadow:<ts>`. `post.failed` → разобрать `error_code` (каталог — castbase.ru/docs/errors), не идти дальше.
+Прогнать тень на Reels **и** на картинке/карусели, если они тоже пойдут через castbase.
+
+**6. 👤 Решение о живом включении** — после зелёной тени, явным «включаем» владельца.
+
+**7. 🤖 Кроны** (СНАЧАЛА кроны, потом флаг). Админка `/admin` → «Крон (расписание)», `environment` и `timeout_sec` — как у
+соседнего `app:social:publish-tick`:
+`app:social:handoff --no-debug --batch=3` — `*/5 * * * *`; `app:social:castbase-sync --no-debug` — `* * * * *`.
+Пока `publish_via=local`, handoff ничего не делает — кроны безопасны. ⚠️ Диспетчер держит глобальный flock: загрузка
+ролика в handoff задерживает остальные Mac-задачи (Reels wearbase ≈ 1–9 МБ — секунды; лимит castbase 300 МБ/таймаут 300 с).
+
+**8. 👤/🤖 Переключить канал:** админка «Соцсети: каналы» → «Публикует: castbase» (с разрешения из п. 6).
+С этого момента `publish-tick` канал пропускает, handoff забирает посты на 24 ч вперёд.
+
+**9. 🤖 Наблюдение первые сутки:** после первого слота — пост `published` с `external_id` (IG media id: на нём работают
+`ig-comment-replies` и метрики), Reels виден в профиле, в TG-алертах нет `publish_failed`/`outcome_unknown`.
+Сверка: `GET /v1/posts?status=failed` и `/v1/overview` в castbase.
+
+**Правила эксплуатации:**
+- Посты wearbase **не переносить и не отменять в кабинете castbase**: отмена событий не даёт, перенос (`post.rescheduled`)
+  sync не применяет — пост молча останется `handed_off` / с устаревшим `scheduled_at`. Управлять расписанием — в wearbase.
+- Подпись/время поста не править после неудачной передачи (пост `handed_off` без `castbase_post_id` или `publish_failed`
+  с сетевой ошибкой): тот же Idempotency-Key с другим телом → 422 `idempotency_key_reused`. Выход — вернуть прежние
+  подпись/время (повтор дойдёт) либо подождать 72 ч (ключ истечёт; дубль не возникнет — его отсечёт `external_ref`).
+- Ежедневный потолок канала (ramp, `RampSchedule`) handoff не применяет: в castbase уходит всё, что запланировано на 24 ч.
+  Держит ли планировщик рубрик дневную норму сам, не проверено: если в сутки запланировано больше потолка, через
+  castbase выйдут все (локальный тик остаток переносил бы). Перед п. 8 сверить число `scheduled` на ближайшие дни.
+- `channel.reauth_required` (алерт в TG) → обновить токен wearbase (`app:social:refresh-ig-token` или новый токен
+  👤 через Meta) → `app:castbase:connect-ig` (создаст новый castbase-канал и перепишет id). Упавшие из-за этого посты —
+  вернуть в `scheduled` (новое поколение передачи).
+- Токен живёт у двух держателей (wearbase для insights/комментариев и castbase для публикации), каждый продлевает свою
+  копию сам. Не проверено, что продление одной копии не гасит другую (ADR 0007 castbase) — `app:social:refresh-ig-token`
+  не выключать; при первом `channel.reauth_required` после продления — это кандидат в причину.
 
 ### Откат
 
-В админке вернуть «Публикует: Локально». Посты `scheduled` уйдут локальным тиком; посты в `handed_off` вернуть вручную:
-сперва убедиться по `GET /v1/posts?...`/ленте, что castbase их не опубликует (отмена `DELETE /v1/posts/{id}` пока цель
-`scheduled`), затем через сущность `status=scheduled` (поле `castbase_post_id` не трогать: по нему handoff определит, что пост передаётся заново). Выключить кроны handoff/sync.
+1. 🤖 Админка «Соцсети: каналы» → «Публикует: Локально». Посты `scheduled` уйдут локальным `publish-tick`.
+2. 🤖 Посты в `handed_off`: для каждого `GET /v1/posts/{castbase_post_id}`. Цель ещё `scheduled` → `DELETE /v1/posts/{id}`
+   (204), затем в wearbase `status=scheduled` — опубликует локальный тик. 409 `post_not_cancellable` (уже уходит) — не
+   трогать, итог придёт в sync. `outcome_unknown` — сначала сверить профиль IG руками, иначе дубль.
+3. 🤖 Крон `castbase-sync` **не выключать**, пока есть `handed_off` или неотменённые castbase-посты; `handoff` можно
+   выключить сразу (при `local` он и так ничего не делает).
+4. Возврат на castbase позже: отменённые в п. 2 посты handoff не перепошлёт сам (`castbase_post_id` есть, итога нет →
+   блок с алертом) — их публикует локальный путь; это защита от дубля, а не ошибка.
