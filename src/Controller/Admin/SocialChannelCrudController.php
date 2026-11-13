@@ -63,6 +63,13 @@ class SocialChannelCrudController extends AbstractCrudController
         yield ChoiceField::new('egressHost', 'Egress-хост')
             ->setChoices(['Mac (TG/IG)' => SocialChannel::HOST_MAC, 'Prod (VK)' => SocialChannel::HOST_PROD])
             ->setColumns(3);
+        yield ChoiceField::new('publishVia', 'Публикует')
+            ->setChoices(['Локально (publish-tick)' => SocialChannel::VIA_LOCAL, 'castbase (API)' => SocialChannel::VIA_CASTBASE])
+            ->setHelp('castbase: посты передаёт app:social:handoff, итог — app:social:castbase-sync. Откат: вернуть «Локально».')
+            ->setColumns(3);
+        yield TextField::new('castbaseChannelId', 'Канал в castbase')->hideOnIndex()->setColumns(4)
+            ->setFormTypeOption('required', false)
+            ->setHelp('Заполняет app:castbase:connect-ig');
         yield TextField::new('plainToken', 'Токен (ввод)')
             ->setFormTypeOption('required', false)
             ->onlyOnForms()

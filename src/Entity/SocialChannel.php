@@ -23,6 +23,10 @@ class SocialChannel
     public const PLATFORM_VK = 'vk';
     public const PLATFORM_IG = 'ig';
 
+    /** Кто публикует: свой publish-tick (local) или API castbase (castbase). См. docs/marketing_instagram.md «Публикация через castbase». */
+    public const VIA_LOCAL    = 'local';
+    public const VIA_CASTBASE = 'castbase';
+
     public const HOST_MAC  = 'mac';   // egress к TG/IG (РФ-прод заблокирован)
     public const HOST_PROD = 'prod';  // VK ок с прода
 
@@ -66,6 +70,13 @@ class SocialChannel
     /** Потолок рампа, постов/день (null → env SOCIAL_CAP). */
     #[ORM\Column(nullable: true)]
     private ?int $rateCap = null;
+
+    #[ORM\Column(length: 10, options: ['default' => self::VIA_LOCAL])]
+    private string $publishVia = self::VIA_LOCAL;
+
+    /** id канала в проекте castbase (его проставляет app:castbase:connect-ig); без него handoff невозможен. */
+    #[ORM\Column(length: 36, nullable: true)]
+    private ?string $castbaseChannelId = null;
 
     /** Транзиентное поле для ввода токена в открытом виде в админке (шифруется при сохранении). */
     private ?string $plainToken = null;
@@ -188,6 +199,33 @@ class SocialChannel
     public function setRateCap(?int $rateCap): self
     {
         $this->rateCap = $rateCap;
+        return $this;
+    }
+
+    public function getPublishVia(): string
+    {
+        return $this->publishVia;
+    }
+
+    public function setPublishVia(string $publishVia): self
+    {
+        $this->publishVia = $publishVia;
+        return $this;
+    }
+
+    public function isViaCastbase(): bool
+    {
+        return $this->publishVia === self::VIA_CASTBASE;
+    }
+
+    public function getCastbaseChannelId(): ?string
+    {
+        return $this->castbaseChannelId;
+    }
+
+    public function setCastbaseChannelId(?string $castbaseChannelId): self
+    {
+        $this->castbaseChannelId = $castbaseChannelId;
         return $this;
     }
 }

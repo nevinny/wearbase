@@ -83,7 +83,7 @@ class InstagramPublisher implements SocialPublisherInterface
         $token = $this->cipher->decrypt($enc);
 
         // IG: кликабельных ссылок нет ни в подписи, ни в комментариях — ведём в профиль.
-        $caption = $this->insertCtaLine((string) $post->getCaption(), $post->getCtaLabel());
+        $caption = \App\Social\IgCaption::withCtaLine((string) $post->getCaption(), $post->getCtaLabel());
 
         $isReels = $post->getMediaType() === SocialPost::MEDIA_REELS;
 
@@ -107,39 +107,6 @@ class InstagramPublisher implements SocialPublisherInterface
         return $this->publishContainer($igUserId, $creationId, $token);
     }
 
-    /**
-     * Строка «{ctaLabel} — ссылка в профиле»
-     * встаёт ПЕРЕД абзацем хэштегов, не после: в ленте IG
-     * длинная подпись сворачивается по высоте, и абзац после хэштегов (последний в подписи)
-     * почти никогда не попадает в развёрнутый вид — ссылка туда добавленная просто не читалась.
-     * Абзацы разделены пустой строкой (CaptionGenerator), хэштеги — последний абзац, начинающийся
-     * с '#'. Нет хэштегов (не должно случаться для собранной подписи, но на всякий) — как раньше,
-     * строка уходит в конец.
-     */
-    private function insertCtaLine(string $caption, ?string $ctaLabel): string
-    {
-        if ($ctaLabel === null || trim($ctaLabel) === '') {
-            return $caption;
-        }
-        $ctaLine = $ctaLabel . ' — ссылка в профиле';
-
-        $paragraphs = explode("\n\n", $caption);
-        $hashtagIndex = null;
-        foreach ($paragraphs as $i => $paragraph) {
-            if (str_starts_with(ltrim($paragraph), '#')) {
-                $hashtagIndex = $i;
-            }
-        }
-
-        if ($hashtagIndex === null) {
-            $paragraphs[] = $ctaLine;
-        } else {
-            array_splice($paragraphs, $hashtagIndex, 0, [$ctaLine]);
-        }
-
-        return implode("\n\n", $paragraphs);
-    }
-
     private function createSingleContainer(string $igUserId, string $imageUrl, string $caption, string $token): string
     {
         return $this->createContainer($igUserId, [
@@ -149,7 +116,7 @@ class InstagramPublisher implements SocialPublisherInterface
     }
 
     /** Разовое переименование оригинального аудио рилса (по докам Meta) — своё именованное аудио вместо «Original audio». */
-    private const REELS_AUDIO_NAME = 'WEARBASE · Прямой бренд';
+    public const REELS_AUDIO_NAME = 'WEARBASE · Прямой бренд';
 
     /**
      * Reels: единственный формат IG с существенной раздачей не-подписчикам.
