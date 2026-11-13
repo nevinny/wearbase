@@ -202,9 +202,14 @@ class SocialHandoffCommand extends Command
             'channel_ids' => [$post->getChannel()->getCastbaseChannelId()],
             'media' => $media,
             'caption' => IgCaption::withCtaLine((string) $post->getCaption(), $post->getCtaLabel()),
-            'publish_at' => ($post->getScheduledAt() !== null ? \DateTimeImmutable::createFromInterface($post->getScheduledAt()) : new \DateTimeImmutable())->format(\DATE_ATOM),
             'external_ref' => $ref,
         ];
+        // Теневой пост — сразу (без publish_at castbase ставит «сейчас»): иначе диспетчер castbase ждал бы слот поста,
+        // и тень совпала бы по времени с живой публикацией. Живой — во время поста; поле не шлём и при пустом
+        // scheduled_at, чтобы сетевой повтор шёл с тем же телом (тот же Idempotency-Key, без 422 idempotency_key_reused).
+        if (!$dryRun && $post->getScheduledAt() !== null) {
+            $body['publish_at'] = \DateTimeImmutable::createFromInterface($post->getScheduledAt())->format(\DATE_ATOM);
+        }
         $options = [];
         if ($isReels) {
             $options['audio_name'] = InstagramPublisher::REELS_AUDIO_NAME;

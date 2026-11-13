@@ -77,6 +77,7 @@ class SocialCastbaseTest extends KernelTestCase
         self::assertSame('wb-sp-' . $post->getId(), $posts[0]['headers']['idempotency-key']);
         self::assertSame('social_post:' . $post->getId(), $posts[0]['body']['external_ref']);
         self::assertSame(['castbase-chan-1'], $posts[0]['body']['channel_ids']);
+        self::assertSame(\DateTimeImmutable::createFromInterface($post->getScheduledAt())->format(\DATE_ATOM), $posts[0]['body']['publish_at']);
         self::assertSame("Хук\n\nТекст\n\nСмотри бренд — ссылка в профиле\n\n#один #два", $posts[0]['body']['caption']);
         self::assertSame('cb-post-1', $post->getCastbasePostId());
         self::assertSame(SocialPost::STATUS_HANDED_OFF, $post->getStatus());
@@ -150,6 +151,7 @@ class SocialCastbaseTest extends KernelTestCase
 
         $body = $this->postsRequests()[0]['body'];
         self::assertTrue($body['options']['dry_run']);
+        self::assertArrayNotHasKey('publish_at', $body); // тень — сразу, а не в слот живой публикации
         self::assertMatchesRegularExpression('/^social_post:' . $post->getId() . ':shadow:\d+$/', $body['external_ref']);
         self::assertSame(SocialPost::STATUS_SCHEDULED, $post->getStatus());
         self::assertNull($post->getCastbasePostId());
