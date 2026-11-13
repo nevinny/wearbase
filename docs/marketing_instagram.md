@@ -506,7 +506,9 @@ ref `social_post:{id}:g{n}`; события прежнего поколения 
 На Mac: `git pull` в `~/work/wearbase`, `php bin/console doctrine:migrations:migrate -n`, `rm -rf var/cache/dev && php -d memory_limit=512M bin/console cache:clear`.
 Проверка: `php bin/console list app | grep -E "castbase|handoff"` — три команды на месте.
 
-**3. 🤖 Ключ живой:** `curl -s -H "Authorization: Bearer $CASTBASE_API_KEY" https://castbase.ru/v1/project` → 200 с проектом `wearbase`.
+**3. 🤖 Ключ живой.** Ключ берём из `.env.local`, не печатая его:
+`export CASTBASE_API_KEY=$(grep -E '^CASTBASE_API_KEY=' .env.local | cut -d= -f2- | tr -d "'\"")` (в той же сессии shell, что и curl ниже);
+`curl -s -H "Authorization: Bearer $CASTBASE_API_KEY" https://castbase.ru/v1/project` → 200 с проектом `wearbase`.
 
 **4. 🤖 Подключить канал:** `php bin/console app:castbase:connect-ig` (единственный IG-канал с токеном; иначе `--channel=<id>`).
 Ждёт итога проверки токена (до `--wait=90` с). `active` → id пишется в `social_channel.castbase_channel_id`; `failed` →
@@ -515,9 +517,12 @@ ref `social_post:{id}:g{n}`; события прежнего поколения 
 команда дождётся того же канала. Уже `active` канал повторный запуск не трогает. `publish_via` остаётся `local`.
 
 **5. 🤖 Теневой прогон** (на живом канале `publish_via=local`, статус поста не меняется):
-`php bin/console app:social:handoff --post=<id ближайшего Reels> --shadow` → затем `php bin/console app:social:castbase-sync`
-не нужен (теневые ref он игнорирует) — итог смотреть в ленте: `curl -s -H "Authorization: Bearer $CASTBASE_API_KEY" "https://castbase.ru/v1/events?after=0" | jq '.data[]|{type,ref:.data.external_ref,err:.data.error_code}'`
-→ ждём `post.dry_run_ok` для `social_post:<id>:shadow:<ts>`. `post.failed` → разобрать `error_code` (каталог — castbase.ru/docs/errors), не идти дальше.
+`php bin/console app:social:handoff --post=<id ближайшего Reels> --shadow`. Теневой пост уходит без `publish_at` —
+castbase прогоняет его сразу (контейнер в IG создаётся, публикации нет). `castbase-sync` теневые ref игнорирует, итог
+смотрим в ленте напрямую:
+`curl -s -H "Authorization: Bearer $CASTBASE_API_KEY" "https://castbase.ru/v1/events?after=0" | jq '.data[]|{type,ref:.data.external_ref,err:.data.error_code}'`
+→ ждём `post.dry_run_ok` для `social_post:<id>:shadow:<ts>` (обычно минуты; Reels дольше — IG обрабатывает видео).
+`post.failed` → разобрать `error_code` (каталог — castbase.ru/docs/errors), дальше не идти.
 Прогнать тень на Reels **и** на картинке/карусели, если они тоже пойдут через castbase.
 
 **6. 👤 Решение о живом включении** — после зелёной тени, явным «включаем» владельца.
@@ -554,9 +559,14 @@ ref `social_post:{id}:g{n}`; события прежнего поколения 
 ### Откат
 
 1. 🤖 Админка «Соцсети: каналы» → «Публикует: Локально». Посты `scheduled` уйдут локальным `publish-tick`.
-2. 🤖 Посты в `handed_off`: для каждого `GET /v1/posts/{castbase_post_id}`. Цель ещё `scheduled` → `DELETE /v1/posts/{id}`
-   (204), затем в wearbase `status=scheduled` — опубликует локальный тик. 409 `post_not_cancellable` (уже уходит) — не
-   трогать, итог придёт в sync. `outcome_unknown` — сначала сверить профиль IG руками, иначе дубль.
+2. 🤖 Посты в `handed_off` с `castbase_post_id`: `GET /v1/posts/{castbase_post_id}`. Цель ещё `scheduled` →
+   `DELETE /v1/posts/{id}` (204), затем в wearbase `status=scheduled` — опубликует локальный тик. 409
+   `post_not_cancellable` (уже уходит) — не трогать, итог придёт в sync. `outcome_unknown` — сначала сверить профиль IG
+   руками, иначе дубль.
+   Посты в `handed_off` **без** `castbase_post_id` (ответ на POST потерялся): пост в castbase мог создаться, а после
+   отката handoff их больше не подбирает. Найти его: `GET /v1/posts?from=<день поста>&to=<следующий день>` и выбрать
+   по `external_ref` = `social_post:{id}` (или `:g{n}`); нашёлся — как выше (отменить, потом `scheduled`); не нашёлся —
+   сразу `scheduled`.
 3. 🤖 Крон `castbase-sync` **не выключать**, пока есть `handed_off` или неотменённые castbase-посты; `handoff` можно
    выключить сразу (при `local` он и так ничего не делает).
 4. Возврат на castbase позже: отменённые в п. 2 посты handoff не перепошлёт сам (`castbase_post_id` есть, итога нет →
