@@ -9,6 +9,11 @@ parameters:
     app.wardrobe_draft_storage_dir: '%kernel.project_dir%/var/uploads/wardrobe_drafts'
     # Дефолты опциональных env (чтобы приложение грузилось без записи в .env)
     env(ADMIN_TELEGRAM_CHAT_ID): ''
+    # Прокси для Telegram Bot API (scoped-клиент telegram.client, config/packages/framework.yaml).
+    # Прод на Selectel: с RU-IP api.telegram.org недоступен → socks5h://127.0.0.1:1082
+    # (wearbase-egress.service, SSH-туннель на aeza, пускает только api.telegram.org:443).
+    # Пусто = напрямую (Mac/dev/CI).
+    env(TELEGRAM_PROXY): ''
     env(VK_APP_ID): ''
     env(VK_APP_SECRET): ''
     env(BRAND_CLAIM_AUTOGRANT_EMAIL): '1'
@@ -300,10 +305,12 @@ services:
     App\Notification\TelegramNotifier:
         arguments:
             $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
+            $httpClient: '@telegram.client'
 
     App\Service\Telegram\TelegramFileFetcher:
         arguments:
             $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
+            $httpClient: '@telegram.client'
 
     App\Notification\AdminNotifier:
         arguments:
@@ -366,6 +373,7 @@ services:
     App\Social\Publisher\TelegramPublisher:
         arguments:
             $botToken: '%env(TELEGRAM_BOT_TOKEN)%'
+            $httpClient: '@telegram.client'
 
     # Брендированная карточка для IG-рубрик-шаблонов (вместо слабой AI-сцены) — точечная добавка,
     # не меняет существующий MediaRenderer/TG/VK.

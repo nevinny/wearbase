@@ -5,6 +5,14 @@ framework:
     # Note that the session will be started ONLY if you read or write from it.
     session: true
 
+    http_client:
+        scoped_clients:
+            # Telegram Bot API через TELEGRAM_PROXY (см. env(TELEGRAM_PROXY) в services.yaml).
+            # '' = без прокси: curl трактует пустую строку как явный отказ от прокси.
+            telegram.client:
+                scope: 'https://api\.telegram\.org'
+                proxy: '%env(TELEGRAM_PROXY)%'
+
     #esi: true
     #fragments: true
 #    default_locale: ru
