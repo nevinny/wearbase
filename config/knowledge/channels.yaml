@@ -1,17 +1,19 @@
 # Реестр TG/YouTube-каналов базы знаний советника (Qdrant `topic_chunks`).
 # Единственный источник role (для чанкинга/фильтра ретрива) и name (провенанс в дайджесте).
-# Добавление канала = запись сюда + крон-строка app:kb:sync-tg — без правки PHP
-# (KnowledgeIngestor / AdvisorRag читают через KnowledgeChannelRegistry).
+# Добавление канала = запись сюда, без правки PHP (KnowledgeIngestor / AdvisorRag читают
+# через KnowledgeChannelRegistry). `tg: true` — канал ведётся в Telegram
+# (t.me/s/<handle>): его ежедневно синкает app:kb:sync-tg без --channel. Без флага —
+# только YouTube-транскрипты; одноимённый TG-хэндл может принадлежать другому человеку.
 channels:
-  grebenukm:            { role: idea,    name: "Гребенюк" }
+  grebenukm:            { role: idea,    name: "Гребенюк", tg: true }
   dolgov_alexandr:       { role: idea,    name: "Долгов" }
-  romarayt:              { role: idea,    name: "Рома Райт (AI-продукты)" }
-  mtokovinin:            { role: framing, name: "Токовинин" }
+  romarayt:              { role: idea,    name: "Рома Райт (AI-продукты)", tg: true }
+  mtokovinin:            { role: framing, name: "Токовинин", tg: true }
   AlexanderSokolovskiy:  { role: case,    name: "Соколовский" }
   FedotovM:              { role: tone,    name: "Федотов" }
-  kuznecov_coach:        { role: tone,    name: "Кузнецов (копирайтинг)" }
-  drmaxseo:              { role: seo,     name: "DrMax SEO" }
+  kuznecov_coach:        { role: tone,    name: "Кузнецов (копирайтинг)", tg: true }
+  drmaxseo:              { role: seo,     name: "DrMax SEO", tg: true }
   freychu:               { role: seo,     name: "Frey Chu (directories)" }
-  big_bad_coach:         { role: seo,     name: "big_bad_coach" }
+  big_bad_coach:         { role: seo,     name: "big_bad_coach", tg: true }
   "ДМИТРИЙ_ПОПОВ_ИИ_ДЛЯ_БИЗНЕСА": { role: framing, name: "Дмитрий Попов (AI для бизнеса)" }
   vasinki:               { role: content, name: "Васин Константин (контент-пайплайн)" }

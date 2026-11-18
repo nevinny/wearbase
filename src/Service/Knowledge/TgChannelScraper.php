@@ -10,11 +10,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * без бота/API/токена, доступно напрямую с Mac (прод РФ для Meta заблокирован,
  * t.me — нет). Отдаёт посты с непустым текстом (чистое медиа/сервисные — пропуск).
  *
- * ⚠️ Известное ограничение: `/s/<channel>` отдаёт только последнюю страницу
- * превью (~20 постов), листания вперёд без `?before=` нет. При ежедневном
- * запуске (см. app:kb:sync-tg) окна хватает; при длительном пропуске крона
- * возможен gap — тогда ручной backfill той же цепочкой `discover?before=`,
- * что использовалась при разовой заливке DrMax (см. docs/drmax_seo_2026_digest.md).
+ * Страница `/s/<channel>` — ~20 последних постов; более старые — `?before=<id>`
+ * (листание назад). Дозагрузку пропущенного после простоя крона делает
+ * app:kb:sync-tg: листает `before`, пока не дойдёт до уже сохранённого поста.
  */
 class TgChannelScraper
 {
@@ -29,9 +27,10 @@ class TgChannelScraper
     /**
      * @return list<array{id:int,text:string,date:\DateTimeImmutable,title:string}>
      */
-    public function fetchPosts(string $channel): array
+    public function fetchPosts(string $channel, ?int $before = null): array
     {
-        $response = $this->httpClient->request('GET', self::BASE_URL . $channel, [
+        $url = self::BASE_URL . $channel . ($before !== null ? '?before=' . $before : '');
+        $response = $this->httpClient->request('GET', $url, [
             'headers' => ['User-Agent' => self::USER_AGENT],
             'timeout' => 30,
         ]);

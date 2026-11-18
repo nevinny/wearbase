@@ -12,7 +12,7 @@ use Symfony\Component\Yaml\Yaml;
  */
 class KnowledgeChannelRegistry
 {
-    /** @var array<string,array{role:string,name:string}>|null */
+    /** @var array<string,array{role:string,name:string,tg?:bool}>|null */
     private ?array $channels = null;
 
     public function __construct(
@@ -36,7 +36,13 @@ class KnowledgeChannelRegistry
         return array_keys($this->all());
     }
 
-    /** @return array<string,array{role:string,name:string}> */
+    /** Каналы с `tg: true` — их обходит app:kb:sync-tg без --channel. @return string[] */
+    public function tgChannels(): array
+    {
+        return array_keys(array_filter($this->all(), fn (array $c) => ($c['tg'] ?? false) === true));
+    }
+
+    /** @return array<string,array{role:string,name:string,tg?:bool}> */
     public function all(): array
     {
         if ($this->channels === null) {
