@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Entity\ScheduledCommand;
+use App\Notification\AdminNotifier;
 use App\Repository\ScheduledCommandRepository;
 use Cron\CronExpression;
 use Doctrine\ORM\EntityManagerInterface;
@@ -25,6 +26,10 @@ use Symfony\Component\Process\Process;
  * Тяжёлые батчи (RAG на сотни брендов) сюда НЕ ставим — их по-прежнему гоняем nohup'ом,
  * иначе долгий джоб задержит остальные внутри тика.
  *
+ * Падение задачи шлёт алерт админу в Telegram (AdminNotifier) — только на переходе
+ * «работала → упала» и «упала → починилась», чтобы ежеминутные задачи не спамили.
+ * (Без алерта app:kb:sync-tg падал каждый день с 23.09 по 18.11 и никто не видел.)
+ *
  *   php bin/console app:cron:run-scheduled            # один проход (так зовёт launchd)
  *   php bin/console app:cron:run-scheduled --dry-run  # показать, что сейчас due, без запуска
  */
@@ -37,6 +42,7 @@ class RunScheduledCommandsCommand extends Command
     public function __construct(
         private readonly ScheduledCommandRepository $repository,
         private readonly EntityManagerInterface $em,
+        private readonly AdminNotifier $notifier,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
         // Окружение этой машины: dev (Mac) | prod | llm (.43). Задаётся в .env.local per-host.
@@ -140,6 +146,8 @@ class RunScheduledCommandsCommand extends Command
         $startedAt = new \DateTime('now', new \DateTimeZone(self::TZ));
         $io->writeln(sprintf('[%s] Запуск: %s', $startedAt->format('H:i:s'), $cmd->getCommand()));
 
+        $wasOk = $cmd->getLastRunAt() === null || $cmd->getLastExitCode() === 0;
+
         $cmd->setRunningSince($startedAt);
         $this->em->flush();
 
@@ -170,12 +178,37 @@ class RunScheduledCommandsCommand extends Command
         }
         $this->em->flush();
 
+        $this->alertOnTransition($cmd, $wasOk, $exitCode === 0, $tail);
+
         $io->writeln(sprintf('[%s] Готово (%ds, exit %s): %s',
             $finishedAt->format('H:i:s'),
             $cmd->getLastDurationSec(),
             $exitCode === null ? 'ERR' : $exitCode,
             $cmd->getCommand(),
         ));
+    }
+
+    private function alertOnTransition(ScheduledCommand $cmd, bool $wasOk, bool $isOk, string $tail): void
+    {
+        if ($wasOk === $isOk) {
+            return;
+        }
+        $html = $isOk
+            ? sprintf("✅ <b>Крон снова работает</b> [%s]\n%s\n<code>%s</code>",
+                $cmd->getEnvironment(),
+                htmlspecialchars((string) $cmd->getName(), ENT_QUOTES),
+                htmlspecialchars($cmd->getCommand(), ENT_QUOTES))
+            : sprintf("⚠️ <b>Крон упал</b> [%s] (exit %s)\n%s\n<code>%s</code>\n<pre>%s</pre>",
+                $cmd->getEnvironment(),
+                $cmd->getLastExitCode() ?? 'ERR',
+                htmlspecialchars((string) $cmd->getName(), ENT_QUOTES),
+                htmlspecialchars($cmd->getCommand(), ENT_QUOTES),
+                htmlspecialchars(mb_substr($tail, -600), ENT_QUOTES));
+        try {
+            $this->notifier->send($html);
+        } catch (\Throwable) {
+            // алерт не должен ломать тик диспетчера
+        }
     }
 
     /** @return resource|false открытый дескриптор с захваченным LOCK_EX, либо false если занято */

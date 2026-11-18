@@ -6,6 +6,7 @@ namespace App\Tests\Command;
 
 use App\Command\RunScheduledCommandsCommand;
 use App\Entity\ScheduledCommand;
+use App\Notification\AdminNotifier;
 use App\Repository\ScheduledCommandRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
@@ -65,6 +66,7 @@ class RunScheduledCommandsCommandTest extends TestCase
         $command = new RunScheduledCommandsCommand(
             $repository,
             $this->createMock(EntityManagerInterface::class),
+            $this->createMock(AdminNotifier::class),
             sys_get_temp_dir(),
             'dev',
         );
@@ -107,5 +109,76 @@ class RunScheduledCommandsCommandTest extends TestCase
         $display = $this->runDispatcher($task);
         self::assertStringNotContainsString('[due]', $display);
         self::assertStringContainsString('Битое расписание', $display);
+    }
+
+    /**
+     * Алерт о падении — только на смене состояния (2026-11-18: app:kb:sync-tg падал
+     * два месяца молча). Запуск настоящий: фейковый bin/console выходит с кодом из аргумента.
+     *
+     * @return list<string> отправленные админу сообщения
+     */
+    private function runForReal(string $exitArg, ?int $prevExit): array
+    {
+        $dir = sys_get_temp_dir() . '/sched-test-' . bin2hex(random_bytes(4));
+        mkdir($dir . '/bin', 0775, true);
+        mkdir($dir . '/var', 0775, true);
+        file_put_contents($dir . '/bin/console', '<?php exit((int) ($argv[1] ?? 0));');
+
+        $task = (new ScheduledCommand())
+            ->setEnvironment('dev')
+            ->setName('Тестовая задача')
+            ->setCommand($exitArg)
+            ->setSchedule('* * * * *');
+        if ($prevExit !== null) {
+            $task->setLastRunAt(new \DateTime('-1 day'));
+            $task->setLastExitCode($prevExit);
+        }
+
+        $repository = $this->createMock(ScheduledCommandRepository::class);
+        $repository->method('findEnabled')->willReturn([$task]);
+
+        $sent = [];
+        $notifier = $this->createMock(AdminNotifier::class);
+        $notifier->method('send')->willReturnCallback(function (string $html) use (&$sent): void {
+            $sent[] = $html;
+        });
+
+        $command = new RunScheduledCommandsCommand(
+            $repository,
+            $this->createMock(EntityManagerInterface::class),
+            $notifier,
+            $dir,
+            'dev',
+        );
+        (new Application())->add($command);
+        (new CommandTester($command))->execute([]);
+
+        return $sent;
+    }
+
+    public function testРаботавшаяЗадачаУпала_алерт(): void
+    {
+        $sent = $this->runForReal('1', 0);
+
+        self::assertCount(1, $sent);
+        self::assertStringContainsString('Крон упал', $sent[0]);
+    }
+
+    public function testУжеПадавшаяЗадачаСноваУпала_безСпама(): void
+    {
+        self::assertSame([], $this->runForReal('1', 1));
+    }
+
+    public function testУпавшаяЗадачаПочинилась_алертОВосстановлении(): void
+    {
+        $sent = $this->runForReal('0', 1);
+
+        self::assertCount(1, $sent);
+        self::assertStringContainsString('снова работает', $sent[0]);
+    }
+
+    public function testУспехПослеУспеха_тишина(): void
+    {
+        self::assertSame([], $this->runForReal('0', 0));
     }
 }
