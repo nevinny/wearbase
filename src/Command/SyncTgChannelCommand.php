@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use App\Service\Knowledge\KnowledgeChannelRegistry;
 use App\Service\Knowledge\KnowledgeIngestor;
 use App\Service\Knowledge\TgChannelScraper;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -22,12 +23,15 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Уже существующий .txt для id — пропускается целиком (ни перезаписи, ни
  * ре-эмбеддинга), это и делает инкремент дешёвым.
  *
- * ⚠️ Известное ограничение TgChannelScraper: `/s/<channel>` отдаёт только
- * последнюю страницу превью (~20 постов). При ежедневной каденции крона окна
- * хватает; при длительном пропуске (простой сервера/крона) возможен gap в
- * истории — тогда backfill делать вручную прежней одноразовой цепочкой
- * `discover?before=<id>` (как при первичной заливке DrMax, docs/drmax_seo_2026_digest.md).
+ * `/s/<channel>` отдаёт ~20 последних постов. Если после простоя крона на первой
+ * странице нет стыка с уже сохранёнными постами, команда листает `?before=<id>`
+ * назад до стыка (не больше BACKFILL_MAX_PAGES страниц). У канала без сохранённых
+ * TG-постов берётся только первая страница — первичная заливка делается вручную.
  *
+ * Без --channel обходит все каналы с `tg: true` в реестре (так работает ежедневный
+ * крон); сбой одного канала не останавливает остальные, но итог — FAILURE.
+ *
+ *   php bin/console app:kb:sync-tg --dry-run                      # все TG-каналы
  *   php bin/console app:kb:sync-tg --channel=drmaxseo --dry-run
  *   php bin/console app:kb:sync-tg --channel=drmaxseo --limit=5
  *   php -d memory_limit=512M bin/console app:kb:sync-tg --channel=drmaxseo --no-debug
@@ -38,9 +42,12 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class SyncTgChannelCommand extends Command
 {
+    private const BACKFILL_MAX_PAGES = 20;
+
     public function __construct(
         private readonly TgChannelScraper $scraper,
         private readonly KnowledgeIngestor $ingestor,
+        private readonly KnowledgeChannelRegistry $registry,
     ) {
         parent::__construct();
     }
@@ -48,7 +55,7 @@ class SyncTgChannelCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('channel', null, InputOption::VALUE_REQUIRED, 'TG-канал (' . implode(', ', $this->ingestor->channels()) . ')')
+            ->addOption('channel', null, InputOption::VALUE_REQUIRED, 'Один TG-канал; без опции — все с tg: true (' . implode(', ', $this->registry->tgChannels()) . ')')
             ->addOption('dry-run', null, InputOption::VALUE_NONE,     'Только показать новые посты, без записи/эмбеддинга')
             ->addOption('limit',   null, InputOption::VALUE_REQUIRED, 'Первые N постов из выдачи (для теста)')
             ->addOption('path',    null, InputOption::VALUE_REQUIRED, 'Корень транскриптов (default $HOME/yt-kb/txt)')
@@ -62,15 +69,40 @@ class SyncTgChannelCommand extends Command
         $dryRun  = (bool) $input->getOption('dry-run');
         $limit   = $input->getOption('limit') !== null ? max(1, (int) $input->getOption('limit')) : null;
 
-        if ($channel === null || $this->ingestor->roleFor($channel) === null) {
+        if ($channel !== null && $this->ingestor->roleFor($channel) === null) {
             $io->error(sprintf(
-                'Нужен известный --channel. Доступны: %s',
+                'Неизвестный --channel «%s». Доступны: %s',
+                $channel,
                 implode(', ', $this->ingestor->channels()),
             ));
             return Command::FAILURE;
         }
 
+        $channels = $channel !== null ? [$channel] : $this->registry->tgChannels();
+        if ($channels === []) {
+            $io->error('В config/knowledge/channels.yaml нет каналов с tg: true');
+            return Command::FAILURE;
+        }
+
         $base = rtrim((string) ($input->getOption('path') ?: (getenv('HOME') . '/yt-kb/txt')), '/');
+
+        $failed = [];
+        foreach ($channels as $ch) {
+            if (!$this->syncChannel($io, $ch, $base, $dryRun, $limit)) {
+                $failed[] = $ch;
+            }
+        }
+
+        if ($failed !== []) {
+            $io->error('Синк не удался: ' . implode(', ', $failed));
+            return Command::FAILURE;
+        }
+
+        return Command::SUCCESS;
+    }
+
+    private function syncChannel(SymfonyStyle $io, string $channel, string $base, bool $dryRun, ?int $limit): bool
+    {
         $dir  = "{$base}/{$channel}";
         if (!is_dir($dir) && !$dryRun) {
             mkdir($dir, 0775, true);
@@ -78,11 +110,35 @@ class SyncTgChannelCommand extends Command
 
         $io->title("KB · синк TG-канала @{$channel} в topic_chunks");
 
+        $maxKnown = $this->maxKnownPostId($dir);
+
         try {
             $posts = $this->scraper->fetchPosts($channel);
+            $pages = 1;
+            // Дозагрузка разрыва: первая страница целиком новее последнего сохранённого поста.
+            while ($maxKnown > 0 && $posts !== [] && $pages < self::BACKFILL_MAX_PAGES) {
+                $oldest = min(array_column($posts, 'id'));
+                if ($oldest <= $maxKnown + 1) {
+                    break;
+                }
+                $older = $this->scraper->fetchPosts($channel, $oldest);
+                $pages++;
+                if ($older === []) {
+                    break;
+                }
+                $posts = array_merge($older, $posts);
+            }
+            if ($pages > 1) {
+                $io->text(sprintf('Дозагрузка разрыва: страниц %d (последний сохранённый id %d)', $pages, $maxKnown));
+                if ($pages >= self::BACKFILL_MAX_PAGES) {
+                    $io->warning(sprintf('Достигнут лимит %d страниц — более старый разрыв не закрыт', self::BACKFILL_MAX_PAGES));
+                }
+            }
+            $posts = array_values(array_column($posts, null, 'id'));
+            usort($posts, fn (array $a, array $b) => $a['id'] <=> $b['id']);
         } catch (\Throwable $e) {
             $io->error("Не удалось получить t.me/s/{$channel}: " . $e->getMessage());
-            return Command::FAILURE;
+            return false;
         }
 
         if ($limit !== null) {
@@ -107,7 +163,7 @@ class SyncTgChannelCommand extends Command
                 ));
             }
             $io->note('dry-run — без записи файлов и обращения к эмбеддеру/Qdrant');
-            return Command::SUCCESS;
+            return true;
         }
 
         try {
@@ -147,6 +203,20 @@ class SyncTgChannelCommand extends Command
             ['Пропущено чанков',  $skipped],
         ]);
 
-        return Command::SUCCESS;
+        return true;
+    }
+
+    /** Максимальный id сохранённого TG-поста (файлы <число>.txt); 0 — таких нет. */
+    private function maxKnownPostId(string $dir): int
+    {
+        $max = 0;
+        foreach (glob("{$dir}/*.txt") ?: [] as $path) {
+            $name = pathinfo($path, PATHINFO_FILENAME);
+            if (ctype_digit($name)) {
+                $max = max($max, (int) $name);
+            }
+        }
+
+        return $max;
     }
 }
