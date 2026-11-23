@@ -21,6 +21,8 @@ class GoogleIndexingClient
     private const ENDPOINT = 'https://indexing.googleapis.com/v3/urlNotifications:publish';
 
     private ?string $token = null;
+    /** Причина последней ошибки API (error.details[].reason или error.status), null — успех. */
+    private ?string $lastErrorReason = null;
     private float $tokenAt = 0.0;
 
     public function __construct(
@@ -38,7 +40,9 @@ class GoogleIndexingClient
     /**
      * Уведомляет Google об обновлении URL (type=URL_UPDATED).
      *
-     * @return int|null HTTP-код ответа (200 = принято, 429/403 = квота) или null если не настроен
+     * @return int|null HTTP-код ответа (200 = принято) или null если не настроен.
+     *                  403 бывает и квотой (RATE_LIMIT_EXCEEDED), и отказом в доступе
+     *                  (ACCESS_TOKEN_SCOPE_INSUFFICIENT и т.п.) — различать через lastErrorReason().
      */
     public function publish(string $url): ?int
     {
@@ -52,7 +56,25 @@ class GoogleIndexingClient
             'timeout' => 30,
         ]);
 
-        return $response->getStatusCode();
+        $code = $response->getStatusCode();
+        $this->lastErrorReason = null;
+        if ($code >= 400) {
+            $err = json_decode($response->getContent(false), true)['error'] ?? [];
+            $this->lastErrorReason = (string) ($err['details'][0]['reason'] ?? $err['status'] ?? 'HTTP_' . $code);
+        }
+
+        return $code;
+    }
+
+    public function lastErrorReason(): ?string
+    {
+        return $this->lastErrorReason;
+    }
+
+    /** Квота/rate-limit (до завтра), в отличие от отказа в доступе (чинить креды). */
+    public static function isQuotaReason(int $code, ?string $reason): bool
+    {
+        return $code === 429 || in_array($reason, ['RATE_LIMIT_EXCEEDED', 'RESOURCE_EXHAUSTED', 'rateLimitExceeded'], true);
     }
 
     /** Токен с кэшем (~1ч жизни, обновляем за 5 мин до истечения) — паттерн GscClient. */
