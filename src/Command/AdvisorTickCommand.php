@@ -475,7 +475,7 @@ class AdvisorTickCommand extends Command
     {
         foreach ($signals as $s) {
             if ($s['severity'] === AnomalyDetector::SEV_HIGH) {
-                return 'Главное: ' . $s['message'] . '.';
+                return 'Главное: ' . htmlspecialchars($s['message']) . '.';
             }
         }
 
