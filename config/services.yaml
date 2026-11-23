@@ -414,3 +414,11 @@ services:
     Nevinny\AdminCoreBundle\Controller\Admin\UserCrudController:
         autoconfigure: false
         autowire: false
+
+when@test:
+    services:
+        # Тесты не должны писать во входящие живого утреннего дайджеста (Mac-крон работает из этой же папки).
+        App\Notification\MorningDigestInbox:
+            autowire: true
+            arguments:
+                $baseDir: '%kernel.project_dir%/var/digest/test-inbox'
