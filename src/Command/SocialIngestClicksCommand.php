@@ -70,7 +70,9 @@ class SocialIngestClicksCommand extends Command
 
         $raw = $file !== null ? $this->readLocalFile((string) $file, $io) : $this->readViaSsh($io);
         if ($raw === null) {
-            return Command::SUCCESS; // ошибка ssh/файла уже отрапортована, не валим крон
+            // Ошибка ssh/файла уже отрапортована warning'ом. FAILURE — чтобы диспетчер крона
+            // поднял алерт: с exit 0 «Permission denied» по ssh неделями проходил незамеченным.
+            return Command::FAILURE;
         }
 
         $lines = $raw === '' ? [] : explode("\n", trim($raw));
