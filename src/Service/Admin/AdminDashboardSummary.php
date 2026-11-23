@@ -142,8 +142,8 @@ class AdminDashboardSummary
                 'readyNeverPushed'  => $this->pipelineQueue->countNeverPushed(),
                 'readyRePush'       => $this->pipelineQueue->countRePushPending(),
                 // Очередь дрип-крона (app:brand:publish-tick) — ТОТ ЖЕ предикат, что
-                // BrandRepository::findDripCandidateIds (с niche/origin-гейтами), а НЕ
-                // queue_pending из /api/v1/publish-stats (тот без гейтов и раздут мусором).
+                // BrandRepository::findDripCandidateIds (с niche/origin-гейтами); на проде та же
+                // цифра — queue_pending из /api/v1/publish-stats (queue_raw там — без гейтов).
                 'dripQueue'         => $this->brands->countDripCandidates(),
                 'link'              => $this->adminUrlGenerator->setController(BrandCrudController::class)->generateUrl(),
             ];

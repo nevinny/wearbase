@@ -690,10 +690,10 @@ class BrandRepository extends ServiceEntityRepository
 
     /**
      * Сколько брендов реально ждут дрип-публикации — ТОТ ЖЕ WHERE, что findDripCandidateIds
-     * (без ранжирующих JOIN/ORDER BY, они на COUNT не влияют). Для дашборда: НЕ путать с
-     * `queue_pending` из /api/v1/publish-stats (status='new' AND publish_pending=1 БЕЗ
-     * niche/origin-гейтов) — та цифра маскировала простой дрипа niche_status='off' мусором
-     * (396 «в очереди» при 0 реально публикабельных, см. PR admin-dashboard).
+     * (без ранжирующих JOIN/ORDER BY, они на COUNT не влияют). Это и есть `queue_pending`
+     * в /api/v1/publish-stats; прежняя цифра без niche/origin-гейтов отдаётся как `queue_raw`
+     * (она маскировала простой дрипа niche_status='off' мусором: 396 «в очереди» при 0
+     * реально публикабельных).
      */
     public function countDripCandidates(): int
     {
