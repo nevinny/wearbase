@@ -6,11 +6,14 @@ namespace App\Tests\Command;
 
 use App\Entity\Brand;
 use App\Entity\BrandStyle;
+use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Clock\MockClock;
 use Symfony\Component\Console\Tester\CommandTester;
 
 /**
@@ -185,5 +188,29 @@ class OutreachWarmRefreshCommandTest extends KernelTestCase
         );
         self::assertSame(0, (int) $logged);
         self::assertFileDoesNotExist($this->draftFile);
+    }
+    public function testDigestModePutsSummaryIntoInboxInsteadOfTelegram(): void
+    {
+        $brand = $this->makeBrand(title: 'Digest Brand', slug: 'digest-brand', email: 'owner@digest-brand.ru');
+        $this->em->flush();
+        $this->db->executeStatement(
+            'INSERT INTO gsc_page_stats (page_url, brand_id, day, impressions, clicks) VALUES (:u, :b, :d, :i, :c)',
+            ['u' => '/ru/brands/digest-brand', 'b' => $brand->getId(), 'd' => (new \DateTimeImmutable('-3 days'))->format('Y-m-d'), 'i' => 20, 'c' => 4],
+        );
+
+        $notifier = $this->createMock(AdminNotifier::class);
+        $notifier->expects(self::never())->method('send');
+        $notifier->expects(self::never())->method('sendChecked');
+        $dir   = sys_get_temp_dir() . '/warm-digest-' . bin2hex(random_bytes(4));
+        $inbox = new MorningDigestInbox($notifier, new MockClock(), $dir);
+        self::getContainer()->set(MorningDigestInbox::class, $inbox);
+
+        $tester = new CommandTester((new Application(self::$kernel))->find('app:outreach:warm-refresh'));
+        self::assertSame(0, $tester->execute(['--digest' => true]));
+
+        $sections = $inbox->sections();
+        self::assertCount(1, $sections);
+        self::assertStringContainsString('Digest Brand', $sections[0]);
+        exec('rm -rf ' . escapeshellarg($dir));
     }
 }

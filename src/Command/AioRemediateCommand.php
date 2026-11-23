@@ -10,6 +10,7 @@ use App\Entity\BrandDatapoint;
 use App\Entity\BrandFaq;
 use App\Entity\BrandRagPipeline;
 use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use App\Repository\BrandContentRevisionRepository;
 use App\Repository\BrandFaqRepository;
 use App\Repository\BrandRepository;
@@ -84,7 +85,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Только Mac (dev, чтение gsc_query_stats + локальная ollama/RAG).
  *
  *   php bin/console app:seo:aio-remediate --limit=10 --min-impr=8            # dry-run (по умолчанию)
- *   php bin/console app:seo:aio-remediate --apply --limit=10 --notify
+ *   php bin/console app:seo:aio-remediate --apply --limit=10 --notify   # сводка сразу в TG
+ *   php bin/console app:seo:aio-remediate --apply --limit=10 --digest   # крон пн: секция утреннего дайджеста
+ *   (0 результатов — ничего не шлём ни в каком режиме)
  */
 #[AsCommand(
     name: 'app:seo:aio-remediate',
@@ -115,6 +118,7 @@ class AioRemediateCommand extends Command
         private readonly LlmService $llm,
         private readonly ContentValidator $validator,
         private readonly AdminNotifier $adminNotifier,
+        private readonly MorningDigestInbox $inbox,
     ) {
         parent::__construct();
     }
@@ -127,6 +131,7 @@ class AioRemediateCommand extends Command
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Превью (по умолчанию и так dry-run — флаг для явности в логах/кроне)')
             ->addOption('apply', null, InputOption::VALUE_NONE, 'Реально применить (записать brand.*/versioner/faq/audit)')
             ->addOption('notify', null, InputOption::VALUE_NONE, 'Слать информационную сводку в Telegram (текст, без кнопок)')
+            ->addOption('digest', null, InputOption::VALUE_NONE, 'Положить сводку в утренний дайджест (MorningDigestInbox) вместо отправки')
         ;
     }
 
@@ -165,8 +170,16 @@ class AioRemediateCommand extends Command
 
         $this->printResults($io, $results);
 
-        if ($notify && $this->adminNotifier->isEnabled()) {
-            $this->notify($results, $dryRun);
+        $summary = $this->summary($results, $dryRun);
+        if ($summary === null) {
+            $io->text('0 результатов — сводку не шлём.');
+        } elseif ($input->getOption('digest')) {
+            if (!$this->inbox->add('aio-remediate', $summary, 50)) {
+                $io->error('Дайджест уже ушёл, прямая отправка сводки не удалась');
+                return Command::FAILURE;
+            }
+        } elseif ($notify && $this->adminNotifier->isEnabled()) {
+            $this->adminNotifier->send($summary);
         }
 
         return Command::SUCCESS;
@@ -478,14 +491,16 @@ class AioRemediateCommand extends Command
         ]);
     }
 
-    /** @param array<int,array{brand:string,query:string,impressions:int,kind:string}> $results */
-    private function notify(array $results, bool $dryRun): void
+    /**
+     * Текст сводки для TG; null — нечего сообщать (0 результатов не шлём: шум каждый понедельник).
+     * @param array<int,array{brand:string,query:string,impressions:int,kind:string}> $results
+     */
+    private function summary(array $results, bool $dryRun): ?string
     {
         $verb = $dryRun ? 'было бы применено (dry-run)' : 'применено';
 
         if ($results === []) {
-            $this->adminNotifier->send(sprintf('🔎 <b>AIO-ремедиация</b>: %s 0.', $verb));
-            return;
+            return null;
         }
 
         $lines = array_map(
@@ -498,11 +513,11 @@ class AioRemediateCommand extends Command
             $results,
         );
 
-        $this->adminNotifier->send(sprintf(
+        return sprintf(
             "🔎 <b>AIO-ремедиация</b>: %s %d:\n%s",
             $verb,
             count($results),
             implode("\n", $lines),
-        ));
+        );
     }
 }

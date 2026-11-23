@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -26,6 +27,7 @@ class SocialEvaluateCommand extends Command
     public function __construct(
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
+        private readonly MorningDigestInbox $inbox,
     ) {
         parent::__construct();
     }
@@ -34,7 +36,8 @@ class SocialEvaluateCommand extends Command
     {
         $this
             ->addOption('days', null, InputOption::VALUE_REQUIRED, 'Окно анализа, дней', '14')
-            ->addOption('notify', null, InputOption::VALUE_NONE, 'Отправить отчёт в ops-чат (Telegram)');
+            ->addOption('notify', null, InputOption::VALUE_NONE, 'Отправить отчёт в ops-чат (Telegram)')
+            ->addOption('digest', null, InputOption::VALUE_NONE, 'Положить отчёт в утренний дайджест (MorningDigestInbox) вместо отправки');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -96,15 +99,24 @@ class SocialEvaluateCommand extends Command
             ),
         );
 
-        if ($input->getOption('notify') && $this->notifier->isEnabled()) {
+        $digest = (bool) $input->getOption('digest');
+        if ($digest || ($input->getOption('notify') && $this->notifier->isEnabled())) {
             $lines = array_map(
-                static fn (array $r) => sprintf('• %s / %s / %s — score %s (%d постов, %d кликов)', $r['rubric'], $r['variant'], $r['script_key'], $r['avg_score'], $r['posts'], $r['link_taps']),
+                static fn (array $r) => htmlspecialchars(sprintf('• %s / %s / %s — score %s (%d постов, %d кликов)', $r['rubric'], $r['variant'], $r['script_key'], $r['avg_score'], $r['posts'], $r['link_taps'])),
                 $rows,
             );
-            try {
-                $this->notifier->send("📊 <b>Соцсети: рубрики за {$days}д</b>\n" . implode("\n", $lines));
-            } catch (\Throwable) {
-                // отчёт не критичен
+            $report = "📊 <b>Соцсети: рубрики за {$days}д</b>\n" . implode("\n", $lines);
+            if ($digest) {
+                if (!$this->inbox->add('social-evaluate', $report, 70)) {
+                    $io->error('Дайджест уже ушёл, прямая отправка отчёта не удалась');
+                    return Command::FAILURE;
+                }
+            } else {
+                try {
+                    $this->notifier->send($report);
+                } catch (\Throwable) {
+                    // отчёт не критичен
+                }
             }
         }
 

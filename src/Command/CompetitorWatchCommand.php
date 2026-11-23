@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -25,7 +26,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * Идемпотентно: один срез на (конкурент, дата), повторный запуск за тот же день обновляет строку.
  *
  *   php bin/console app:competitor:watch --no-debug             # посмотреть
- *   php bin/console app:competitor:watch --notify --no-debug    # крон, 09:25
+ *   php bin/console app:competitor:watch --notify --no-debug    # сразу в TG
+ *   php bin/console app:competitor:watch --digest --no-debug    # крон: секция утреннего дайджеста
  */
 #[AsCommand(
     name: 'app:competitor:watch',
@@ -51,6 +53,7 @@ class CompetitorWatchCommand extends Command
         private readonly Connection $db,
         private readonly HttpClientInterface $http,
         private readonly AdminNotifier $notifier,
+        private readonly MorningDigestInbox $inbox,
     ) {
         parent::__construct();
     }
@@ -60,7 +63,8 @@ class CompetitorWatchCommand extends Command
         $this
             ->addOption('competitor', null, InputOption::VALUE_REQUIRED, 'Кого снимать (slug из SOURCES)', 'provybor')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Не писать срез в БД')
-            ->addOption('notify', null, InputOption::VALUE_NONE, 'Отправить сводку в Telegram (AdminNotifier)');
+            ->addOption('notify', null, InputOption::VALUE_NONE, 'Отправить сводку в Telegram (AdminNotifier)')
+            ->addOption('digest', null, InputOption::VALUE_NONE, 'Положить сводку в утренний дайджест (MorningDigestInbox) вместо отправки');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -132,7 +136,14 @@ class CompetitorWatchCommand extends Command
             $io->success('Срез сохранён');
         }
 
-        if ($input->getOption('notify') && $this->notifier->isEnabled()) {
+        if ($input->getOption('digest')) {
+            $ok = $this->inbox->add('competitor-' . $slug, $this->digest($src['title'], $companies, $products, $fresh24h, $newsOn, $newsTitle, $prev), 20);
+            $io->text('Сводка положена в утренний дайджест');
+            if (!$ok) {
+                $io->error('Дайджест уже ушёл, прямая отправка сводки не удалась');
+                return Command::FAILURE;
+            }
+        } elseif ($input->getOption('notify') && $this->notifier->isEnabled()) {
             $this->notifier->send($this->digest($src['title'], $companies, $products, $fresh24h, $newsOn, $newsTitle, $prev));
             $io->text('Сводка отправлена в Telegram');
         }

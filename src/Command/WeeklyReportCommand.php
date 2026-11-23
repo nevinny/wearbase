@@ -3,6 +3,7 @@
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -20,6 +21,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  *   php bin/console app:report:weekly            # снять + отправить в TG
  *   php bin/console app:report:weekly --stdout-only
+ *   php bin/console app:report:weekly --digest     # крон пн: недельный блок утреннего дайджеста
  */
 #[AsCommand(name: 'app:report:weekly', description: 'Недельный дайджест видимости в поиске (w-w) в Telegram — запускать с Mac')]
 class WeeklyReportCommand extends Command
@@ -27,6 +29,7 @@ class WeeklyReportCommand extends Command
     public function __construct(
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
+        private readonly MorningDigestInbox $inbox,
     ) {
         parent::__construct();
     }
@@ -34,6 +37,7 @@ class WeeklyReportCommand extends Command
     protected function configure(): void
     {
         $this->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Не слать в Telegram, только вывести');
+        $this->addOption('digest', null, InputOption::VALUE_NONE, 'Положить в утренний дайджест (MorningDigestInbox) вместо отправки');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -149,13 +153,22 @@ class WeeklyReportCommand extends Command
         );
 
         $io->text(strip_tags($msg));
-        if (!$input->getOption('stdout-only')) {
-            if (!$this->notifier->isEnabled()) {
-                $io->warning('Telegram не настроен (ADMIN_TELEGRAM_CHAT_ID).');
-                return Command::SUCCESS;
-            }
-            $this->notifier->send($msg);
+        if ($input->getOption('stdout-only')) {
+            return Command::SUCCESS;
         }
+        if ($input->getOption('digest')) {
+            if (!$this->inbox->add('weekly', $msg, 30)) {
+                $io->error('Дайджест уже ушёл, прямая отправка не удалась');
+                return Command::FAILURE;
+            }
+            $io->text('Положено в утренний дайджест');
+            return Command::SUCCESS;
+        }
+        if (!$this->notifier->isEnabled()) {
+            $io->warning('Telegram не настроен (ADMIN_TELEGRAM_CHAT_ID).');
+            return Command::SUCCESS;
+        }
+        $this->notifier->send($msg);
 
         return Command::SUCCESS;
     }

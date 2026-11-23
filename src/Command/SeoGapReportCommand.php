@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use App\Service\Seo\SeoQueryGapProvider;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -46,7 +47,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  *   php bin/console app:seo:gap-report --stdout-only
  *   php bin/console app:seo:gap-report --band=striking --stdout-only
- *   php bin/console app:seo:gap-report --notify --no-debug   # крон, пн 08:00
+ *   php bin/console app:seo:gap-report --notify --no-debug   # сразу в TG
+ *   php bin/console app:seo:gap-report --digest --no-debug   # крон пн: секция утреннего дайджеста
  */
 #[AsCommand(
     name: 'app:seo:gap-report',
@@ -84,6 +86,7 @@ class SeoGapReportCommand extends Command
         private readonly SeoQueryGapProvider $gapProvider,
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
+        private readonly MorningDigestInbox $inbox,
     ) {
         parent::__construct();
     }
@@ -98,6 +101,7 @@ class SeoGapReportCommand extends Command
             ->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Только вывод, без снапшота и без TG')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Вывести полные данные в JSON вместо таблиц')
             ->addOption('notify', null, InputOption::VALUE_NONE, 'Отправить компактную сводку в Telegram (AdminNotifier)')
+            ->addOption('digest', null, InputOption::VALUE_NONE, 'Положить сводку в утренний дайджест (MorningDigestInbox) вместо отправки')
         ;
     }
 
@@ -173,7 +177,12 @@ class SeoGapReportCommand extends Command
                 $this->persistSnapshot($bandName, $this->snapshotRows($groups));
             }
 
-            if ($notify && $this->notifier->isEnabled()) {
+            if ($input->getOption('digest')) {
+                if (!$this->inbox->add('seo-gap', $this->formatDigest($byBand), 40)) {
+                    $io->error('Дайджест уже ушёл, прямая отправка сводки не удалась');
+                    return Command::FAILURE;
+                }
+            } elseif ($notify && $this->notifier->isEnabled()) {
                 $this->notifier->send($this->formatDigest($byBand));
             }
         }
@@ -284,7 +293,11 @@ class SeoGapReportCommand extends Command
 
         $msg = implode("\n", $lines);
         if (mb_strlen($msg) > $charCap) {
-            $msg = mb_substr($msg, 0, $charCap - 1) . '…';
+            // Режем по границе строки: обрезка посреди <b>…</b> ломает parse_mode=HTML, и TG
+            // отвергает сообщение целиком (в дайджесте — вместе со всеми секциями).
+            $cut = mb_substr($msg, 0, $charCap - 2);
+            $nl  = mb_strrpos($cut, "\n");
+            $msg = ($nl !== false ? mb_substr($cut, 0, $nl) : strip_tags($cut)) . "\n…";
         }
 
         return $msg;
