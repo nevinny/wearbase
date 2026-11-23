@@ -19,7 +19,8 @@ use Symfony\Component\HttpKernel\KernelEvents;
  * других terminate-слушателей тоже идут сразу, а не в потерянную очередь.
  * kernel.terminate срабатывает и после 500 (HttpKernel превращает исключение в Response);
  * теряются сообщения только при фатале процесса (OOM/max_execution_time) до terminate.
- * Сбои Telegram не бросают исключений: TelegramNotifier::send логирует и возвращает false.
+ * Сбои Telegram не бросают исключений: TelegramNotifier::send логирует и возвращает false;
+ * узнать результат можно через sendChecked() (send() оставлен void ради совместимости).
  */
 class AdminNotifier
 {
@@ -32,15 +33,19 @@ class AdminNotifier
         private readonly string $adminChatId = '',
     ) {}
 
-    /** @param array<mixed>|null $replyMarkup */
-    private function dispatch(string $html, ?array $replyMarkup = null): void
+    /**
+     * @param array<mixed>|null $replyMarkup
+     * @return bool true — поставлено в очередь (HTTP) или Telegram принял (CLI)
+     */
+    private function dispatch(string $html, ?array $replyMarkup = null): bool
     {
         if ($this->requestStack->getMainRequest() !== null) {
             $this->queue[] = [$html, $replyMarkup];
 
-            return;
+            return true;
         }
-        $this->telegram->send($this->adminChatId, $html, $replyMarkup);
+
+        return $this->telegram->send($this->adminChatId, $html, $replyMarkup);
     }
 
     #[AsEventListener(event: KernelEvents::TERMINATE)]
@@ -60,10 +65,21 @@ class AdminNotifier
 
     public function send(string $html): void
     {
+        $this->sendChecked($html);
+    }
+
+    /**
+     * Как send(), но сообщает результат: в CLI — ответ Telegram (false = не доставлено,
+     * причина в логе TelegramNotifier), в HTTP — true при постановке в очередь terminate.
+     * Чат не настроен → false. Для отправок, которые не должны теряться молча (утренний дайджест).
+     */
+    public function sendChecked(string $html): bool
+    {
         if ($this->adminChatId === '') {
-            return;
+            return false;
         }
-        $this->dispatch($html);
+
+        return $this->dispatch($html);
     }
 
     /**

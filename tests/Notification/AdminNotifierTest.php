@@ -70,6 +70,20 @@ class AdminNotifierTest extends TestCase
         $this->assertSame(['late'], array_column($this->sent, 1));
     }
 
+    public function testSendCheckedReportsTelegramResultInCli(): void
+    {
+        $tg = $this->createMock(TelegramNotifier::class);
+        $tg->method('send')->willReturn(false);
+
+        $this->assertFalse((new AdminNotifier($tg, new RequestStack(), '42'))->sendChecked('x'));
+        $this->assertTrue((new AdminNotifier($this->telegram(), new RequestStack(), '42'))->sendChecked('y'));
+        $this->assertFalse((new AdminNotifier($this->telegram(), new RequestStack(), ''))->sendChecked('z'), 'чат не настроен — не доставлено');
+
+        $stack = new RequestStack();
+        $stack->push(new Request());
+        $this->assertTrue((new AdminNotifier($tg, $stack, '42'))->sendChecked('queued'), 'HTTP: поставлено в очередь');
+    }
+
     public function testDisabledWithoutChatIdIsNoop(): void
     {
         $stack = new RequestStack();

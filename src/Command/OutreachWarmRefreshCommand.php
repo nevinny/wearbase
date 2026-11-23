@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use App\Service\Outreach\WarmOfferService;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
@@ -39,7 +40,8 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  * отправка — отдельное ручное решение человека (вне этой команды).
  *
  *   php bin/console app:outreach:warm-refresh --dry-run   # посчитать, ничего не писать
- *   php bin/console app:outreach:warm-refresh              # реальный прогон (крон: пн 08:30)
+ *   php bin/console app:outreach:warm-refresh              # реальный прогон, сводка сразу в TG
+ *   php bin/console app:outreach:warm-refresh --digest     # крон пн: сводка в утренний дайджест
  */
 #[AsCommand(
     name: 'app:outreach:warm-refresh',
@@ -56,6 +58,7 @@ class OutreachWarmRefreshCommand extends Command
         private readonly Connection $db,
         private readonly AdminNotifier $notifier,
         private readonly WarmOfferService $warmOffer,
+        private readonly MorningDigestInbox $inbox,
         #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {
@@ -68,6 +71,7 @@ class OutreachWarmRefreshCommand extends Command
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Максимум тёплых лидов за прогон', (string) self::DEFAULT_LIMIT)
             ->addOption('min-clicks', null, InputOption::VALUE_REQUIRED, 'Минимум кликов за 28 дней, чтобы считать лид тёплым', (string) self::DEFAULT_MIN_CLICKS)
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Посчитать и показать кандидатов, ничего не писать (ни в outreach_log, ни в файл, ни в TG)')
+            ->addOption('digest', null, InputOption::VALUE_NONE, 'Сводку — в утренний дайджест (MorningDigestInbox) вместо отправки')
         ;
     }
 
@@ -119,7 +123,10 @@ class OutreachWarmRefreshCommand extends Command
         $file = $this->writeDraftsFile($drafts);
         $io->text('Драфты сохранены: ' . $file);
 
-        $this->notifyOwner($drafts, $file);
+        if (!$this->notifyOwner($drafts, $file, (bool) $input->getOption('digest'))) {
+            $io->error('Дайджест уже ушёл, прямая отправка сводки не удалась (драфты сохранены)');
+            return Command::FAILURE;
+        }
 
         $io->success(sprintf('Готово: %d новых тёплых лидов, драфты в %s.', count($drafts), $file));
 
@@ -215,10 +222,10 @@ class OutreachWarmRefreshCommand extends Command
     /**
      * @param list<array{lead: array, similar: array, subject: string, body: string}> $drafts
      */
-    private function notifyOwner(array $drafts, string $file): void
+    private function notifyOwner(array $drafts, string $file, bool $digest): bool
     {
-        if (!$this->notifier->isEnabled()) {
-            return; // TG не настроен — деградируем в no-op (env пуст в test/офлайн)
+        if (!$digest && !$this->notifier->isEnabled()) {
+            return true; // TG не настроен — деградируем в no-op (env пуст в test/офлайн)
         }
 
         $top = array_slice($drafts, 0, 5);
@@ -236,6 +243,11 @@ class OutreachWarmRefreshCommand extends Command
             count($drafts), $topLines, $file,
         );
 
+        if ($digest) {
+            return $this->inbox->add('outreach-warm', $msg, 60);
+        }
         $this->notifier->send($msg);
+
+        return true;
     }
 }

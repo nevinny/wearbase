@@ -8,6 +8,7 @@ use App\Entity\AdvisorIdea;
 use App\Entity\AdvisorRun;
 use App\Entity\StateSnapshot;
 use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use App\Repository\AdvisorIdeaRepository;
 use App\Repository\StateSnapshotRepository;
 use App\Service\Advisor\AdvisorRag;
@@ -32,6 +33,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  *   php bin/console app:advisor:tick            # сформировать, сохранить AdvisorRun, отправить в TG
  *   php bin/console app:advisor:tick --dry-run  # только напечатать дайджест, НЕ слать и НЕ сохранять
+ *   php bin/console app:advisor:tick --digest   # крон: сохранить и положить секцию в утренний дайджест
+ *                                               # (без Δ-строки — цифры в ядре app:report:daily)
  */
 #[AsCommand(name: 'app:advisor:tick', description: 'Детерминированный дайджест советника в Telegram (шаг рендера, без LLM)')]
 class AdvisorTickCommand extends Command
@@ -74,6 +77,7 @@ class AdvisorTickCommand extends Command
         private readonly AnomalyDetector $detector,
         private readonly AdvisorRag $rag,
         private readonly LlmService $llm,
+        private readonly MorningDigestInbox $inbox,
     ) {
         parent::__construct();
     }
@@ -81,12 +85,14 @@ class AdvisorTickCommand extends Command
     protected function configure(): void
     {
         $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Только напечатать дайджест, не слать в TG и не сохранять AdvisorRun');
+        $this->addOption('digest', null, InputOption::VALUE_NONE, 'Секцию — в утренний дайджест (MorningDigestInbox) вместо отправки; без Δ-строки метрик');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io     = new SymfonyStyle($input, $output);
         $dryRun = (bool) $input->getOption('dry-run');
+        $digestMode = (bool) $input->getOption('digest');
 
         $snap = $this->snapshots->findLatest();
         if ($snap === null) {
@@ -94,7 +100,10 @@ class AdvisorTickCommand extends Command
             return Command::FAILURE;
         }
 
-        $proposed  = $this->ideas->findTopProposed(3);
+        // Бэклог берём с запасом: топ по ICE часто состоит из перефразов одной идеи
+        // (3 варианта «Аудит форм захвата»), topByIce отсеивает near-дубли.
+        $backlog   = $this->ideas->findTopProposed(15);
+        $proposed  = array_slice($backlog, 0, 3);
         $shipped   = $this->ideas->findBy(['status' => AdvisorIdea::STATUS_SHIPPED], ['updatedAt' => 'DESC'], 5);
         $measuring = $this->ideas->findBy(['status' => AdvisorIdea::STATUS_MEASURING], ['updatedAt' => 'DESC'], 5);
 
@@ -116,9 +125,9 @@ class AdvisorTickCommand extends Command
         }
 
         // «💡 Предлагаю» — топ по ICE из свежих + уже лежащих в бэклоге proposed (дедуп по hash).
-        $proposedForDigest = $this->topByIce($freshIdeas, $proposed, 3);
+        $proposedForDigest = $this->topByIce($freshIdeas, $backlog, 3);
 
-        $digest = $this->render($snap, $signals, $proposedForDigest, $shipped, $measuring);
+        $digest = $this->render($snap, $signals, $proposedForDigest, $shipped, $measuring, !$digestMode);
 
         $io->text(strip_tags($digest));
         $io->note($ideaNote);
@@ -164,6 +173,15 @@ class AdvisorTickCommand extends Command
         $this->em->persist($run);
         $this->em->flush();
 
+        if ($digestMode) {
+            if (!$this->inbox->add('advisor', $digest, 10)) {
+                $io->error(sprintf('AdvisorRun #%d сохранён, но дайджест уже ушёл и прямая отправка не удалась.', $run->getId()));
+                return Command::FAILURE;
+            }
+            $io->success(sprintf('AdvisorRun #%d сохранён и положен в утренний дайджест.', $run->getId()));
+            return Command::SUCCESS;
+        }
+
         if (!$this->notifier->isEnabled()) {
             $io->warning('Telegram не настроен (ADMIN_TELEGRAM_CHAT_ID) — AdvisorRun сохранён, но не отправлен.');
             return Command::SUCCESS;
@@ -180,7 +198,7 @@ class AdvisorTickCommand extends Command
      * @param AdvisorIdea[] $shipped
      * @param AdvisorIdea[] $measuring
      */
-    private function render(StateSnapshot $snap, array $signals, array $proposed, array $shipped, array $measuring): string
+    private function render(StateSnapshot $snap, array $signals, array $proposed, array $shipped, array $measuring, bool $withDelta = true): string
     {
         $metrics = $snap->getMetrics();
         $delta   = $snap->getDelta();
@@ -192,7 +210,9 @@ class AdvisorTickCommand extends Command
         if ($signalsBlock !== null) {
             $parts[] = $signalsBlock;
         }
-        $parts[] = $this->deltaLine($metrics, $delta);         // Δ-строка метрик
+        if ($withDelta) {
+            $parts[] = $this->deltaLine($metrics, $delta);     // Δ-строка метрик (в утреннем дайджесте цифры — в ядре)
+        }
 
         if ($shipped !== []) {
             $rows = array_map(
@@ -221,9 +241,12 @@ class AdvisorTickCommand extends Command
 
         $text = implode("\n\n", $parts);
 
-        // Гард ≤4000 знаков (TG-лимит на одно сообщение).
+        // Гард ≤4000 знаков (TG-лимит на одно сообщение). Режем по границе строки: обрезка
+        // посреди <b>…</b> ломает parse_mode=HTML, и TG отвергает сообщение целиком.
         if (mb_strlen($text) > 4000) {
-            $text = mb_substr($text, 0, 3990) . '…';
+            $cut  = mb_substr($text, 0, 3990);
+            $nl   = mb_strrpos($cut, "\n");
+            $text = ($nl !== false ? mb_substr($cut, 0, $nl) : strip_tags($cut)) . "\n…";
         }
 
         return $text;
@@ -379,7 +402,53 @@ class AdvisorTickCommand extends Command
         $list = array_values($byHash);
         usort($list, static fn(AdvisorIdea $a, AdvisorIdea $b) => $b->getIceScore() <=> $a->getIceScore());
 
-        return array_slice($list, 0, $limit);
+        $picked = [];
+        foreach ($list as $i) {
+            foreach ($picked as $p) {
+                if (self::isNearDuplicateTitle((string) $i->getTitle(), (string) $p->getTitle())) {
+                    continue 2; // перефраз уже показанной идеи
+                }
+            }
+            $picked[] = $i;
+            if (count($picked) >= $limit) {
+                break;
+            }
+        }
+
+        return $picked;
+    }
+
+    /**
+     * Near-дубль заголовков идей: ≥2 общих основы И они покрывают ≥1/3 более короткого
+     * заголовка. Основа = первые 4 буквы слова длиной ≥4; латиница транслитерируется
+     * (Drip ≈ дрип), т.к. gemma пишет английские пояснения в скобках.
+     */
+    public static function isNearDuplicateTitle(string $a, string $b): bool
+    {
+        $sa = self::titleStems($a);
+        $sb = self::titleStems($b);
+        if ($sa === [] || $sb === []) {
+            return false;
+        }
+        $common = count(array_intersect_key($sa, $sb));
+
+        return $common >= 2 && $common / min(count($sa), count($sb)) >= 1 / 3;
+    }
+
+    /** @return array<string,true> */
+    private static function titleStems(string $title): array
+    {
+        static $translit = ['a' => 'а', 'b' => 'б', 'c' => 'к', 'd' => 'д', 'e' => 'е', 'f' => 'ф', 'g' => 'г',
+            'h' => 'х', 'i' => 'и', 'j' => 'дж', 'k' => 'к', 'l' => 'л', 'm' => 'м', 'n' => 'н', 'o' => 'о',
+            'p' => 'п', 'q' => 'к', 'r' => 'р', 's' => 'с', 't' => 'т', 'u' => 'у', 'v' => 'в', 'w' => 'в',
+            'x' => 'кс', 'y' => 'й', 'z' => 'з'];
+        preg_match_all('/[\p{L}\p{N}]{4,}/u', mb_strtolower($title), $m);
+        $stems = [];
+        foreach ($m[0] as $word) {
+            $stems[mb_substr(strtr($word, $translit), 0, 4)] = true;
+        }
+
+        return $stems;
     }
 
     /**
@@ -406,7 +475,7 @@ class AdvisorTickCommand extends Command
     {
         foreach ($signals as $s) {
             if ($s['severity'] === AnomalyDetector::SEV_HIGH) {
-                return 'Главное: ' . $s['message'] . '.';
+                return 'Главное: ' . htmlspecialchars($s['message']) . '.';
             }
         }
 

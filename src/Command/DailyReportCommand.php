@@ -3,9 +3,9 @@
 namespace App\Command;
 
 use App\Notification\AdminNotifier;
+use App\Notification\MorningDigestInbox;
 use App\Service\Report\CardConversionCalculator;
 use App\Service\SecretCipher;
-use App\Service\Seo\AioQueryClassifier;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -17,15 +17,21 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * Ежедневный дайджест в Telegram: публикации на проде + индексация GSC.
- * ⚠️ Запускать ТОЛЬКО с Mac — Telegram заблокирован и с .43, и с прода regru.
- * Публикации тянем с прода по агент-API (/api/v1/publish-stats); GSC — из локальной БД
- * (синк делает крон на .43, данные ложатся сюда). Для крона Mac: 17 9 * * *
+ * Утренний дайджест в Telegram (docs/commands.md «Утренний дайджест»): одно отправление вместо
+ * пачки информационных сообщений.
  *
- *   php bin/console app:report:daily            # снять + отправить в TG
- *   php bin/console app:report:daily --stdout-only
+ * Ядро: «🚨 Требует внимания» (упавшие/предупредившие задачи Mac-крона за 26ч + модерация,
+ * только если есть что сказать) → цифры (публикации прода по агент-API /api/v1/publish-stats,
+ * GSC/Яндекс/контакты из локальной БД, РСЯ/соцсети по API; нулевые/пустые строки не выводим)
+ * → конверсия карточек. Затем секции из MorningDigestInbox (советник, конкуренты, по
+ * понедельникам — недельный блок), всё режется на сообщения ≤4000 знаков по границам секций.
+ * Сбой любой отправки → FAILURE и входящие НЕ помечаются отправленными (сработает алерт
+ * диспетчера). Запускается с Mac (крон 30 9 * * *).
+ *
+ *   php bin/console app:report:daily               # собрать + отправить в TG
+ *   php bin/console app:report:daily --stdout-only # превью: ядро + секции входящих, ничего не шлёт и не помечает
  */
-#[AsCommand(name: 'app:report:daily', description: 'Ежедневный дайджест (публикации прода + GSC + Яндекс) в Telegram — запускать с Mac')]
+#[AsCommand(name: 'app:report:daily', description: 'Утренний дайджест (проблемы кронов + цифры + секции информационных кронов) в Telegram — запускать с Mac')]
 class DailyReportCommand extends Command
 {
     public function __construct(
@@ -33,8 +39,8 @@ class DailyReportCommand extends Command
         private readonly AdminNotifier $notifier,
         private readonly HttpClientInterface $httpClient,
         private readonly SecretCipher $cipher,
-        private readonly AioQueryClassifier $aio,
         private readonly CardConversionCalculator $cardConversion,
+        private readonly MorningDigestInbox $inbox,
         #[Autowire('%env(default::PROD_API_URL)%')]
         private readonly ?string $prodApiUrl,
         #[Autowire('%env(default::AGENT_API_TOKEN)%')]
@@ -248,55 +254,16 @@ class DailyReportCommand extends Command
     }
 
     /**
-     * AIO-радар приоритетов: запросы с показами, но нулём кликов (клик забирает
-     * AI Overview / выдача), где формат запроса вероятно триггерит AIO
-     * (AioQueryClassifier — тот же, что в app:seo:aio-queries). Из gsc_query_stats
-     * (локальная БД). Пусто → нет данных/утечки. Кап $limit.
-     *
-     * @return list<array{query:string,impr:int,pos:float,label:string}>
-     */
-    private function fetchAioLeakQueries(int $minImpr = 8, int $limit = 5): array
-    {
-        try {
-            $rows = $this->db->fetchAllAssociative(
-                'SELECT query, SUM(impressions) impr, SUM(clicks) clk, AVG(position) pos
-                 FROM gsc_query_stats GROUP BY query
-                 HAVING impr >= ? AND clk = 0
-                 ORDER BY impr DESC LIMIT 200',
-                [$minImpr],
-            );
-        } catch (\Throwable) {
-            return []; // таблицы нет / не синкали — секция просто не покажется
-        }
-        $out = [];
-        foreach ($rows as $r) {
-            $q = (string) $r['query'];
-            if (!$this->aio->isAioLikely($q)) {
-                continue;
-            }
-            $out[] = [
-                'query' => $q,
-                'impr'  => (int) $r['impr'],
-                'pos'   => round((float) $r['pos'], 1),
-                'label' => $this->aio->classify($q)['label'],
-            ];
-            if (count($out) >= $limit) {
-                break;
-            }
-        }
-
-        return $out;
-    }
-
-    /**
      * Conversion-loop: сквозная конверсия карточки (поисковые клики → клик на сайт бренда)
      * за 7 дней vs пред. неделю + топ-3/анти-топ-3 карточек (мин. 5 входящих кликов).
+     * Списки — только когда в рейтинг попало ≥3 карточек (иначе топ и анти-топ — одни и те же
+     * бренды); анти-топ не повторяет топ.
      */
     private function buildConversionLine(): string
     {
         $conv = $this->cardConversion->compute();
         if (!$conv['available']) {
-            return "\n\n<b>🎯 Конверсия карточек (7дн):</b> — (" . $conv['reason'] . ')';
+            return '<b>🎯 Конверсия карточек (7дн):</b> — (' . $conv['reason'] . ')';
         }
 
         $this_ = $conv['this_week'];
@@ -308,23 +275,154 @@ class DailyReportCommand extends Command
             htmlspecialchars((string) $r['title']), $r['rate'], $r['incoming'], $r['outgoing'],
         );
 
-        $line1 = sprintf(
-            "\n\n<b>🎯 Конверсия карточек (7дн):</b> %s%% (пред. %s%%, Δ%+.2f)",
+        $line = sprintf(
+            '<b>🎯 Конверсия карточек (7дн):</b> %s%% (пред. %s%%, Δ%+.2f)',
             $this_['rate'], $prev['rate'], $delta,
         );
 
-        $line2 = '';
-        if ($conv['top'] !== [] || $conv['bottom'] !== []) {
-            $line2 = "\nТоп: " . implode(' · ', array_map($fmt, $conv['top']))
-                . ' — Анти-топ: ' . implode(' · ', array_map($fmt, $conv['bottom']));
+        $top = $conv['top'];
+        if (count($top) >= 3) {
+            $topIds = array_column($top, 'brand_id');
+            $bottom = array_values(array_filter(
+                $conv['bottom'],
+                static fn(array $r) => !in_array($r['brand_id'], $topIds, true),
+            ));
+            $line .= "\nТоп: " . implode(' · ', array_map($fmt, $top));
+            if ($bottom !== []) {
+                $line .= ' — Анти-топ: ' . implode(' · ', array_map($fmt, $bottom));
+            }
         }
 
-        return $line1 . $line2;
+        return $line;
+    }
+
+    /**
+     * «🚨 Требует внимания»: включённые задачи Mac-крона (environment='dev'), отработавшие за
+     * 26ч с exit≠0 или с [WARNING]/[ERROR] в хвосте вывода. Диспетчер алертит только по exit≠0
+     * и только на переходе, поэтому предупреждения с exit 0 иначе не видит никто.
+     *
+     * @return list<string>
+     */
+    private function buildAttentionLines(): array
+    {
+        // last_run_at пишет диспетчер московским wall-time — порог считаем в той же зоне.
+        $since = (new \DateTime('-26 hours', new \DateTimeZone('Europe/Moscow')))->format('Y-m-d H:i:s');
+        try {
+            $rows = $this->db->fetchAllAssociative(
+                "SELECT name, last_exit_code, last_output FROM scheduled_command
+                 WHERE environment = 'dev' AND enabled = 1 AND last_run_at >= ?
+                   AND command NOT LIKE 'app:report:daily%'
+                   AND (last_exit_code <> 0 OR last_output LIKE '%[WARNING]%' OR last_output LIKE '%[ERROR]%')
+                 ORDER BY name",
+                [$since],
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $lines = [];
+        foreach ($rows as $r) {
+            $issue = self::extractIssue((string) $r['last_output']);
+            if ($issue === '') {
+                $issue = 'exit ' . (int) $r['last_exit_code'];
+            }
+            $lines[] = sprintf('• <b>%s</b> — %s', htmlspecialchars((string) $r['name']), htmlspecialchars($issue));
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Первая содержательная строка проблемы из хвоста вывода команды (≤$max знаков):
+     * блок [ERROR] (приоритет) или [WARNING] со склейкой строк-продолжений и следующего за
+     * ним списка «* item»; без маркера — последняя содержательная строка. Прогресс-бары,
+     * рамки таблиц и следующий [TAG] блок обрывают.
+     */
+    public static function extractIssue(string $output, int $max = 150): string
+    {
+        $lines = preg_split('/\R/u', $output) ?: [];
+        $start = null;
+        foreach (['[ERROR]', '[WARNING]'] as $tag) {
+            foreach ($lines as $i => $l) {
+                if (str_contains($l, $tag)) {
+                    $start = $i;
+                    break 2;
+                }
+            }
+        }
+
+        if ($start === null) {
+            for ($i = count($lines) - 1; $i >= 0; $i--) {
+                $t = trim($lines[$i]);
+                if ($t !== '' && !self::isOutputNoise($t)) {
+                    return self::clip($t, $max);
+                }
+            }
+
+            return '';
+        }
+
+        $parts    = [trim((string) preg_replace('/^.*?\[(ERROR|WARNING)\]/u', '', $lines[$start]))];
+        $items    = [];
+        $sawBlank = false;
+        for ($i = $start + 1, $n = count($lines); $i < $n; $i++) {
+            $t = trim($lines[$i]);
+            if ($t === '') {
+                if ($items !== [] || $sawBlank) {
+                    break;
+                }
+                $sawBlank = true;
+                continue;
+            }
+            if (self::isOutputNoise($t) || preg_match('/^\[[A-Z]+\]/', $t)) {
+                break;
+            }
+            if (str_starts_with($t, '* ')) {
+                $items[] = trim(substr($t, 2));
+                continue;
+            }
+            if ($sawBlank || $items !== []) {
+                break;
+            }
+            $parts[] = $t;
+        }
+
+        $text = implode(' ', array_filter($parts, static fn(string $p) => $p !== ''));
+        if ($items !== []) {
+            $text = rtrim($text, ' :') . ': ' . implode(', ', $items);
+        }
+
+        return self::clip($text, $max);
+    }
+
+    private static function isOutputNoise(string $line): bool
+    {
+        return (bool) preg_match('/^\d+\/\d+ \[|[▓░]|^[-=+\s]+$/u', $line);
+    }
+
+    private static function clip(string $text, int $max): string
+    {
+        $text = trim((string) preg_replace('/\s+/u', ' ', $text));
+
+        return mb_strlen($text) > $max ? mb_substr($text, 0, $max - 1) . '…' : $text;
+    }
+
+    /** 'Y-m-d H:i:s' → 'd.m H:i'; пусто/мусор → '—'. */
+    private static function shortTs(mixed $ts): string
+    {
+        if (!is_string($ts) || $ts === '' || $ts === '—') {
+            return '—';
+        }
+        try {
+            return (new \DateTime($ts))->format('d.m H:i');
+        } catch (\Throwable) {
+            return $ts;
+        }
     }
 
     protected function configure(): void
     {
-        $this->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Не слать в Telegram, только вывести');
+        $this->addOption('stdout-only', null, InputOption::VALUE_NONE, 'Не слать в Telegram и не помечать входящие — только вывести, что ушло бы');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -332,54 +430,81 @@ class DailyReportCommand extends Command
         $io  = new SymfonyStyle($input, $output);
         $one = fn(string $sql) => (int) $this->db->fetchOne($sql);
 
-        // --- Публикации с прода (агент-API; TG с прода недоступен — поэтому тянем сюда) ---
-        $pub = ['published_today' => '—', 'published_yesterday' => '—', 'published_total' => '—', 'queue_pending' => '—', 'last_published' => '—'];
-        $moderation = null;
+        // --- Публикации с прода (агент-API) ---
+        $pub = null;
         try {
             if (trim((string) $this->prodApiUrl) !== '') {
-                $d = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/publish-stats', [
+                $pub = $this->httpClient->request('GET', rtrim((string) $this->prodApiUrl, '/') . '/api/v1/publish-stats', [
                     'headers' => ['X-Agent-Token' => (string) $this->agentToken],
                     'timeout' => 8,
                 ])->toArray(false);
-                $pub = array_merge($pub, array_intersect_key($d, $pub));
-                $moderation = $d['moderation'] ?? null;
+                if (!isset($pub['published_total'])) {
+                    $pub = null; // 401/ошибка API — тело без контракта
+                }
             }
         } catch (\Throwable) {
-            // прод недоступен — оставляем «—»
+            $pub = null; // прод недоступен
+        }
+        $moderation = $pub['moderation'] ?? null;
+
+        if ($pub === null) {
+            $pubLine = '<b>Публикации:</b> — (прод недоступен)';
+        } else {
+            $queue = (int) ($pub['queue_pending'] ?? 0);
+            if (!array_key_exists('queue_raw', $pub)) {
+                // Прод ещё со старым publish-stats: queue_pending там без niche/origin-гейтов.
+                $drip = sprintf('очередь без гейтов %d', $queue);
+            } elseif ($queue > 0) {
+                $drip = sprintf('дрип: кандидатов %d', $queue);
+            } else {
+                $drip = 'дрип: публиковать нечего (кандидатов 0)';
+            }
+            $pubLine = sprintf(
+                '<b>Публикации:</b> вчера %s · всего %s · %s · последняя %s',
+                $pub['published_yesterday'] ?? '—', $pub['published_total'], $drip, self::shortTs($pub['last_published'] ?? null),
+            );
         }
 
-        // --- GSC (локальная БД; синк делает крон .43) ---
-        $cohort = $this->db->fetchAssociative(
-            "SELECT COUNT(s.id) checked, COALESCE(SUM(s.first_indexed_at IS NOT NULL),0) idx FROM brand b
-             JOIN gsc_index_status s ON s.brand_id = b.id
-             WHERE b.published_at IS NOT NULL AND b.published_at <= DATE_SUB(NOW(), INTERVAL 14 DAY)",
-        ) ?: ['checked' => 0, 'idx' => 0];
-        $gscChecked = $one("SELECT COUNT(*) FROM gsc_index_status");
-        $gscIndexed = $one("SELECT COALESCE(SUM(indexed),0) FROM gsc_index_status");
-        $gscEver    = $one("SELECT COUNT(*) FROM gsc_index_status WHERE first_indexed_at IS NOT NULL");
-        $gscLast    = $this->db->fetchOne("SELECT MAX(last_checked_at) FROM gsc_index_status") ?: '—';
-        $cohortTxt  = (int) $cohort['checked'] > 0
-            ? sprintf('%d/%d (%.0f%%)', $cohort['idx'], $cohort['checked'], 100 * $cohort['idx'] / max(1, (int) $cohort['checked']))
-            : '— (нет когорты 14д+)';
+        // --- GSC (локальная БД) ---
+        $numbers = [$pubLine];
+        $gscChecked = $one('SELECT COUNT(*) FROM gsc_index_status');
+        if ($gscChecked > 0) {
+            $cohort = $this->db->fetchAssociative(
+                "SELECT COUNT(s.id) checked, COALESCE(SUM(s.first_indexed_at IS NOT NULL),0) idx FROM brand b
+                 JOIN gsc_index_status s ON s.brand_id = b.id
+                 WHERE b.published_at IS NOT NULL AND b.published_at <= DATE_SUB(NOW(), INTERVAL 14 DAY)",
+            ) ?: ['checked' => 0, 'idx' => 0];
+            $cohortTxt = (int) $cohort['checked'] > 0
+                ? sprintf(' · когорта 14д+ %d/%d (%.0f%%)', $cohort['idx'], $cohort['checked'], 100 * $cohort['idx'] / max(1, (int) $cohort['checked']))
+                : '';
+            $numbers[] = sprintf(
+                '<b>GSC:</b> в индексе %d из %d · когда-либо %d%s · проверка %s',
+                $one('SELECT COALESCE(SUM(indexed),0) FROM gsc_index_status'),
+                $gscChecked,
+                $one('SELECT COUNT(*) FROM gsc_index_status WHERE first_indexed_at IS NOT NULL'),
+                $cohortTxt,
+                self::shortTs($this->db->fetchOne('SELECT MAX(last_checked_at) FROM gsc_index_status')),
+            );
+        }
 
         // --- Яндекс.Вебмастер (локальная БД; синк крон Mac 07:00) ---
-        $yaByType = $this->db->fetchAllAssociative(
-            "SELECT page_type, COUNT(*) c FROM yandex_index_status WHERE in_search = 1 GROUP BY page_type",
-        );
-        $yaCounts   = array_column($yaByType, 'c', 'page_type');
+        $yaCounts = array_column($this->db->fetchAllAssociative(
+            'SELECT page_type, COUNT(*) c FROM yandex_index_status WHERE in_search = 1 GROUP BY page_type',
+        ), 'c', 'page_type');
         $yaInSearch = array_sum($yaCounts);
-        $yaTypesTxt = implode(' · ', array_map(
-            fn($t, $c) => "{$t} {$c}",
-            array_keys($yaCounts), $yaCounts,
-        ));
-        $yaLast     = $this->db->fetchOne("SELECT MAX(last_checked_at) FROM yandex_index_status") ?: '—';
         $yaQ = $this->db->fetchAssociative(
-            "SELECT COUNT(*) c, COALESCE(SUM(shows),0) shows, COALESCE(SUM(clicks),0) clicks
-             FROM yandex_query_stats WHERE date_to = (SELECT MAX(date_to) FROM yandex_query_stats)",
+            'SELECT COUNT(*) c, COALESCE(SUM(shows),0) shows, COALESCE(SUM(clicks),0) clicks
+             FROM yandex_query_stats WHERE date_to = (SELECT MAX(date_to) FROM yandex_query_stats)',
         ) ?: ['c' => 0, 'shows' => 0, 'clicks' => 0];
-        $yaQtxt = (int) $yaQ['c'] > 0
-            ? sprintf('%d фраз · показы %d · клики %d', $yaQ['c'], $yaQ['shows'], $yaQ['clicks'])
-            : '—';
+        if ($yaInSearch > 0 || (int) $yaQ['c'] > 0) {
+            $numbers[] = sprintf(
+                '<b>Яндекс:</b> в поиске %d (%s)%s · проверка %s',
+                $yaInSearch,
+                implode(' · ', array_map(static fn($t, $c) => "{$t} {$c}", array_keys($yaCounts), $yaCounts)),
+                (int) $yaQ['c'] > 0 ? sprintf(' · %d фраз, показы %d, клики %d', $yaQ['c'], $yaQ['shows'], $yaQ['clicks']) : '',
+                self::shortTs($this->db->fetchOne('SELECT MAX(last_checked_at) FROM yandex_index_status')),
+            );
+        }
 
         // --- Контакты (локальная БД) ---
         $contacts = $this->db->fetchAssociative(
@@ -397,93 +522,64 @@ class DailyReportCommand extends Command
              LEFT JOIN brand_outreach o ON o.brand_id = b.id AND o.bounced_at IS NOT NULL
              WHERE b.status IN ('active', 'new')"
         ) ?: [];
-        $updated24h = (int) $this->db->fetchOne(
-            "SELECT COUNT(*) FROM brand WHERE contact_enriched_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"
-        );
-
-        $contactLine = '';
         if (($contacts['total'] ?? 0) > 0) {
-            $t   = (int) $contacts['total'];
-            $em  = (int) $contacts['with_email'];
-            $ph  = (int) $contacts['with_phone'];
-            $en  = (int) $contacts['enriched'];
-            $pa  = (int) $contacts['partial'];
-            $nf  = (int) $contacts['not_found'];
-            $bo  = (int) $contacts['bounced'];
-            $st  = (int) $contacts['stale'];
-            $u24 = $updated24h;
-            $contactLine = sprintf(
-                "\n\n<b>📬 Контакты:</b> email %d/%d (%d%%) · тел. %d/%d (%d%%) · " .
-                "enr %d · part %d · nf %d · %s · stale %d · +%d/24ч",
-                $em, $t, $t > 0 ? round(100 * $em / $t) : 0,
-                $ph, $t, $t > 0 ? round(100 * $ph / $t) : 0,
-                $en, $pa, $nf,
+            $t  = (int) $contacts['total'];
+            $em = (int) $contacts['with_email'];
+            $ph = (int) $contacts['with_phone'];
+            $bo = (int) $contacts['bounced'];
+            $numbers[] = sprintf(
+                '<b>📬 Контакты:</b> email %d/%d (%d%%) · тел. %d/%d (%d%%) · enr %d · part %d · nf %d · %s · stale %d · +%d/24ч',
+                $em, $t, round(100 * $em / $t),
+                $ph, $t, round(100 * $ph / $t),
+                (int) $contacts['enriched'], (int) $contacts['partial'], (int) $contacts['not_found'],
                 $bo > 0 ? "⛔ bounced {$bo}" : 'bounced 0',
-                $st, $u24,
+                (int) $contacts['stale'],
+                $one('SELECT COUNT(*) FROM brand WHERE contact_enriched_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)'),
             );
         }
 
-        // --- РСЯ (доход/показы за вчера; Partner API, только с Mac) ---
-        $rsya    = $this->fetchRsyaYesterday();
-        $rsyaLine = "\n\n<b>💰 РСЯ (вчера):</b> ";
-        if ($rsya !== null) {
-            $rsyaLine .= sprintf(
-                'доход %s ₽ · показы %s · клики %d · eCPM %s ₽',
+        // --- РСЯ (вчера; нет токена/данных/нули — строку не выводим) ---
+        $rsya = $this->fetchRsyaYesterday();
+        if ($rsya !== null && ($rsya['revenue'] > 0 || $rsya['impressions'] > 0)) {
+            $numbers[] = sprintf(
+                '<b>💰 РСЯ (вчера):</b> доход %s ₽ · показы %s · клики %d · eCPM %s ₽',
                 number_format($rsya['revenue'], 2, '.', ' '),
                 number_format($rsya['impressions'], 0, '.', ' '),
                 $rsya['clicks'],
                 number_format($rsya['ecpm'], 2, '.', ' '),
             );
-        } else {
-            $rsyaLine .= '— (нет токена или API недоступен)';
         }
 
-        // --- Соцсети (VK/IG API напрямую; Дзен best-effort + fallback из БД) ---
+        // --- Соцсети (VK/IG API; Дзен — только если были переходы на сайт) ---
         $vk   = $this->fetchVkStats();
         $ig   = $this->fetchIgStats();
         $dzen = $this->fetchDzenStats();
-        $igEngage = $ig !== null
-            ? sprintf('охват 28д %s · лайки %s · комм. %s', $ig['reach'] ?? '—', $ig['likes'] ?? '—', $ig['comments'] ?? '—')
-            : '—';
-        $socialLine = sprintf(
-            "\n\n<b>📱 Соцсети:</b> VK %s подписч. (%s постов) · IG %s подписч. (%s публ.)\n<b>IG вовлечённость:</b> %s\n<b>Дзен:</b> %s",
-            $vk !== null ? $vk['members'] : '—',
-            $vk !== null ? $vk['posts_total'] : '—',
-            $ig !== null ? $ig['followers'] : '—',
-            $ig !== null ? $ig['media'] : '—',
-            $igEngage,
-            isset($dzen['visits'])
-                ? sprintf('→ сайт за 7 дн: %s визитов, %s посетителей', $dzen['visits'], $dzen['users'])
-                : ($dzen['articles_in_feed'] ?? '—') . ' статей в фиде (Метрика недоступна)',
-        );
-
-        // --- Conversion-loop: сквозная конверсия карточки (поиск → карточка → клик на сайт бренда) ---
-        $convLine = $this->buildConversionLine();
-
-        // --- AIO-радар: запросы с показами, но клик уходит в ИИ-ответ (топ приоритетов на доработку) ---
-        $aioLeak = $this->fetchAioLeakQueries();
-        $aioLine = "\n\n<b>🔎 AIO-утечка (клик → ИИ-ответ):</b> ";
-        if ($aioLeak !== []) {
-            $aioLine .= "топ по показам\n" . implode("\n", array_map(
-                fn (array $q) => sprintf(
-                    '• %s — %d показ. · поз.%s <i>[%s]</i>',
-                    htmlspecialchars($q['query']), $q['impr'], $q['pos'], $q['label'],
-                ),
-                $aioLeak,
-            ));
-        } else {
-            $aioLine .= '— (нет данных gsc_query_stats или утечки)';
+        $social = [];
+        if ($vk !== null) {
+            $social[] = sprintf('VK %d подписч. (%d постов)', $vk['members'], $vk['posts_total']);
+        }
+        if ($ig !== null) {
+            $social[] = sprintf(
+                'IG %d подписч. (%d публ.), охват 28д %s, лайки %s, комм. %s',
+                $ig['followers'], $ig['media'], $ig['reach'] ?? '—', $ig['likes'] ?? '—', $ig['comments'] ?? '—',
+            );
+        }
+        if (($dzen['visits'] ?? 0) > 0) {
+            $social[] = sprintf('Дзен → сайт 7д: %d визитов, %d посетителей', $dzen['visits'], $dzen['users']);
+        }
+        if ($social !== []) {
+            $numbers[] = '<b>📱 Соцсети:</b> ' . implode(' · ', $social);
         }
 
-        // --- Модерация: очередь премодерации + заявки на владение (см. app:moderation:timeouts) ---
-        $moderationLine = '';
+        // --- Требует внимания: упавшие/предупредившие кроны + модерация ---
+        $attention = $this->buildAttentionLines();
         if ($moderation !== null && (
             ($moderation['queued'] ?? 0) > 0
             || ($moderation['reviewed_awaiting'] ?? 0) > 0
             || ($moderation['claims_pending'] ?? 0) > 0
         )) {
-            $moderationLine = sprintf(
-                "\n\n<b>🛂 Модерация:</b> %d в очереди (старейшая %d дн.), %d ждут решения, %d claim",
+            $attention[] = sprintf(
+                '• <b>🛂 Модерация:</b> %d в очереди (старейшая %d дн.), %d ждут решения, %d claim',
                 $moderation['queued'] ?? 0,
                 $moderation['oldest_queued_days'] ?? 0,
                 $moderation['reviewed_awaiting'] ?? 0,
@@ -491,56 +587,35 @@ class DailyReportCommand extends Command
             );
         }
 
-        $msg = sprintf(
-            "<b>📅 Дайджест · %s</b>\n\n" .
-            "<b>Публикации (прод):</b> вчера %s · всего %s · ждут %s\n" .
-            "Последняя: %s\n\n" .
-            "<b>GSC:</b> проверено %d · в индексе сейчас %d · когда-либо %d\n" .
-            "Когорта 14д+ в индексе: %s\n" .
-            "Последняя проверка: %s\n\n" .
-            "<b>Яндекс:</b> в поиске %d (%s) · запросы: %s\n" .
-            "Последняя проверка: %s%s%s%s%s%s%s",
-            (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'),
-            $pub['published_yesterday'], $pub['published_total'], $pub['queue_pending'],
-            $pub['last_published'],
-            $gscChecked, $gscIndexed, $gscEver,
-            $cohortTxt,
-            $gscLast,
-            $yaInSearch, $yaTypesTxt, $yaQtxt,
-            $yaLast,
-            $contactLine,
-            $rsyaLine,
-            $socialLine,
-            $convLine,
-            $aioLine,
-            $moderationLine,
-        );
+        $core = sprintf('<b>📅 Дайджест · %s</b>', (new \DateTime('now', new \DateTimeZone('Europe/Moscow')))->format('d.m'));
+        if ($attention !== []) {
+            $core .= "\n\n<b>🚨 Требует внимания</b>\n" . implode("\n", $attention);
+        }
+        $core .= "\n\n" . implode("\n", $numbers) . "\n\n" . $this->buildConversionLine();
 
-        $io->text(strip_tags($msg));
-        if (!$input->getOption('stdout-only')) {
-            if (!$this->notifier->isEnabled()) {
-                $io->warning('Telegram не настроен (ADMIN_TELEGRAM_CHAT_ID).');
-                return Command::SUCCESS;
-            }
-            $this->notifier->send($msg);
+        $messages = MorningDigestInbox::pack([$core, ...$this->inbox->sections()]);
 
-            // Свежеопубликованные (24ч) — отдельным сообщением с кнопкой «🚫 Скрыть с публикации»
-            // (TG-callback → BrandUnpublisher). Публикуется на проде, но TG ходит только с Mac,
-            // поэтому уведомление-с-кнопкой шлём отсюда (дневной крон Mac). Кап, чтобы не спамить.
-            $justPublished = $this->db->fetchAllAssociative(
-                "SELECT id, title, slug FROM brand
-                 WHERE status='active' AND published_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                 ORDER BY published_at DESC LIMIT 15"
-            );
-            foreach ($justPublished as $b) {
-                $this->notifier->sendWithButton(
-                    sprintf("✅ <b>Опубликован:</b> %s\nhttps://wearbase.ru/ru/brands/%s",
-                        htmlspecialchars((string) $b['title']), $b['slug']),
-                    '🚫 Скрыть с публикации',
-                    'unpub:' . (int) $b['id'],
-                );
+        foreach ($messages as $n => $msg) {
+            $io->section(sprintf('Сообщение %d/%d · %d знаков', $n + 1, count($messages), mb_strlen($msg)));
+            $io->text(strip_tags($msg));
+        }
+
+        if ($input->getOption('stdout-only')) {
+            return Command::SUCCESS;
+        }
+        if (!$this->notifier->isEnabled()) {
+            $io->warning('Telegram не настроен (ADMIN_TELEGRAM_CHAT_ID).');
+            return Command::SUCCESS;
+        }
+        foreach ($messages as $n => $msg) {
+            if (!$this->notifier->sendChecked($msg)) {
+                // Входящие не помечаем: секции не потеряются, а exit≠0 поднимет алерт диспетчера.
+                $io->error(sprintf('Сообщение %d/%d не доставлено в Telegram (подробности — в логе TelegramNotifier).', $n + 1, count($messages)));
+                return Command::FAILURE;
             }
         }
+        $this->inbox->markSent();
+        $io->success(sprintf('Дайджест отправлен: %d сообщ.', count($messages)));
 
         return Command::SUCCESS;
     }

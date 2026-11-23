@@ -287,7 +287,10 @@ class BrandIngestController extends AbstractController
             'published_total'     => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at IS NOT NULL'),
             'published_today'     => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at >= ?', [$todayMsk]),
             'published_yesterday' => (int) $db->fetchOne('SELECT COUNT(*) FROM brand WHERE published_at >= ? AND published_at < ?', [$yesterdayMsk, $todayMsk]),
-            'queue_pending'       => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1"),
+            // queue_pending — реальные кандидаты дрипа (те же niche/origin-гейты, что
+            // findDripCandidateIds); queue_raw — прежняя цифра без гейтов (с мусором niche=off).
+            'queue_pending'       => $em->getRepository(Brand::class)->countDripCandidates(),
+            'queue_raw'           => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='new' AND publish_pending=1"),
             'last_published'      => $db->fetchOne('SELECT MAX(published_at) FROM brand') ?: null,
             'active_total'        => (int) $db->fetchOne("SELECT COUNT(*) FROM brand WHERE status='active'"),
         ];

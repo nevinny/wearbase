@@ -114,8 +114,17 @@ class GoogleIndexPingCommand extends Command
             $sent++;
 
             if (in_array($code, [429, 403], true)) {
-                $io->warning(sprintf('HTTP %d на %s — квота Indexing API исчерпана, остановка до завтра.', $code, $url));
-                break;
+                $reason = $this->indexing->lastErrorReason();
+                if (GoogleIndexingClient::isQuotaReason($code, $reason)) {
+                    $io->warning(sprintf('HTTP %d на %s — квота Indexing API исчерпана, остановка до завтра.', $code, $url));
+                    break;
+                }
+                // Не квота, а отказ в доступе (напр. ACCESS_TOKEN_SCOPE_INSUFFICIENT: OAuth-креды
+                // выданы без scope indexing) — каждый следующий запрос упадёт так же. FAILURE →
+                // алерт диспетчера крона, а не тихий ежедневный «квота исчерпана».
+                $io->error(sprintf('HTTP %d на %s — Indexing API отказал в доступе (%s). Креды GSC_CREDENTIALS_PATH без прав/scope indexing — пинги не работают.', $code, $url, $reason ?? '?'));
+
+                return Command::FAILURE;
             }
             if ($code >= 400) {
                 $io->text(sprintf('  HTTP %d: %s', $code, $url));
