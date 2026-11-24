@@ -2,8 +2,12 @@
 
 namespace App\Controller;
 
+use App\Entity\Brand;
 use App\Repository\ArticleDistributionRepository;
+use App\Repository\BrandRepository;
+use App\Service\Social\BrandGalleryImages;
 use Doctrine\DBAL\Connection;
+use Nevinny\AdminCoreBundle\Enum\Statuses;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -17,7 +21,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  * dzen`), НЕ `article.content` — статьи без привязанной копии в фид не попадают.
  * `native-draft` — публикацию всё равно подтверждает человек (добавление обложки/
  * CTA/UTM по методологии остаются ручными, см. docs/seo_publishing_strategy.md,
- * docs/dzen_seo_methodology.md).
+ * docs/dzen_seo_methodology.md). Разметка item сведена к эталонной ленте
+ * getmodel.com/dzen.xml — см. docs/dzen_rss_audit.md.
  */
 class DzenFeedController extends AbstractController
 {
@@ -37,9 +42,19 @@ class DzenFeedController extends AbstractController
     // с запасом над MAX_ITEMS, т.к. часть кандидатов ещё не проиндексирована.
     private const CANDIDATE_POOL = 200;
 
+    // Спека Дзена на обложку/картинки: ширина ≥700px, форматы JPEG/PNG/GIF — иначе
+    // материал публикуется без изображения (webp в brand_image поэтому пропускаем).
+    private const COVER_MIN_WIDTH = 700;
+    private const COVER_MIME = ['image/jpeg', 'image/png', 'image/gif'];
+
     #[Route('/rss/dzen.xml', name: 'dzen_feed', defaults: ['_format' => 'xml'])]
-    public function feed(ArticleDistributionRepository $distributionRepo, Connection $db, UrlGeneratorInterface $urlGenerator): Response
-    {
+    public function feed(
+        ArticleDistributionRepository $distributionRepo,
+        Connection $db,
+        UrlGeneratorInterface $urlGenerator,
+        BrandRepository $brandRepo,
+        BrandGalleryImages $gallery,
+    ): Response {
         $siteBase = parse_url((string) $this->getParameter('app.site_base_url'));
         $context  = $urlGenerator->getContext();
         $context->setScheme($siteBase['scheme'] ?? 'https');
@@ -63,6 +78,9 @@ class DzenFeedController extends AbstractController
             }
         }
 
+        $brandsBySlug = $this->loadBrands($selected, $brandRepo);
+        $siteBaseUrl  = rtrim((string) $this->getParameter('app.site_base_url'), '/');
+
         $items = [];
         foreach ($selected as $distribution) {
             $article = $distribution->getArticle();
@@ -74,11 +92,17 @@ class DzenFeedController extends AbstractController
 
             $title = $distribution->getTitle() ?? $article->getTitle();
 
-            // Дзен показывает title из content:encoded, а не из <title> — в Дзен-копии он
-            // хранится без H1 (парсер выводит его отдельно как title), поэтому возвращаем
-            // H1 обратно только для фида.
+            // H1 в content:encoded не дублируем: с явной category=format-article Дзен берёт
+            // заголовок из <title> (дубль внутри текста спека требует только для постов),
+            // как и в эталонной ленте.
             $content = preg_replace('#<script type="application/ld\+json">.*?</script>#s', '', $distribution->getContent());
-            $content = '<h1>' . htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</h1>\n" . $this->toDzenHtml($content)
+            $cover   = $this->pickCover($content, $brandsBySlug, $gallery, $siteBaseUrl);
+
+            $content = ($cover !== null ? '<figure><img src="' . $cover['url'] . "\"></figure>\n" : '')
+                . $this->toDzenHtml($content)
+                . ($cover !== null
+                    ? "\n<p><i>Фото на обложке: " . htmlspecialchars($cover['credit'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</i></p>'
+                    : '')
                 . "\n<p><i>Источник: <a href=\"{$link}\">wearbase.ru</a></i></p>";
 
             $items[] = [
@@ -87,22 +111,89 @@ class DzenFeedController extends AbstractController
                 // Переизданная статья (app:seo:republish-blog) должна выглядеть для Дзена
                 // свежей: updatedAt > publishedAt только после переиздания (Created-трейт
                 // бампает updatedAt лишь на PrePersist, а publishedAt дрипа — в будущем).
-                'pubDate' => max($article->getPublishedAt(), $article->getUpdatedAt())->format(\DATE_RSS),
+                'pubDate' => \DateTimeImmutable::createFromInterface(max($article->getPublishedAt(), $article->getUpdatedAt()))
+                    ->setTimezone(new \DateTimeZone('UTC'))
+                    ->format('D, d M Y H:i:s \G\M\T'),
                 'excerpt' => $distribution->getExcerpt() ?? $article->getExcerpt(),
+                'cover'   => $cover,
                 'content' => $content,
-                'author'  => $article->getAuthor()?->getName(),
             ];
         }
 
         $xml = $this->renderView('rss/dzen.xml.twig', [
-            'siteTitle' => 'WEARBASE — блог о российских брендах одежды',
-            'siteLink'  => $this->generateUrl('blog_index', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
-            'items'     => $items,
+            'siteTitle'       => 'WEARBASE',
+            'siteLink'        => $this->generateUrl('blog_index', ['_locale' => 'ru'], UrlGeneratorInterface::ABSOLUTE_URL),
+            'siteDescription' => 'Статьи о российских брендах одежды: подборки брендов, гайды для покупателей, комиссии маркетплейсов, продажи без посредников.',
+            'items'           => $items,
         ]);
 
         return new Response($xml, 200, [
             'Content-Type' => 'application/rss+xml; charset=utf-8',
         ]);
+    }
+
+    /**
+     * Активные бренды, на которые ссылаются тексты выбранных копий, одним запросом.
+     *
+     * @param list<\App\Entity\ArticleDistribution> $distributions
+     * @return array<string,Brand> slug => Brand
+     */
+    private function loadBrands(array $distributions, BrandRepository $brandRepo): array
+    {
+        $slugs = [];
+        foreach ($distributions as $distribution) {
+            array_push($slugs, ...$this->brandSlugs($distribution->getContent()));
+        }
+        if ($slugs === []) {
+            return [];
+        }
+
+        $bySlug = [];
+        foreach ($brandRepo->findBy(['slug' => array_values(array_unique($slugs))]) as $brand) {
+            if ($brand->getStatus() === Statuses::Active) {
+                $bySlug[$brand->getSlug()] = $brand;
+            }
+        }
+
+        return $bySlug;
+    }
+
+    /** @return list<string> slug'и брендов в порядке первого упоминания в тексте */
+    private function brandSlugs(string $html): array
+    {
+        preg_match_all('~/brands/([a-z0-9_-]+)~', $html, $m);
+
+        return array_values(array_unique($m[1]));
+    }
+
+    /**
+     * Обложка материала: enclosure + <figure> в начале текста (как в эталонной ленте).
+     * Своих картинок у статей нет, поэтому берём реальное фото первого упомянутого в
+     * тексте бренда — порядок кадров из BrandGalleryImages (вещь на человеке первой),
+     * первый кадр, проходящий спеку Дзена по формату и ширине. Нет такого — без обложки.
+     *
+     * @param array<string,Brand> $brandsBySlug
+     * @return array{url:string,type:string,credit:string}|null
+     */
+    private function pickCover(string $html, array $brandsBySlug, BrandGalleryImages $gallery, string $siteBaseUrl): ?array
+    {
+        $publicDir = $this->getParameter('kernel.project_dir') . '/public_html';
+
+        foreach ($this->brandSlugs($html) as $slug) {
+            $brand = $brandsBySlug[$slug] ?? null;
+            if ($brand === null) {
+                continue;
+            }
+
+            foreach ($gallery->paths($brand) as $path) {
+                $size = @getimagesize($publicDir . $path);
+                if ($size !== false && $size[0] >= self::COVER_MIN_WIDTH && in_array($size['mime'], self::COVER_MIME, true)) {
+                    return ['url' => $siteBaseUrl . $path, 'type' => $size['mime'], 'credit' => (string) $brand->getTitle()];
+                }
+            }
+        }
+
+        return null;
     }
 
     // Белый список Дзена (dzen.ru/help/ru/website/rss-modify.html): любой другой тег
