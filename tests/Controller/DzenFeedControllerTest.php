@@ -32,6 +32,17 @@ class DzenFeedControllerTest extends TestCase
         $this->assertSame('<h2>A</h2><p>BC</p>', $out);
     }
 
+    public function testBrandSlugsInOrderOfFirstMention(): void
+    {
+        $method = new \ReflectionMethod(DzenFeedController::class, 'brandSlugs');
+        $method->setAccessible(true);
+
+        $html = '<a href="https://wearbase.ru/ru/brands/tvoe?utm_source=dzen">Tvoe</a>'
+            . '<a href="/ru/brands/finn-flare">Finn Flare</a><a href="/ru/brands/tvoe">ещё раз</a>';
+
+        $this->assertSame(['tvoe', 'finn-flare'], $method->invoke(new DzenFeedController(), $html));
+    }
+
     public function testKeepsHrefSrcAlt(): void
     {
         $html = '<p><a href="https://wearbase.ru" target="_blank" rel="noopener">link</a>'

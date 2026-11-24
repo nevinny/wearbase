@@ -1,30 +1,29 @@
 {% autoescape 'html' %}<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0"
-     xmlns:dc="http://purl.org/dc/elements/1.1/"
-     xmlns:content="http://purl.org/rss/1.0/modules/content/"
-     xmlns:media="http://search.yahoo.com/mrss/">
-    <channel>
-        <title>{{ siteTitle }}</title>
-        <link>{{ siteLink }}</link>
-        <description>{{ siteTitle }}</description>
-        <language>ru</language>
-        {% for item in items %}
-        <item>
-            <title>{{ item.title }}</title>
-            <link>{{ item.link }}</link>
-            <guid isPermaLink="true">{{ item.link }}</guid>
-            <pubDate>{{ item.pubDate }}</pubDate>
-            {% if item.excerpt %}
-            <description><![CDATA[{{ item.excerpt|raw }}]]></description>
-            {% endif %}
-            <content:encoded><![CDATA[{{ item.content|raw }}]]></content:encoded>
-            <category>native-draft</category>
-            <media:rating scheme="urn:simple">nonadult</media:rating>
-            {% if item.author %}
-            <dc:creator>{{ item.author }}</dc:creator>
-            {% endif %}
-        </item>
-        {% endfor %}
-    </channel>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:georss="http://www.georss.org/georss">
+<channel>
+<title>{{ siteTitle }}</title>
+<link>{{ siteLink }}</link>
+<description>{{ siteDescription }}</description>
+<language>ru</language>
+{% for item in items %}
+<item>
+<title>{{ item.title }}</title>
+<link>{{ item.link }}</link>
+<guid>{{ item.link }}</guid>
+<pubDate>{{ item.pubDate }}</pubDate>
+<media:rating scheme="urn:simple">nonadult</media:rating>
+<category>native-draft</category>
+<category>format-article</category>
+<category>noindex</category>
+{% if item.excerpt %}
+<description>{{ item.excerpt }}</description>
+{% endif %}
+{% if item.cover %}
+<enclosure url="{{ item.cover.url }}" type="{{ item.cover.type }}"/>
+{% endif %}
+<content:encoded><![CDATA[{{ item.content|raw }}]]></content:encoded>
+</item>
+{% endfor %}
+</channel>
 </rss>
 {% endautoescape %}
